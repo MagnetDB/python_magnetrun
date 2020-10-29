@@ -1,2 +1,4 @@
+*.tdms filter=lfs diff=lfs merge=lfs -text
+*.png filter=lfs diff=lfs merge=lfs -text
 data/M9_*.txt filter=lfs diff=lfs merge=lfs -text
 data/M10_*.txt filter=lfs diff=lfs merge=lfs -text
