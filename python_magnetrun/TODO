@@ -1,0 +1,14 @@
+HMagnets:
+[rapid]Records-> store only time stamp
+GObject -> store only name
+download MAGConfiles?
+dowload a given record
+
+test-request:
+why status not ok for every magnet??
+store records in a dict specific to each magnetID
+
+DB: Tables
+Magnets
+MagnetID_[rapid]records
+MagnetID_GObjects

@@ -1,28 +1,26 @@
-"""Helix Object"""
+#!/usr/bin/env python3
+#-*- coding:utf-8 -*-
+
+"""HMagnet Object"""
+
+import json
+import deserialize
 
 class HMagnet:
     """
+    name
     cadref
-    GObjects: list of Objects (aka rings, helices, current leads)
-    records: txt files
-    rapidrecords: tdms files
+    GObjects: list of Objects IDs (aka rings, helices, current leads)
+    records: timestamps of txt files
+    rapidrecords: timestamps of tdms files
     MAGfile(s)
     status: Dead/Alive
     index
     """
 
-    def __init__(self):
-        """empty constructor"""
-        self.cadref = 0
-        self.GObjects = []
-        self.records = []
-        self.rapidrecords = []
-        self.MAGfile = []
-        self.status = "Unknown"
-        self.index = 0
-
-    def __init__(self, cadref, GObjects, records, rapidrecords, MAGfile, status):
+    def __init__(self, name: str, cadref: str, GObjects: list, records: list, rapidrecords: list, MAGfile: list, status: str, index: int):
         """defaut constructor"""
+        self.name = name
         self.cadref = cadref
         self.GObjects = GObjects
         self.records = records
@@ -30,23 +28,26 @@ class HMagnet:
         self.MAGfile = MAGfile
         self.status = status
         self.index = index
-        
+
     def __repr__(self):
         """
         representation of object
         """
-        return "%s(geofile=%r, matID=%r)" % \
+        return "%s(name=%r, cadref=%r, GObjects=%r, records=%r, rapidrecords=%r, MAGfile=%r, status=%r, index=%r)" % \
             (self.__class__.__name__,
-             self.cadref = cadref,
+             self.name,
+             self.cadref,
              self.GObjects,
              self.records,
              self.rapidrecords,
              self.MAGfile,
-             self.status)
+             self.status,
+             self.index
+            )
 
     def setIndex(self, index):
         """set Index"""
-        self.index
+        self.index = index
 
     def getIndex(self):
         """get index"""
@@ -54,7 +55,7 @@ class HMagnet:
 
     def setCadref(self, cadref):
         """set Cadref"""
-        self.cadrefc= cadref
+        self.cadref = cadref
 
     def getCadref(self):
         """get cadref"""
@@ -109,7 +110,7 @@ class HMagnet:
         get list of GObjects composing Magnets
         from a given category
         """
-        selected = [gobject from GObjects if gobject.getCategory() == category]
+        selected = [gobject for gobject in self.GObjects if gobject.getCategory() == category]
         return selected
 
     def getGObjects(self):
@@ -124,60 +125,11 @@ class HMagnet:
         """get MAGfile configuration file(s)"""
         return self.MAGfile
 
-    
-class GObject:
-    """
-    cadref
-    geometry: yaml file
-    materialID
-    category: Helix, Ring, Current Lead, Bitter
-    status: Dead/Alive
-    """
+    # def download(self, session, url):
+    # """Download MAGfile"""
 
-    def __init__(self):
-        """empty constructor"""
-        self.cadref = cadref
-        self.geofile = ""
-        self.matID = "-"
-        self.category = "Unknown"
-        self.status = "Unknown"
-
-    def __init__(self, cadref, geofile, matID, category, status):
-        """default constructor"""
-        self.cadref = cadref
-        self.geofile = geofile
-        self.matID = matID
-        self.category = category
-        self.status
-
-    def __repr__(self):
+    def to_json(self):
         """
-        representation of object
+        convert to json
         """
-        return "%s(cadref=%r, geofile=%r, matID=%r, category=%r)" % \
-            (self.__class__.__name__,
-             self.cadref,
-             self.geofile,
-             self.matID,
-             self.category,
-             self.status
-            )
-                                                    
-    def setCadref(self, cadref):
-        self.cadref = cadref
-
-    def getCadref(self):
-        return self.cadref
-
-    def setStatus(self, status):
-        self.status = status
-
-    def getStatus(self):
-        return self.status
-
-    def setCategory(self, category):
-        self.category = category
-
-    def getCategory(self):
-        return self.category
-
+        return json.dumps(self, default=deserialize.serialize_instance, sort_keys=True, indent=4)
