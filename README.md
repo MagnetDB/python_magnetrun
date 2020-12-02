@@ -20,6 +20,11 @@ Features
 -   Plot field(s) vs time
 -   Plot field vs field
 
+Examples
+--------
+
+_  `python3 python_magnetrun.py M9_2019.02.14-23_00_38.txt --plot_vs_time "Field" --show`
+
 TODO
 ----
 
@@ -32,9 +37,9 @@ TODO
 -   add support for origin files (for B experimental profil) - use
     labplot?? liborigin?? python bindings??
 -   get MagnetRun files from control/monitoring system??
--   how to add columns comming from freesteam, for instance like rho,
+-   how to add columns coming from freesteam, for instance like rho,
     cp\...??
--   for MagnetRun add missing fields (U1, Pe1, Tout1, U2 \...\],
+-   for MagnetRun add missing fields [U1, Pe1, Tout1, U2 \...\],
     \--missing, \--nhelices - see txt2csv.py
 
 Credits
