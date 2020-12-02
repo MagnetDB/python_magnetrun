@@ -22,6 +22,7 @@ class MagnetRun:
     """
 
     def __init__(self, site="M9", insert="", data=None):
+        """default constructor"""
         self.Site = site
         self.Insert = insert
         
@@ -35,6 +36,7 @@ class MagnetRun:
 
     @classmethod
     def fromtxt(cls, site, filename):
+        """create from a txt file"""
         with open(filename, 'r') as f:
             insert=f.readline().split()[-1]
         data = magnetdata.MagnetData.fromtxt(filename)
@@ -43,13 +45,18 @@ class MagnetRun:
         
     @classmethod
     def fromcsv(cls, site, insert, filename):
+        """create from a csv file"""
         data = magnetdata.MagnetData.fromcsv(filename)
         return cls(site, insert, data)
         
     @classmethod
-    def fromStringIO(cls, site, insert, ioname):
-        data = magnetdata.MagnetData.fromStringI(ioname)
-        insert=ioname.readline().split()[-1]
+    def fromStringIO(cls, site, name):
+        """create from a stringIO"""
+        from io import StringIO
+
+        ioname = StringIO(name)
+        insert = ioname.readline().split()[-1]
+        data = magnetdata.MagnetData.fromStringIO(name)
         return cls(site, insert, data)
 
     def __repr__(self):

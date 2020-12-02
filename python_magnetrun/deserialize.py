@@ -25,7 +25,7 @@ def serialize_instance(obj):
     serialize_instance of an obj
     """
     d = {'__classname__' : type(obj).__name__}
-    print("var(obj):", vars(obj))
+    # print("var(obj):", vars(obj))
     d.update(vars(obj))
     return d
 

@@ -91,14 +91,14 @@ class MagnetData:
         return cls(name, [], Keys, 0, Data)
     
     @classmethod
-    def fromStringIO(cls, name):
+    def fromStringIO(cls, name, sep=r'\s+', skiprows=1):
         """create from a stringIO"""
         from io import StringIO
         
         Data = pd.read_csv(StringIO(name),
-                           sep=str(","),
+                           sep=sep,
                            engine='python',
-                           skiprows=0)
+                           skiprows=skiprows)
         Keys = Data.columns.values.tolist()
         return cls("stringIO", [], Keys, 0, Data)
 
