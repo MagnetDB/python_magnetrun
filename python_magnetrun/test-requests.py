@@ -194,6 +194,14 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, missingIDs, debug=Fals
 
 
 if __name__ == "__main__":
+    import argparse
+    import python_magnetrun
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--user", help="specify user")
+    parser.add_argument("--server", help="specify server", default="http://147.173.83.216/site/sba/pages")
+    parser.add_argument("--debug", help="activate debug mode", action='store_true')
+    args = parser.parse_args()
 
     if sys.stdin.isatty():
         password = getpass.getpass('Using getpass: ')
@@ -204,7 +212,7 @@ if __name__ == "__main__":
     # print( 'Read: ', password )
 
     # shall check if host ip up and running
-    base_url="http://147.173.83.216/site/sba/pages"
+    base_url=args.server
     url_logging=base_url + "/" + "login.php"
     url_downloads=base_url + "/" + "courbe.php"
     url_status=base_url + "/" + "Etat.php"
@@ -215,7 +223,7 @@ if __name__ == "__main__":
 
     # Fill in your details here to be posted to the login form.
     payload = {
-        'email': 'christophe.trophime@lncmi.cnrs.fr',
+        'email': args.user,
         'password': password
     }
 
@@ -226,7 +234,7 @@ if __name__ == "__main__":
     Status = dict()
     missingIDs = []
     Mats = dict()
-    debug = True
+    debug = args.debug
 
     # Use 'with' to ensure the session context is closed after use.
     with requests.Session() as s:
@@ -258,7 +266,8 @@ if __name__ == "__main__":
                 getMagnetRecord(s, url_files, magnetID, Magnets, missingIDs)
                 Magnets[magnetID].setStatus(Status[magnetID][-1])
 
-        if debug:            print("\nMagnets: ")
+        if debug:
+            print("\nMagnets: ")
         for magnet in Magnets:
             print("** %s: status=%s" % ( magnet, Magnets[magnet].getStatus() ) )
             if debug:
@@ -283,7 +292,8 @@ if __name__ == "__main__":
                 # print("%s:" % data )
                 for i in range(len(helices[data])-1):
                     materialID = re.sub('H.* / ','',helices[data][i])
-                    print("%s:" % materialID )
+                    if debug:
+                        print("%s:" % materialID )
                     if materialID != '-':
                         r = s.post(url_materials, data={ 'REF': materialID, 'compact:': 'on', 'formsubmit': 'OK' })
                         r.raise_for_status()
@@ -300,7 +310,8 @@ if __name__ == "__main__":
                         if not magnet in MagnetComps:
                             MagnetComps[magnet] = []
                         MagnetComps[magnet].append(materialID)
-                        print("MagnetComps[%s].append(%s)" % (magnet,materialID) )
+                        if debug:
+                            print("MagnetComps[%s].append(%s)" % (magnet,materialID) )
                 
                         if debug:
                             print("Material: %s" % materialID,
@@ -360,7 +371,10 @@ if __name__ == "__main__":
             # fo = open(magnet + "-pickle.json", "w", newline='\n')
             # fo.write(jsonpickle.encode(Magnets[magnet]))
             # fo.close()
-
+            for record in MagnetRecords[magnet]:
+                data = record.download(s, url_downloads, save=False)
+                mrun = magnetrun.MagnetRun.fromStringIO(record.getSite(), data)
+                
     print("\nMaterials:")
     for mat in Mats:
         print(mat, ":", Mats[mat])

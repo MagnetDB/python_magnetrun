@@ -4,7 +4,6 @@ import os
 import sys
 import datetime
 import magnetdata
-import file_utils
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -22,20 +21,36 @@ class MagnetRun:
     MagnetData: pandas dataframe or tdms file
     """
 
-    def __init__(self, site="M9", insert="", filename="tutu"):
+    def __init__(self, site="M9", insert="", data=None):
         self.Site = site
-        self.MagnetData = magnetdata.MagnetData(filename)
-        with open(filename, 'r') as f:
-            f_extension=os.path.splitext(filename)[-1]
-            if f_extension == ".txt":
-                self.Insert=f.readline().split()[-1]
+        self.Insert = insert
+        
+        self.MagnetData = data
+        if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
+            tformat="%Y.%m.%d %H:%M:%S"
+            start_date=self.MagnetData.getData("Date").iloc[0]
+            start_time=self.MagnetData.getData("Time").iloc[0]
+            end_time=self.MagnetData.getData("Time").iloc[-1]
+            print("Site: %s, Insert: %s" % (self.Site, self.Insert), "start_time=", start_time, "start_date=", start_date)
 
-                if "Date" in self.Keys and "Time" in self.MagnetDataKeys:
-                    tformat="%Y.%m.%d %H:%M:%S"
-                    start_date=self.Data["Date"].iloc[0]
-                    start_time=self.Data["Time"].iloc[0]
-                    end_time=self.Data["Time"].iloc[-1]
-                    print ("start_time=", start_time, "start_date=", start_date)
+    @classmethod
+    def fromtxt(cls, site, filename):
+        with open(filename, 'r') as f:
+            insert=f.readline().split()[-1]
+        data = magnetdata.MagnetData.fromtxt(filename)
+        # print("magnetrun.fromtxt: data=", data)
+        return cls(site, insert, data)
+        
+    @classmethod
+    def fromcsv(cls, site, insert, filename):
+        data = magnetdata.MagnetData.fromcsv(filename)
+        return cls(site, insert, data)
+        
+    @classmethod
+    def fromStringIO(cls, site, insert, ioname):
+        data = magnetdata.MagnetData.fromStringI(ioname)
+        insert=ioname.readline().split()[-1]
+        return cls(site, insert, data)
 
     def __repr__(self):
         return "%s(Site=%r, Insert=%r, MagnetData=%r)" % \
@@ -48,6 +63,10 @@ class MagnetRun:
         """returns Site"""
         return self.Site
 
+    def getInsert(self):
+        """returns Insert"""
+        return self.Insert
+
     def setSite(self, site):
         """set Site"""
         self.Site = site
@@ -57,11 +76,11 @@ class MagnetRun:
         return self.MagnetData.Type
 
     def getMData(self):
-        """retunr Data"""
+        """return Magnet Data object"""
         return self.MagnetData
 
     def getData(self):
-        """retunr Data"""
+        """return Data"""
         return self.MagnetData.getData()
 
     def getKeys(self):
@@ -123,6 +142,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file")
+    parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9")
     parser.add_argument("--plot_vs_time", help="select key(s) to plot (ex. \"Field[;Ucoil1]\")")
     parser.add_argument("--plot_key_vs_key", help="select pair(s) of keys to plot (ex. \"Field-Icoil1")
     parser.add_argument("--output_time", help="output key(s) for time")
@@ -136,7 +156,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # load df pandas from input_file
-    mrun = MagnetRun(filename=args.input_file)
+    # check extension
+    f_extension=os.path.splitext(args.input_file)[-1]
+    print("f_extension: %s" % f_extension)
+    mrun = MagnetRun.fromtxt(args.site, args.input_file)
     dkeys = mrun.getKeys()
 
     if args.list:
@@ -154,6 +177,7 @@ if __name__ == "__main__":
         # loop over key
         for key in items:
             if key in dkeys:
+                print("plot key=", key, "type=", type(key))
                 mrun.getMData().plotData(x='Time', y=key, ax=my_ax)
         if args.show:
             plt.show()

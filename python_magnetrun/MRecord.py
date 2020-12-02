@@ -53,20 +53,16 @@ class MRecord:
         """set Link"""
         self.link = link
 
-    # def download(self, session, url):
-    #     """download record"""
-    #     # need test-request.py
-    #
-    #     payload = {
-    #         'email': email_address,
-    #         'password': password
-    #     }
-
-    #     session = createSession(url_logging, payload)
-    #
-    #     params = 'file=%s&download=1' % self.link
-    #     download(session, url_downloads, params, self.link, save=True, debug=False)
-
+    def download(self, session, url, save=False, debug=False):
+        """download record"""
+        import test-request
+    
+        if not session:
+            raise Exception("MRecord.download: no session defined")
+    
+        params = 'file=%s&download=1' % self.link
+        data = test-request.download(session, url, params, self.link, save, debug)
+        return data
 
     def to_json(self):
         """

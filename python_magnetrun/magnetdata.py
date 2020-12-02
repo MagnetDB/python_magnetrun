@@ -23,23 +23,22 @@ class MagnetData:
     Type: 0 for Pandas data, 1 for Tdms
     """
         
-    def __init__(self, filename="tutu", Groups, Keys, Type, Data):
+    def __init__(self, filename, Groups=dict(), Keys=[], Type=0, Data=None):
         """default constructor"""
         self.FileName = filename
-        self.Groups = dict()
-        self.Keys = []
-        self.Type = 0 # 0 for Pandas, 1 for Tdms
-        self.Data = None
+        self.Groups = Groups
+        self.Keys = Keys
+        self.Type = Type # 0 for Pandas, 1 for Tdms
+        self.Data = Data
 
     @classmethod
     def fromtdms(cls, name):
         """create from a tdms file"""
-        with open(filename, 'r') as f:
-            f_extension=os.path.splitext(filename)[-1]
+        with open(name, 'r') as f:
+            f_extension=os.path.splitext(name)[-1]
             # print("f_extension: % s" % f_extension)
             if f_extension == ".tdms":
-                Type = 1
-                Data = TdmsFile.open(filename, 'r')
+                Data = TdmsFile.open(name, 'r')
                 for group in self.Data.groups():
                     for channel in group.channels():
                         Keys.append(channel.name)
@@ -51,59 +50,57 @@ class MagnetData:
     @classmethod
     def fromtxt(cls, name):
         """create from a txt file"""
-        with open(filename, 'r') as f:
-            f_extension=os.path.splitext(filename)[-1]
+        with open(name, 'r') as f:
+            f_extension=os.path.splitext(name)[-1]
             # print("f_extension: % s" % f_extension)
             if f_extension == ".txt":
-                self.Type = 1
                 Data = pd.read_csv(f,
-                                   sep=sep=r'\s+',
+                                   sep=r'\s+',
                                    engine='python',
                                    skiprows=1)
                 Keys = Data.columns.values.tolist()
             else:
                 raise("fromtxt: expect a txt filename - got %s" % name)
-        return cls(name, [], Keys, 1, Data)
+        # print("MagnetData.fromtxt: ", Data)
+        return cls(name, [], Keys, 0, Data)
 
     @classmethod
     def fromensight(cls, name):
         """create from a cvs ensight file"""
-        with open(filename, 'r') as f:
-            f_extension=os.path.splitext(filename)[-1]
-            f_extension += "-ensight"
-            Type = 0
+        with open(name, 'r') as f:
+            # f_extension=os.path.splitext(name)[-1]
+            # f_extension += "-ensight"
             Data = pd.read_csv(f,
                                sep=",",
                                engine='python',
                                skiprows=2)
             Keys = Data.columns.values.tolist()
-        return cls(name, [], Keys, 1, Data)
+        return cls(name, [], Keys, 0, Data)
 
     @classmethod
     def fromcsv(cls, name):
         """create from a cvs file"""
-        with open(filename, 'r') as f:
-            f_extension=os.path.splitext(filename)[-1]
-            Type = 1
+        with open(name, 'r') as f:
+            # get file extension
+            f_extension=os.path.splitext(name)[-1]
             Data = pd.read_csv(f,
                                sep=str(","),
                                engine='python',
                                skiprows=0)
             Keys = Data.columns.values.tolist()
-        return cls(name, [], Keys, 1, Data)
+        return cls(name, [], Keys, 0, Data)
     
     @classmethod
     def fromStringIO(cls, name):
         """create from a stringIO"""
         from io import StringIO
         
-        Type = 1
         Data = pd.read_csv(StringIO(name),
                            sep=str(","),
                            engine='python',
                            skiprows=0)
         Keys = Data.columns.values.tolist()
-        return cls("stringIO", [], Keys, 1, Data)
+        return cls("stringIO", [], Keys, 0, Data)
 
     def __repr__(self):
         return "%s(Type=%r, Groups=%r, Keys=%r, Data=%r)" % \
@@ -117,9 +114,15 @@ class MagnetData:
         """returns Data Type"""
         return self.Type
 
-    def getData(self):
-        """retunr Data"""
-        return self.Data
+    def getData(self, key=""):
+        """return Data"""
+        if not key:
+            return self.Data
+        else:
+            if key in self.Keys:
+                return self.Data[key]
+            else:
+                raise Exception("cannot get data for key %s: no such key" % key)
 
     def getKeys(self):
         """return list of Data keys"""
@@ -215,6 +218,7 @@ class MagnetData:
                 if x != "Time" :
                     raise Exception("cannot plot x=%s columnns" % x)
 
+        print("plotData Type:", self.Type)
         if y in self.Keys:
             if self.Type == 0 :
                 self.Data.plot(x=x, y=y, ax=ax, grid=True)
