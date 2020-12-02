@@ -4,7 +4,6 @@
 """Magnet Record Object"""
 
 import json
-import deserialize
 
 class MRecord:
     """
@@ -56,12 +55,22 @@ class MRecord:
 
     # def download(self, session, url):
     #     """download record"""
-    #     params_downloads = 'file=%s&download=1' % self.link
-    #     d = session.get(url=url, params=params_downloads)
+    #     # need test-request.py
+    #
+    #     payload = {
+    #         'email': email_address,
+    #         'password': password
+    #     }
 
-    #     filename = self.link.replace('../../../','')
-    #     filename = filename.replace('/','_').replace('%20','-')
-    #     fo = open(filename, "w", newline='\n')
-    #     fo.write(d.text)
-    #     fo.close()
+    #     session = createSession(url_logging, payload)
+    #
+    #     params = 'file=%s&download=1' % self.link
+    #     download(session, url_downloads, params, self.link, save=True, debug=False)
 
+
+    def to_json(self):
+        """
+        convert to json
+        """
+        import deserialize
+        return json.dumps(self, default=deserialize.serialize_instance, sort_keys=True, indent=4)

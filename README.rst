@@ -26,16 +26,22 @@ Python MagnetRun contains utils to view and analyse Magnet runs
 Features
 --------
 
-* TODO
+* Load txt, cvs and tdms files from control/monitoring system
+* Extract field(s)
+* Plot field(s) vs time
+* Plot field vs field
 
-  .. todo:: tdms to pandas see https://nptdms.readthedocs.io/en/stable/apireference.html
-  .. todo:: check addData formula with help of python pyparsing??
-  .. todo:: export Data to prettytables? tabular? cvs2md?
-  .. todo:: how to pass option to matplotlib within plotData()?*args PARAMETER TO MAKE OPTIONAL ARGUMENTS?
-  .. todo:: add support for origin files (for B experimental profil) - use labplot?? liborigin?? python bindings??
-  .. todo:: get MagnetRun files from control/monitoring system??
-  .. todo:: how to add columns comming from freesteam, for instance like rho, cp...??
-  .. todo:: for MagnetRun add missing fields (U1, Pe1, Tout1, U2 ...], --missing, --nhelices - see txt2csv.py
+TODO
+--------
+
+* tdms to pandas see https://nptdms.readthedocs.io/en/stable/apireference.html
+* check addData formula with help of python pyparsing??
+* export Data to prettytables? tabular? cvs2md?
+* how to pass option to matplotlib within plotData()?*args PARAMETER TO MAKE OPTIONAL ARGUMENTS?
+* add support for origin files (for B experimental profil) - use labplot?? liborigin?? python bindings??
+* get MagnetRun files from control/monitoring system??
+* how to add columns comming from freesteam, for instance like rho, cp...??
+* for MagnetRun add missing fields (U1, Pe1, Tout1, U2 ...], --missing, --nhelices - see txt2csv.py
 	    
 	    
 	    

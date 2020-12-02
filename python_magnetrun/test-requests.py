@@ -16,10 +16,24 @@ import requests
 import requests.exceptions
 import lxml.html as lh
 
+# import jsonpickle
 import MRecord
 import GObject
 import HMagnet
-import jsonpickle
+
+def createSession(url_logging, payload):
+    """create a request session"""
+    
+    p = s.post(url=url_logging, data=payload)
+    # print the html returned or something more intelligent to see if it's a successful login page.
+    if debug:
+        print( "connect:", p.url, p.status_code )
+    # check return status: if not ok stop
+    if p.status_code != 200:
+        print("error %d logging to %s" % (p.status_code, url_logging) )
+        sys.exit(1)
+    p.raise_for_status()
+    return p
 
 def download(session, url_data, param, link=None, save=False, debug=False):
     """download """
@@ -117,7 +131,7 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, missingIDs, debug=Fals
     if debug:
         print("MagnetID=%s" % magnetID)
     if not magnetID in Magnets.keys():
-        Magnets[magnetID] = HMagnet.HMagnet(magnetID, 0, [], [], [], None, "Unknown", 0)
+        Magnets[magnetID] = HMagnet.HMagnet(magnetID, 0, None, "Unknown", 0)
 
     # To get files for magnetID
     params_links = (
@@ -164,18 +178,19 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, missingIDs, debug=Fals
                     if not actual_id in Magnets.keys():
                         if debug:
                             print("Create a new entry: ", actual_id)
-                        Magnets[actual_id] = HMagnet.HMagnet(actual_id, 0, [], [], [], None, "Unknown", 0)
+                        Magnets[actual_id] = HMagnet.HMagnet(actual_id, 0, None, "Unknown", 0)
                         MagnetRecords[actual_id] = []
                     Magnets[actual_id].addRecord( timestamp )
-                    MagnetRecords[actual_id].append( MRecord.MRecord(timestamp, site, link) )
-                    # print( "\t**", "timestamp=%s site=%s Mid=%s (item=%d) **" % (timestamp, site, actual_id, len(Magnets[actual_id])) )
+                    record = MRecord.MRecord(timestamp, site, link)
+                    MagnetRecords[actual_id].append( record )
 
                 else:
                     Magnets[magnetID].addRecord( timestamp )
                     if not magnetID in MagnetRecords:
                         MagnetRecords[magnetID] = []
-                    MagnetRecords[magnetID].append( MRecord.MRecord(timestamp, site, link) )
-                    # print( "\t--", "timestamp=%s site=%s Mid=%s (item=%d) **" % (timestamp, site, actual_id, len(Magnets[magnetID])) )
+
+                    record = MRecord.MRecord(timestamp, site, link)
+                    MagnetRecords[magnetID].append( record )
 
 
 if __name__ == "__main__":
@@ -186,7 +201,7 @@ if __name__ == "__main__":
         print( 'Using readline' )
         password = sys.stdin.readline().rstrip()
 
-    print( 'Read: ', password )
+    # print( 'Read: ', password )
 
     # shall check if host ip up and running
     base_url="http://147.173.83.216/site/sba/pages"
@@ -207,22 +222,15 @@ if __name__ == "__main__":
     # Magnets
     Magnets = dict()
     MagnetRecords = dict()
+    MagnetComps = dict()
     Status = dict()
     missingIDs = []
     Mats = dict()
-    debug = False
+    debug = True
 
     # Use 'with' to ensure the session context is closed after use.
     with requests.Session() as s:
-        p = s.post(url=url_logging, data=payload)
-        # print the html returned or something more intelligent to see if it's a successful login page.
-        if debug:
-            print( "connect:", p.url, p.status_code )
-            # check return status: if not ok stop
-        if p.status_code != 200:
-            print("error %d logging to %s" % (p.status_code, url_logging) )
-            sys.exit(1)
-        p.raise_for_status()
+        p = createSession(url_logging, payload)
 
         # test connection
         r = s.get(url=url_status)
@@ -250,8 +258,7 @@ if __name__ == "__main__":
                 getMagnetRecord(s, url_files, magnetID, Magnets, missingIDs)
                 Magnets[magnetID].setStatus(Status[magnetID][-1])
 
-        if debug:
-            print("\nMagnets: ")
+        if debug:            print("\nMagnets: ")
         for magnet in Magnets:
             print("** %s: status=%s" % ( magnet, Magnets[magnet].getStatus() ) )
             if debug:
@@ -263,21 +270,25 @@ if __name__ == "__main__":
 
             hindices = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,19]
             res = getTable(s, url_helices, 1, hindices, param=params_helix)
+            helices = ()
             if res:
                 helices = res[0]
                 jid = res[1]
+                if Magnets[magnet].getIndex() is None:
+                    Magnets[magnet].setIndex(jid[magnet])
                 if debug:
-                    print("helices:", helices, "jid:", jid)
+                    print("helices:", helices, "jid:", jid, Magnets[magnet].getIndex() )
 
             for data in helices:
                 # print("%s:" % data )
                 for i in range(len(helices[data])-1):
                     materialID = re.sub('H.* / ','',helices[data][i])
+                    print("%s:" % materialID )
                     if materialID != '-':
                         r = s.post(url_materials, data={ 'REF': materialID, 'compact:': 'on', 'formsubmit': 'OK' })
                         r.raise_for_status()
-                        if debug:
-                            print("post MaterialID: ", r.url, r.status_code)
+                        # if debug:
+                        #     print("post MaterialID: ", r.url, r.status_code)
                         html = lh.fromstring(r.text.encode(r.encoding))
                         conductivity = html.xpath('//input[@name="CONDUCTIVITE"]/@value')[-1]
                         elasticlimit = html.xpath('//input[@name="LE"]/@value')[-1]
@@ -285,8 +296,12 @@ if __name__ == "__main__":
                             Mats[materialID] = GObject.GObject(materialID, 0,0,
                                                                {"sigma0":str(conductivity), "rpe": str(elasticlimit)},
                                                                "Helix", "Unknown")
-                            Magnets[magnet].addGObject(materialID)
-
+                        #Magnets[magnet].addGObject(materialID)
+                        if not magnet in MagnetComps:
+                            MagnetComps[magnet] = []
+                        MagnetComps[magnet].append(materialID)
+                        print("MagnetComps[%s].append(%s)" % (magnet,materialID) )
+                
                         if debug:
                             print("Material: %s" % materialID,
                                   "Conductivity=", conductivity,
@@ -302,8 +317,8 @@ if __name__ == "__main__":
                 Magnets[magnet].setMAGfile(Magconf_files)
 
 
-        print("\nMaterials Found:", len(Mats))
         print("\nMaterials")
+        print("\nMaterials Found:", len(Mats))
         # Ref ou REF???
         r = s.post(url_materials, data={ 'compact:': 'on', 'formsubmit': 'OK' })
         r.raise_for_status()
@@ -326,33 +341,29 @@ if __name__ == "__main__":
     print("\nSum up: ")
     print("\nMagnets:")
     for magnet in Magnets:
+        if not magnet in MagnetRecords:
+            MagnetRecords[magnet] = []
+        if not magnet in MagnetComps:
+            MagnetComps[magnet] = []
+        
         # sort records list by timestamp:
-        Magnets[magnet].getRecords().sort(key=lambda x: x.getTimestamp())
         print("** %s: status=%s, records=%d, helices=%d" % ( magnet,
                                                              Magnets[magnet].getStatus(),
-                                                             len(Magnets[magnet].getRecords()),
-                                                             len(Magnets[magnet].getGObjects()) ) )
+                                                             len(MagnetRecords[magnet]),
+                                                             len(MagnetComps[magnet]) ) )
         ## Broken to json:
         #try:
         if Magnets[magnet].getStatus() == "En service":
             fo = open(magnet + ".json", "w", newline='\n')
             fo.write(Magnets[magnet].to_json())
             fo.close()
-            # except:
-            #     print("fail to dump to json with deserialize")
-            #     pass
-            fo = open(magnet + "-pickle.json", "w", newline='\n')
-            fo.write(jsonpickle.encode(Magnets[magnet]))
-            fo.close()
-
-    # for magnet in Magnets:
-    #     print("** %s: status=%s" % ( magnet, Status[magnet] ) )
-    #     for record in Magnets[magnet]:
-    #         print( record )
+            # fo = open(magnet + "-pickle.json", "w", newline='\n')
+            # fo.write(jsonpickle.encode(Magnets[magnet]))
+            # fo.close()
 
     print("\nMaterials:")
     for mat in Mats:
         print(mat, ":", Mats[mat])
         fo = open(mat + ".json", "w", newline='\n')
-        fo.write(jsonpickle.encode(Mats[mat]))
+        fo.write(Mats[mat].to_json())
         fo.close()

@@ -4,7 +4,6 @@
 """Magnet component Object"""
 
 import json
-import deserialize
 
 class GObject:
     """
@@ -81,3 +80,10 @@ class GObject:
         self.material[mproperty] = mval
     
 
+
+    def to_json(self):
+        """
+        convert to json
+        """
+        import deserialize
+        return json.dumps(self, default=deserialize.serialize_instance, sort_keys=True, indent=4)

@@ -115,7 +115,6 @@ class MagnetRun:
 
                 # print("df_:", df_.columns.values.tolist()) 
                 df_.plot(ax=ax, grid=True)
-            plt.show()
 
         return 0
 
