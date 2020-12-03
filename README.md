@@ -23,7 +23,16 @@ Features
 Examples
 --------
 
-_  `python3 python_magnetrun.py M9_2019.02.14-23_00_38.txt --plot_vs_time "Field" --show`
+_  To list fields recorded during an experiment:
+
+```python3 python_magnetrun.py M9_2019.02.14-23_00_38.txt --list```
+
+
+_  To view the magnetic field during an experiment:
+
+
+```python3 python_magnetrun.py M9_2019.02.14-23_00_38.txt --plot_vs_time "Field" --show```
+
 
 TODO
 ----

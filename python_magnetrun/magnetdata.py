@@ -75,7 +75,7 @@ class MagnetData:
                                engine='python',
                                skiprows=2)
             Keys = Data.columns.values.tolist()
-        return cls(name, [], Keys, 0, Data)
+        return cls(name, [], Keys, 2, Data)
 
     @classmethod
     def fromcsv(cls, name):
@@ -153,7 +153,7 @@ class MagnetData:
         https://pandas.pydata.org/pandas-docs/stable/user_guide/enhancingperf.html#enhancingperf-eval
         """
 
-        print("addData: %s = %s" % (key, formula) )
+        # print("addData: %s = %s" % (key, formula) )
         if self.Type == 0 :
             if key in self.Keys:
                 print("Key %s already exists in DataFrame")
@@ -180,15 +180,17 @@ class MagnetData:
                 raise Exception("cannot add t[s] columnn: no Date or Time column")
         return 0
 
-    def extractData(self, key1, key2):
-        """extract columns key1 and key2 to Data"""
+    def extractData(self, keys):
+        """extract columns keys to Data"""
 
         newdf = None
         if self.Type == 0 :
-            if key1 in self.Keys and key2 in self.Keys:
-                newdf = pd.concat([self.Data[key1], self.Data[key2]], axis=1)
-            else:
-                raise Exception("cannot extract %s and %s columnns" % (key1, key2))
+            for key in keys:
+                if not key in self.Keys:
+                    raise Exception("%s.%s: no %s key" % (self.__class__.__name__, sys._getframe().f_code.co_name, x) )
+                
+            newdf = pd.concat([self.Data[key] for key in keys], axis=1)
+                
         return newdf
 
     def extractTimeData(self, timerange):
@@ -211,14 +213,14 @@ class MagnetData:
     def plotData(self, x, y, ax):
         """plot x vs y"""
         
+        print("plotData Type:", self.Type, "x=%s, y=%s" % (x,y) )
         if not x in self.Keys:
             if self.Type == 0 :
-                raise Exception("cannot plot x=%s columnns" % x)
+                raise Exception("%s.%s: no x=%s key" % (self.__class__.__name__, sys._getframe().f_code.co_name, x) )
             else:
                 if x != "Time" :
-                    raise Exception("cannot plot x=%s columnns" % x)
+                    Exception("%s.%s: no %s key" % (self.__class__.__name__, sys._getframe().f_code.co_name, x) )
 
-        print("plotData Type:", self.Type)
         if y in self.Keys:
             if self.Type == 0 :
                 self.Data.plot(x=x, y=y, ax=ax, grid=True)
@@ -243,9 +245,9 @@ class MagnetData:
                     plt.xlabel(xchannel.name + " [" + xchannel.properties['unit_string'] + "]")
 
                 plt.grid(b=True)
-                my_ax.legend()
+                ax.legend()
         else:
-            raise Exception("cannot plot y=%s columnns" % y)
+            raise Exception("%s.%s: no y=%s key" % (self.__class__.__name__, sys._getframe().f_code.co_name, y) )
 
     def stats(self):
         """compute stats fro the actual run"""
