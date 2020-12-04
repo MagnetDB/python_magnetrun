@@ -361,7 +361,7 @@ if __name__ == "__main__":
 
         #try:
         print("=============================")
-        for i in [1, 5, 7]:
+        for i in [1, 5, 7, 8 , 9, 10]:
             print("Loading txt files for M%d site" % i)
             sitename = "/var/www/html/M%d/" % i
             sitename = sitename.replace('/','%2F')
@@ -377,23 +377,29 @@ if __name__ == "__main__":
             for tr in tree.xpath('//a'):
                 if tr.text_content().endswith(".txt"):
                     print('tr:', tr.text_content() )
-                    tformat="%Y.%m.%d - %H:%M:%S"
-                    timestamp = datetime.datetime.strptime(tr.text_content().replace('.txt',''), tformat)
-                    
+                    try:
+                        tformat="%Y.%m.%d - %H:%M:%S"
+                        timestamp = datetime.datetime.strptime(tr.text_content().replace('.txt',''), tformat)
+                    except:
+                        tformat="%Y.%m.%d - %H_%M_%S"
+                        timestamp = datetime.datetime.strptime(tr.text_content().replace('.txt',''), tformat)
+                        print("changed tformat: %s" % tr.text_content())
+                        pass
+
                     link = "../../../M%d/%s" % (i,tr.text_content().replace(' ','%20'))
 
                     print("MRecord: ", timestamp, "M%d" % i, link)
                     record = MRecord.MRecord(timestamp, "M%d" % i, link)
                     data = record.getData(s, url_downloads, save=True)
-                    mrun = python_magnetrun.MagnetRun.fromStringIO(record.getSite(), data)
+                    mrun = python_magnetrun.MagnetRun.fromStringIO("M%d"%i, data)
                     insert = mrun.getInsert()
                     print("M%d: insert=%s file=%s" % (i, insert, tr.text_content()) )
                     if not insert in Magnets:
                         Magnets[insert] = HMagnet.HMagnet(insert, 0, None, "Unknown", 0)
-                    if not insert in MagnetRecords[insert]:
-                        MagnetRecords = []
+                    if not insert in MagnetRecords:
+                        MagnetRecords[insert] = []
                     if not record in MagnetRecords[insert]:
-                        print("addRecord: %s, %s, %s" % (insert, record.site(), record.getLink()) )
+                        print("addRecord: %s, %s, %s" % (insert, "M%d"%i, link) )
                         MagnetRecords[insert].append( record )
         print("=============================")
         # except:
