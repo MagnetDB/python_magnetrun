@@ -2,10 +2,10 @@ HMagnets:
 download MAGConfiles?
 dowload a given record
 
+python_magnetrun:
+transform column Date and Time from txt files to a real timestamp
+
 test-request:
-why status not ok for every magnet??
-store records in a dict specific to each magnetID
-store gobjects in a dict specific to each magnetID
 
 DB: Tables
 Magnets

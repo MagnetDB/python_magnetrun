@@ -1,9 +1,9 @@
 """Main module."""
 
+import math
 import os
 import sys
 import datetime
-import magnetdata
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -11,17 +11,20 @@ import matplotlib.pyplot as plt
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams['text.usetex'] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
+import magnetdata
+
 
 def list_sequence(lst, seq):
-     sequences = []
-     count = 0
-     len_seq = len(seq)
-     upper_bound = len(lst)-len_seq+1
-     for i in range(upper_bound):
-         if lst[i:i+len_seq] == seq:
-             count += 1
-             sequences.append([i,i+len_seq])
-     return sequences
+    """Return sequences of seq in lst"""
+    sequences = []
+    count = 0
+    len_seq = len(seq)
+    upper_bound = len(lst)-len_seq+1
+    for i in range(upper_bound):
+        if lst[i:i+len_seq] == seq:
+            count += 1
+            sequences.append([i,i+len_seq])
+    return sequences
 
 # see:  https://stackoverflow.com/questions/5419204/index-of-duplicates-items-in-a-python-list
 #from collections import defaultdict
@@ -50,7 +53,7 @@ def list_duplicates_of(seq,item):
                     sequences.append([start_index, end_index])
                     start_index = loc
                     # print( "item=%d, end: %d, new_start: %d" % (item, locs[-1], loc) )
-            locs.append(loc)                   
+            locs.append(loc)
             start_at = loc
     return sequences #locs
 
@@ -67,58 +70,60 @@ class MagnetRun:
         """default constructor"""
         self.Site = site
         self.Insert = insert
-        
         self.MagnetData = data
+
         if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
-            tformat="%Y.%m.%d %H:%M:%S"
             start_date=self.MagnetData.getData("Date").iloc[0]
             start_time=self.MagnetData.getData("Time").iloc[0]
-            end_time=self.MagnetData.getData("Time").iloc[-1]
-            print("Site: %s, Insert: %s" % (self.Site, self.Insert), "start_time=", start_time, "start_date=", start_date)
+            print("* Site: %s, Insert: %s" % (self.Site, self.Insert),
+                  "start_time=", start_time, "start_date=", start_date)
 
         if self.MagnetData.Type == 0:
-
             if self.Site == "M9":
                 self.MagnetData.addData("IH", "IH = Idcct1 + Idcct2")
                 self.MagnetData.addData("IB", "IB = Idcct3 + Idcct4")
             elif self.Site in ["M8", "M10"]:
                 self.MagnetData.addData("IH", "IH = Idcct3 + Idcct4")
                 self.MagnetData.addData("IB", "IB = Idcct1 + Idcct2")
-            else:
-                raise Exception("stats: unknown site %s " % self.Site)
-            
 
     @classmethod
     def fromtxt(cls, site, filename):
         """create from a txt file"""
         with open(filename, 'r') as f:
             insert=f.readline().split()[-1]
-        data = magnetdata.MagnetData.fromtxt(filename)
+            data = magnetdata.MagnetData.fromtxt(filename)
         # print("magnetrun.fromtxt: data=", data)
         return cls(site, insert, data)
-        
+
     @classmethod
     def fromcsv(cls, site, insert, filename):
         """create from a csv file"""
         data = magnetdata.MagnetData.fromcsv(filename)
         return cls(site, insert, data)
-        
+
     @classmethod
     def fromStringIO(cls, site, name):
         """create from a stringIO"""
         from io import StringIO
 
+        # try:
         ioname = StringIO(name)
         insert = ioname.readline().split()[-1]
         data = magnetdata.MagnetData.fromStringIO(name)
+        # except:
+        #      print("cannot read data for %s insert, %s site" % (insert, site) )
+        #      fo = open("wrongdata.txt", "w", newline='\n')
+        #      fo.write(ioname)
+        #      fo.close()
+        #      sys.exit(1)
         return cls(site, insert, data)
 
     def __repr__(self):
         return "%s(Site=%r, Insert=%r, MagnetData=%r)" % \
-            (self.__class__.__name__,
-             self.Site,
-             self.Insert,
-             self.MagnetData)
+             (self.__class__.__name__,
+              self.Site,
+              self.Insert,
+              self.MagnetData)
 
     def getSite(self):
         """returns Site"""
@@ -151,7 +156,7 @@ class MagnetRun:
     def stats(self):
         """compute stats from the actual run"""
 
-    def plateaus(self, thresold=1.e-4, show=False, save=False, ax=None, debug=False):
+    def plateaus(self, thresold=1.e-4, duration=5, show=False, save=False, ax=None, debug=False):
         """get plateaus, pics from the actual run"""
 
         if debug:
@@ -160,16 +165,16 @@ class MagnetRun:
         if not ax and ( show or save):
             ax = plt.gca()
 
-        B_max = self.MagnetData.getData('Field').max()
-        B_mean = self.MagnetData.getData('Field').mean()
-        B_var = self.MagnetData.getData('Field').var()
+        B_min = float(self.MagnetData.getData('Field').min())
+        B_max = float(self.MagnetData.getData('Field').max())
+        B_mean = float(self.MagnetData.getData('Field').mean())
+        B_var = float(self.MagnetData.getData('Field').var())
 
         Bz = self.MagnetData.getData('Field')
         regime = Bz.to_numpy()
         df_ = pd.DataFrame(regime)
         df_['regime']=pd.Series(regime)
 
-        # df_[0] /= B_max
         diff = np.diff(regime/B_max)
         df_['diff']=pd.Series(diff)
 
@@ -177,20 +182,19 @@ class MagnetRun:
         df_['ndiff']=pd.Series(ndiff)
 
         gradient = np.sign(df_["ndiff"].to_numpy())
-        gradkey = 'gradient-%s' % 'Field' 
+        gradkey = 'gradient-%s' % 'Field'
         df_[gradkey]=pd.Series(gradient)
         df_.rename(columns={0:'Field'}, inplace=True)
-            
+
         del df_['ndiff']
         del df_['diff']
         del df_['regime']
 
         if show or save:
-            df_.plot(ax=ax, grid=True)             
-
+            df_.plot(ax=ax, grid=True)
 
         # convert panda column to a list
-        # print("df_:", df_.columns.values.tolist()) 
+        # print("df_:", df_.columns.values.tolist())
         B_list = df_[gradkey].values.tolist()
 
         from functools import partial
@@ -198,29 +202,48 @@ class MagnetRun:
         if debug:
             for c in [1, 0, -1]:
                 print(c, regimes_in_source(c))
+
+        # print ("Bz=", self.MagnetData.getData('Field').values.tolist())
+        print( "%s mean=%g T, max=%g T, min=%g T, std=%g T" % ('Field', B_mean, B_max, B_min, math.sqrt(B_var)) )
+
+        # # To get timedelta in mm or millseconds
+        # time_d_min = time_d / datetime.timedelta(minutes=1)
+        # time_d_ms  = time_d / datetime.timedelta(milliseconds=1)
         plateaux = regimes_in_source(0)
-            
-        # print ("Bz=", self.MagnetData.getData('Field').values.tolist())    
-        print( "%s max=%g T, mean=%g T, var=%g T" % ('Field', B_max, B_mean, B_var) )
         print( "%s plateaus(thresold=%g): %d" % ('Field', thresold, len(plateaux)) )
-        print( "\tstart\t\tend\t\tduration[s]\tB0[T]\t\tB1[T]")
-        print( "\t========================================================================")
         tformat="%Y.%m.%d %H:%M:%S"
+        actual_plateaux = []
         for p in plateaux:
             start=self.MagnetData.getData('Date').iloc[p[0]]
             start_time=self.MagnetData.getData('Time').iloc[p[0]]
             end=self.MagnetData.getData('Date').iloc[p[1]]
             end_time = self.MagnetData.getData('Time').iloc[p[1]]
-            
+
             t0 = datetime.datetime.strptime(start+" "+start_time, tformat)
             t1 = datetime.datetime.strptime(end+" "+end_time, tformat)
             dt = (t1-t0)
-            
+
             b0=self.MagnetData.getData('Field').values.tolist()[p[0]]
             b1=self.MagnetData.getData('Field').iloc[p[1]]
-            
-            print( "\t%s\t%s\t%8.6g\t%8.4g\t%8.4g" % ( start_time, end_time, dt.total_seconds(), b0, b1) )
-        print( "\t========================================================================")
+            if debug:
+                print( "\t%s\t%s\t%8.6g\t%8.4g\t%8.4g" % (start_time, end_time, dt.total_seconds(), b0, b1) )
+
+            # if (b1-b0)/b1 > b_thresold: reject plateau
+            # if abs(b1) < b_thresold and abs(b0) < b_thresold: reject plateau
+            if (dt / datetime.timedelta(seconds=1)) >= duration:
+                actual_plateaux.append([start_time, end_time, dt.total_seconds(), b0, b1])
+
+        print( "%s plateaus(thresold=%g, duration>=%g s): %d over %d" % ('Field', thresold, duration, len(actual_plateaux), len(plateaux)) )
+        print( "\tstart\t\tend\t\tduration[s]\tB0[T]\t\tB1[T]" )
+        print( "\t========================================================================" )
+        for p in actual_plateaux:
+            b_diff = 0
+            if b1 != 0:
+                b_diff = abs(1.-b0/b1)
+            else:
+                b_diff = abs(1.-b1/b0)
+            print( "\t%s\t%s\t%8.6g\t%8.4g\t%8.4g" % (p[0], p[1], p[2], p[3], p[4]), b_diff*100. )
+        print( "\t========================================================================" )
 
         pics = list_sequence(B_list, [1.0,-1.0])
         print( " \n%s pics (aka sequence[1,-1]): %d" % ('Field', len(pics)) )
@@ -231,7 +254,8 @@ class MagnetRun:
         if debug:
             print( "B_=", B_, B_.count(0))
         print( "%s commisionning ? (aka sequence [-1.0,0.0,-1.0]): %d" % ('Field', len(list_sequence(B_, [-1.0,0.0,-1.0]))) )
-        
+        print("\n\n")
+
         if show:
             plt.show()
         else:
@@ -243,7 +267,7 @@ class MagnetRun:
 
             plt.savefig('%s_%s.png' % (imagefile,str(start_date)) , dpi=300 )
             plt.close()
-            
+
         return 0
 
 if __name__ == "__main__":
@@ -272,7 +296,7 @@ if __name__ == "__main__":
     if f_extension != ".txt":
         print("so far only txt file support is implemented")
         sys.exit(0)
-        
+
     mrun = MagnetRun.fromtxt(args.site, args.input_file)
     dkeys = mrun.getKeys()
 
@@ -348,10 +372,9 @@ if __name__ == "__main__":
         file_name = args.input_file.replace(".txt", "")
         file_name = file_name + "_from" + str(timerange[0].replace(":", "-"))
         file_name = file_name + "_to" + str(timerange[1].replace(":", "-")) + ".csv"
-
         selected_df = mrun.getMData().extractTimeData(timerange)
         selected_df.to_csv(file_name, sep=str('\t'), index=False, header=True)
-        
+
     if args.output_key:
         if mrun.getType() != 0:
             print("output_time: feature not implemented for tdms format")
@@ -359,14 +382,13 @@ if __name__ == "__main__":
 
         keys = args.output_key.split(";")
         keys.insert(0, 'Time')
-        
+
         file_name = args.input_file.replace(".txt", "")
         for key in keys:
             if key != 'Time':
                 file_name = file_name + "_" + key
         file_name = file_name + "_vs_Time.csv"
 
-            
         selected_df = mrun.getMData().extractData(keys)
         selected_df.to_csv(file_name, sep=str('\t'), index=False, header=True)
 
@@ -381,9 +403,9 @@ if __name__ == "__main__":
             if len(items) != 2:
                 print("invalid pair of keys: %s" % pair)
                 sys.exit(1)
-            key1= items[0]
-            key2 =items[1]
-            newdf = mrun.getMData().extractData([key1, key2])
+                key1= items[0]
+                key2 =items[1]
+                newdf = mrun.getMData().extractData([key1, key2])
 
             # Remove line with I=0
             newdf = newdf[newdf[key1] != 0]

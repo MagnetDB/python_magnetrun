@@ -70,3 +70,28 @@ class MRecord:
         """
         import deserialize
         return json.dumps(self, default=deserialize.serialize_instance, sort_keys=True, indent=4)
+    
+    def __eq__(self, other):
+        """compare MRecords"""
+        if (isinstance(other, MRecord)):
+            if self.timestamp != other.timestamp:
+                return False
+            if self.site != other.site:
+                return False
+            if self.link != other.link:
+                return False
+            return True
+        return False
+    
+    # def __le__(self, other):
+    #     """compare MRecords"""
+    #     if (isinstance(other, MRecord)):
+    #         return self.timestamp <= other.timestamp:
+    #     return False
+        
+    # def __ge__(self, other):
+    #     """compare MRecords"""
+    #     if (isinstance(other, MRecord)):
+    #         return self.timestamp >= other.timestamp:
+    #     return False
+        
