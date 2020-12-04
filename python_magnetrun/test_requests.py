@@ -390,7 +390,7 @@ if __name__ == "__main__":
                     print("M%d: insert=%s file=%s" % (i, insert, tr.text_content()) )
                     if not insert in Magnets:
                         Magnets[insert] = HMagnet.HMagnet(insert, 0, None, "Unknown", 0)
-                    if insert in MagnetRecords[insert]:
+                    if not insert in MagnetRecords[insert]:
                         MagnetRecords = []
                     if not record in MagnetRecords[insert]:
                         print("addRecord: %s, %s, %s" % (insert, record.site(), record.getLink()) )
