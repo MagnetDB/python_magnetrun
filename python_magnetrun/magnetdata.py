@@ -95,11 +95,21 @@ class MagnetData:
         """create from a stringIO"""
         from io import StringIO
         
-        Data = pd.read_csv(StringIO(name),
-                           sep=sep,
-                           engine='python',
-                           skiprows=skiprows)
-        Keys = Data.columns.values.tolist()
+        Data = None
+        Keys = None
+        try:
+            Data = pd.read_csv(StringIO(name),
+                               sep=sep,
+                               engine='python',
+                               skiprows=skiprows)
+            Keys = Data.columns.values.tolist()
+        except:
+            print("magnetdata.fromStringIO: trouble loading data")
+            fo = open("wrongdata.txt", "w", newline='\n')
+            fo.write(name)
+            fo.close()
+            pass
+            
         return cls("stringIO", [], Keys, 0, Data)
 
     def __repr__(self):

@@ -209,6 +209,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", help="specify user")
     parser.add_argument("--server", help="specify server", default="http://147.173.83.216/site/sba/pages")
+    parser.add_argument("--save", help="save files", action='store_true')
     parser.add_argument("--debug", help="activate debug mode", action='store_true')
     args = parser.parse_args()
 
@@ -390,7 +391,7 @@ if __name__ == "__main__":
 
                     print("MRecord: ", timestamp, "M%d" % i, link)
                     record = MRecord.MRecord(timestamp, "M%d" % i, link)
-                    data = record.getData(s, url_downloads, save=True)
+                    data = record.getData(s, url_downloads, save=args.save)
                     mrun = python_magnetrun.MagnetRun.fromStringIO("M%d"%i, data)
                     insert = mrun.getInsert()
                     print("M%d: insert=%s file=%s" % (i, insert, tr.text_content()) )
@@ -422,26 +423,25 @@ if __name__ == "__main__":
         ## Broken to json:
         #try:
         if Magnets[magnet].getStatus() == "En service":
-            fo = open(magnet + ".json", "w", newline='\n')
-            fo.write(Magnets[magnet].to_json())
-            fo.close()
-            # fo = open(magnet + "-pickle.json", "w", newline='\n')
-            # fo.write(jsonpickle.encode(Magnets[magnet]))
-            # fo.close()
+            if args.save:
+                fo = open(magnet + ".json", "w", newline='\n')
+                fo.write(Magnets[magnet].to_json())
+                fo.close()
             for record in MagnetRecords[magnet]:
                 ax = plt.gca()
 
-                data = record.getData(s, url_downloads, save=True)
+                data = record.getData(s, url_downloads, save=args.save)
                 try:
                     mrun = python_magnetrun.MagnetRun.fromStringIO(record.getSite(), data)
+                    mrun.plateaus(thresold=2.e-3, duration=10, save=args.save)
                 except:
-                    print("record: trouble loading data from %s" % record.getLink())
+                    print("record: trouble with data from %s" % record.getLink())
                     pass
-                mrun.plateaus(thresold=2.e-3, duration=10, save=True)
 
     print("\nMaterials:")
     for mat in Mats:
         print(mat, ":", Mats[mat])
-        fo = open(mat + ".json", "w", newline='\n')
-        fo.write(Mats[mat].to_json())
-        fo.close()
+        if args.save:
+            fo = open(mat + ".json", "w", newline='\n')
+            fo.write(Mats[mat].to_json())
+            fo.close()

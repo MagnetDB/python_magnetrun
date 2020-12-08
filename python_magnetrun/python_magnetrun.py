@@ -72,20 +72,31 @@ class MagnetRun:
         self.Insert = insert
         self.MagnetData = data
 
-        if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
-            start_date=self.MagnetData.getData("Date").iloc[0]
-            start_time=self.MagnetData.getData("Time").iloc[0]
-            print("* Site: %s, Insert: %s" % (self.Site, self.Insert),
-                  "start_time=", start_time, "start_date=", start_date)
+        try:
+            stat_date = None
+            if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
+                start_date=self.MagnetData.getData("Date").iloc[0]
+                start_time=self.MagnetData.getData("Time").iloc[0]
+                print("* Site: %s, Insert: %s" % (self.Site, self.Insert),
+                      "start_time=", start_time, "start_date=", start_date)
 
-        if self.MagnetData.Type == 0:
-            if self.Site == "M9":
-                self.MagnetData.addData("IH", "IH = Idcct1 + Idcct2")
-                self.MagnetData.addData("IB", "IB = Idcct3 + Idcct4")
-            elif self.Site in ["M8", "M10"]:
-                self.MagnetData.addData("IH", "IH = Idcct3 + Idcct4")
-                self.MagnetData.addData("IB", "IB = Idcct1 + Idcct2")
-
+            if self.MagnetData.Type == 0:
+                if self.Site == "M9":
+                    self.MagnetData.addData("IH", "IH = Idcct1 + Idcct2")
+                    self.MagnetData.addData("IB", "IB = Idcct3 + Idcct4")
+                elif self.Site in ["M8", "M10"]:
+                    self.MagnetData.addData("IH", "IH = Idcct3 + Idcct4")
+                    self.MagnetData.addData("IB", "IB = Idcct1 + Idcct2")
+        except:
+            print("MagnetRun.__init__: trouble loading data")
+            try:
+                file_name = "%s_%s_%s-wrongdata.txt" % (self.Site, self.Insert,start_date)
+                self.MagnetData.to_csv(file_name, sep=str('\t'), index=False, header=True)
+            except:
+                print("MagnetRun.__init__: trouble loading data - fail to save csv file")
+                pass
+            pass
+            
     @classmethod
     def fromtxt(cls, site, filename):
         """create from a txt file"""
@@ -156,9 +167,31 @@ class MagnetRun:
     def stats(self):
         """compute stats from the actual run"""
 
+        # TODO:
+        # add teb,... to list
+        # add duration
+        # add duration per Field above certain values
+        # add \int Power over time
+        
+        print("Statistics:\n")
+        print( "Name\tMean\tMax\Min\tStd" )
+        print( "==================================" )
+        for f in ['Field']:
+            v_min = float(self.MagnetData.getData(f).min())
+            v_max = float(self.MagnetData.getData(f).max())
+            v_mean = float(self.MagnetData.getData(f).mean())
+            v_var = float(self.MagnetData.getData(f).var())
+            print( "%s %g %g %g %g" % (f, v_mean, v_max, v_min, math.sqrt(v_var)) )
+        print( "==================================" )
+        return 0
+
     def plateaus(self, thresold=1.e-4, duration=5, show=False, save=False, ax=None, debug=False):
         """get plateaus, pics from the actual run"""
 
+        # TODO:
+        # pass b_thresold as input param
+        b_thresold = 1.e-3
+        
         if debug:
             print("Search for plateaux:", "Type:", self.MagnetData.Type)
 
@@ -180,7 +213,13 @@ class MagnetRun:
 
         ndiff = np.where(abs(diff) >= thresold, diff, 0)
         df_['ndiff']=pd.Series(ndiff)
+        if debug:
+            print("gradient: ", df_)
 
+        # TODO:
+        # check gradient:
+        #     if 0 in between two 1 (or -1), 0 may be replaced by 1 or -1 depending on ndiff values
+        #     same for small sequense of 0 (less than 2s)
         gradient = np.sign(df_["ndiff"].to_numpy())
         gradkey = 'gradient-%s' % 'Field'
         df_[gradkey]=pd.Series(gradient)
@@ -223,25 +262,23 @@ class MagnetRun:
             t1 = datetime.datetime.strptime(end+" "+end_time, tformat)
             dt = (t1-t0)
 
-            b0=self.MagnetData.getData('Field').values.tolist()[p[0]]
-            b1=self.MagnetData.getData('Field').iloc[p[1]]
+            # b0=self.MagnetData.getData('Field').values.tolist()[p[0]]
+            b0 = float(self.MagnetData.getData('Field').iloc[p[0]])
+            b1 = float(self.MagnetData.getData('Field').iloc[p[1]])
             if debug:
                 print( "\t%s\t%s\t%8.6g\t%8.4g\t%8.4g" % (start_time, end_time, dt.total_seconds(), b0, b1) )
 
             # if (b1-b0)/b1 > b_thresold: reject plateau
             # if abs(b1) < b_thresold and abs(b0) < b_thresold: reject plateau
             if (dt / datetime.timedelta(seconds=1)) >= duration:
-                actual_plateaux.append([start_time, end_time, dt.total_seconds(), b0, b1])
+                if abs(b1) >= b_thresold and abs(b0) >= b_thresold:
+                    actual_plateaux.append([start_time, end_time, dt.total_seconds(), b0, b1])
 
         print( "%s plateaus(thresold=%g, duration>=%g s): %d over %d" % ('Field', thresold, duration, len(actual_plateaux), len(plateaux)) )
         print( "\tstart\t\tend\t\tduration[s]\tB0[T]\t\tB1[T]" )
         print( "\t========================================================================" )
         for p in actual_plateaux:
-            b_diff = 0
-            if b1 != 0:
-                b_diff = abs(1.-b0/b1)
-            else:
-                b_diff = abs(1.-b1/b0)
+            b_diff = abs(1. - p[3] / p[4])
             print( "\t%s\t%s\t%8.6g\t%8.4g\t%8.4g" % (p[0], p[1], p[2], p[3], p[4]), b_diff*100. )
         print( "\t========================================================================" )
 
