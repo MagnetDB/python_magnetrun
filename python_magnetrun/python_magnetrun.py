@@ -119,7 +119,11 @@ class MagnetRun:
 
         # try:
         ioname = StringIO(name)
-        insert = ioname.readline().split()[-1]
+        # TODO rework: get item 2 otherwise set to unknown
+        insert = "Unknown"
+        headers = ioname.readline().split()
+        if len(headers) >=2:
+            insert = headers[1]
         data = magnetdata.MagnetData.fromStringIO(name)
         # except:
         #      print("cannot read data for %s insert, %s site" % (insert, site) )
@@ -341,6 +345,12 @@ if __name__ == "__main__":
         print("Valid keys are:")
         for key in dkeys:
             print(key)
+        sys.exit(0)
+
+    if args.convert:
+        extension = os.path.splitext(args.input_file)[-1]
+        file_name = args.input_file.replace(extension, ".csv")
+        mrun.getData().to_csv(file_name, sep=str('\t'), index=False, header=True)
         sys.exit(0)
 
     # perform operations defined by options
