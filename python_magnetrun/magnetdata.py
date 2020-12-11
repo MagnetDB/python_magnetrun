@@ -28,7 +28,7 @@ class MagnetData:
         self.FileName = filename
         self.Groups = Groups
         self.Keys = Keys
-        self.Type = Type # 0 for Pandas, 1 for Tdms
+        self.Type = Type # 0 for Pandas, 1 for Tdms, 2: for Ensight
         self.Data = Data
 
     @classmethod
@@ -130,7 +130,10 @@ class MagnetData:
             return self.Data
         else:
             if key in self.Keys:
-                return self.Data[key]
+                if self.Type == 0:
+                    return self.Data[key]
+                else:
+                    return self.Data[self.Groups[key]]
             else:
                 raise Exception("cannot get data for key %s: no such key" % key)
 
@@ -256,6 +259,7 @@ class MagnetData:
 
                 plt.grid(b=True)
                 ax.legend()
+                
         else:
             raise Exception("%s.%s: no y=%s key" % (self.__class__.__name__, sys._getframe().f_code.co_name, y) )
 

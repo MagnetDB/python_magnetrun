@@ -49,7 +49,7 @@ def download(session, url_data, param, link=None, save=False, debug=False):
     if save:
         filename = link.replace('../../../','')
         filename = filename.replace('/','_').replace('%20','-')
-        print("save to %s" % filename)
+        # print("save to %s" % filename)
         fo = open(filename, "w", newline='\n')
         fo.write(d.text)
         fo.close()
@@ -366,11 +366,11 @@ if __name__ == "__main__":
             print("Loading txt files for M%d site" % i)
             sitename = "/var/www/html/M%d/" % i
             sitename = sitename.replace('/','%2F')
-            print("sitename=", sitename)
+            # print("sitename=", sitename)
             
             r = s.post(url="http://147.173.83.216/site/sba/vendor/jqueryFileTree/connectors/jqueryFileTree.php",
                        data={ 'dir': sitename  , })
-            print("r.url=", r.url)
+            # print("r.url=", r.url)
             r.raise_for_status()
             # print("r.text=", r.text)
             tree = lh.fromstring(r.text)
@@ -389,7 +389,7 @@ if __name__ == "__main__":
 
                     link = "../../../M%d/%s" % (i,tr.text_content().replace(' ','%20'))
 
-                    print("MRecord: ", timestamp, "M%d" % i, link)
+                    # print("MRecord: ", timestamp, "M%d" % i, link)
                     record = MRecord.MRecord(timestamp, "M%d" % i, link)
                     data = record.getData(s, url_downloads, save=args.save)
                     mrun = python_magnetrun.MagnetRun.fromStringIO("M%d"%i, data)
@@ -400,7 +400,7 @@ if __name__ == "__main__":
                     if not insert in MagnetRecords:
                         MagnetRecords[insert] = []
                     if not record in MagnetRecords[insert]:
-                        print("addRecord: %s, %s, %s" % (insert, "M%d"%i, link) )
+                        #print("addRecord: %s, %s, %s" % (insert, "M%d"%i, link) )
                         MagnetRecords[insert].append( record )
         print("=============================")
         # except:
@@ -420,9 +420,13 @@ if __name__ == "__main__":
                                                              Magnets[magnet].getStatus(),
                                                              len(MagnetRecords[magnet]),
                                                              len(MagnetComps[magnet]) ) )
+
+    print("\nMagnets in Operation:")
+    for magnet in Magnets:
         ## Broken to json:
         #try:
         if Magnets[magnet].getStatus() == "En service":
+            print("%s: " % magnet)
             if args.save:
                 fo = open(magnet + ".json", "w", newline='\n')
                 fo.write(Magnets[magnet].to_json())

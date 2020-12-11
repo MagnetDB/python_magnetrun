@@ -11,4 +11,4 @@ nptdms==1.0.0
 pandas
 matplotlib
 freesteam
-pickle
+tabulate

@@ -160,9 +160,9 @@ class MagnetRun:
         """return Magnet Data object"""
         return self.MagnetData
 
-    def getData(self):
+    def getData(self, key=""):
         """return Data"""
-        return self.MagnetData.getData()
+        return self.MagnetData.getData(key)
 
     def getKeys(self):
         """return list of Data keys"""
@@ -176,20 +176,27 @@ class MagnetRun:
         # add duration
         # add duration per Field above certain values
         # add \int Power over time
-        
+
+        from tabulate import tabulate
+        # see https://github.com/astanin/python-tabulate for tablefmt
+
         print("Statistics:\n")
-        print( "Name\tMean\tMax\Min\tStd" )
-        print( "==================================" )
-        for f in ['Field']:
+        tables = []
+        headers = ["Name", "Mean", "Max", "Min", "Std", "Median", "Mode"]
+        for (f,unit) in zip(['Field', 'Pmagnet', 'teb', 'debitbrut'],["T", "MW", "C","m\u00B3/h"]):
             v_min = float(self.MagnetData.getData(f).min())
             v_max = float(self.MagnetData.getData(f).max())
             v_mean = float(self.MagnetData.getData(f).mean())
             v_var = float(self.MagnetData.getData(f).var())
-            print( "%s %g %g %g %g" % (f, v_mean, v_max, v_min, math.sqrt(v_var)) )
-        print( "==================================" )
+            v_median = float(self.MagnetData.getData(f).median())
+            v_mode = float(self.MagnetData.getData(f).mode())
+            table = ["%s[%s]" % (f,unit), v_mean, v_max, v_min, math.sqrt(v_var), v_median, v_mode]
+            tables.append(table)
+
+        print(tabulate(tables, headers, tablefmt="simple"), "\n")
         return 0
 
-    def plateaus(self, thresold=1.e-4, duration=5, show=False, save=False, ax=None, debug=False):
+    def plateaus(self, thresold=1.e-4, bthresold=1.e-3, duration=5, show=False, save=True, debug=False):
         """get plateaus, pics from the actual run"""
 
         # TODO:
@@ -198,9 +205,6 @@ class MagnetRun:
         
         if debug:
             print("Search for plateaux:", "Type:", self.MagnetData.Type)
-
-        if not ax and ( show or save):
-            ax = plt.gca()
 
         B_min = float(self.MagnetData.getData('Field').min())
         B_max = float(self.MagnetData.getData('Field').max())
@@ -212,7 +216,7 @@ class MagnetRun:
         df_ = pd.DataFrame(regime)
         df_['regime']=pd.Series(regime)
 
-        diff = np.diff(regime/B_max)
+        diff = np.diff(regime) # scale by B_max??
         df_['diff']=pd.Series(diff)
 
         ndiff = np.where(abs(diff) >= thresold, diff, 0)
@@ -226,28 +230,58 @@ class MagnetRun:
         #     same for small sequense of 0 (less than 2s)
         gradient = np.sign(df_["ndiff"].to_numpy())
         gradkey = 'gradient-%s' % 'Field'
-        df_[gradkey]=pd.Series(gradient)
+        df_[gradkey] = pd.Series(gradient)
+
+        # # Try to remove spikes
+        # ref: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
+        
+        threshold = 0.4
+        df_['pandas'] = df_[gradkey].rolling(window=10).median()
+
+        difference = np.abs(df_[gradkey] - df_['pandas'])
+        outlier_idx = difference > threshold
+        # print("median[%d]:" % df_[gradkey][outlier_idx].size, df_[gradkey][outlier_idx])
+
+
+        # kw = dict(marker='o', linestyle='none', color='g',label=str(threshold), legend=True)
+        # df_[gradkey][outlier_idx].plot(**kw)
+        
         df_.rename(columns={0:'Field'}, inplace=True)
 
         del df_['ndiff']
         del df_['diff']
         del df_['regime']
+        # del df_['pandas']
 
         if show or save:
+            ax = plt.gca()
             df_.plot(ax=ax, grid=True)
+
+            if show:
+                plt.show()
+
+            if save:
+                # imagefile = self.Site + "_" + self.Insert
+                imagefile = self.Site
+                start_date = ""
+                start_time = ""
+                if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
+                    tformat="%Y.%m.%d %H:%M:%S"
+                    start_date=self.MagnetData.getData("Date").iloc[0]
+                    start_time=self.MagnetData.getData("Time").iloc[0]
+            
+                plt.savefig('%s_%s---%s.png' % (imagefile,str(start_date),str(start_time)) , dpi=300 )
+                plt.close()
 
         # convert panda column to a list
         # print("df_:", df_.columns.values.tolist())
-        B_list = df_[gradkey].values.tolist()
+        B_list = df_['pandas'].values.tolist()
 
         from functools import partial
         regimes_in_source = partial(list_duplicates_of, B_list)
         if debug:
             for c in [1, 0, -1]:
                 print(c, regimes_in_source(c))
-
-        # print ("Bz=", self.MagnetData.getData('Field').values.tolist())
-        print( "%s mean=%g T, max=%g T, min=%g T, std=%g T" % ('Field', B_mean, B_max, B_min, math.sqrt(B_var)) )
 
         # # To get timedelta in mm or millseconds
         # time_d_min = time_d / datetime.timedelta(minutes=1)
@@ -278,36 +312,30 @@ class MagnetRun:
                 if abs(b1) >= b_thresold and abs(b0) >= b_thresold:
                     actual_plateaux.append([start_time, end_time, dt.total_seconds(), b0, b1])
 
-        print( "%s plateaus(thresold=%g, duration>=%g s): %d over %d" % ('Field', thresold, duration, len(actual_plateaux), len(plateaux)) )
-        print( "\tstart\t\tend\t\tduration[s]\tB0[T]\t\tB1[T]" )
-        print( "\t========================================================================" )
+        print( "%s plateaus(thresold=%g, b_thresold=%g, duration>=%g s): %d over %d" %
+               ('Field', thresold, b_thresold, duration, len(actual_plateaux), len(plateaux)) )
+        tables = []
         for p in actual_plateaux:
             b_diff = abs(1. - p[3] / p[4])
-            print( "\t%s\t%s\t%8.6g\t%8.4g\t%8.4g" % (p[0], p[1], p[2], p[3], p[4]), b_diff*100. )
-        print( "\t========================================================================" )
+            tables.append([ p[0], p[1], p[2], p[3], p[4], b_diff*100.])
 
         pics = list_sequence(B_list, [1.0,-1.0])
         print( " \n%s pics (aka sequence[1,-1]): %d" % ('Field', len(pics)) )
+        pics = list_sequence(B_list, [1.0,0,-1.0,0,1.])
+        print( " \n%s pics (aka sequence[1,0,-1,0,1]): %d" % ('Field', len(pics)) )
 
         # remove adjacent duplicate
         import itertools
         B_ = [x[0] for x in itertools.groupby(B_list)]
         if debug:
             print( "B_=", B_, B_.count(0))
-        print( "%s commisionning ? (aka sequence [-1.0,0.0,-1.0]): %d" % ('Field', len(list_sequence(B_, [-1.0,0.0,-1.0]))) )
+        print( "%s commisionning ? (aka sequence [1.0,0,-1.0,0.0,-1.0]): %d" % ('Field', len(list_sequence(B_, [1.0,0,-1.0,0.0,-1.0]))) )
         print("\n\n")
 
-        if show:
-            plt.show()
-        else:
-            imagefile = self.Site + "_" + self.Insert
-            if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
-                tformat="%Y.%m.%d %H:%M:%S"
-                start_date=self.MagnetData.getData("Date").iloc[0]
-                start_time=self.MagnetData.getData("Time").iloc[0]
 
-            plt.savefig('%s_%s.png' % (imagefile,str(start_date)) , dpi=300 )
-            plt.close()
+        from tabulate import tabulate
+        headers = ["start", "end", "duration", "B0[T]", "B1[T]", "\u0394B/B[%]" ]
+        print( tabulate(tables, headers, tablefmt="simple"), "\n" )
 
         return 0
 
@@ -323,11 +351,14 @@ if __name__ == "__main__":
     parser.add_argument("--output_timerange", help="set time range to extract (start;end)")
     parser.add_argument("--output_key", help="output key(s) for time")
     parser.add_argument("--extract_pairkeys", help="dump key(s) to file")
-    parser.add_argument("--show", help="display graphs (default save in png format)", action='store_true')
+    parser.add_argument("--show", help="display graphs (requires X11 server active)", action='store_true')
+    parser.add_argument("--save", help="save graphs (png format)", action='store_true')
     parser.add_argument("--list", help="list key in csv", action='store_true')
     parser.add_argument("--convert", help="convert file to csv", action='store_true')
     parser.add_argument("--stats", help="display stats and find regimes", action='store_true')
-    parser.add_argument("--thresold", help="specify thresold for regime detection", type=float, default=1.e-4)
+    parser.add_argument("--thresold", help="specify thresold for regime detection", type=float, default=1.e-3)
+    parser.add_argument("--bthresold", help="specify b thresold for regime detection", type=float, default=1.e-3)
+    parser.add_argument("--dthresold", help="specify duration thresold for regime detection", type=float, default=10)
     parser.add_argument("--debug", help="acticate debug", action='store_true')
     args = parser.parse_args()
 
@@ -338,6 +369,16 @@ if __name__ == "__main__":
         print("so far only txt file support is implemented")
         sys.exit(0)
 
+    filename = os.path.basename(args.input_file)
+    result = filename.startswith("M")
+    if result:
+        try:
+            index = filename.index("_")
+            args.site = filename[0:index]
+            print("site detected: %s" % args.site)
+        except:
+            print("no site detected - use args.site argument instead")
+            pass
     mrun = MagnetRun.fromtxt(args.site, args.input_file)
     dkeys = mrun.getKeys()
 
@@ -463,4 +504,9 @@ if __name__ == "__main__":
 
     if args.stats:
         mrun.stats()
-        mrun.plateaus(thresold=args.thresold, show=args.show, debug=args.debug)
+        mrun.plateaus(thresold=args.thresold,
+                      bthresold=args.bthresold,
+                      duration=args.dthresold,
+                      show=args.show,
+                      save=args.save,
+                      debug=args.debug)
