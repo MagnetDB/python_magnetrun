@@ -32,6 +32,7 @@ def rho(pbar, celsius):
     pascal = pbar * 1e+5
     kelvin = celsius+273.
     rho = st.steam_pT(pascal, kelvin).rho
+    # print("rho(%g,%g)=%g" % (pbar,celsius,rho)) 
     return rho
 
 def cp(pbar, celsius):
@@ -43,6 +44,7 @@ def cp(pbar, celsius):
     pascal = pbar * 1e+5
     kelvin = celsius+273.
     cp = st.steam_pT(pascal, kelvin).cp
+    # print("cp(%g,%g)=%g" % (pbar,celsius,cp)) 
     return cp
 
 # steam/oil crossflow
@@ -50,7 +52,7 @@ def cp(pbar, celsius):
 
 #subtype='crossflow, mixed Cmax'
 #subtype='counterflow'
-def heatexchange(h, Tci, Thi, Debitc, Debith, Pci, Phi, subtype='counterflow'):
+def heatexchange(h, Tci, Thi, Debitc, Debith, Pci, Phi):
     """
     NTU Model for heat Exchanger
 
@@ -58,29 +60,75 @@ def heatexchange(h, Tci, Thi, Debitc, Debith, Pci, Phi, subtype='counterflow'):
     as a function of input temperatures and flow rates
     """
 
+    subtype='1/1'
+    
     if h is None:
         U = 4041 # 4485 # W/m^2/K
     else:
         U = float(h)
 
+    # print("heatexchange:")
+    # print("h=", U)
+    # print("Tci=", Tci, "Thi=", Thi)
+    # print("Pci=", Tci, "Phi=", Thi)
+    # print("Debitc=", Debitc, "Debith=", Debith)
+
     A = 1063.4 # m^2
     Cp_cold = cp(Pci, Tci) # J/kg/K
-    Cp_hot = cp(Phi,Thi) # J/kg/K
-    m_hot = rho(Phi,Thi)*Debith*1.e-3 #5.2 # kg/s rho(Tout)*(Flow1+Flow2)??
-    m_cold = rho(Pci, Tci)*Debitc/3600. #0.725 # kg/s rho*(teb)*debitbrut??
+    Cp_hot = cp(Phi, Thi) # J/kg/K
+    m_hot = rho(Phi, Thi) * Debith * 1.e-3 # kg/s 
+    m_cold = rho(Pci, Tci) * Debitc / 3600. # kg/s
 
-    Cmin = ht.calc_Cmin(mh=m_hot, mc=m_cold, Cph=Cp_hot, Cpc=Cp_cold)
-    Cmax = ht.calc_Cmax(mh=m_hot, mc=m_cold, Cph=Cp_hot, Cpc=Cp_cold) # ?? 36000 kW??
-    Cr = ht.calc_Cr(mh=m_hot, mc=m_cold, Cph=Cp_hot, Cpc=Cp_cold)
-    NTU = ht.NTU_from_UA(UA=U*A, Cmin=Cmin)
-    #eff = effectiveness_from_NTU(NTU=NTU, Cr=Cr, subtype='crossflow, mixed Cmax')
-    eff = ht.effectiveness_from_NTU(NTU=NTU, Cr=Cr, subtype=subtype)
-    Q = eff*Cmin*(Thi - Tci)
-    Tco = Tci + Q/(m_cold*Cp_cold)
-    Tho = Thi - Q/(m_hot*Cp_hot)
+    # For plate exchanger
+    result = ht.hx.P_NTU_method(m_hot, m_cold, Cp_hot, Cp_cold, UA=U*A, T1i=Thi, T2i=Tci, subtype='1/1')
+    # print("result=", result)
+    # sys.exit(1)
 
-    #print("NTU=", NTU, "eff=", eff, "Q=", Q, "Cmax=", Cmax, "Cr=", Cr, "Cp_cold=", Cp_cold, "Cp_hot=", Cp_hot, "m_cold=", m_cold, "m_hot=", m_hot)
+    # returns a dictionnary: 
+    # Q : Heat exchanged in the heat exchanger, [W]
+    # UA : Combined area-heat transfer coefficient term, [W/K]
+    # T1i : Inlet temperature of stream 1, [K]
+    # T1o : Outlet temperature of stream 1, [K]
+    # T2i : Inlet temperature of stream 2, [K]
+    # T2o : Outlet temperature of stream 2, [K]
+    # P1 : Thermal effectiveness with respect to stream 1, [-]
+    # P2 : Thermal effectiveness with respect to stream 2, [-]
+    # R1 : Heat capacity ratio with respect to stream 1, [-]
+    # R2 : Heat capacity ratio with respect to stream 2, [-]
+    # C1 : The heat capacity rate of fluid 1, [W/K]
+    # C2 : The heat capacity rate of fluid 2, [W/K]
+    # NTU1 : Thermal Number of Transfer Units with respect to stream 1 [-]
+    # NTU2 : Thermal Number of Transfer Units with respect to stream 2 [-]
 
+    NTU = result["NTU1"]
+    if NTU == float('inf') or math.isnan(NTU):
+        print("Tci=", Tci, "Thi=", Thi)
+        print("Pci=", Tci, "Phi=", Thi)
+        print("Debitc=", Debitc, "Debith=", Debith)
+        raise  Exception("NTU not valid")
+
+    Q = result["Q"]
+    if Q  == float('inf') or math.isnan(Q):
+        print("Tci=", Tci, "Thi=", Thi)
+        print("Pci=", Tci, "Phi=", Thi)
+        print("Debitc=", Debitc, "Debith=", Debith)
+        raise  Exception("Q not valid")
+
+    Tco = result["T2o"]
+    if Tco  == None:
+        print("h=", U)
+        print("Tci=", Tci, "Thi=", Thi)
+        print("Pci=", Tci, "Phi=", Thi)
+        print("Debitc=", Debitc, "Debith=", Debith)
+        raise  Exception("Tco not valid")
+    Tho = result["T1o"]
+    if Tho  == None:
+        print("h=", U)
+        print("Tci=", Tci, "Thi=", Thi)
+        print("Pci=", Tci, "Phi=", Thi)
+        print("Debitc=", Debitc, "Debith=", Debith)
+        raise  Exception("Tho not valid")
+    # print("heatexchange: ", NTU, Tco, Tho, Q)
     return (Tco, Tho, Q)
 
 if __name__ == "__main__":
@@ -91,9 +139,15 @@ if __name__ == "__main__":
     parser.add_argument("--show", help="display graphs (requires X11 server active)", action='store_true')
     parser.add_argument("--save", help="save graphs to png", action='store_true')
     parser.add_argument("--stopval", help="stopping criteria for nlopt", type=float, default=1.e-2)
-    parser.add_argument("--subtype", help="specify type of heat exchanger", type=str, default='counterflow')
+    parser.add_argument("--threshold", help="stopping criteria for nlopt", type=float, default=0.5)
+    parser.add_argument("--window", help="stopping criteria for nlopt", type=int, default=10)
+    parser.add_argument("--debug", help="activate debug mode", action='store_true')
+        
     args = parser.parse_args()
 
+    threshold = args.threshold
+    twindows = args.window
+    
     # check extension
     f_extension = os.path.splitext(args.input_file)[-1]
     if f_extension != ".txt":
@@ -112,37 +166,84 @@ if __name__ == "__main__":
             pass
 
     mrun = python_magnetrun.MagnetRun.fromtxt(args.site, args.input_file)
-    dkeys = mrun.getKeys()
+    mrun.getMData().addTime()
+    start_timestamp = mrun.getMData().getStartDate()
 
-    ax = plt.gca()
-    # if args.show:
-    #     mrun.getMData().plotData(x='Time', y='Field', ax=ax)
-    #     plt.xlabel(r't [s]')
-    #     plt.ylabel(r'B [T]')
-    #     plt.grid(b=True)
-    #     plt.title(mrun.getInsert().replace("_","\_")) # replace _ by \_ before adding title
-    #     plt.show()
+    mrun.getMData().addData("Flow", "Flow = Flow1 + Flow2")
+    mrun.getMData().addData("Tin", "Tin = (Tin1 + Tin2)/2.")
+    mrun.getMData().addData("HP", "HP = (HP1 + HP2)/2.")
+    
+    dkeys = mrun.getKeys()
+    # print("dkeys=", dkeys)
+    # sys.exit(1)
+    
+    if args.debug:
+        ax = plt.gca()
+        mrun.getMData().plotData(x='t', y='teb', ax=ax)
+        mrun.getMData().plotData(x='t', y='Tout', ax=ax)
+        plt.xlabel(r't [s]')
+        plt.ylabel(r'[C]')
+        plt.grid(b=True)
+        plt.title(mrun.getInsert().replace("_","\_") + ":" + start_timestamp[0] + " " + start_timestamp[1] )
+        if args.show:
+            plt.show()
+        if args.save:
+            imagefile = args.input_file.replace(f_extension, "-teb.png")
+            print("save to %s" % imagefile)
+            plt.savefig(imagefile, dpi=300)
+        plt.close()
 
     # extract data
-    keys = ["Date", "Time", "teb", "tsb", "debitbrut", "Tout", "Tin1", "Flow1", "Tin2", "Flow2", "BP", "HP1", "HP2"]
-    units = ["C","C","m\u00B3/h","C","C","l/s","C","l/s","bar","bar","bar"]
+    keys = ["t", "teb", "tsb", "debitbrut", "Tout", "Tin", "Flow", "BP", "HP"]
+    units = ["s","C","C","m\u00B3/h","C","C","l/s","bar"]
     df = mrun.getMData().extractData(keys)
 
-    # Add a time column
-    tformat="%Y.%m.%d %H:%M:%S"
-    start_date=df["Date"].iloc[0]
-    start_time=df["Time"].iloc[0]
-    end_time=df["Time"].iloc[-1]
-    print ("start_time=", start_time, "start_date=", start_date)
+    if args.debug:
+        pd.set_option("display.max_rows", None, "display.max_columns", None)
+    
+    # filter spikes 
+    # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
+    kw = dict(marker='o', linestyle='none', color='r', alpha=0.3)
+    for key in ["debitbrut", "Flow"]:
+        mean = df[key].mean()
+        # print("%s=" % key, type(df[key]), df[key])
+        if mean != 0:
+            var = df[key].var()
+            # print("mean(%s)=%g" % (key,mean), "std=%g" % math.sqrt(var) )
+            filtered = df[key].rolling(window=twindows, center=True).median().fillna(method='bfill').fillna(method='ffill')
+            filteredkey = "filtered%s" % key
+            # print("** ", filteredkey, type(filtered))
+            
+            df = df.assign(**{filteredkey: filtered.values})
+            # print("*** ", filteredkey, df[filteredkey])
+            
+            difference = np.abs((df[key] - filtered)/mean*100) 
+            outlier_idx = difference > threshold
+        
+            if args.debug:
+                ax = plt.gca()
+                df[key].plot()
+                # filtered.plot()
+                df[filteredkey].plot()
+                df[key][outlier_idx].plot(**kw)
+        
+                ax.legend()
+                plt.grid(b=True)
+                plt.title(mrun.getInsert().replace("_","\_") + ": Filtered %s" % key)
+                if args.show:
+                    plt.show()
+                if args.save:
+                    imagefile = args.input_file.replace(f_extension, "-%s.png" % key)
+                    print("save to %s" % imagefile)
+                    plt.savefig(imagefile, dpi=300)
+                plt.close()
 
-    t0 = datetime.datetime.strptime(df['Date'].iloc[0]+" "+df['Time'].iloc[0], tformat)
-
-    df["t"] = df.apply(lambda row: (datetime.datetime.strptime(row.Date+" "+row.Time, tformat)-t0).total_seconds(), axis=1)
-    units.append("s")
-
-    del df['Date']
-    del df['Time']
-
+            # replace key by filtered ones
+            del df[key]
+            df.rename(columns={filteredkey: key}, inplace=True)
+    print("Filtered pikes done")
+    
+            
     # Compute Tin, Tsb
     h = 4000
     tables = []
@@ -158,22 +259,27 @@ if __name__ == "__main__":
     # df_ = fdata[0], subtype = fdata[1], debug = fdata[2]
     # eventually check type with isinstanceof() / type()
     # question: how to take into account error_tsb also??
-    
-    def error_Tin(x, df_=df, subtype=args.subtype):
+
+    subtype = '1/1' # counterflow
+
+    def error_Tin(x, df_=df, debug=args.debug):
         # Now loop over h to find best h
         
-        df_['cTin'] = df_.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow1+row.Flow2, 10, row.BP, subtype)[1], axis=1)
-        df_['ctsb'] = df_.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow1+row.Flow2, 10, row.BP, subtype)[0], axis=1)
+        df_['cTin'] = df_.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[1], axis=1)
+        df_['ctsb'] = df_.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[0], axis=1)
 
-        diff =  np.abs((df_["Tin1"] + df_['Tin2'])/2. - df_['cTin'])
-        error_Tin = math.sqrt(np.dot( diff, diff )) / diff.size
+        diff =  np.abs(df_["Tin"] - df_['cTin'])
+        L2_Tin = math.sqrt(np.dot( df_['Tin'], df_['Tin'] ))
+        error_Tin = math.sqrt(np.dot( diff, diff )) /L2_Tin # diff.size
 
         diff =  np.abs(df_["tsb"] - df_['ctsb'])
-        error_tsb = math.sqrt(np.dot( diff, diff )) / diff.size
+        L2_tsb = math.sqrt(np.dot( df_['tsb'], df_['tsb'] ))
+        error_tsb = math.sqrt(np.dot( diff, diff )) / L2_tsb #diff.size
 
         error_T = math.sqrt(error_Tin*error_Tin + error_tsb*error_tsb)
         
-        # print("error_Tin(%g)" % x, error_Tin, error_tsb, error_T)
+        if debug:
+            print("error_Tin(%g)" % x, error_Tin, error_tsb, error_T)
 
         tables.append([x[0], error_Tin, error_tsb, error_T])
 
@@ -190,7 +296,8 @@ if __name__ == "__main__":
     opt.set_min_objective(myfunc)
     opt.set_ftol_rel(args.stopval)
     # opt.set_ftol_rel(args.stopval)
-    print("nlopt [ftol fabs xtol xabs]: ", opt.get_ftol_rel(), opt.get_ftol_abs() , opt.get_xtol_rel(), opt.get_xtol_abs() )
+    if args.debug:
+        print("nlopt [ftol fabs xtol xabs]: ", opt.get_ftol_rel(), opt.get_ftol_abs() , opt.get_xtol_rel(), opt.get_xtol_abs() )
     opt.set_lower_bounds(100)
     opt.set_upper_bounds(4500)
     x = opt.optimize([4000.])
@@ -212,42 +319,41 @@ if __name__ == "__main__":
     print( "\n", tabulate.tabulate(tables, headers, tablefmt="simple"), "\n")
 
     # Get solution for optimum
-    df['cTin'] = df.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow1+row.Flow2, 10, row.BP, args.subtype)[1], axis=1)
-    df['ctsb'] = df.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow1+row.Flow2, 10, row.BP, args.subtype)[0], axis=1)
+    df['cTin'] = df.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[1], axis=1)
+    df['ctsb'] = df.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[0], axis=1)
     ax = plt.gca()
     df.plot(x='t', y='ctsb', ax=ax) #, color='blue')
     df.plot(x='t', y='tsb', ax=ax) #, color='blue', linestyle='-')
     df.plot(x='t', y='cTin', ax=ax) #, color='red')
-    df.plot(x='t', y='Tin1', ax=ax) #, color='red', linestyle='--')
-    df.plot(x='t', y='Tin2', ax=ax) #, color='red', linestyle='-.')
+    df.plot(x='t', y='Tin', ax=ax) #, color='red', linestyle='--')
     plt.xlabel(r't [s]')
     plt.grid(b=True)
-    plt.title(mrun.getInsert().replace("_","\_") + " (" + args.subtype + "): h=%g $W/m^2/K$" % x[0])
+    plt.title(mrun.getInsert().replace("_","\_") + ": h=%g $W/m^2/K$" % x[0])
 
     if args.show:
         plt.show()
     if args.save:
         imagefile = args.input_file.replace(f_extension, "-h.png")
         print("save to %s" % imagefile)
-        plt.savefig('%s.png' % imagefile, dpi=300)
+        plt.savefig(imagefile, dpi=300)
         plt.close()
 
-    df['QNTU'] = df.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow1+row.Flow2, 10, row.BP, args.subtype)[2], axis=1)
-    df["Qhprimaire"] = df.apply(lambda row: (row.Flow1+row.Flow2)*1.e-3*(rho(row.BP, row.Tout)*cp(row.BP, row.Tout)*row.Tout-rho(row.HP1, row.Tin1)*cp(row.HP1, row.Tin1)*row.Tin1), axis=1)
-    df["Qcprimaire"] = df.apply(lambda row: row.debitbrut/3600.*(rho(10, row.Tout)*cp(10, row.tsb)*row.tsb-rho(10, row.teb)*cp(10, row.teb)*row.Tin1), axis=1)
+    df['QNTU'] = df.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[2], axis=1)
+    df["Qhot"] = df.apply(lambda row: (row.Flow)*1.e-3*(rho(row.BP, row.Tout)*cp(row.BP, row.Tout)*row.Tout-rho(row.HP, row.Tin)*cp(row.HP, row.Tin)*row.Tin), axis=1)
+    df["Qcold"] = df.apply(lambda row: row.debitbrut/3600.*(rho(10, row.tsb)*cp(10, row.tsb)*row.tsb-rho(10, row.teb)*cp(10, row.teb)*row.teb), axis=1)
         
     ax = plt.gca()
     df.plot(x='t', y='QNTU', ax=ax, color='red')
-    df.plot(x='t', y='Qhprimaire', ax=ax, color='blue')
-    df.plot(x='t', y='Qcprimaire', ax=ax, color='green')
+    df.plot(x='t', y='Qhot', ax=ax, color='blue')
+    df.plot(x='t', y='Qcold', ax=ax, color='green')
     plt.xlabel(r't [s]')
     plt.ylabel(r'Q[W]')
     plt.grid(b=True)
-    plt.title(mrun.getInsert().replace("_","\_") + "(" + args.subtype + ")")
+    plt.title(mrun.getInsert().replace("_","\_"))
     if args.show:
         plt.show()
     if args.save:
         imagefile = args.input_file.replace(f_extension, "-Q.png")
         print("save to %s" % imagefile)
-        plt.savefig('%s.png' % imagefile, dpi=300)
+        plt.savefig(imagefile, dpi=300)
         plt.close()

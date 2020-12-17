@@ -196,7 +196,7 @@ class MagnetRun:
         print(tabulate(tables, headers, tablefmt="simple"), "\n")
         return 0
 
-    def plateaus(self, thresold=1.e-4, bthresold=1.e-3, duration=5, show=False, save=True, debug=False):
+    def plateaus(self, twindows=6, thresold=1.e-4, bthresold=1.e-3, duration=5, show=False, save=True, debug=False):
         """get plateaus, pics from the actual run"""
 
         # TODO:
@@ -235,17 +235,16 @@ class MagnetRun:
         # # Try to remove spikes
         # ref: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
         
-        threshold = 0.4
-        df_['pandas'] = df_[gradkey].rolling(window=10).median()
+        df_['pandas'] = df_[gradkey].rolling(window=twindows, center=True).median()
 
         difference = np.abs(df_[gradkey] - df_['pandas'])
         outlier_idx = difference > threshold
         # print("median[%d]:" % df_[gradkey][outlier_idx].size, df_[gradkey][outlier_idx])
 
-
-        # kw = dict(marker='o', linestyle='none', color='g',label=str(threshold), legend=True)
-        # df_[gradkey][outlier_idx].plot(**kw)
-        
+        kw = dict(marker='o', linestyle='none', color='g',label=str(threshold), legend=True)
+        df_[gradkey][outlier_idx].plot(**kw)
+        # not needed if center=True
+        # df_['shifted\_pandas'] =  df_['pandas'].shift(periods=-twindows//2)
         df_.rename(columns={0:'Field'}, inplace=True)
 
         del df_['ndiff']
@@ -359,6 +358,7 @@ if __name__ == "__main__":
     parser.add_argument("--thresold", help="specify thresold for regime detection", type=float, default=1.e-3)
     parser.add_argument("--bthresold", help="specify b thresold for regime detection", type=float, default=1.e-3)
     parser.add_argument("--dthresold", help="specify duration thresold for regime detection", type=float, default=10)
+    parser.add_argument("--window", help="stopping criteria for nlopt", type=int, default=10)
     parser.add_argument("--debug", help="acticate debug", action='store_true')
     args = parser.parse_args()
 
@@ -504,7 +504,8 @@ if __name__ == "__main__":
 
     if args.stats:
         mrun.stats()
-        mrun.plateaus(thresold=args.thresold,
+        mrun.plateaus(twindows=args.window,
+                      thresold=args.thresold,
                       bthresold=args.bthresold,
                       duration=args.dthresold,
                       show=args.show,

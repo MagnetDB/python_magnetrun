@@ -174,21 +174,38 @@ class MagnetData:
                 # check formula using pyparsing
                 
                 self.Data.eval(formula, inplace=True)
+                self.Keys = self.Data.columns.values.tolist()
         return 0
 
-    def addTime(self):
-        """add a Time column to Data"""
-
+    def getStartDate(self):
+        """get start timestamps"""
+        res = ()
         if self.Type == 0 :
+            # print("keys=", self.Keys)
             if "Date" in self.Keys and "Time" in self.Keys:
                 tformat="%Y.%m.%d %H:%M:%S"
                 start_date=self.Data["Date"].iloc[0]
                 start_time=self.Data["Time"].iloc[0]
                 end_time=self.Data["Time"].iloc[-1]
-                print ("start_time=", start_time, "start_date=", start_date)
+                res = (start_date, start_time, end_time)
+        return res
+    
+    def addTime(self):
+        """add a Time column to Data"""
+
+        # print("magnetdata.AddTime")
+        if self.Type == 0 :
+            # print("keys=", self.Keys)
+            if "Date" in self.Keys and "Time" in self.Keys:
+                tformat="%Y.%m.%d %H:%M:%S"
+                start_date=self.Data["Date"].iloc[0]
+                start_time=self.Data["Time"].iloc[0]
+                end_time=self.Data["Time"].iloc[-1]
+                # print ("start_time=", start_time, "start_date=", start_date)
 
                 t0 = datetime.datetime.strptime(self.Data['Date'].iloc[0]+" "+self.Data['Time'].iloc[0], tformat)
                 self.Data["t"] = self.Data.apply(lambda row: (datetime.datetime.strptime(row.Date+" "+row.Time, tformat)-t0).total_seconds(), axis=1)
+                self.Keys = self.Data.columns.values.tolist()
             else:
                 raise Exception("cannot add t[s] columnn: no Date or Time column")
         return 0
@@ -226,7 +243,7 @@ class MagnetData:
     def plotData(self, x, y, ax):
         """plot x vs y"""
         
-        print("plotData Type:", self.Type, "x=%s, y=%s" % (x,y) )
+        # print("plotData Type:", self.Type, "x=%s, y=%s" % (x,y) )
         if not x in self.Keys:
             if self.Type == 0 :
                 raise Exception("%s.%s: no x=%s key" % (self.__class__.__name__, sys._getframe().f_code.co_name, x) )
