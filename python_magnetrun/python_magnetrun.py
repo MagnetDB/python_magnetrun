@@ -73,7 +73,7 @@ class MagnetRun:
         self.MagnetData = data
 
         try:
-            stat_date = None
+            start_date = None
             if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
                 start_date=self.MagnetData.getData("Date").iloc[0]
                 start_time=self.MagnetData.getData("Time").iloc[0]
