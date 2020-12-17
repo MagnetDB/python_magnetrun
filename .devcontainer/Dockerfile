@@ -37,7 +37,7 @@ RUN apt-get update \
     && apt-get -y install python3-nptdms python3-freesteam python3-nlopt python3-tabulate \
     && apt-get -y install python3-matplotlib texlive-latex-base texlive-latex-extra dvipng \
     && apt-get -y install python3-pandas python3-numpy python3-scipy \
-    && apt-get -y install python3-ht \
+    && apt-get -y install python3-ht python3-pyclaw \
     #\
     # Create a non-root user to use if preferred - see https://aka.ms/vscode-remote/containers/non-root-user.\
     && groupadd --gid $USER_GID $USERNAME \
