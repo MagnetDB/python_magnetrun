@@ -33,6 +33,9 @@ _  To view the magnetic field during an experiment:
 
 ```python3 python_magnetrun.py M9_2019.02.14-23_00_38.txt --plot_vs_time "Field" --show```
 
+- To model transient:
+
+```python3 clawtest1.py M9_2019.02.14-23_00_38.txt --npts_per_domain=4437 --duration=3600 --ntimes=360```
 
 TODO
 ----

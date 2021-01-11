@@ -3,7 +3,7 @@
 # encoding: utf-8
 
 r"""
-One-dimensional advection
+Cooling loop model (One-dimensional advection)
 =========================
 
 Solve the linear advection equation:
@@ -11,11 +11,11 @@ Solve the linear advection equation:
 .. math::
     q_t + u q_x = 0.
 
-Here q is the density of some conserved quantity and u is the velocity.
+Here q is the water temperature and u is the velocity.
 
-The initial condition is a Gaussian and the boundary conditions are periodic.
-The final solution is identical to the initial data because the wave has
-crossed the domain exactly once.
+The initial condition is given from an actual experiment.
+The boundary conditions are computed at the entry and exit of the
+heat exchanger.
 
 L=2*h with h=1.577944e-01 (from HL-31.d par ex - lattest helix)
 rho=st.steam_pT(pascal, kelvin).rho
@@ -59,138 +59,130 @@ import math
 import numpy as np
 from clawpack import riemann
 
+import tabulate
 import pandas as pd
-import freesteam as st
-import ht
 import python_magnetrun
 import heatexchanger_primary
-import tabulate
 
 df = None
 duration = math.nan
-npts_per_domain = math.nan
 ntimes = math.nan
 
 x0 = math.nan
 x1 = math.nan
 L = math.nan
-Hx0 = math.nan
-Hx1 = math.nan
 Section = math.nan
 SectionB = math.nan
+Q = math.nan
 
 tables = []
-headers = ["t", "Tin", "Tout", "teb", "tsb"]
-
-
-def mapping(Xorig):
-    """create mesh per section"""
-
-    print("mapping: x0=" , x0, "L=", L, "Hx0=", Hx0, "Hx1=", Hx1, "x1=" , x1, "npt=" , npts_per_domain) 
-    ni = npts_per_domain -1
-    physCoords = []
+headers = ["t[s]", "Tin1[C]", "Tin2[C]", "Tout[C]", "Thi[C]", "Tho[C]", "Power1[MW]", "Power2[MW]"]
     
-    for coord in Xorig:
-        i = int(coord)
-        remainder = int(divmod(i,ni)[1])
-        if i < ni:
-            x = x0 + i * abs(-L-x0)/float(ni)
-            print("[1]:", i, "->", x)
-        elif i >= ni and i < 2*ni:
-            x = -L + remainder * 2*L/float(ni)
-            print("[2]:", i, "->", x)
-        elif i >= 2*ni and i < 3*ni:
-            x = L + remainder * (Hx0-L)/float(ni)
-            print("[3]:", i, "->", x)
-        elif i >= 3*ni and i < 4*ni:
-            x = Hx0 + remainder * (Hx1-Hx0)/float(ni)
-            print("[4]:", i, "->", x)
-        elif i >= 4*ni and i < 5*ni:
-            x = Hx1 + remainder * (x1-Hx1)/float(ni)
-            print("[5]:", i, "->", x)
-        else:
-            x = x1
-            print(i, "->", x, "X")
+def interpolate(t: float, a: float, b: float, fa: float, fb: float) -> float:
+    """interpolate between a and b"""
 
-        physCoords.append(x)
-        # print("i=", i, "x=", x)
-        
-    return physCoords
+    return (t-a) * (fa - fb)/(b-a) + fa
 
-
-def compute_u(Tin, Pin, Debit, Section):
+def compute_u(Q: float, S: float) -> float:
     """compute mean velocity"""
-    
-    u = Debit * 1.e-3 /Section
-    rho = get_rho( Pin, Tin)
-    cp = get_cp( Pin, Tin)
 
-    return u
+    return Q * 1.e-3 /S
+
+def Joules(x: float, Q: float, L: float) -> float:
+    """compute Joules Losses"""
+    val = 0
+    if abs(x) <= L:
+        val = Q
+    return val
 
 # see http://www.clawpack.org/pyclaw/problem.html#adding-source-terms
 def step_Euler_radial(solver, state, dt):
     """define step for classic"""
 
     xc = state.grid.p_centers
-    # print("xc=", xc, "type(xc)=", type(xc))
-    # #
-    # sys.exit(1)
-    
+    # print("xc=", xc, type(xc))
+
     q   = state.q
-    # print("q=", q, "type(q)=", type(q))
     aux = state.aux
+    # print("u[%g]: " % state.t, aux[0,:])
 
     i0 = math.floor(state.t)
+    # print("i0=", i0)
+    i1 = i0+1
 
     nx = state.problem_data['nx']
     L = state.problem_data['L']
-    # Section = state.problem_data['Section']
-    # SectionB = state.problem_data['SectionB']
+    Section = state.problem_data['Section']
+    SectionB = state.problem_data['SectionB']
+    SectionP = state.problem_data['SectionP']
+    df = state.problem_data['df']
 
-    # Tin = (df['Tin1'][i0] + df['Tin2'][i0])/2. # q at x=x0
-    # Pin = (df['HP1'][i0] + df['HP2'][i0])/2.
-    # Debith = df['Flow1'][i0] + df['Flow2'][i0]
-    # u =compute_u(Tin, Pin, Debith, Section)
+    Tin = interpolate(state.t, i0, i1, df['Tin'][i0], df['Tin'][i1])
+    Pin = interpolate(state.t, i0, i1, df['HP'][i0], df['HP'][i1])
+    Debit_hot = interpolate(state.t, i0, i1, df['Flow'][i0], df['Flow'][i1])
+    u = compute_u(Debit_hot, SectionP)
 
-    # # Helices
-    # Power1 = abs(df['U1'][i0] * df['I1'][i0])
-    # Q = Power1 / ( Section * (2*L) ) / (get_rho(Tin,Pin)*get_cp(Tin,Pin))
+    # Helices
+    Tin1 = interpolate(state.t, i0, i1, df['Tin1'][i0], df['Tin1'][i1])
+    Pin1 = interpolate(state.t, i0, i1, df['HP1'][i0], df['HP1'][i1])
+    rho = heatexchanger_primary.rho(Pin1, Tin1)
+    cp = heatexchanger_primary.cp(Pin1, Tin1)
+    Power1 = abs(interpolate(state.t, i0, i1, df['PH'][i0], df['PH'][i1]))
+    QH = Power1 / ( Section * (2*L) ) / (rho*cp)
+    DebitH = interpolate(state.t, i0, i1, df['Flow1'][i0], df['Flow1'][i1])
+    uH = compute_u(DebitH, Section)
 
-    # # Bitter
-    # Power2 = abs(df['U2'][i0] * df['I2'][i0])
-    # Q += Power2 / ( SectionB * (2*L) ) / (get_rho(Tin,Pin)*get_cp(Tin,Pin))
+    # Bitter
+    Tin2 = interpolate(state.t, i0, i1, df['Tin2'][i0], df['Tin2'][i1])
+    Pin2 = interpolate(state.t, i0, i1, df['HP2'][i0], df['HP2'][i1])
+    rho = heatexchanger_primary.rho(Pin2, Tin2)
+    cp = heatexchanger_primary.cp(Pin2, Tin2)
+    Power2 = abs(interpolate(state.t, i0, i1, df['PB'][i0], df['PB'][i1]))
+    QB = Power2 / ( SectionB * (2*L) ) / (rho*cp)
+    DebitB = interpolate(state.t, i0, i1, df['Flow2'][i0], df['Flow2'][i1])
+    uB = compute_u(DebitB, SectionB)
 
-    # Tci = df['teb'][i0]
-    # Thi = q[0,3*nx]
-    # Debitc = df['debitbrut'][i0]
-    # Debith = df['Flow1'][i0] + df['Flow2'][i0]
-    # Pci = 10
-    # Phi = 10
-    # Volc = 1986.04 * 1e-3 #Volh = 1986.04 * 1e+3
-    # Qth = heatexchange(4041, Tci, Thi, Debitc, Debith, Pci, Phi)[2] / Volc / (get_rho(Tin,Pin)*get_cp(Tin,Pin))
-
-    u = state.problem_data['u']
-    Q = state.problem_data['Q']
-    Qth = state.problem_data['Q']
-    Power1 = state.problem_data['Power1']
-    Power2 = state.problem_data['Power2']
-
-    tables.Append([state.t, q[0,nx], q[0,2*nx], q[0,3*nx], q[0,4*nx]])
-
-    aux = state.aux
-    aux[0,:] = u
+    Q = QH + QB
     
+    # Tout = q[0,2213]
+    Tout = q[0,2223] # depends on npt
+
+    # Pipe
+    DebitP = interpolate(state.t, i0, i1, df['Flow'][i0], df['Flow'][i1])
+    uP = compute_u(DebitP, SectionP)
+    
+    # update velocity
+    state.aux[0,:] = uP
+    state.aux[0,:] = [ uH if abs(xi) <= L else 0 for xi in xc]
+
     # Add Magnet Q
     psi = np.empty(q.shape)
-    psi[0,:] = [ Q if abs(xi) <= L else 0 for xi in xc]
+    for i,x in enumerate(xc[0]):
+        psi[0,i] = Joules(x, Q, L)
+    # print("psi:", psi[0,:])
 
-    # Add HeatExchanger Q
-    HX0 = state.problem_data['HX0']
-    HX1 = state.problem_data['HX1']
-    psi_hx = np.empty(q.shape)
-    psi_hx[0,:] = 0 # [ -Qth if xi <= HX1 and xi >= HX0 else 0 for xi in xc]
+    # Add HeatExchanger Q: give input and outpout BC
+    Tci = interpolate(state.t, i0, i1, df['teb'][i0], df['teb'][i1])
+    Thi = q[0,-1]
+    Debitc = interpolate(state.t, i0, i1, df['debitbrut'][i0], df['debitbrut'][i1])
+    Debith = interpolate(state.t, i0, i1, df['Flow'][i0], df['Flow'][i1])
+    Pci = 10
+    Phi = 10
+    Hx = heatexchanger_primary.heatexchange(4041, Tci, Thi, Debitc, Debith, Pci, Phi)
+    Tco = Hx[0]
+    Tho = Hx[1]
+    if state.t == i0:
+        tables.append([state.t, Tin1, Tin2, Tout, Thi, Tho, Power1, Power2])
+    # QHx = res[2] / Volc / (rho*cp)
 
-    q[0,:] = q[0,:] + dt * (psi[0,:] + psi_hx[0,:])
+    # # custom Bcs
+    # solver.bc_lower[0] = Tho
+    # solver.bc_upper[0] = Thi
+
+    # Howto get index for x=L ??
+    # tables.append([state.t, q[0,0], q[0,x=L], q[0,-1], Tco])
+
+    q[0,:] = q[0,:] + dt * psi[0,:]
 
 def dq_Euler_radial(solver, state, dt):
     """define step for sharpclaw"""
@@ -200,35 +192,47 @@ def dq_Euler_radial(solver, state, dt):
     aux = state.aux
 
     i0 = math.floor(state.t)
+    # interpolate df values from state.t betwenn i0 and i0+1
 
     nx = state.problem_data['nx']
     L = state.problem_data['L']
     Section = state.problem_data['Section']
     SectionB = state.problem_data['SectionB']
+    SectionP = state.problem_data['SectionP']
+    df = state.problem_data['df']
 
-    Tin = q[0,nx] # (df['Tin1'][i0] + df['Tin2'][i0])/2. # q at x=x0
-    Pin = (df['HP1'][i0] + df['HP2'][i0])/2.
-    Debith = df['Flow1'][i0] + df['Flow2'][i0]
-    u = compute_u(Tin, Pin, Debith, Section)
+    Tin = df['Tin'][i0]
+    Pin = df['HP'][i0]
+    Debith = df['Flow'][i0]
+    u = compute_u(Debith, SectionP)
 
     # Helices
+    rho = heatexchanger_primary.rho(df['HP'][i0], df['Tin'][i0])
+    cp = heatexchanger_primary.cp(df['HP'][i0], df['Tin'][i0])
     Power1 = abs(df['PH'][i0])
     Q = Power1 / ( Section * (2*L) ) / (rho*cp)
+    DebitH = df['Flow1'][i0]
+    u = compute_u(DebitH, Section)
 
     # Bitter
     Power2 = abs(df['PB'][i0])
-    # Q += Power2 / ( SectionB * (2*L) ) / (rho*cp)
+    QB = Power2 / ( Section2 * (2*L) ) / (rho*cp)
+    DebitB = df['Flow2'][i0]
+    u = compute_u(DebitB, SectionB)
 
     Tci = df['teb'][i0]
-    Thi = q[0,3*nx]
+    Thi = q[0,-1]
     Debitc = df['debitbrut'][i0]
-    Debith = df['Flow1'][i0] + df['Flow2'][i0]
+    Debith = df['Flow'][i0]
     Pci = 10
     Phi = 10
-    Volc = 1986.04 * 1e-3 # Volh = 1986.04 * 1e+3
-    Qth = heatexchange(4041, Tci, Thi, Debitc, Debith, Pci, Phi)[2] / Volc / (rho*cp)
+    Hx = heatexchanger_primary.heatexchange(4041, Tci, Thi, Debitc, Debith, Pci, Phi)
+    Tco = Hx[0]
+    Tho = Hx[1]
+    # Volc = 1986.04 * 1e-3 # Volh = 1986.04 * 1e+3
+    # QHx = Hx[2] / Volc / (rho*cp)
 
-    tables.Append([state.t, q[0,nx], q[0,2*nx], q[0,3*nx], q[0,4*nx]])
+    # tables.Append([state.t, q[0,0], q[0,nx], q[0,2*nx], q[0,3*nx], q[0,4*nx]])
 
     aux = state.aux
     aux[0,:] = u
@@ -237,12 +241,8 @@ def dq_Euler_radial(solver, state, dt):
     psi = np.empty(q.shape)
     psi[0,:] = [ Q if abs(xi) <= L else 0 for xi in xc]
 
-    # Add HeatExchanger Q
-    psi_hx = np.empty(q.shape)
-    psi_hx[0,:] = 0 # [ Qth if xi <= HX1 and xi >= HX0 else 0 for xi in xc]
-
     dq = np.empty(q.shape)
-    dq[0,:] = + dt * (psi[0,:] + psi_hx[0,:])
+    dq[0,:] = + dt * psi[0,:]
 
     return dq
 
@@ -250,21 +250,46 @@ def auxinit(state):
     """
     Define advectionfield
     """
-    # Initilize petsc Structures for aux
-    xc=state.grid.loop.centers
+
     u = state.problem_data['u']
+    df = state.problem_data['df']
 
-    aux = state.aux
-    aux[0,:] = u
+    # xc is a tuple when only 1 domain
+    # a np array otherwise
+    xc = state.grid.p_centers
+    print("xc:", type(xc))
 
-# def setup(num_output_times=10, tfinal=3, nx=10,
-#           kernel_language='Python',
-#           use_petsc=False, solver_type='classic',
-#           weno_order=5,
-#           time_integrator='SSP104',
-#           outdir='./_output',
-#           claw_pkg='amrclaw'):
-def setup(kernel_language='Python',
+    L = state.problem_data['L']
+    Section = state.problem_data['Section']
+    SectionB = state.problem_data['SectionB']
+    SectionP = state.problem_data['SectionP']
+
+    # for idx, x in np.ndenumerate(xc[0]):
+    #     print(idx, x, type(idx), type(x))
+
+    # for x in xc[0]:
+    #    if abs(x) <= L:
+    #    else
+    #
+
+    # Helices
+    DebitH = df['Flow1'][0]
+    u = compute_u(DebitH, Section)
+
+    # Bitters
+    DebitB = df['Flow2'][0]
+    uB = compute_u(DebitB, SectionB)
+
+    # Pipe
+    DebitP = df['Flow'][0]
+    uP = compute_u(DebitP, SectionP)
+    
+    state.aux[0,:] = uP
+    state.aux[0,:] = [ uH if abs(xi) <= L else 0 for xi in xc]
+    print("u[%g]: " % state.t, state.aux[0,:])
+
+def setup(df, nx, num_output_times, tfinal,
+          kernel_language='Python',
           use_petsc=False,
           solver_type='classic',
           weno_order=5,
@@ -272,14 +297,8 @@ def setup(kernel_language='Python',
           outdir='./_output',
           claw_pkg='amrclaw'):
     """
-    Setp Clawpack simu
+    Setup Clawpack simu
     """
-
-    global npt
-    
-    nx = npts_per_domain
-    num_output_times = ntimes
-    tfinal = duration
 
     if use_petsc:
         import clawpack.petclaw as pyclaw
@@ -309,7 +328,7 @@ def setup(kernel_language='Python',
     Pin = df['HP'][0]
     rho = heatexchanger_primary.rho(Pin, Tin)
     cp = heatexchanger_primary.cp(Pin, Tin)
-    print ("rho=", rho, "cp=", cp, "rhocp=", rho*cp)
+    # print ("rho=", rho, "cp=", cp, "rhocp=", rho*cp)
 
     Flow = 140.e-3
 
@@ -335,49 +354,64 @@ def setup(kernel_language='Python',
            "Section=", Section, "u=Flow/Section=", u)
 
     Qth = Qth1+Qth2
-    
-    # Add path to primary heat exchanget
-    # x = pyclaw.Dimension(-1,200,5*nx,name='loop')
-    x = pyclaw.Dimension(0,float(5*nx+1),5*nx,name='loop')
+
+    # Domain (grid.p_centers is a tuple)
+    x = pyclaw.Dimension(x0,x1,nx,name='loop')
+    #
+    # For multiple domains:
+    # x = pyclaw.Dimension(0,float(5*nx+1),5*nx,name='loop')
+    # use mapping see ~/Clawpack/test1.py
+    # grid.p_centers is a numpy array
     domain = pyclaw.Domain(x)
+    xc = domain.grid.p_centers
+
+    # Defines Gauges
+    ids = [];
+    print("Finding gauge index")
+    for i,x in enumerate(xc[0]):
+        if abs(abs(x)/L-1) < 1.e-2:
+            ids.append(i)
+            print("x[%d] = %g" % (i, x) )
+
+    # Howto get index for x=L ??
 
     solver.kernel_language = kernel_language
     verbosity = 1
     total_steps = 30
 
+    # ????Customn BC???
     solver.bc_lower[0] = pyclaw.BC.extrap # periodic if HX considered otherwise extrap
     solver.bc_upper[0] = pyclaw.BC.extrap # periodic if HX considered otherwise extrap
 
     # Define BC for aux
     num_aux = 1
+
+    # ????Customn BC??? ???Custom u???
     solver.aux_bc_lower[0] = pyclaw.BC.extrap #u
     solver.aux_bc_upper[0] = pyclaw.BC.extrap #u
 
-    state = pyclaw.State(domain,solver.num_eqn, num_aux)
+    state = pyclaw.State(domain, solver.num_eqn, num_aux)
     state.problem_data['nx'] = nx  # Number of interval per section
-    state.problem_data['rhocp'] = rho*cp  # Specific Heat
     state.problem_data['u'] = u  # Advection velocity
     state.problem_data['L'] = L  # Electric Length of Magnet
-    state.problem_data['Power1'] = Power1  # Magnet Power
-    state.problem_data['Power2'] = Power2  # Magnet Power
-    state.problem_data['Q'] = Qth/(rho*cp)   # Magnet equivalent
-    state.problem_data['Section'] = Section   # Colling Section
-    state.problem_data['SectionB'] = SectionB   # Colling Section
+    state.problem_data['Section'] = Section  # Section Helices
+    state.problem_data['SectionB'] = SectionB  # Section Bitters
 
-    state.problem_data['HX0'] = Hx0   # Entry of Heat Exchanger
-    state.problem_data['HX1'] = Hx1   # Output of Heat Exchanger
-    state.problem_data['HXQth'] = -Qth/(rho*cp)    # Qth of Heat Exchanger (from NTU model)
+    # TODO load from cfg.json
+    SectionP = 2*math.pi*pow(130.e-3,2)
+    state.problem_data['SectionP'] = SectionP  # Section Pipes
 
-    # Create mapping
-    state.grid.mapc2p = mapping
-    # print("grid: ", state.grid, "type(state.grid)=", type(state.grid))
-    # print("grid nodes: ", state.grid.c_nodes)
-    # print("grid p_nodes: ", state.grid.p_nodes)
+    state.problem_data['x0'] = x0  # Output of Heat Exchanger
+    state.problem_data['x1'] = x1  # Entry of Heat Exchanger
 
+    state.problem_data['df'] = df # experimental data - needed to be smoothed here
+
+    # # Create mapping
+    # state.grid.mapc2p = mapping
+
+    # print("initial condition")
     state.q[0,:] = df['Tin'][0] # Tin
-
     auxinit(state)
-    # print("t Power1 Power2 u Q Qth Tin Tout, Tho")
     
     claw = pyclaw.Controller()
     claw.keep_copy = True
@@ -409,14 +443,12 @@ def add_source(current_data):
     print("xupper =", current_data.xupper)
     print("t =", current_data.t)
     print("current_data =", type(current_data))
-    
-    # Geometry
-    print("add_source: npt=" , npts_per_domain, "L=", L, "Hx0=" , x0, "Hx1=" , x1, "type(current_data)=", type(current_data))
 
-    qsource = [ 20 if abs(xi) <= L else 15 for xi in x]
-    qcooler = [ 10 if (xi-Hx0) >=0 and (xi-Hx1) <= 0 else 15 for xi in x]
-    
-    qth = [ (a+b)-30 for a,b in zip(qsource,qcooler)]
+    # Geometry
+    print("add_source: L",  L, "x0=" , x0, "x1=" , x1, "type(current_data)=", type(current_data))
+
+    qth = [ 20 if abs(xi) <= L else 15 for xi in x]
+
     plot(x, qth, 'r', label="source")
 
 def setplot(plotdata):
@@ -429,9 +461,10 @@ def setplot(plotdata):
 
     # Set up for axes in this figure:
     plotaxes = plotfigure.new_plotaxes()
-    # plotaxes.ylimits = [10,45]
+    # howto force yrange in plot??
+    # plotaxes.ylimits = [5,45]
     plotaxes.title = 'Temperature Profile'
-    
+
     # Set up for item on these axes:
     plotitem = plotaxes.new_plotitem(plot_type='1d_plot')
     plotitem.plot_var = 0
@@ -439,6 +472,8 @@ def setplot(plotdata):
     plotitem.color = 'b'
     plotitem.kwargs = {'linewidth':2,'markersize':5}
 
+    # how to add additionnal curves ??
+    # check ~/Clawpack
     # plotaxes.afteraxes = add_source
 
     return plotdata
@@ -462,7 +497,7 @@ if __name__=="__main__":
     npts_per_domain = args.npts_per_domain
     ntimes = args.ntimes
     duration = args.duration
-    
+
     # check extension
     f_extension = os.path.splitext(args.input_file)[-1]
     if f_extension != ".txt":
@@ -482,7 +517,7 @@ if __name__=="__main__":
 
     mrun = python_magnetrun.MagnetRun.fromtxt(args.site, args.input_file)
     insert = mrun.getInsert()
-    
+
     # TODO # Load geom cfg from json
     # load helices insert data from .json file
     # then get d file to get Sections
@@ -491,19 +526,18 @@ if __name__=="__main__":
     # import json
     # if args.config:
     #     geomdata = json.load(args.site + "-cfg.json")
-    
+
     # load ini file (geometry)
     L = 1.578e-01
+    print("recommended nx=", 70/(2*L/10.)*2+1)
 
     Spipe = 2*math.pi*pow(130.e-3,2)
     Pipe = 70
-    Hx0 = Pipe+L
-    Hx1 = Hx0 + 4.9
 
-    x0 = -1.5*L
-    x1 = Hx1+Pipe+L
+    x0 = -70 # output from Hx
+    x1 = 70 # input from Hx
 
-    print("x0=%g" % x0, "-L=%g" % -L, "L=%g" % L, "Hx0=%g" % Hx0, "Hx1=%g" % Hx1, "x1=%g" % x1)
+    print("x0=%g" % x0, "-L=%g" % -L, "Pipe=%g" % Pipe, "x1=%g" % x1)
 
     Section =  262.292e-6 \
 	+ 139.392e-6 \
@@ -523,8 +557,7 @@ if __name__=="__main__":
 
     # Bitter M9/M10
     SectionB = (3606.68+7010.63)*1.e-6
-    
-    
+
     mrun.getMData().addTime()
     start_timestamp = mrun.getMData().getStartDate()
 
@@ -540,53 +573,55 @@ if __name__=="__main__":
         if ukey in mrun.getKeys():
             max_tap=i
 
-    if max_tap != args.nhelices and max_tap != args.nhelices//2:    
+    if max_tap != args.nhelices and max_tap != args.nhelices//2:
         print("Check data: inconsistant U probes and helices")
         sys.exit(1)
-        
+
     missing_probes=[]
     for i in range(1,max_tap+1):
         ukey = "Ucoil%d" % i
-        if not ukey in keys:
+        if not ukey in mrun.getKeys():
             # Add an empty column
             # print ("Ukey=%s" % ukey, (ukey in keys) )
             mrun.getMData().addData(ukey, "%s = 0" % ukey)
             missing_probes.append(i)
 
-    if len(missing_probles):
+    if missing_probes:
         print("Missing U probes:", missing_probes)
 
     formula = "UH = "
     for i in range(args.nhelices+1):
         ukey = "Ucoil%d" % i
-        if ukey in keys:
+        if ukey in mrun.getKeys():
+            if i != 1:
+                formula += " + "
             formula += ukey
-    print("UH", formula)
+    # print("UH", formula)
     mrun.getMData().addData("UH", formula)
-    
+
     formula = "UB = Ucoil15 + Ucoil16"
-    print("UB", formula)
+    # print("UB", formula)
     mrun.getMData().addData("UB", formula)
 
     mrun.getMData().addData("PH", "PH = UH * IH")
     mrun.getMData().addData("PB", "PB = UB * IB")
-    
+
     dkeys = mrun.getKeys()
 
     # extract data
-    # keys = ["t", "teb", "tsb", "debitbrut", "Tout", "Tin", "Flow", "BP", "HP"]
-    # units = ["s","C","C","m\u00B3/h","C","C","l/s","bar"]
-    df = mrun.getMData().extractData() # keys
+    keys = ["t", "teb", "tsb", "debitbrut", "Tout", "Tin", "Tin1", "Tin2", "Flow1", "Flow2", "Flow", "BP", "HP", "HP1", "HP2", "PH", "PB"]
+    units = ["s","C","C","m\u00B3/h","C","C","C","C","l/s","l/s","l/s","bar","bar","bar"]
+    df = mrun.getMData().extractData(keys)
 
     # Create
     # output = run_app_from_main(setup,setplot)
-    claw = setup()
+    claw = setup(df, args.npts_per_domain, args.ntimes, args.duration)
     claw.run()
 
     print( "\n", tabulate.tabulate(tables, headers, tablefmt="simple"), "\n")
     # TODO plot(key vs tables values) for key in Tin, Tout, tsb, ctsb
     # Turn tables in a panda dataframe
-    
+
     if args.iplot:
         # using matplotlib:
         # read data from files in outdir

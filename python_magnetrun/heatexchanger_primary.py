@@ -20,6 +20,7 @@ import freesteam as st
 
 import ht
 import tabulate
+import datatools
 
 tables = []
 
@@ -137,10 +138,12 @@ if __name__ == "__main__":
     parser.add_argument("input_file", help="input txt file (ex. M10_2020.10.04_20-2009_43_31.txt)")
     parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9")
     parser.add_argument("--show", help="display graphs (requires X11 server active)", action='store_true')
-    parser.add_argument("--save", help="save graphs to png", action='store_true')
+    # parser.add_argument("--save", help="save graphs to png", action='store_true')
+    parser.add_argument("--error", help="specify error (0 for hot, 1 for cold, 2 for a mix)", type=int, default=0)
     parser.add_argument("--stopval", help="stopping criteria for nlopt", type=float, default=1.e-2)
+    parser.add_argument("--maxeval", help="stopping max eval for nlopt", type=int, default=1000)
     parser.add_argument("--threshold", help="stopping criteria for nlopt", type=float, default=0.5)
-    parser.add_argument("--window", help="stopping criteria for nlopt", type=int, default=10)
+    parser.add_argument("--window", help="sliding windows size", type=int, default=10)
     parser.add_argument("--debug", help="activate debug mode", action='store_true')
         
     args = parser.parse_args()
@@ -166,6 +169,7 @@ if __name__ == "__main__":
             pass
 
     mrun = python_magnetrun.MagnetRun.fromtxt(args.site, args.input_file)
+    # print("type(mrun):", type(mrun))
     mrun.getMData().addTime()
     start_timestamp = mrun.getMData().getStartDate()
 
@@ -187,7 +191,7 @@ if __name__ == "__main__":
         plt.title(mrun.getInsert().replace("_","\_") + ":" + start_timestamp[0] + " " + start_timestamp[1] )
         if args.show:
             plt.show()
-        if args.save:
+        else:
             imagefile = args.input_file.replace(f_extension, "-teb.png")
             print("save to %s" % imagefile)
             plt.savefig(imagefile, dpi=300)
@@ -203,45 +207,15 @@ if __name__ == "__main__":
     
     # filter spikes 
     # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
-    kw = dict(marker='o', linestyle='none', color='r', alpha=0.3)
-    for key in ["debitbrut", "Flow"]:
-        mean = df[key].mean()
-        # print("%s=" % key, type(df[key]), df[key])
-        if mean != 0:
-            var = df[key].var()
-            # print("mean(%s)=%g" % (key,mean), "std=%g" % math.sqrt(var) )
-            filtered = df[key].rolling(window=twindows, center=True).median().fillna(method='bfill').fillna(method='ffill')
-            filteredkey = "filtered%s" % key
-            # print("** ", filteredkey, type(filtered))
-            
-            df = df.assign(**{filteredkey: filtered.values})
-            # print("*** ", filteredkey, df[filteredkey])
-            
-            difference = np.abs((df[key] - filtered)/mean*100) 
-            outlier_idx = difference > threshold
-        
-            if args.debug:
-                ax = plt.gca()
-                df[key].plot()
-                # filtered.plot()
-                df[filteredkey].plot()
-                df[key][outlier_idx].plot(**kw)
-        
-                ax.legend()
-                plt.grid(b=True)
-                plt.title(mrun.getInsert().replace("_","\_") + ": Filtered %s" % key)
-                if args.show:
-                    plt.show()
-                if args.save:
-                    imagefile = args.input_file.replace(f_extension, "-%s.png" % key)
-                    print("save to %s" % imagefile)
-                    plt.savefig(imagefile, dpi=300)
-                plt.close()
+    # for key in ["debitbrut", "Flow"]:
+    #     datatools.filterpikes(mrun, key, inplace=True, threshold=threshold, twindows=args.window, debug=args.debug, show=args.show, input_file=args.input_file)
+    # print("Filtered pikes done")
 
-            # replace key by filtered ones
-            del df[key]
-            df.rename(columns={filteredkey: key}, inplace=True)
-    print("Filtered pikes done")
+    # smooth data Locally Weighted Linear Regression (Loess)
+    # see: https://xavierbourretsicotte.github.io/loess.html(
+    for key in ["debitbrut", "Flow", "teb", "Tout"]:
+        datatools.smooth(mrun, key, inplace=True, tau=400, debug=args.debug, show=args.show, input_file=args.input_file)
+    print("smooth data done")
     
             
     # Compute Tin, Tsb
@@ -251,6 +225,7 @@ if __name__ == "__main__":
 
     import nlopt
     opt = nlopt.opt(nlopt.GN_DIRECT_L, 1)
+    opt.set_maxeval(args.maxeval)
 
     # use *f_data to pass extra args: df_, subtype
     # ex:
@@ -261,32 +236,38 @@ if __name__ == "__main__":
     # question: how to take into account error_tsb also??
 
     subtype = '1/1' # counterflow
-
-    def error_Tin(x, df_=df, debug=args.debug):
+    print("select: ", args.error)
+    
+    def error_Tin(x, df_=df, select=args.error, debug=args.debug):
         # Now loop over h to find best h
         
         df_['cTin'] = df_.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[1], axis=1)
-        df_['ctsb'] = df_.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[0], axis=1)
-
         diff =  np.abs(df_["Tin"] - df_['cTin'])
         L2_Tin = math.sqrt(np.dot( df_['Tin'], df_['Tin'] ))
         error_Tin = math.sqrt(np.dot( diff, diff )) /L2_Tin # diff.size
 
+        df_['ctsb'] = df_.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[0], axis=1)
         diff =  np.abs(df_["tsb"] - df_['ctsb'])
         L2_tsb = math.sqrt(np.dot( df_['tsb'], df_['tsb'] ))
         error_tsb = math.sqrt(np.dot( diff, diff )) / L2_tsb #diff.size
 
-        error_T = math.sqrt(error_Tin*error_Tin + error_tsb*error_tsb)
+        error_T = 0
+        if select == 0:
+            error_T = math.sqrt(error_Tin*error_Tin)
+        if select == 1:
+            error_T = math.sqrt(error_tsb*error_tsb)
+        if select == 2:
+            error_T = math.sqrt(error_Tin*error_Tin + error_tsb*error_tsb)
         
         if debug:
-            print("error_Tin(%g)" % x, error_Tin, error_tsb, error_T)
+            print("error_Tin(%g)" % x, error_Tin, error_tsb, error_T, select)
 
         tables.append([x[0], error_Tin, error_tsb, error_T])
 
         del df_['ctsb']
         del df_['cTin']
         
-        return error_Tin #error_T
+        return error_T
 
     def myfunc(x, grad):
         if grad.size > 0:
@@ -299,8 +280,8 @@ if __name__ == "__main__":
     if args.debug:
         print("nlopt [ftol fabs xtol xabs]: ", opt.get_ftol_rel(), opt.get_ftol_abs() , opt.get_xtol_rel(), opt.get_xtol_abs() )
     opt.set_lower_bounds(100)
-    opt.set_upper_bounds(4500)
-    x = opt.optimize([4000.])
+    opt.set_upper_bounds(20.e+3)
+    x = opt.optimize([h])
     minf = opt.last_optimum_value()
     print("optimum: x=", x[0], "obj=", minf, "(code = ", opt.last_optimize_result(), ")")
 
@@ -319,20 +300,25 @@ if __name__ == "__main__":
     print( "\n", tabulate.tabulate(tables, headers, tablefmt="simple"), "\n")
 
     # Get solution for optimum
+    df['iTin'] = df.apply(lambda row: heatexchange(4000, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[1], axis=1)
+    df['itsb'] = df.apply(lambda row: heatexchange(4000, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[0], axis=1)
     df['cTin'] = df.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[1], axis=1)
     df['ctsb'] = df.apply(lambda row: heatexchange(x[0], row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP)[0], axis=1)
     ax = plt.gca()
+    df.plot(x='t', y='itsb', ax=ax) #, color='blue')
     df.plot(x='t', y='ctsb', ax=ax) #, color='blue')
     df.plot(x='t', y='tsb', ax=ax) #, color='blue', linestyle='-')
+    df.plot(x='t', y='iTin', ax=ax) #, color='red')
     df.plot(x='t', y='cTin', ax=ax) #, color='red')
     df.plot(x='t', y='Tin', ax=ax) #, color='red', linestyle='--')
+    df.plot(x='t', y='teb', ax=ax) #, color='red', linestyle='--')
     plt.xlabel(r't [s]')
     plt.grid(b=True)
     plt.title(mrun.getInsert().replace("_","\_") + ": h=%g $W/m^2/K$" % x[0])
 
     if args.show:
         plt.show()
-    if args.save:
+    else:
         imagefile = args.input_file.replace(f_extension, "-h.png")
         print("save to %s" % imagefile)
         plt.savefig(imagefile, dpi=300)
@@ -352,7 +338,7 @@ if __name__ == "__main__":
     plt.title(mrun.getInsert().replace("_","\_"))
     if args.show:
         plt.show()
-    if args.save:
+    else:
         imagefile = args.input_file.replace(f_extension, "-Q.png")
         print("save to %s" % imagefile)
         plt.savefig(imagefile, dpi=300)

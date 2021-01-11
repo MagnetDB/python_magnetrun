@@ -1,9 +1,24 @@
+claw1test:
+init flow velocity from IH and IB
+update velocity at each timestep
+add gauges to store T(xi, t)
+finalize test
+what to do to tell Cooling H and Cooling B??
+
+heatexchanger:
+make findh a method
+
 HMagnets:
 download MAGConfiles?
 dowload a given record
 
 python_magnetrun:
 transform column Date and Time from txt files to a real timestamp
+
+magnetdata:
+add method to remove pikes
+add method to smooth data
+method to remove identical columns or at least Icoili de i=2,..,14
 
 test-request:
 
