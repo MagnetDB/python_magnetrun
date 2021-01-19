@@ -37,20 +37,25 @@ _  To view the magnetic field during an experiment:
 
 ```python3 clawtest1.py M9_2019.02.14-23_00_38.txt --npts_per_domain=4437 --duration=3600 --ntimes=360```
 
+- To plot temperature during an experiment and compare with NTU model:
+
+```python3 heatexchanger_primary.py M9_2019.02.14-23_00_38.txt --ohtc=2103.09 --dT=4.93827 [find]```
+
+
 TODO
 ----
 
 -   tdms to pandas see
     <https://nptdms.readthedocs.io/en/stable/apireference.html>
--   check addData formula with help of python pyparsing??
+-   check addData complex formula (involving fresteam for ex) with help of python pyparsing??
+-   how to add columns coming from freesteam, for instance like rho,
+    cp\...??
 -   export Data to prettytables? tabular? cvs2md?
 -   how to pass option to matplotlib within plotData()?\*args PARAMETER
     TO MAKE OPTIONAL ARGUMENTS?
 -   add support for origin files (for B experimental profil) - use
     labplot?? liborigin?? python bindings??
 -   get MagnetRun files from control/monitoring system??
--   how to add columns coming from freesteam, for instance like rho,
-    cp\...??
 -   for MagnetRun add missing fields [U1, Pe1, Tout1, U2 \...\],
     \--missing, \--nhelices - see txt2csv.py
 

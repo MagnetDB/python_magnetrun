@@ -561,10 +561,6 @@ if __name__=="__main__":
     mrun.getMData().addTime()
     start_timestamp = mrun.getMData().getStartDate()
 
-    mrun.getMData().addData("Flow", "Flow = Flow1 + Flow2")
-    mrun.getMData().addData("Tin", "Tin = (Tin1 + Tin2)/2.")
-    mrun.getMData().addData("HP", "HP = (HP1 + HP2)/2.")
-
     # TODO: move to magnetdata
     max_tap=0
     for i in range(1,args.nhelices+1):
@@ -606,7 +602,16 @@ if __name__=="__main__":
     mrun.getMData().addData("PH", "PH = UH * IH")
     mrun.getMData().addData("PB", "PB = UB * IB")
 
+    # use smoothed data instead of raw data
+    smoothedkeys = ['Tin1', 'HP1', 'Flow1', 'Tin2', 'HP2', 'Flow2', 'tsb', 'teb' 'debitbrut', 'PH', 'UH', 'IH', 'PB', 'UB', 'IB'] 
+    for key in smoothedkeys:
+        mrun = datatools.smooth(mrun, key, inplace=True, tau=tau, debug=args.debug, show=False, input_file=args.input_file)
+        
     dkeys = mrun.getKeys()
+
+    mrun.getMData().addData("Flow", "Flow = Flow1 + Flow2")
+    mrun.getMData().addData("Tin", "Tin = (Tin1 + Tin2)/2.")
+    mrun.getMData().addData("HP", "HP = (HP1 + HP2)/2.")
 
     # extract data
     keys = ["t", "teb", "tsb", "debitbrut", "Tout", "Tin", "Tin1", "Tin2", "Flow1", "Flow2", "Flow", "BP", "HP", "HP1", "HP2", "PH", "PB"]

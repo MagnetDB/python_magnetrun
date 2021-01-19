@@ -66,7 +66,7 @@ class MagnetRun:
     MagnetData: pandas dataframe or tdms file
     """
 
-    def __init__(self, site="M9", insert="", data=None):
+    def __init__(self, site="unknown", insert="", data=None):
         """default constructor"""
         self.Site = site
         self.Insert = insert
@@ -77,9 +77,20 @@ class MagnetRun:
             if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
                 start_date=self.MagnetData.getData("Date").iloc[0]
                 start_time=self.MagnetData.getData("Time").iloc[0]
-                print("* Site: %s, Insert: %s" % (self.Site, self.Insert),
-                      "start_time=", start_time, "start_date=", start_date)
+                end_date=self.MagnetData.getData("Date").iloc[-1]
+                end_time = self.MagnetData.getData('Time').iloc[-1]
 
+                tformat="%Y.%m.%d %H:%M:%S"
+                t0 = datetime.datetime.strptime(start_date+" "+start_time, tformat)
+                t1 = datetime.datetime.strptime(end_date+" "+end_time, tformat)
+                dt = (t1-t0)
+                duration = dt / datetime.timedelta(seconds=1)
+
+                print("* Site: %s, Insert: %s" % (self.Site, self.Insert),
+                      "start_date=%s" % start_date,
+                      "start_time=%s" % start_time,
+                      "duration=%g s" % duration)
+                
             if self.MagnetData.Type == 0:
                 if self.Site == "M9":
                     self.MagnetData.addData("IH", "IH = Idcct1 + Idcct2")
@@ -87,6 +98,7 @@ class MagnetRun:
                 elif self.Site in ["M8", "M10"]:
                     self.MagnetData.addData("IH", "IH = Idcct3 + Idcct4")
                     self.MagnetData.addData("IB", "IB = Idcct1 + Idcct2")
+                # what about M1, M5 and M7???
         except:
             print("MagnetRun.__init__: trouble loading data")
             try:
@@ -168,6 +180,22 @@ class MagnetRun:
         """return list of Data keys"""
         return self.MagnetData.Keys
 
+    def getDuration(self):
+        """compute duration of the run in seconds"""
+        duration = None
+        if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
+            start_date=self.MagnetData.getData("Date").iloc[0]
+            start_time=self.MagnetData.getData("Time").iloc[0]
+            end_date=self.MagnetData.getData("Date").iloc[-1]
+            end_time = self.MagnetData.getData('Time').iloc[-1]
+
+            tformat="%Y.%m.%d %H:%M:%S"
+            t0 = datetime.datetime.strptime(start_date+" "+start_time, tformat)
+            t1 = datetime.datetime.strptime(end_date+" "+end_time, tformat)
+            dt = (t1-t0)
+            duration = dt / datetime.timedelta(seconds=1)
+        return duration
+    
     def stats(self):
         """compute stats from the actual run"""
 
