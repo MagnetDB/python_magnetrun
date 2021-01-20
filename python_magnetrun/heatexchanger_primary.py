@@ -206,19 +206,20 @@ def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, PowerH, PowerB, site
         print("Debitc=", Debitc, "Debith=", Debith, "DebitA=", DebitA)
         raise  Exception("Tho not valid")
 
-    dT -= Thi * ( m_hot/(m_hot + m_alim_A1A2 + m_alim_A3A4) -1)
-    dT_alim = ( dT/(m_alim_A1A2/(m_hot + m_alim_A1A2 + m_alim_A3A4)) ) / 2. - Tho
-    P_A1A2 = dT_alim*m_alim_A1A2*Cp_hot
-    P_A3A4 = dT_alim*m_alim_A3A4*Cp_hot
-    if debug:
-        print("heatexchange: ", NTU, Tco, Tho, Q)
-        print("m_alim: ", m_alim_A1A2 + m_alim_A1A2, "m_hot:", m_hot, "%.2f" % ((m_alim_A1A2 + m_alim_A1A2)/m_hot*100), "%")
-        # TODO check with site
-        print("dT_alim:", dT_alim,
-              "P_A1A2[MW]:", P_A1A2/1.e+6, "%.2f" % (P_A1A2/abs(PowerH)*100), "%", 
-              "P_A3A4[MW]:", P_A3A4/1.e+6, "%.2f" % (P_A3A4/abs(PowerB)*100), "%",
-              "PH[MW]", abs(PowerH/1.e+6),
-              "PB[MW]", abs(PowerB/1.e+6))
+    if dT != 0 and _m_alim_A1A2*m_alim_A3A4 != 0:
+        dT -= Thi * ( m_hot/(m_hot + m_alim_A1A2 + m_alim_A3A4) -1)
+        dT_alim = ( dT/(m_alim_A1A2/(m_hot + m_alim_A1A2 + m_alim_A3A4)) ) / 2. - Tho
+        P_A1A2 = dT_alim*m_alim_A1A2*Cp_hot
+        P_A3A4 = dT_alim*m_alim_A3A4*Cp_hot
+        if debug:
+            print("heatexchange: ", NTU, Tco, Tho, Q)
+            print("m_alim: ", m_alim_A1A2 + m_alim_A1A2, "m_hot:", m_hot, "%.2f" % ((m_alim_A1A2 + m_alim_A1A2)/m_hot*100), "%")
+            # TODO check with site
+            print("dT_alim:", dT_alim,
+                  "P_A1A2[MW]:", P_A1A2/1.e+6, "%.2f" % (P_A1A2/abs(PowerH)*100), "%", 
+                  "P_A3A4[MW]:", P_A3A4/1.e+6, "%.2f" % (P_A3A4/abs(PowerB)*100), "%",
+                  "PH[MW]", abs(PowerH/1.e+6),
+                  "PB[MW]", abs(PowerB/1.e+6))
     return (Tco, Tho, Q)
 
 def find(df, unknows: list, dTini, hini, hmin, hmax, algo, lalgo, maxeval, stopval, select=0, site="M9", debit_alim="30", debug=False):
