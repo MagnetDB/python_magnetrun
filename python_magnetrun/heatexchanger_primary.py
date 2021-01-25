@@ -206,7 +206,7 @@ def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, PowerH, PowerB, site
         print("Debitc=", Debitc, "Debith=", Debith, "DebitA=", DebitA)
         raise  Exception("Tho not valid")
 
-    if dT != 0 and _m_alim_A1A2*m_alim_A3A4 != 0:
+    if dT != 0 and m_alim_A1A2*m_alim_A3A4 != 0:
         dT -= Thi * ( m_hot/(m_hot + m_alim_A1A2 + m_alim_A3A4) -1)
         dT_alim = ( dT/(m_alim_A1A2/(m_hot + m_alim_A1A2 + m_alim_A3A4)) ) / 2. - Tho
         P_A1A2 = dT_alim*m_alim_A1A2*Cp_hot
@@ -222,7 +222,11 @@ def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, PowerH, PowerB, site
                   "PB[MW]", abs(PowerB/1.e+6))
     return (Tco, Tho, Q)
 
-def find(df, unknows: list, dTini, hini, hmin, hmax, algo, lalgo, maxeval, stopval, select=0, site="M9", debit_alim="30", debug=False):
+def find(df, 
+         unknows: list, 
+         dTini: float, hini: float, hmin: float, hmax: float, 
+         algo: str, lalgo: str, maxeval: float, stopval: float, select=0, 
+         site="M9", debit_alim="30", debug=False):
     """
     Use nlopt to find h, dT that give the best approximation for Hx output temperature
 
@@ -440,11 +444,11 @@ if __name__ == "__main__":
         print("smoothed options")
         tau = float(args.pre_params)
 
-    thresold = 0.5
+    threshold = 0.5
     twindows = 10
     if args.pre == 'filtered':
         print("filtered options")
-        params = args.pre-params.split(';')
+        params = args.pre_params.split(';')
         threshold = float(params[0])
         twindows = int(params[1])
 
