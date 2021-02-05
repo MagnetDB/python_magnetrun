@@ -1,11 +1,13 @@
 #! /usr/bin/python3
 
 from __future__ import unicode_literals
+from _typeshed import NoneType
 
 import math
 import os
 import sys
 import datetime
+from typing import TextIO
 import python_magnetrun
 
 import numpy as np
@@ -29,10 +31,12 @@ def display_Q(inputfile, f_extension, mrun, debit_alim, ohtc, dT, show=False, ex
     plot Heat profiles
     """
 
+    print("type(mrun.getMData()):", type(mrun.getMData()))
+    print("type(df):", type(df))
     df = mrun.getData()
 
     if ohtc != "None":
-            df['QNTU'] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, args.debit_alim)[2]/1.e+6, axis=1)
+        df['QNTU'] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, args.debit_alim)[2]/1.e+6, axis=1)
     else:
         df['QNTU'] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, args.debit_alim)[2]/1.e+6, axis=1)
 
@@ -64,9 +68,9 @@ def display_T(inputfile, f_extension, mrun, tsb_key, tin_key, debit_alim, ohtc, 
 
     df = mrun.getData()
 
-    if othc != "None":
-        df[tin_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim, debug)[1], axis=1)
-        df[tsb_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim)[0], axis=1)
+    if ohtc != "None":
+        df[tin_key] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim, debug)[1], axis=1)
+        df[tsb_key] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim)[0], axis=1)
     else:
         df[tin_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim, debug)[1], axis=1)
         df[tsb_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim)[0], axis=1)
@@ -90,12 +94,29 @@ def display_T(inputfile, f_extension, mrun, tsb_key, tin_key, debit_alim, ohtc, 
         plt.savefig(imagefile, dpi=300)
     plt.close()
 
+def heatBalance(Tin, Pin, Debit, Power, debug=False):
+    """
+    Computes Tout from heatBalance
+    
+    inputs:
+    Tin: input Temp in K
+    Pin: input Pressure (Bar)
+    Debit: Flow rate in kg/s
+    """
+
+    dT = Power / ( w.getRho(Tin, Pin) * Debit * w.getCp(Tin, Pin) )
+    Tout = Tin + dT
+    return Tout
+
 def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, PowerH, PowerB, site, DebitA, debug=False):
     """
     NTU Model for heat Exchanger
 
     compute the output temperature for the heat exchanger
     as a function of input temperatures and flow rates
+
+    Tci: input Temp on cold side
+    Thi: input Temp on hot side
 
     Debitc: m^3/h
     Debith: l/s
@@ -396,7 +417,7 @@ if __name__ == "__main__":
     parser.add_argument("--ohtc", help="specify heat exchange coefficient (ex. 4000 W/K/m^2 or None)", type=str, default="None")
     parser.add_argument("--dT", help="specify dT for Tout (aka accounting for alim cooling, ex. 0)", type=float, default=0)
     parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", type=str)
-    parser.add_argument("--debit_alim", help="specify flowrate for power cooling (default: 30 m3/h)", type=float, default=30)
+    parser.add_argument("--debit_alim", help="specify flowrate for power cooling - one half only (default: 30 m3/h)", type=float, default=30)
     parser.add_argument("--show", help="display graphs (requires X11 server active)", action='store_true')
     parser.add_argument("--debug", help="activate debug mode", action='store_true')
     # parser.add_argument("--save", help="save graphs to png", action='store_true')
@@ -570,7 +591,7 @@ if __name__ == "__main__":
     # smooth data Locally Weighted Linear Regression (Loess)
     # see: https://xavierbourretsicotte.github.io/loess.html(
     if args.pre == 'smoothed':
-        for key in pretreament_keys:
+        for key in pretreatment_keys:
             mrun = datatools.smooth(mrun, key, inplace=True, tau=tau, debug=args.debug, show=args.show, input_file=args.input_file)
         print("smooth data done")
 

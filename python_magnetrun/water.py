@@ -24,7 +24,7 @@ except:
     print("!!! Using IAWPS instead of freesteam")
     use_freesteam = False
 
-def getRho(pbar, celsius) -> float:
+def getRho(pbar, celsius):
     """
     compute water volumic mass as a function
     of pressure and temperature
@@ -38,7 +38,8 @@ def getRho(pbar, celsius) -> float:
         rho = st.steam_pT(pascal, kelvin).rho
     else:
         mpa = pbar * 1e-1
-        rho = IAPWS97(kelvin, mpa).rho
+        rho = IAPWS97(T=kelvin, P=mpa).rho
+        # rho = state.rho
     # print("rho(%g,%g)=%g" % (pbar,celsius,rho))
     return rho
 
@@ -56,7 +57,8 @@ def getCp(pbar, celsius) -> float:
         cp = st.steam_pT(pascal, kelvin).cp
     else:
         mpa = pbar * 1e-1
-        cp = IAPWS97(kelvin, mpa).cp
+        state = IAPWS97(T=kelvin, P=mpa)
+        cp = state.cp
     # print("cp(%g,%g)=%g" % (pbar,celsius,cp))
     return cp
 
@@ -74,7 +76,8 @@ def getK(pbar, celsius) -> float:
         k = st.steam_pT(pascal, kelvin).k
     else:
         mpa = pbar * 1e-1
-        k = IAPWS97(kelvin, mpa).k
+        state = IAPWS97(T=kelvin, P=mpa)
+        k = state.k
     # print("cp(%g,%g)=%g" % (pbar,celsius,cp))
     return k
 
@@ -91,7 +94,7 @@ def getMu(pbar, celsius) -> float:
         mu = st.steam_pT(pascal, kelvin).mu
     else:
         mpa = pbar * 1e-1
-        mu = IAPWS97(kelvin, mpa).mu
+        mu = IAPWS97(T=kelvin, P=mpa).mu
     # print("cp(%g,%g)=%g" % (pbar,celsius,cp))
     return mu
 
