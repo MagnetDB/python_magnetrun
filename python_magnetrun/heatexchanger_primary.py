@@ -16,8 +16,8 @@ matplotlib.rcParams['text.usetex'] = True
 import matplotlib.pyplot as plt
 
 import pandas as pd
-import freesteam as st
-
+import water.py as w
+    
 import ht
 import tabulate
 import datatools
@@ -31,11 +31,14 @@ def display_Q(inputfile, f_extension, mrun, debit_alim, ohtc, dT, show=False, ex
 
     df = mrun.getData()
 
-    df['QNTU'] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, args.debit_alim)[2]/1.e+6, axis=1)
+    if ohtc != "None":
+            df['QNTU'] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, args.debit_alim)[2]/1.e+6, axis=1)
+    else:
+        df['QNTU'] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, args.debit_alim)[2]/1.e+6, axis=1)
 
-    df["Qhot"] = df.apply(lambda row: ((row.Flow)*1.e-3+0/3600.)*(rho(row.BP, row.Tout)*cp(row.BP, row.Tout)*(row.Tout+0)-rho(row.HP, row.Tin)*cp(row.HP, row.Tin)*row.Tin)/1.e+6, axis=1)
-    df["Qhot1"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.)*(rho(row.BP, row.Tout)*cp(row.BP, row.Tout)*(row.Tout+dT)-rho(row.HP, row.Tin)*cp(row.HP, row.Tin)*row.Tin)/1.e+6, axis=1)
-    df["Qcold"] = df.apply(lambda row: row.debitbrut/3600.*(rho(10, row.tsb)*cp(10, row.tsb)*row.tsb-rho(10, row.teb)*cp(10, row.teb)*row.teb)/1.e+6, axis=1)
+    df["Qhot"] = df.apply(lambda row: ((row.Flow)*1.e-3+0/3600.)*(w.getRho(row.BP, row.Tout)*w.getCp(row.BP, row.Tout)*(row.Tout+0)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.Tin)/1.e+6, axis=1)
+    df["Qhot1"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.)*(w.getRho(row.BP, row.Tout)*w.getCp(row.BP, row.Tout)*(row.Tout+dT)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.Tin)/1.e+6, axis=1)
+    df["Qcold"] = df.apply(lambda row: row.debitbrut/3600.*(w.getRho(10, row.tsb)*w.getCp(10, row.tsb)*row.tsb-w.getRho(10, row.teb)*w.getCp(10, row.teb)*row.teb)/1.e+6, axis=1)
 
     ax = plt.gca()
     df.plot(x='t', y='Qhot', ax=ax, color='red')
@@ -60,8 +63,13 @@ def display_T(inputfile, f_extension, mrun, tsb_key, tin_key, debit_alim, ohtc, 
     """
 
     df = mrun.getData()
-    df[tin_key] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim, debug)[1], axis=1)
-    df[tsb_key] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim)[0], axis=1)
+
+    if othc != "None":
+        df[tin_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim, debug)[1], axis=1)
+        df[tsb_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim)[0], axis=1)
+    else:
+        df[tin_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim, debug)[1], axis=1)
+        df[tsb_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim)[0], axis=1)
 
     ax = plt.gca()
     df.plot(x='t', y=tsb_key, ax=ax, color='blue', marker='o', alpha = .5, markevery=args.markevery)
@@ -82,30 +90,6 @@ def display_T(inputfile, f_extension, mrun, tsb_key, tin_key, debit_alim, ohtc, 
         plt.savefig(imagefile, dpi=300)
     plt.close()
 
-def rho(pbar, celsius):
-    """
-    compute water volumic mass as a function
-    of pressure and temperature
-    """
-
-    pascal = pbar * 1e+5
-    kelvin = celsius+273.
-    rho = st.steam_pT(pascal, kelvin).rho
-    # print("rho(%g,%g)=%g" % (pbar,celsius,rho))
-    return rho
-
-def cp(pbar, celsius):
-    """
-    compute water volumic specific heat as a function
-    of pressure and temperature
-    """
-
-    pascal = pbar * 1e+5
-    kelvin = celsius+273.
-    cp = st.steam_pT(pascal, kelvin).cp
-    # print("cp(%g,%g)=%g" % (pbar,celsius,cp))
-    return cp
-
 def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, PowerH, PowerB, site, DebitA, debug=False):
     """
     NTU Model for heat Exchanger
@@ -113,15 +97,16 @@ def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, PowerH, PowerB, site
     compute the output temperature for the heat exchanger
     as a function of input temperatures and flow rates
 
-    Debitc: m3/h
+    Debitc: m^3/h
     Debith: l/s
-    DebitA: m3/h
+    DebitA: m^3/h
     """
 
-    if h is None:
-        U = 4041 # 4485 # W/m^2/K
-    else:
-        U = float(h)
+    # if h is None:
+    #     U = 4041 # 4485 # W/m^2/K
+    # else:
+    #     U = float(h)
+    U = float(h)
 
     # if debug:
     #     print("heatexchange:",
@@ -131,16 +116,16 @@ def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, PowerH, PowerB, site
     #           "Debitc=", Debitc, "Debith=", Debith, "DebitA=", DebitA)
 
     A = 1063.4 # m^2
-    Cp_cold = cp(Pci, Tci) # J/kg/K
-    Cp_hot = cp(Phi, Thi) # J/kg/K
-    m_hot = rho(Phi, Thi) * Debith * 1.e-3 # kg/s
-    m_cold = rho(Pci, Tci) * Debitc / 3600. # kg/s
+    Cp_cold = w.getCp(Pci, Tci) # J/kg/K
+    Cp_hot = w.getCp(Phi, Thi) # J/kg/K
+    m_hot = w.getRho(Phi, Thi) * Debith * 1.e-3 # kg/s
+    m_cold = w.getRho(Pci, Tci) * Debitc / 3600. # kg/s
 
     # Alim
     DebitA1A2 = DebitA # m³/h  # plutot 40 m³/h
     DebitA3A4 = DebitA # m³/h
-    m_alim_A1A2 = rho(Phi, Thi) * DebitA1A2 / 3600. # Tho plutot?
-    m_alim_A3A4 = rho(Phi, Thi) * DebitA3A4 / 3600. # ..........?
+    m_alim_A1A2 = w.getRho(Phi, Thi) * DebitA1A2 / 3600. # Tho plutot?
+    m_alim_A3A4 = w.getRho(Phi, Thi) * DebitA3A4 / 3600. # ..........?
     # if site == "M9":
     #     # P_A1A2 = ? xx % of PowerH or PowerB depending on site
     #     # P_A3A3 = ? yy % of PowerH or PowerB depending on site
@@ -329,12 +314,12 @@ def find(df,
         L2_tsb = math.sqrt(np.dot( df_['tsb'], df_['tsb'] ))
         error_tsb = math.sqrt(np.dot( diff, diff )) / L2_tsb #diff.size
 
-        df["cQhot"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.)*(rho(row.BP, row.Tout)*cp(row.BP, row.Tout)*(row.Tout+dT)-rho(row.HP, row.cTin)*cp(row.HP, row.cTin)*row.cTin)/1.e+6, axis=1)
-        df["cQcold"] = df.apply(lambda row: row.debitbrut/3600.*(rho(10, row.ctsb)*cp(10, row.ctsb)*row.ctsb-rho(10, row.teb)*cp(10, row.teb)*row.teb)/1.e+6, axis=1)
+        df["cQhot"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.)*(w.getRho(row.BP, row.Tout)*w.getCp(row.BP, row.Tout)*(row.Tout+dT)-w.getRho(row.HP, row.cTin)*w.getCp(row.HP, row.cTin)*row.cTin)/1.e+6, axis=1)
+        df["cQcold"] = df.apply(lambda row: row.debitbrut/3600.*(w.getRho(10, row.ctsb)*w.getCp(10, row.ctsb)*row.ctsb-w.getRho(10, row.teb)*w.getCp(10, row.teb)*row.teb)/1.e+6, axis=1)
         df["cdQ"] = df.apply(lambda row: row.cQhot - row.cQcold, axis=1)
         
-        df["Qhot"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.)*(rho(row.BP, row.Tout)*cp(row.BP, row.Tout)*(row.Tout+dT)-rho(row.HP, row.Tin)*cp(row.HP, row.Tin)*row.cTin)/1.e+6, axis=1)
-        df["Qcold"] = df.apply(lambda row: row.debitbrut/3600.*(rho(10, row.ctsb)*cp(10, row.tsb)*row.tsb-rho(10, row.teb)*cp(10, row.teb)*row.teb)/1.e+6, axis=1)
+        df["Qhot"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.)*(w.getRho(row.BP, row.Tout)*w.getCp(row.BP, row.Tout)*(row.Tout+dT)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.cTin)/1.e+6, axis=1)
+        df["Qcold"] = df.apply(lambda row: row.debitbrut/3600.*(w.getRho(10, row.ctsb)*w.getCp(10, row.tsb)*row.tsb-w.getRho(10, row.teb)*w.getCp(10, row.teb)*row.teb)/1.e+6, axis=1)
         df["dQ"] = df.apply(lambda row: row.Qhot - row.Qcold, axis=1)
 
         diff =  np.abs(df_["Qhot"] - df_['cQhot'])
@@ -408,7 +393,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser("Cooling loop Heat Exchanger")
     parser.add_argument("input_file", help="input txt file (ex. M10_2020.10.04_20-2009_43_31.txt)")
     parser.add_argument("--nhelices", help="specify number of helices", type=int, default=14)
-    parser.add_argument("--ohtc", help="specify heat exchange coefficient (ex. 4000)", type=float, default=4000)
+    parser.add_argument("--ohtc", help="specify heat exchange coefficient (ex. 4000 W/K/m^2 or None)", type=str, default="None")
     parser.add_argument("--dT", help="specify dT for Tout (aka accounting for alim cooling, ex. 0)", type=float, default=0)
     parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", type=str)
     parser.add_argument("--debit_alim", help="specify flowrate for power cooling (default: 30 m3/h)", type=float, default=30)
@@ -494,9 +479,12 @@ if __name__ == "__main__":
     mrun.getMData().addTime()
     start_timestamp = mrun.getMData().getStartDate()
 
-    mrun.getMData().addData("Flow", "Flow = Flow1 + Flow2")
-    mrun.getMData().addData("Tin", "Tin = (Tin1 + Tin2)/2.")
-    mrun.getMData().addData("HP", "HP = (HP1 + HP2)/2.")
+    if not "Flow" in mrun.getKeys():
+        mrun.getMData().addData("Flow", "Flow = Flow1 + Flow2")
+    if not "Tin" in mrun.getKeys():
+        mrun.getMData().addData("Tin", "Tin = (Tin1 + Tin2)/2.")
+    if not "HP" in mrun.getKeys():
+        mrun.getMData().addData("HP", "HP = (HP1 + HP2)/2.")
 
     # extract data
     keys = ["t", "teb", "tsb", "debitbrut", "Tout", "Tin", "Flow", "BP", "HP", "Pmagnet"]
@@ -505,13 +493,6 @@ if __name__ == "__main__":
 
     if args.debug:
         pd.set_option("display.max_rows", None, "display.max_columns", None)
-
-    # filter spikes
-    # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
-    if args.pre == 'filtered':
-        for key in ["debitbrut", "Flow"]:
-            mrun = datatools.filterpikes(mrun, key, inplace=True, threshold=threshold, twindows=twindows, debug=args.debug, show=args.show, input_file=args.input_file)
-        print("Filtered pikes done")
 
     # TODO: move to magnetdata
     max_tap = 0
@@ -546,20 +527,50 @@ if __name__ == "__main__":
                 formula += " + "
             formula += ukey
     # print("UH", formula)
-    mrun.getMData().addData("UH", formula)
+    if not "UH" in mrun.getKeys():
+        mrun.getMData().addData("UH", formula)
 
     formula = "UB = Ucoil15 + Ucoil16"
     # print("UB", formula)
-    mrun.getMData().addData("UB", formula)
+    if not "UB" in mrun.getKeys():
+        mrun.getMData().addData("UB", formula)
 
-    mrun.getMData().addData("PH", "PH = UH * IH")
-    mrun.getMData().addData("PB", "PB = UB * IB")
-    mrun.getMData().addData("Pt", "Pt = (PH + PB)/1.e+6")
+    if not "PH" in mrun.getKeys():
+        mrun.getMData().addData("PH", "PH = UH * IH")
+    if not "PB" in mrun.getKeys():
+        mrun.getMData().addData("PB", "PB = UB * IB")
+    if not "Pt" in mrun.getKeys():
+        mrun.getMData().addData("Pt", "Pt = (PH + PB)/1.e+6")
+
+
+    # Geom specs from HX Datasheet
+    Nc = int((553 - 1)/2.) # (Number of plates -1)/2
+    Ac = 3.e-3 * 1.174 # Plate spacing * Plate width [m^2]
+    de = 2 * 3.e-3 # 2*Plate spacing [m]
+    # coolingparams = [0.207979, 0.640259, 0.397994]
+    coolingparams = [0.07, 0.8, 0.4]
+
+    # Compute OHTC
+    df = mrun.getData()
+    df['MeanU_h'] = df.apply(lambda row: ((row.Flow)*1.e-3+args.debit_alim/3600.) / (Ac * Nc), axis=1)
+    df['MeanU_c'] = df.apply(lambda row: (row.debitbrut/3600.) / ( Ac * Nc), axis=1)
+    df['Ohtc'] = df.apply(lambda row: w.getOHTC(row.MeanU_h, row.MeanU_c, de, row.BP, row.Tout, row.BP, row.teb, coolingparams), axis=1)
+        
+    pretreatment_keys = ["debitbrut", "Flow", "teb", "Tout", "PH", "PB", "Pt"]
+    if "Talim" in mrun.getKeys():
+        pretreatment_keys.append("Talim")
+
+    # filter spikes
+    # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
+    if args.pre == 'filtered':
+        for key in pretreatment_keys:
+            mrun = datatools.filterpikes(mrun, key, inplace=True, threshold=threshold, twindows=twindows, debug=args.debug, show=args.show, input_file=args.input_file)
+        print("Filtered pikes done")
 
     # smooth data Locally Weighted Linear Regression (Loess)
     # see: https://xavierbourretsicotte.github.io/loess.html(
     if args.pre == 'smoothed':
-        for key in ["debitbrut", "Flow", "teb", "Tout", "PH", "PB", "Pt"]:
+        for key in pretreament_keys:
             mrun = datatools.smooth(mrun, key, inplace=True, tau=tau, debug=args.debug, show=args.show, input_file=args.input_file)
         print("smooth data done")
 

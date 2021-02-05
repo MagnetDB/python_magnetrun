@@ -6,7 +6,23 @@ see report from E3 students on gDrive
 https://docs.google.com/document/d/1B1nQD_1XNmJza03_Z_OsNWEXZztIjap9FPjAimKZWpA/edit
 """
 
-import freesteam as st
+use_freesteam = True
+try:
+    import freesteam as st
+except:
+    from iapws import IAPWS97
+    """
+    P: Pressure, [MPa]
+    T: Temperature, [K]
+    cp: Specific isobaric heat capacity, [kJ/kg·K]
+    rho: Density, [kg/m³]
+    mu: Dynamic viscosity, [Pa·s]
+    k: Thermal conductivity, [W/m·K]
+    water=IAPWS97(T=15.2+273.15, P=0.101325)
+    print(water.cp, water.rho, water.mu, water.k)
+    """
+    print("!!! Using IAWPS instead of freesteam")
+    use_freesteam = False
 
 def getRho(pbar, celsius) -> float:
     """
@@ -14,9 +30,15 @@ def getRho(pbar, celsius) -> float:
     of pressure and temperature
     """
 
-    pascal = pbar * 1e+5
+    rho = None
     kelvin = celsius+273.
-    rho = st.steam_pT(pascal, kelvin).rho
+
+    if use_freesteam:
+        pascal = pbar * 1e+5
+        rho = st.steam_pT(pascal, kelvin).rho
+    else:
+        mpa = pbar * 1e-1
+        rho = IAPWS97(kelvin, mpa).rho
     # print("rho(%g,%g)=%g" % (pbar,celsius,rho))
     return rho
 
@@ -26,9 +48,15 @@ def getCp(pbar, celsius) -> float:
     of pressure and temperature
     """
 
-    pascal = pbar * 1e+5
+    cp = None
     kelvin = celsius+273.
-    cp = st.steam_pT(pascal, kelvin).cp
+
+    if use_freesteam:
+        pascal = pbar * 1e+5
+        cp = st.steam_pT(pascal, kelvin).cp
+    else:
+        mpa = pbar * 1e-1
+        cp = IAPWS97(kelvin, mpa).cp
     # print("cp(%g,%g)=%g" % (pbar,celsius,cp))
     return cp
 
@@ -38,9 +66,15 @@ def getK(pbar, celsius) -> float:
     of pressure and temperature
     """
 
-    pascal = pbar * 1e+5
+    k = None
     kelvin = celsius+273.
-    k = st.steam_pT(pascal, kelvin).k
+
+    if use_freesteam:
+        pascal = pbar * 1e+5
+        k = st.steam_pT(pascal, kelvin).k
+    else:
+        mpa = pbar * 1e-1
+        k = IAPWS97(kelvin, mpa).k
     # print("cp(%g,%g)=%g" % (pbar,celsius,cp))
     return k
 
@@ -50,9 +84,14 @@ def getMu(pbar, celsius) -> float:
     of pressure and temperature
     """
 
-    pascal = pbar * 1e+5
+    mu = None
     kelvin = celsius+273.
-    mu = st.steam_pT(pascal, kelvin).mu
+    if use_freesteam:
+        pascal = pbar * 1e+5
+        mu = st.steam_pT(pascal, kelvin).mu
+    else:
+        mpa = pbar * 1e-1
+        mu = IAPWS97(kelvin, mpa).mu
     # print("cp(%g,%g)=%g" % (pbar,celsius,cp))
     return mu
 
