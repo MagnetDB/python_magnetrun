@@ -185,7 +185,8 @@ if __name__ == "__main__":
     Nc = int((553 - 1)/2.) # (Number of plates -1)/2
     Ac = 3.e-3 * 1.174 # Plate spacing * Plate width [m^2]
     de = 2 * 3.e-3 # 2*Plate spacing [m]
-    coolingparams = [0.207979, 0.640259, 0.397994]
+    # coolingparams = [0.207979, 0.640259, 0.397994]
+    coolingparams = [0.07, 0.8, 0.4]
 
     # Compute OHTC
     df = mrun.getData()
