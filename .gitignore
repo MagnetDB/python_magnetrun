@@ -108,3 +108,5 @@ ENV/
 
 # Log files from installation
 txt/
+log*
+_output/

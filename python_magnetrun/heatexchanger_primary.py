@@ -1,7 +1,7 @@
 #! /usr/bin/python3
 
 from __future__ import unicode_literals
-from _typeshed import NoneType
+# from _typeshed import NoneType
 
 import math
 import os
@@ -18,7 +18,7 @@ matplotlib.rcParams['text.usetex'] = True
 import matplotlib.pyplot as plt
 
 import pandas as pd
-import water.py as w
+import water as w
     
 import ht
 import tabulate
@@ -31,49 +31,92 @@ def display_Q(inputfile, f_extension, mrun, debit_alim, ohtc, dT, show=False, ex
     plot Heat profiles
     """
 
-    print("type(mrun.getMData()):", type(mrun.getMData()))
-    print("type(df):", type(df))
     df = mrun.getData()
+    # print("type(mrun.getData()):", type(mrun.getData()))
+    # print("type(df):", type(df), type(df['Tin']))
 
     if ohtc != "None":
-        df['QNTU'] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, args.debit_alim)[2]/1.e+6, axis=1)
+        df['QNTU'] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, args.debit_alim)[2]/1.e+6, axis=1)
     else:
-        df['QNTU'] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, args.debit_alim)[2]/1.e+6, axis=1)
+        df['QNTU'] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, args.debit_alim)[2]/1.e+6, axis=1)
 
     df["Qhot"] = df.apply(lambda row: ((row.Flow)*1.e-3+0/3600.)*(w.getRho(row.BP, row.Tout)*w.getCp(row.BP, row.Tout)*(row.Tout+0)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.Tin)/1.e+6, axis=1)
     df["Qhot1"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.)*(w.getRho(row.BP, row.Tout)*w.getCp(row.BP, row.Tout)*(row.Tout+dT)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.Tin)/1.e+6, axis=1)
     df["Qcold"] = df.apply(lambda row: row.debitbrut/3600.*(w.getRho(10, row.tsb)*w.getCp(10, row.tsb)*row.tsb-w.getRho(10, row.teb)*w.getCp(10, row.teb)*row.teb)/1.e+6, axis=1)
+    # print("df.keys:", df.columns.values.tolist(), "mrun.keys=", mrun.getKeys())
 
+    # heat Balance on Magnet side
     ax = plt.gca()
     df.plot(x='t', y='Qhot', ax=ax, color='red')
-    df.plot(x='t', y='Qhot1', ax=ax, color='blue', marker='o', alpha = .5, markevery=args.markevery)
-    df.plot(x='t', y='Qcold', ax=ax, color='green')
-    df.plot(x='t', y='Pt', ax=ax, color='yellow')
+    df.plot(x='t', y='Pt', ax=ax, color='yellow', marker='o', alpha = .5, markevery=args.markevery)
+    df.plot(x='t', y='Pmagnet', ax=ax, color='yellow')
     plt.ylabel(r'Q[MW]')
     plt.xlabel(r't [s]')
     plt.grid(b=True)
-    plt.title(mrun.getInsert().replace(r"_",r"\_") + ": h=%g $W/m^2/K$, dT=%g" % (ohtc,dT))
+    
+    if ohtc != "None":
+        if isinstance(ohtc, (float, int, str)):
+            plt.title("HeatBalance Magnet side:" 
+            + mrun.getInsert().replace(r"_",r"\_") 
+            + ": h=%g $W/m^2/K$, dT=%g" % (ohtc,dT))
+    else:
+        #if isinstance(ohtc, type(df['Tin'])):
+        plt.title("HeatBalance Magnet side:" 
+            + mrun.getInsert().replace(r"_",r"\_") 
+            + ": h=%s $W/m^2/K$, dT=%g" % ("formula",dT))
+    
     if show:
         plt.show()
     else:
+        extension="-Q_magnetside.png"
         imagefile = inputfile.replace(f_extension, extension)
         print("save to %s" % imagefile)
         plt.savefig(imagefile, dpi=300)
         plt.close()
+        
+    # heat Balance on HX side
+    ax = plt.gca()
+    df.plot(x='t', y='Qhot1', ax=ax, color='red', marker='o', alpha = .5, markevery=args.markevery)
+    df.plot(x='t', y='Qcold', ax=ax, color='blue')
+    plt.ylabel(r'Q[MW]')
+    plt.xlabel(r't [s]')
+    plt.grid(b=True)
+    
+    if ohtc != "None":
+        if isinstance(ohtc, (float, int, str)):
+            plt.title("HeatBalance HX side:" 
+            + mrun.getInsert().replace(r"_",r"\_") 
+            + ": h=%g $W/m^2/K$, dT=%g" % (ohtc,dT))
+    else:
+        #if isinstance(ohtc, type(df['Tin'])):
+        plt.title("HeatBalance HX side:"
+        + mrun.getInsert().replace(r"_",r"\_") 
+        + ": h=%s $W/m^2/K$, dT=%g" % ("formula",dT))
+    
+    if show:
+        plt.show()
+    else:
+        extension="-Q_hxside.png"
+        imagefile = inputfile.replace(f_extension, extension)
+        print("save to %s" % imagefile)
+        plt.savefig(imagefile, dpi=300)
+        plt.close()
+    
 
 def display_T(inputfile, f_extension, mrun, tsb_key, tin_key, debit_alim, ohtc, dT, show=False, extension="-coolingloop.png", debug=False):
     """
     plot Temperature profiles
     """
 
+    print("othc=", ohtc)
     df = mrun.getData()
 
     if ohtc != "None":
-        df[tin_key] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim, debug)[1], axis=1)
-        df[tsb_key] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim)[0], axis=1)
+        df[tin_key] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim, debug)[1], axis=1)
+        df[tsb_key] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim)[0], axis=1)
     else:
-        df[tin_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim, debug)[1], axis=1)
-        df[tsb_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, args.site, debit_alim)[0], axis=1)
+        df[tin_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim, debug)[1], axis=1)
+        df[tsb_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim)[0], axis=1)
 
     ax = plt.gca()
     df.plot(x='t', y=tsb_key, ax=ax, color='blue', marker='o', alpha = .5, markevery=args.markevery)
@@ -84,7 +127,13 @@ def display_T(inputfile, f_extension, mrun, tsb_key, tin_key, debit_alim, ohtc, 
     df.plot(x='t', y='Tout', ax=ax, color='red', linestyle='--')
     plt.xlabel(r't [s]')
     plt.grid(b=True)
-    plt.title(mrun.getInsert().replace(r"_",r"\_") + ": h=%g $W/m^2/K$, dT=%g" % (ohtc,dT))
+
+    if ohtc != "None":
+        if isinstance(ohtc, (float, int, str)):
+            plt.title(mrun.getInsert().replace(r"_",r"\_") + ": h=%g $W/m^2/K$, dT=%g" % (ohtc,dT))
+    else:
+        plt.title(mrun.getInsert().replace(r"_",r"\_") + ": h=%s $W/m^2/K$, dT=%g" % ("computed",dT))
+    
 
     if show:
         plt.show()
@@ -108,7 +157,7 @@ def heatBalance(Tin, Pin, Debit, Power, debug=False):
     Tout = Tin + dT
     return Tout
 
-def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, PowerH, PowerB, site, DebitA, debug=False):
+def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, DebitA, debug=False):
     """
     NTU Model for heat Exchanger
 
@@ -212,6 +261,7 @@ def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, PowerH, PowerB, site
         print("Debitc=", Debitc, "Debith=", Debith, "DebitA=", DebitA)
         raise  Exception("Tho not valid")
 
+    """
     if dT != 0 and m_alim_A1A2*m_alim_A3A4 != 0:
         dT -= Thi * ( m_hot/(m_hot + m_alim_A1A2 + m_alim_A3A4) -1)
         dT_alim = ( dT/(m_alim_A1A2/(m_hot + m_alim_A1A2 + m_alim_A3A4)) ) / 2. - Tho
@@ -226,6 +276,7 @@ def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, PowerH, PowerB, site
                   "P_A3A4[MW]:", P_A3A4/1.e+6, "%.2f" % (P_A3A4/abs(PowerB)*100), "%",
                   "PH[MW]", abs(PowerH/1.e+6),
                   "PB[MW]", abs(PowerB/1.e+6))
+    """   
     return (Tco, Tho, Q)
 
 def find(df, 
@@ -325,12 +376,12 @@ def find(df,
             ohtc = x[1]
             dT = x[0]
 
-        df_['cTin'] = df_.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, site, debit_alim)[1], axis=1)
+        df_['cTin'] = df_.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim)[1], axis=1)
         diff =  np.abs(df_["Tin"] - df_['cTin'])
         L2_Tin = math.sqrt(np.dot( df_['Tin'], df_['Tin'] ))
         error_Tin = math.sqrt(np.dot( diff, diff )) /L2_Tin # diff.size
 
-        df_['ctsb'] = df_.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, row.PH, row.PB, site, debit_alim)[0], axis=1)
+        df_['ctsb'] = df_.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim)[0], axis=1)
         diff =  np.abs(df_["tsb"] - df_['ctsb'])
         L2_tsb = math.sqrt(np.dot( df_['tsb'], df_['tsb'] ))
         error_tsb = math.sqrt(np.dot( diff, diff )) / L2_tsb #diff.size
@@ -493,7 +544,7 @@ if __name__ == "__main__":
     duration = mrun.getDuration()
     if duration <= 10*tau:
         tau = min(duration // 10, 10)
-        print("Modified smoothing param: %g over %g s run", tau, duration)
+        print("Modified smoothing param: %g over %g s run" % (tau, duration) )
         args.markevery = 2 * tau
 
     # print("type(mrun):", type(mrun))
@@ -576,10 +627,23 @@ if __name__ == "__main__":
     df['MeanU_h'] = df.apply(lambda row: ((row.Flow)*1.e-3+args.debit_alim/3600.) / (Ac * Nc), axis=1)
     df['MeanU_c'] = df.apply(lambda row: (row.debitbrut/3600.) / ( Ac * Nc), axis=1)
     df['Ohtc'] = df.apply(lambda row: w.getOHTC(row.MeanU_h, row.MeanU_c, de, row.BP, row.Tout, row.BP, row.teb, coolingparams), axis=1)
-        
+    ax = plt.gca()
+    df.plot(x='t', y='Ohtc', ax=ax, color='red', marker='o', alpha = .5, markevery=args.markevery)
+    plt.xlabel(r't [s]')
+    plt.ylabel(r'$W/m^2/K$')
+    plt.grid(b=True)
+    plt.title(mrun.getInsert().replace(r"_",r"\_") + ": Heat Exchange Coefficient")
+    if args.show:
+        plt.show()
+    else:
+        imagefile = args.input_file.replace(".txt", "-ohtc.png")
+        plt.savefig(imagefile, dpi=300 )
+        print("save to %s" % imagefile)
+        plt.close()
+
     pretreatment_keys = ["debitbrut", "Flow", "teb", "Tout", "PH", "PB", "Pt"]
-    if "Talim" in mrun.getKeys():
-        pretreatment_keys.append("Talim")
+    if "TAlimout" in mrun.getKeys():
+        pretreatment_keys.append("TAlimout")
 
     # filter spikes
     # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
