@@ -26,6 +26,16 @@ import datatools
 
 tables = []
 
+def mixingTemp(Flow1, P1, T1, Flow2, P2, T2):
+    """
+    computes the mixing temperature
+    """
+    Flow = Flow1 + Flow2
+    Tmix =  w.getRho(P1, T1) * w.getCp(P1, T1) * T1 * Flow1
+    Tmix += w.getRho(P2, T2) * w.getCp(P2, T2) * T2 * Flow2
+    Tmix /= w.getRho((P1+P2)/2., T2) * w.getCp((P1+P2)/2., T2) * Flow
+    return Tmix
+
 def display_Q(inputfile, f_extension, mrun, debit_alim, ohtc, dT, show=False, extension="-Q.png"):
     """
     plot Heat profiles
@@ -35,13 +45,18 @@ def display_Q(inputfile, f_extension, mrun, debit_alim, ohtc, dT, show=False, ex
     # print("type(mrun.getData()):", type(mrun.getData()))
     # print("type(df):", type(df), type(df['Tin']))
 
+    df["FlowH"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.), axis=1)
+    df['Thi'] = df.apply(lambda row: mixingTemp(row.Flow*1.e-3, row.BP, row.Tout+dT, 2*debit_alim/3600., row.BP, row.TAlimout), axis=1)
+    
     if ohtc != "None":
-        df['QNTU'] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, args.debit_alim)[2]/1.e+6, axis=1)
+        df['QNTU'] = df.apply(lambda row: heatexchange(ohtc, row.teb, row.Thi, row.debitbrut/3600., row.FlowH, 10, row.BP)[2]/1.e+6, axis=1)
     else:
-        df['QNTU'] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, args.debit_alim)[2]/1.e+6, axis=1)
+        df['QNTU'] = df.apply(lambda row: heatexchange(row.Ohtc, row.teb, row.Thi, row.debitbrut/3600., row.FlowH, 10, row.BP)[2]/1.e+6, axis=1)
 
-    df["Qhot"] = df.apply(lambda row: ((row.Flow)*1.e-3+0/3600.)*(w.getRho(row.BP, row.Tout)*w.getCp(row.BP, row.Tout)*(row.Tout+0)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.Tin)/1.e+6, axis=1)
-    df["Qhot1"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.)*(w.getRho(row.BP, row.Tout)*w.getCp(row.BP, row.Tout)*(row.Tout+dT)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.Tin)/1.e+6, axis=1)
+    df["Qhot"] = df.apply(lambda row: ((row.Flow)*1.e-3+0/3600.)*(w.getRho(row.BP, row.Tout)*w.getCp(row.BP, row.Tout)*(row.Tout)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.Tin)/1.e+6, axis=1)
+    
+
+    df["Qhot1"] = df.apply(lambda row: (row.FlowH)*(w.getRho(row.BP, row.Thi)*w.getCp(row.BP, row.Thi)*(row.Thi)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.Tin)/1.e+6, axis=1)
     df["Qcold"] = df.apply(lambda row: row.debitbrut/3600.*(w.getRho(10, row.tsb)*w.getCp(10, row.tsb)*row.tsb-w.getRho(10, row.teb)*w.getCp(10, row.teb)*row.teb)/1.e+6, axis=1)
     # print("df.keys:", df.columns.values.tolist(), "mrun.keys=", mrun.getKeys())
 
@@ -110,13 +125,16 @@ def display_T(inputfile, f_extension, mrun, tsb_key, tin_key, debit_alim, ohtc, 
 
     print("othc=", ohtc)
     df = mrun.getData()
-
+    
+    df["FlowH"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.), axis=1)
+    df['Thi'] = df.apply(lambda row: mixingTemp(row.Flow*1.e-3, row.BP, row.Tout+dT, 2*debit_alim/3600., row.BP, row.TAlimout), axis=1)
+    
     if ohtc != "None":
-        df[tin_key] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim, debug)[1], axis=1)
-        df[tsb_key] = df.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim)[0], axis=1)
+        df[tin_key] = df.apply(lambda row: heatexchange(ohtc, row.teb, row.Thi, row.debitbrut/3600., row.FlowH, 10, row.BP)[1], axis=1)
+        df[tsb_key] = df.apply(lambda row: heatexchange(ohtc, row.teb, row.Thi, row.debitbrut/3600., row.FlowH, 10, row.BP)[0], axis=1)
     else:
-        df[tin_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim, debug)[1], axis=1)
-        df[tsb_key] = df.apply(lambda row: heatexchange(row.Ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim)[0], axis=1)
+        df[tin_key] = df.apply(lambda row: heatexchange(row.Ohtc, row.teb, row.Thi, row.debitbrut/3600., row.FlowH, 10, row.BP)[1], axis=1)
+        df[tsb_key] = df.apply(lambda row: heatexchange(row.Ohtc, row.teb, row.Thi, row.debitbrut/3600., row.FlowH, 10, row.BP)[0], axis=1)
 
     ax = plt.gca()
     df.plot(x='t', y=tsb_key, ax=ax, color='blue', marker='o', alpha = .5, markevery=args.markevery)
@@ -125,6 +143,7 @@ def display_T(inputfile, f_extension, mrun, tsb_key, tin_key, debit_alim, ohtc, 
     df.plot(x='t', y=tin_key, ax=ax, color='red', marker='o', alpha = .5, markevery=args.markevery)
     df.plot(x='t', y='Tin', ax=ax, color='red')
     df.plot(x='t', y='Tout', ax=ax, color='red', linestyle='--')
+    df.plot(x='t', y='Thi', ax=ax, color='yellow', marker='o', alpha = .5, markevery=args.markevery)
     plt.xlabel(r't [s]')
     plt.grid(b=True)
 
@@ -157,7 +176,7 @@ def heatBalance(Tin, Pin, Debit, Power, debug=False):
     Tout = Tin + dT
     return Tout
 
-def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, DebitA, debug=False):
+def heatexchange(h, Tci, Thi, Debitc, Debith, Pci, Phi, debug=False):
     """
     NTU Model for heat Exchanger
 
@@ -169,14 +188,7 @@ def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, DebitA, debug=False)
 
     Debitc: m^3/h
     Debith: l/s
-    DebitA: m^3/h
     """
-
-    # if h is None:
-    #     U = 4041 # 4485 # W/m^2/K
-    # else:
-    #     U = float(h)
-    U = float(h)
 
     # if debug:
     #     print("heatexchange:",
@@ -188,33 +200,11 @@ def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, DebitA, debug=False)
     A = 1063.4 # m^2
     Cp_cold = w.getCp(Pci, Tci) # J/kg/K
     Cp_hot = w.getCp(Phi, Thi) # J/kg/K
-    m_hot = w.getRho(Phi, Thi) * Debith * 1.e-3 # kg/s
-    m_cold = w.getRho(Pci, Tci) * Debitc / 3600. # kg/s
-
-    # Alim
-    DebitA1A2 = DebitA # m³/h  # plutot 40 m³/h
-    DebitA3A4 = DebitA # m³/h
-    m_alim_A1A2 = w.getRho(Phi, Thi) * DebitA1A2 / 3600. # Tho plutot?
-    m_alim_A3A4 = w.getRho(Phi, Thi) * DebitA3A4 / 3600. # ..........?
-    # if site == "M9":
-    #     # P_A1A2 = ? xx % of PowerH or PowerB depending on site
-    #     # P_A3A3 = ? yy % of PowerH or PowerB depending on site
-    # elif site in ["M8", "M10"]:
-    #     # P_A1A2 = ? xx % of PowerH or PowerB depending on site
-    #     # P_A3A3 = ? yy % of PowerH or PowerB depending on site
-    # dT_A1A2 = P_A1A2/m_alim_A1A2
-    # dT_A3A4 = P_A1A2/m_alim_A1A2
-
-    m_hot += m_alim_A1A2
-    m_hot += m_alim_A3A4
-    # dThi = Thi * m_hot/(m_hot + m_alim_A1A2 + m_alim_A3A4)
-    # dThi += (Tho+dT_A1A2) * m_alim_A1A2/(m_hot + m_alim_A1A2 + m_alim_A3A4)
-    # dThi += (Tho+dT_A3A4) * m_alim_A3A4/(m_hot + m_alim_A1A2 + m_alim_A3A4)
-    # dThi -= Thi
-    Thi += dT # aka dThi
+    m_hot = w.getRho(Phi, Thi) * Debith # kg/s
+    m_cold = w.getRho(Pci, Tci) * Debitc # kg/s
 
     # For plate exchanger
-    result = ht.hx.P_NTU_method(m_hot, m_cold, Cp_hot, Cp_cold, UA=U*A, T1i=Thi, T2i=Tci, subtype='1/1')
+    result = ht.hx.P_NTU_method(m_hot, m_cold, Cp_hot, Cp_cold, UA=h*A, T1i=Thi, T2i=Tci, subtype='1/1')
 
     # returns a dictionnary:
     # Q : Heat exchanged in the heat exchanger, [W]
@@ -235,30 +225,30 @@ def heatexchange(h, dT, Tci, Thi, Debitc, Debith, Pci, Phi, DebitA, debug=False)
     NTU = result["NTU1"]
     if NTU == float('inf') or math.isnan(NTU):
         print("Tci=", Tci, "Thi=", Thi)
-        print("Pci=", Tci, "Phi=", Thi)
-        print("Debitc=", Debitc, "Debith=", Debith, "DebitA=", DebitA)
+        print("Pci=", Pci, "Phi=", Phi)
+        print("Debitc=", Debitc, "Debith=", Debith)
         raise  Exception("NTU not valid")
 
     Q = result["Q"]
     if Q  == float('inf') or math.isnan(Q):
         print("Tci=", Tci, "Thi=", Thi)
-        print("Pci=", Tci, "Phi=", Thi)
-        print("Debitc=", Debitc, "Debith=", Debith, "DebitA=", DebitA)
+        print("Pci=", Pci, "Phi=", Phi)
+        print("Debitc=", Debitc, "Debith=", Debith)
         raise  Exception("Q not valid")
 
     Tco = result["T2o"]
     if Tco  == None:
         print("h=", U)
         print("Tci=", Tci, "Thi=", Thi)
-        print("Pci=", Tci, "Phi=", Thi)
-        print("Debitc=", Debitc, "Debith=", Debith, "DebitA=", DebitA)
+        print("Pci=", Pci, "Phi=", Phi)
+        print("Debitc=", Debitc, "Debith=", Debith)
         raise  Exception("Tco not valid")
     Tho = result["T1o"]
     if Tho  == None:
         print("h=", U)
         print("Tci=", Tci, "Thi=", Thi)
-        print("Pci=", Tci, "Phi=", Thi)
-        print("Debitc=", Debitc, "Debith=", Debith, "DebitA=", DebitA)
+        print("Pci=", Pci, "Phi=", Phi)
+        print("Debitc=", Debitc, "Debith=", Debith)
         raise  Exception("Tho not valid")
 
     """
@@ -376,22 +366,24 @@ def find(df,
             ohtc = x[1]
             dT = x[0]
 
-        df_['cTin'] = df_.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim)[1], axis=1)
+        df['cThi'] = df.apply(lambda row: mixingTemp(row.Flow*1.e-3, row.BP, row.Tout+dT, 2*debit_alim/3600., row.BP, row.TAlimout), axis=1)
+
+        df_['cTin'] = df_.apply(lambda row: heatexchange(ohtc, row.teb, row.cThi, row.debitbrut/3600., row.FlowH, 10, row.BP)[1], axis=1)
         diff =  np.abs(df_["Tin"] - df_['cTin'])
         L2_Tin = math.sqrt(np.dot( df_['Tin'], df_['Tin'] ))
         error_Tin = math.sqrt(np.dot( diff, diff )) /L2_Tin # diff.size
 
-        df_['ctsb'] = df_.apply(lambda row: heatexchange(ohtc, dT, row.teb, row.Tout, row.debitbrut, row.Flow, 10, row.BP, debit_alim)[0], axis=1)
+        df_['ctsb'] = df_.apply(lambda row: heatexchange(ohtc, row.teb, row.cThi, row.debitbrut/3600., row.FlowH, 10, row.BP)[0], axis=1)
         diff =  np.abs(df_["tsb"] - df_['ctsb'])
         L2_tsb = math.sqrt(np.dot( df_['tsb'], df_['tsb'] ))
         error_tsb = math.sqrt(np.dot( diff, diff )) / L2_tsb #diff.size
 
-        df["cQhot"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.)*(w.getRho(row.BP, row.Tout)*w.getCp(row.BP, row.Tout)*(row.Tout+dT)-w.getRho(row.HP, row.cTin)*w.getCp(row.HP, row.cTin)*row.cTin)/1.e+6, axis=1)
+        df["cQhot"] = df.apply(lambda row: (row.FlowH)*(w.getRho(row.BP, row.cThi)*w.getCp(row.BP, row.cThi)*(row.cThi)-w.getRho(row.HP, row.cTin)*w.getCp(row.HP, row.cTin)*row.cTin)/1.e+6, axis=1)
         df["cQcold"] = df.apply(lambda row: row.debitbrut/3600.*(w.getRho(10, row.ctsb)*w.getCp(10, row.ctsb)*row.ctsb-w.getRho(10, row.teb)*w.getCp(10, row.teb)*row.teb)/1.e+6, axis=1)
         df["cdQ"] = df.apply(lambda row: row.cQhot - row.cQcold, axis=1)
         
-        df["Qhot"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*debit_alim)/3600.)*(w.getRho(row.BP, row.Tout)*w.getCp(row.BP, row.Tout)*(row.Tout+dT)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.cTin)/1.e+6, axis=1)
-        df["Qcold"] = df.apply(lambda row: row.debitbrut/3600.*(w.getRho(10, row.ctsb)*w.getCp(10, row.tsb)*row.tsb-w.getRho(10, row.teb)*w.getCp(10, row.teb)*row.teb)/1.e+6, axis=1)
+        df["Qhot"] = df.apply(lambda row: (row.FlowH)*(w.getRho(row.BP, row.Thi)*w.getCp(row.BP, row.Thi)*(row.Thi)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.cTin)/1.e+6, axis=1)
+        df["Qcold"] = df.apply(lambda row: row.debitbrut/3600.*(w.getRho(10, row.tsb)*w.getCp(10, row.tsb)*row.tsb-w.getRho(10, row.teb)*w.getCp(10, row.teb)*row.teb)/1.e+6, axis=1)
         df["dQ"] = df.apply(lambda row: row.Qhot - row.Qcold, axis=1)
 
         diff =  np.abs(df_["Qhot"] - df_['cQhot'])
@@ -545,7 +537,7 @@ if __name__ == "__main__":
     if duration <= 10*tau:
         tau = min(duration // 10, 10)
         print("Modified smoothing param: %g over %g s run" % (tau, duration) )
-        args.markevery = 2 * tau
+        args.markevery = 8 * tau
 
     # print("type(mrun):", type(mrun))
     mrun.getMData().addTime()
@@ -644,6 +636,8 @@ if __name__ == "__main__":
     pretreatment_keys = ["debitbrut", "Flow", "teb", "Tout", "PH", "PB", "Pt"]
     if "TAlimout" in mrun.getKeys():
         pretreatment_keys.append("TAlimout")
+    else:
+        mrun.getMData().addData("TAlimout", "TAlimout = 0")
 
     # filter spikes
     # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
@@ -665,6 +659,12 @@ if __name__ == "__main__":
     if args.command == 'find':
         # Compute Tin, Tsb
         df = mrun.getData()
+        
+        if not "FlowH" in df:
+            df["FlowH"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*args.debit_alim)/3600.), axis=1)
+        if not "Thi" in df:
+            df['Thi'] = df.apply(lambda row: mixingTemp(row.Flow*1.e-3, row.BP, row.Tout, 2*args.debit_alim/3600., row.BP, row.TAlimout), axis=1)
+        
         (opt, status) = find(df, optkeys, args.dT, args.ohtc, 100, 6000, args.algo, args.local, args.maxeval, args.stopval, select=args.error, site=args.site, debit_alim=args.debit_alim, debug=args.debug)
 
         if status < 0:
