@@ -107,4 +107,12 @@ ENV/
 .vscode/
 
 # Log files from installation
-txt/
+log*
+python_magnetrun/_output/
+
+*.png
+python_magnetrun/*.csv
+python_magnetrun/*.txt
+python_magnetrun/data/
+python_magnetrun/txt/
+python_magnetrun/png/

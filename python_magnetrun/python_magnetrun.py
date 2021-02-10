@@ -34,6 +34,7 @@ def list_duplicates_of(seq,item):
     start_at = -1
     locs = []
     sequences = []
+    start_index = -1
     while True:
         try:
             loc = seq.index(item,start_at+1)
@@ -72,8 +73,8 @@ class MagnetRun:
         self.Insert = insert
         self.MagnetData = data
 
+        start_date = None
         try:
-            start_date = None
             if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
                 start_date=self.MagnetData.getData("Date").iloc[0]
                 start_time=self.MagnetData.getData("Time").iloc[0]
@@ -224,12 +225,12 @@ class MagnetRun:
         print(tabulate(tables, headers, tablefmt="simple"), "\n")
         return 0
 
-    def plateaus(self, twindows=6, thresold=1.e-4, bthresold=1.e-3, duration=5, show=False, save=True, debug=False):
+    def plateaus(self, twindows=6, threshold=1.e-4, b_threshold=1.e-3, duration=5, show=False, save=True, debug=False):
         """get plateaus, pics from the actual run"""
 
         # TODO:
         # pass b_thresold as input param
-        b_thresold = 1.e-3
+        # b_threshold = 1.e-3
         
         if debug:
             print("Search for plateaux:", "Type:", self.MagnetData.Type)
@@ -247,7 +248,7 @@ class MagnetRun:
         diff = np.diff(regime) # scale by B_max??
         df_['diff']=pd.Series(diff)
 
-        ndiff = np.where(abs(diff) >= thresold, diff, 0)
+        ndiff = np.where(abs(diff) >= threshold, diff, 0)
         df_['ndiff']=pd.Series(ndiff)
         if debug:
             print("gradient: ", df_)
@@ -314,7 +315,7 @@ class MagnetRun:
         # time_d_min = time_d / datetime.timedelta(minutes=1)
         # time_d_ms  = time_d / datetime.timedelta(milliseconds=1)
         plateaux = regimes_in_source(0)
-        print( "%s plateaus(thresold=%g): %d" % ('Field', thresold, len(plateaux)) )
+        print( "%s plateaus(thresold=%g): %d" % ('Field', threshold, len(plateaux)) )
         tformat="%Y.%m.%d %H:%M:%S"
         actual_plateaux = []
         for p in plateaux:
@@ -336,11 +337,11 @@ class MagnetRun:
             # if (b1-b0)/b1 > b_thresold: reject plateau
             # if abs(b1) < b_thresold and abs(b0) < b_thresold: reject plateau
             if (dt / datetime.timedelta(seconds=1)) >= duration:
-                if abs(b1) >= b_thresold and abs(b0) >= b_thresold:
+                if abs(b1) >= b_threshold and abs(b0) >= b_threshold:
                     actual_plateaux.append([start_time, end_time, dt.total_seconds(), b0, b1])
 
-        print( "%s plateaus(thresold=%g, b_thresold=%g, duration>=%g s): %d over %d" %
-               ('Field', thresold, b_thresold, duration, len(actual_plateaux), len(plateaux)) )
+        print( "%s plateaus(threshold=%g, b_threshold=%g, duration>=%g s): %d over %d" %
+               ('Field', threshold, b_threshold, duration, len(actual_plateaux), len(plateaux)) )
         tables = []
         for p in actual_plateaux:
             b_diff = abs(1. - p[3] / p[4])
@@ -519,9 +520,9 @@ if __name__ == "__main__":
             if len(items) != 2:
                 print("invalid pair of keys: %s" % pair)
                 sys.exit(1)
-                key1= items[0]
-                key2 =items[1]
-                newdf = mrun.getMData().extractData([key1, key2])
+            key1= items[0]
+            key2 =items[1]
+            newdf = mrun.getMData().extractData([key1, key2])
 
             # Remove line with I=0
             newdf = newdf[newdf[key1] != 0]

@@ -34,12 +34,15 @@ class MagnetData:
     @classmethod
     def fromtdms(cls, name):
         """create from a tdms file"""
+        Keys = []
+        Groups = []
+        Data = None
         with open(name, 'r') as f:
             f_extension=os.path.splitext(name)[-1]
             # print("f_extension: % s" % f_extension)
             if f_extension == ".tdms":
                 Data = TdmsFile.open(name, 'r')
-                for group in self.Data.groups():
+                for group in Data.groups():
                     for channel in group.channels():
                         Keys.append(channel.name)
                         Groups[channel.name] = group.name
@@ -217,7 +220,7 @@ class MagnetData:
         if self.Type == 0 :
             for key in keys:
                 if not key in self.Keys:
-                    raise Exception("%s.%s: no %s key" % (self.__class__.__name__, sys._getframe().f_code.co_name, x) )
+                    raise Exception("%s.%s: no %s key" % (self.__class__.__name__, sys._getframe().f_code.co_name, key) )
                 
             newdf = pd.concat([self.Data[key] for key in keys], axis=1)
                 
@@ -228,10 +231,10 @@ class MagnetData:
 
         selected_df = None
         if self.Type == 0 :
-            timerange = args.output_timerange.split(";")
-            print ("Select data from %s to %s" % (timerange[0],timerange[1]) )
+            trange = timerange.split(";")
+            print ("Select data from %s to %s" % (trange[0],trange[1]) )
 
-            selected_df=self.Data[self.Data['Time'].between(timerange[0], timerange[1], inclusive=True)]
+            selected_df=self.Data[self.Data['Time'].between(trange[0], trange[1], inclusive=True)]
         return selected_df
 
     def saveData(self, keys, filename):
