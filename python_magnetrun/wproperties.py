@@ -41,7 +41,6 @@ Prange = np.linspace(float(P0), float(P1), int(nP))
 (x, y) = np.meshgrid(Trange, Prange)
 
 myfunc_vec = np.vectorize(myfunc)
-#def p(x, y): return myfunc_vec(y, x)
 p = lambda x, y: myfunc_vec(x, y) 
 
 fig = plt.figure()
