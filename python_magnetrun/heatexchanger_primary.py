@@ -239,14 +239,14 @@ def heatexchange(h, Tci, Thi, Debitc, Debith, Pci, Phi, debug=False):
 
     Tco = result["T2o"]
     if Tco  == None:
-        print("h=", U)
+        print("h=", h)
         print("Tci=", Tci, "Thi=", Thi)
         print("Pci=", Pci, "Phi=", Phi)
         print("Debitc=", Debitc, "Debith=", Debith)
         raise  Exception("Tco not valid")
     Tho = result["T1o"]
     if Tho  == None:
-        print("h=", U)
+        print("h=", h)
         print("Tci=", Tci, "Thi=", Thi)
         print("Pci=", Pci, "Phi=", Phi)
         print("Debitc=", Debitc, "Debith=", Debith)
