@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams['text.usetex'] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
-import magnetdata
+from . import magnetdata
 
 
 def list_sequence(lst, seq):
@@ -179,7 +179,7 @@ class MagnetRun:
 
     def getKeys(self):
         """return list of Data keys"""
-        return self.MagnetData.Keys
+        return self.MagnetData.Keys()
 
     def getDuration(self):
         """compute duration of the run in seconds"""
