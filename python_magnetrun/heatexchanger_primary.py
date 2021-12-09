@@ -185,6 +185,7 @@ def heatexchange(h, Tci, Thi, Debitc, Debith, Pci, Phi, debug=False):
 
     Tci: input Temp on cold side
     Thi: input Temp on hot side
+    TA: output from cooling alim (on hot side)
 
     Debitc: m^3/h
     Debith: l/s
@@ -238,14 +239,14 @@ def heatexchange(h, Tci, Thi, Debitc, Debith, Pci, Phi, debug=False):
 
     Tco = result["T2o"]
     if Tco  == None:
-        print("h=", U)
+        print("h=", h)
         print("Tci=", Tci, "Thi=", Thi)
         print("Pci=", Pci, "Phi=", Phi)
         print("Debitc=", Debitc, "Debith=", Debith)
         raise  Exception("Tco not valid")
     Tho = result["T1o"]
     if Tho  == None:
-        print("h=", U)
+        print("h=", h)
         print("Tci=", Tci, "Thi=", Thi)
         print("Pci=", Pci, "Phi=", Phi)
         print("Debitc=", Debitc, "Debith=", Debith)
@@ -727,6 +728,10 @@ if __name__ == "__main__":
         mrun.getMData().addData("Tin", "Tin = (Tin1 + Tin2)/2.")
     if not "HP" in mrun.getKeys():
         mrun.getMData().addData("HP", "HP = (HP1 + HP2)/2.")
+    if not "Talim" in mrun.getKeys():
+        # Talim not defined, try to estimate it
+        print("Talim key not present - set Talim=0")
+        mrun.getMData().addData("Talim", "Talim = 0")    
 
     # extract data
     keys = ["t", "teb", "tsb", "debitbrut", "Tout", "Tin", "Flow", "BP", "HP", "Pmagnet"]
@@ -783,6 +788,14 @@ if __name__ == "__main__":
         mrun.getMData().addData("PB", "PB = UB * IB")
     if not "Pt" in mrun.getKeys():
         mrun.getMData().addData("Pt", "Pt = (PH + PB)/1.e+6")
+
+    # estimate dTH: PH / (rho * Cp * Flow1)
+    mrun.getMData().addData("dTh", "dTh = PH / (1000 * 4180 * Flow1*1.e-3)")
+    # estimate dTB: PB / (rho * Cp * Flow2)
+    mrun.getMData().addData("dTb", "dTb = PB / (1000 * 4180 * Flow2*1.e-3)")
+    # estimate Tout: ( (Tin1+dTh)*Flow1 + (Tin2+dTb)*Flow2 ) / (Flow1+Flow2)
+    mrun.getMData().addData(
+        "cTout", "( (Tin1+dTh)*Flow1 + (Tin2+dTb)*Flow2 ) / (Flow1+Flow2)")
 
 
     # Geom specs from HX Datasheet

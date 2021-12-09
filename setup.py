@@ -10,7 +10,7 @@ with open('README.rst') as readme_file:
 with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
-requirements = [ ]
+requirements = [ 'itertools', 'lxml', 'requests', 'tabulate', 'matplotlib', 'pandas', 'numpy', 'ht', 'statsmodel', 'freesteam', 'iapws', 'clawpack' ]
 
 setup_requirements = [ ]
 
@@ -43,7 +43,8 @@ setup(
     include_package_data=True,
     keywords='python_magnetrun',
     name='python_magnetrun',
-    packages=find_packages(include=['python_magnetrun', 'python_magnetrun.*']),
+    # packages=find_packages(include=['python_magnetrun', 'python_magnetrun.*']),
+    packages=find_namespace_packages(exclude=["docs"]),
     setup_requires=setup_requirements,
     test_suite='tests',
     tests_require=test_requirements,
