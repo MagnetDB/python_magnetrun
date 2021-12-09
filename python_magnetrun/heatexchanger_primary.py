@@ -449,6 +449,173 @@ def find(df,
         optval[unknow] = x[i]
     return (optval, status)
 
+def findQ(df, 
+         unknows: list, 
+         Qini: float, qmin: float, qmax: float, 
+         algo: str, lalgo: str, maxeval: float, stopval: float, select=0, 
+         site="M9", debit_alim="30", debug=False):
+    """
+    Use nlopt to find Q that give the best approximation for Hx output temperature
+
+    unknows = list of optim var (eg ["dT"] or ["h", "dT"])
+    returns a dict
+    """
+
+    tables = []
+    headers = ["Q[%]", "e_Tin[]", "e_tsb[]", "e_T[]", "Heat Balance[MW]"]
+
+    import nlopt
+    print("findQ %d params:" %  len(unknows), unknows)
+
+    opt = None
+    if algo == "Direct":
+        opt = nlopt.opt(nlopt.GN_DIRECT, len(unknows))
+    elif algo == "Direct_L":
+        opt = nlopt.opt(nlopt.GN_DIRECT_L, len(unknows))
+    elif algo == "CRS2":
+        opt = nlopt.opt(nlopt.GN_CRS2_LM, len(unknows))
+    elif algo == "MLSL":
+        opt = nlopt.opt(nlopt.G_MLSL, len(unknows))
+
+    # if lalgo == "Nelder-Mead":
+    #     local_opt = nlopt.opt(nlopt.LN_NELDER_MEAD, len(unknows))
+    # elif lalgo == "Cobyla":
+    #     local_opt = nlopt.opt(nlopt.LN_LN_COBYLA, len(unknows))
+    # local_opt.set_maxeval(maxeval)
+    # local_opt.set_ftol_rel(stopval)
+    # if lalgo != "None":
+    #     opt.set_local_optimizer(local_opt)
+
+    opt.set_maxeval(maxeval)
+    opt.set_ftol_rel(stopval)
+    opt.set_ftol_abs(1.e-5)
+    # opt.set_xtol_rel([tol, tol]) if 2 params? or float?
+    # opt.set_xtol_abs([1.e-5, 1.e-5]) if 2 opt params
+    if args.debug:
+        print("nlopt [ftol fabs xtol xabs]: ", opt.get_ftol_rel(), opt.get_ftol_abs() , opt.get_xtol_rel(), opt.get_xtol_abs() )
+    print("nlopt [ftol fabs xtol xabs]: ", opt.get_ftol_rel(), opt.get_ftol_abs() , opt.get_xtol_rel(), opt.get_xtol_abs() )
+
+    # bounds
+    lbounds = []
+    ubounds = []
+    for unknow in unknows:
+      if unknow == "Q":
+          lbounds.append(0.5)
+          ubounds.append(2)
+          
+    opt.set_lower_bounds(lbounds)
+    opt.set_upper_bounds(ubounds)
+    print("bound:", lbounds, ubounds)
+
+    # init_vals
+    init_vals = []
+    for unknow in unknows:
+        if unknow == "Q":
+            init_vals.append(Qini)
+    print("init_vals:", init_vals)
+    
+    # use *f_data to pass extra args: df_, subtype
+    # ex:
+    # fdata = (df_, sbutype)
+    # error_Tin(x, **fdata)
+    # df_ = fdata[0], subtype = fdata[1], debug = fdata[2]
+    # eventually check type with isinstanceof() / type()
+    # question: how to take into account error_tsb also??
+
+    def error_Tin(x, df_=df, unknows: list=unknows, Qini: float=Qini, select: int=select, debug: bool=debug):
+        """compute error between measures and computed data"""
+
+        Q = Qini
+        
+        if len(unknows) == 1:
+            if unknows[0] == "Q":
+                Q = x[0]
+
+        df['cThi'] = df.apply(lambda row: mixingTemp(Q*row.Flow*1.e-3, row.BP, row.Tout, 2*debit_alim/3600., row.BP, row.TAlimout), axis=1)
+
+        # recompute FlowH
+        df["cFlowH"] = df.apply(lambda row: ((Q*row.Flow)*1.e-3+(2*args.debit_alim)/3600.), axis=1)
+        
+        df_['cTin'] = df_.apply(lambda row: heatexchange(row.Ohtc, row.teb, row.cThi, row.debitbrut/3600., row.cFlowH, 10, row.BP)[1], axis=1)
+        diff =  np.abs(df_["Tin"] - df_['cTin'])
+        L2_Tin = math.sqrt(np.dot( df_['Tin'], df_['Tin'] ))
+        error_Tin = math.sqrt(np.dot( diff, diff )) /L2_Tin # diff.size
+
+        df_['ctsb'] = df_.apply(lambda row: heatexchange(row.Ohtc, row.teb, row.cThi, row.debitbrut/3600., row.cFlowH, 10, row.BP)[0], axis=1)
+        diff =  np.abs(df_["tsb"] - df_['ctsb'])
+        L2_tsb = math.sqrt(np.dot( df_['tsb'], df_['tsb'] ))
+        error_tsb = math.sqrt(np.dot( diff, diff )) / L2_tsb #diff.size
+
+        df["cQhot"] = df.apply(lambda row: (row.cFlowH)*(w.getRho(row.BP, row.cThi)*w.getCp(row.BP, row.cThi)*(row.cThi)-w.getRho(row.HP, row.cTin)*w.getCp(row.HP, row.cTin)*row.cTin)/1.e+6, axis=1)
+        df["cQcold"] = df.apply(lambda row: row.debitbrut/3600.*(w.getRho(10, row.ctsb)*w.getCp(10, row.ctsb)*row.ctsb-w.getRho(10, row.teb)*w.getCp(10, row.teb)*row.teb)/1.e+6, axis=1)
+        df["cdQ"] = df.apply(lambda row: row.cQhot - row.cQcold, axis=1)
+        
+        df["Qhot"] = df.apply(lambda row: (row.FlowH)*(w.getRho(row.BP, row.Thi)*w.getCp(row.BP, row.Thi)*(row.Thi)-w.getRho(row.HP, row.Tin)*w.getCp(row.HP, row.Tin)*row.cTin)/1.e+6, axis=1)
+        df["Qcold"] = df.apply(lambda row: row.debitbrut/3600.*(w.getRho(10, row.tsb)*w.getCp(10, row.tsb)*row.tsb-w.getRho(10, row.teb)*w.getCp(10, row.teb)*row.teb)/1.e+6, axis=1)
+        df["dQ"] = df.apply(lambda row: row.Qhot - row.Qcold, axis=1)
+
+        diff =  np.abs(df_["Qhot"] - df_['cQhot'])
+        L2_Qhot = math.sqrt(np.dot( df_['Qhot'], df_['Qhot'] ))
+        error_qhot = math.sqrt(np.dot( diff, diff )) / L2_Qhot
+
+        diff =  np.abs(df_["Qcold"] - df_['cQcold'])
+        L2_Qcold = math.sqrt(np.dot( df_['Qcold'], df_['Qcold'] ))
+        error_qcold = math.sqrt(np.dot( diff, diff )) / L2_Qcold
+
+        error_T = 0
+        if select == 0:
+            error_T = math.sqrt(error_Tin*error_Tin)
+        if select == 1:
+            error_T = math.sqrt(error_tsb*error_tsb)
+        if select == 2:
+            error_T = math.sqrt(error_Tin*error_Tin + error_tsb*error_tsb)
+        if select == 3:
+            error_T = df["cdQ"].mean()
+
+        if debug:
+            print("error_Tin(%s)" % x, error_Tin, error_tsb, error_T, df["cdQ"].mean(), select, ohtc, Q)
+
+        tables.append([Q, error_Tin, error_tsb, error_T, df["cdQ"].mean()])
+
+        del df_['ctsb']
+        del df_['cTin']
+
+        return error_T
+
+    def myfunc(x, grad):
+        if grad.size > 0:
+            grad[0] = 0.0
+        return error_Tin(x)
+
+    opt.set_min_objective(myfunc)
+    x = opt.optimize(init_vals)
+    minf = opt.last_optimum_value()
+    status = opt.last_optimize_result()
+    print("optimum: x=", x, "obj=", minf, "(code = ", status, ")")
+
+    # how to mark line with optimum value in red??
+    # loop over tables, if line correspond to x[0] then change line to red: a = "\033[1;32m%s\033[0m" %a
+    # #Color
+    # R = "\033[0;31;40m" #RED
+    # G = "\033[0;32;40m" # GREEN
+    # Y = "\033[0;33;40m" # Yellow
+    # B = "\033[0;34;40m" # Blue
+    # N = "\033[0m" # Reset
+    if status >= 0:
+        for line in tables:
+            tmp = 0
+            for i, unknow in enumerate(unknows):
+                tmp += int(line[i] == x[i])
+            if tmp == len(unknows):
+                for i,item in enumerate(line):
+                    line[i] = "\033[1;32m%s\033[0m" % item
+        print( "\n", tabulate.tabulate(tables, headers, tablefmt="simple"), "\n")
+
+    optval = {}
+    for i,unknow in enumerate(unknows):
+        optval[unknow] = x[i]
+    return (optval, status)
+
 if __name__ == "__main__":
 
     command_line = None
@@ -475,7 +642,7 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(title="commands", dest="command", help='sub-command help')
 
     # make the following options dependent to find + nlopt
-    parser_nlopt = subparsers.add_parser('find', help='findh help') #, parents=[parser])
+    parser_nlopt = subparsers.add_parser('find', help='findhT help') #, parents=[parser])
     parser_nlopt.add_argument("--error", help="specify error (0 for hot, 1 for cold, 2 for a mix)", type=int, choices=range(0, 2), default=0)
     parser_nlopt.add_argument("--unknows", help="specifiy optim keys (eg h or dTh or dT;h", type=str, default="dT;h")
     parser_nlopt.add_argument("--tol", help="specifiy relative tolerances (eg h or dTh or dT;h", type=str, default="1.e-5;1.e-5")
@@ -486,6 +653,17 @@ if __name__ == "__main__":
     parser_nlopt.add_argument("--maxeval", help="stopping max eval for nlopt", type=int, default=1000)
     #parser_nlopt.set_defaults(func=optim)
 
+    parser_nlopt = subparsers.add_parser('findQ', help='findQ help') #, parents=[parser])
+    parser.add_argument("--Q", help="specify Q factor for Flow (aka cooling magnets, ex. 1)", type=float, default=1)
+    parser_nlopt.add_argument("--error", help="specify error (0 for hot, 1 for cold, 2 for a mix)", type=int, choices=range(0, 2), default=0)
+    parser_nlopt.add_argument("--unknows", help="specifiy optim keys (eg Q", type=str, default="Q")
+    parser_nlopt.add_argument("--tol", help="specifiy relative tolerances (eg h or dTh or dT;h", type=str, default="1.e-5;1.e-5")
+    parser_nlopt.add_argument("--abstol", help="specifiy absolute tolerances (eg h or dTh or dT;h", type=str, default="1.e-5;1.e-5")
+    parser_nlopt.add_argument("--algo", help="specifiy optim algo", type=str, choices=["Direct_L", "Direct", "CRS2", "MLSL"], default="Direct_L")
+    parser_nlopt.add_argument("--local", help="specifiy optim algo", type=str, choices=["None", "Nelder-Mead", "Cobyla"], default="None")
+    parser_nlopt.add_argument("--stopval", help="stopping criteria for nlopt", type=float, default=1.e-2)
+    parser_nlopt.add_argument("--maxeval", help="stopping max eval for nlopt", type=int, default=1000)
+    
     args = parser.parse_args(command_line)
 
     tau = 400
@@ -502,7 +680,7 @@ if __name__ == "__main__":
         twindows = int(params[1])
 
     optkeys = []
-    if args.command == 'find':
+    if args.command == 'find' or args.command == 'findQ':
         print("find options")
         optkeys = args.unknows.split(";") # returns a list
         # check valid keys
@@ -682,5 +860,29 @@ if __name__ == "__main__":
         # Get solution for optimum
         display_T(args.input_file, f_extension, mrun, 'ctsb', 'cTin', args.debit_alim, h, dT, args.show, "-T-find.png")
         display_Q(args.input_file, f_extension, mrun, args.debit_alim, h, dT, args.show, "-Q-find.png")
+
+    if args.command == 'findQ':
+        # Compute Q
+        df = mrun.getData()
+        
+        if not "FlowH" in df:
+            df["FlowH"] = df.apply(lambda row: ((row.Flow)*1.e-3+(2*args.debit_alim)/3600.), axis=1)
+        if not "Thi" in df:
+            df['Thi'] = df.apply(lambda row: mixingTemp(row.Flow*1.e-3, row.BP, row.Tout, 2*args.debit_alim/3600., row.BP, row.TAlimout), axis=1)
+
+        (opt, status) = findQ(df, optkeys, args.Q, 0.5, 2, args.algo, args.local, args.maxeval, args.stopval, select=args.error, site=args.site, debit_alim=args.debit_alim, debug=args.debug)
+
+        if status < 0:
+            print("Optimization %s failed with %d error: ", (args.algo, status) )
+            sys.exit(1)
+            
+        Q = args.Q
+        for key in optkeys:
+            if key == "Q":
+                Q = opt["Q"]
+
+        # Get solution for optimum
+        display_T(args.input_file, f_extension, mrun, 'ctsb', 'cTin', args.debit_alim, args.ohtc, args.dT, args.show, "-T-findQ.png")
+        display_Q(args.input_file, f_extension, mrun, args.debit_alim, args.ohtc, args.dT, args.show, "-Q-findQ.png")
 
         
