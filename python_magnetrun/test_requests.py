@@ -215,7 +215,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", help="specify user")
-    parser.add_argument("--server", help="specify server", default="https://data") #.grenoble.lncmi.local") # "https://147.173.83.216/site/sba/pages")
+    parser.add_argument("--server", help="specify server", default="https://data")
     parser.add_argument("--cert", help="specify server cert", default="lncmi-data.pem")
     parser.add_argument("--save", help="save files", action='store_true')
     parser.add_argument("--debug", help="activate debug mode", action='store_true')

@@ -111,8 +111,8 @@ class MagnetData:
             fo = open("wrongdata.txt", "w", newline='\n')
             fo.write(name)
             fo.close()
-            sys.exit(1)
-            #pass
+            #sys.exit(1)
+            pass
             
         return cls("stringIO", [], Keys, 0, Data)
 
