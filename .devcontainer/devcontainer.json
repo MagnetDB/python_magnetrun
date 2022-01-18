@@ -12,7 +12,7 @@
 	// Use 'settings' to set *default* container specific settings.json values on container create. 
 	// You can edit these settings after create using File > Preferences > Settings > Remote.
 	"settings": { 
-		"terminal.integrated.shell.linux": "/bin/bash"
+		"terminal.integrated.defaultProfile.linux": "bash"
 	},
 
 	// Use 'appPort' to create a container with published ports. If the port isn't working, be sure
@@ -27,7 +27,7 @@
 
 	// Add the IDs of extensions you want installed when the container is created in the array below.
 	"extensions": [
-		"ms-python.python-2020.11.371526539",
-		"joaompinto.asciidoctor-vscode"
+		"ms-python.python",
+		"ms-python.vscode-pylance"
 	]
 }
