@@ -191,7 +191,7 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, missingIDs, cert, debu
                     # Magnets[actual_id].addRecord( timestamp )
                     record = MRecord.MRecord(timestamp, site, link)
                     if not record in MagnetRecords[actual_id]:
-                        # print("actual_id: %s - %s, %s %s" %(actual_id, timestamp, site, link) )
+                        print("actual_id: %s - %s, %s %s" %(actual_id, timestamp, site, link) )
                         MagnetRecords[actual_id].append( record )
 
                 else:

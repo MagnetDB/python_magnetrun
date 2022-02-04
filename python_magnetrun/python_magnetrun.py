@@ -179,7 +179,7 @@ class MagnetRun:
 
     def getKeys(self):
         """return list of Data keys"""
-        return self.MagnetData.Keys()
+        return self.MagnetData.Keys
 
     def getDuration(self):
         """compute duration of the run in seconds"""

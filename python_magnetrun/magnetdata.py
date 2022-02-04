@@ -143,11 +143,13 @@ class MagnetData:
 
     def getKeys(self):
         """return list of Data keys"""
+        print("type: ", type(self.Keys))
         return self.Keys
 
     def cleanupData(self):
         """removes empty columns from Data"""
         if self.Type == 0 :
+            print(f"Clean up Data")
             self.Data = self.Data.loc[:, (self.Data != 0.0).any(axis=0)]
             self.Keys = self.Data.columns.values.tolist()
         return 0
@@ -156,7 +158,9 @@ class MagnetData:
         """remove a column to Data"""
         if self.Type == 0 :
             if key in self.Keys:
+                print(f"Remove {key}")
                 del self.Data[key]
+                self.Keys = self.Data.columns.values.tolist()
         else:
             raise Exception("cannot remove %s: no such key" % key)
         return 0
