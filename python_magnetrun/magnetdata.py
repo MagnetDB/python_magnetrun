@@ -213,6 +213,7 @@ class MagnetData:
 
                 t0 = datetime.datetime.strptime(self.Data['Date'].iloc[0]+" "+self.Data['Time'].iloc[0], tformat)
                 self.Data["t"] = self.Data.apply(lambda row: (datetime.datetime.strptime(row.Date+" "+row.Time, tformat)-t0).total_seconds(), axis=1)
+                self.Data["timestamp"] = self.Data.apply(lambda row: datetime.datetime.strptime(row.Date+" "+row.Time, tformat), axis=1)
                 self.Keys = self.Data.columns.values.tolist()
             else:
                 raise Exception("cannot add t[s] columnn: no Date or Time column")
