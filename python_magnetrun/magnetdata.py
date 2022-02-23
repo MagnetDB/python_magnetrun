@@ -12,6 +12,8 @@ import matplotlib
 matplotlib.rcParams['text.usetex'] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 
+import pint
+
 class MagnetData:
     """
     Magnet Data
@@ -30,6 +32,7 @@ class MagnetData:
         self.Keys = Keys
         self.Type = Type # 0 for Pandas, 1 for Tdms, 2: for Ensight
         self.Data = Data
+        self.units = dict()
 
     @classmethod
     def fromtdms(cls, name):
@@ -140,6 +143,27 @@ class MagnetData:
                     return self.Data[self.Groups[key]]
             else:
                 raise Exception("cannot get data for key %s: no such key" % key)
+
+    def Units(self):
+        """set units and symbols for data"""
+        for key in self.keys:
+            print(key)
+            if key.startwith('I'):
+                self.units[key] = ('I', 'A')
+            elif key.startwith('U'):
+                self.units[key] = ('U', 'V')
+            elif key.startwith('T') or key.startwith('teb') key.startwith('tsb') :
+                self.units[key] = ('T', 'C')
+            elif key == 't' :
+                self.units[key] = ('t', 's')
+            elif key.startwith('Flo') or key.startwith('debit'):
+                self.units[key] = ('Q', 'm3/s')
+            elif key.startwith('Fie'):
+                self.units[key] = ('B', 'T')
+            elif key.startwith('HP') or key.startwith('BP'):
+                self.units[key] = ('P', 'Pa')
+            elif key.startwith('P'):
+                self.units[key] = ('Power', 'W')
 
     def getKeys(self):
         """return list of Data keys"""

@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams['text.usetex'] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
-from . import magnetdata
+from .magnetdata import MagnetData
 
 
 def list_sequence(lst, seq):
@@ -88,18 +88,11 @@ class MagnetRun:
                 duration = dt / datetime.timedelta(seconds=1)
 
                 print("* Site: %s, Insert: %s" % (self.Site, self.Insert),
+                      "MagnetData.Type: %d" % self.MagnetData.Type,
                       "start_date=%s" % start_date,
                       "start_time=%s" % start_time,
                       "duration=%g s" % duration)
                 
-            if self.MagnetData.Type == 0:
-                if self.Site == "M9":
-                    self.MagnetData.addData("IH", "IH = Idcct1 + Idcct2")
-                    self.MagnetData.addData("IB", "IB = Idcct3 + Idcct4")
-                elif self.Site in ["M8", "M10"]:
-                    self.MagnetData.addData("IH", "IH = Idcct3 + Idcct4")
-                    self.MagnetData.addData("IB", "IB = Idcct1 + Idcct2")
-                # what about M1, M5 and M7???
         except:
             print("MagnetRun.__init__: trouble loading data")
             try:
@@ -115,14 +108,23 @@ class MagnetRun:
         """create from a txt file"""
         with open(filename, 'r') as f:
             insert=f.readline().split()[-1]
-            data = magnetdata.MagnetData.fromtxt(filename)
+            data = MagnetData.fromtxt(filename)
+
+            if site == "M9":
+                data.addData("IH", "IH = Idcct1 + Idcct2")
+                data.addData("IB", "IB = Idcct3 + Idcct4")
+            elif site in ["M8", "M10"]:
+                data.addData("IH", "IH = Idcct3 + Idcct4")
+                data.addData("IB", "IB = Idcct1 + Idcct2")
+            # what about M1, M5 and M7???
+
         # print("magnetrun.fromtxt: data=", data)
         return cls(site, insert, data)
 
     @classmethod
     def fromcsv(cls, site, insert, filename):
         """create from a csv file"""
-        data = magnetdata.MagnetData.fromcsv(filename)
+        data = MagnetData.fromcsv(filename)
         return cls(site, insert, data)
 
     @classmethod
@@ -137,7 +139,7 @@ class MagnetRun:
         headers = ioname.readline().split()
         if len(headers) >=2:
             insert = headers[1]
-        data = magnetdata.MagnetData.fromStringIO(name)
+        data = MagnetData.fromStringIO(name)
         # except:
         #      print("cannot read data for %s insert, %s site" % (insert, site) )
         #      fo = open("wrongdata.txt", "w", newline='\n')
