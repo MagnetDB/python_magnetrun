@@ -397,8 +397,7 @@ if __name__ == "__main__":
     # check extension
     f_extension=os.path.splitext(args.input_file)[-1]
     if f_extension != ".txt":
-        print("so far only txt file support is implemented")
-        sys.exit(0)
+        raise RuntimeError("so far only txt file support is implemented")
 
     filename = os.path.basename(args.input_file)
     result = filename.startswith("M")
@@ -452,8 +451,7 @@ if __name__ == "__main__":
             #print("pair=", pair, " type=", type(pair))
             items = pair.split('-')
             if len(items) != 2:
-                print("invalid pair of keys: %s" % pair)
-                sys.exit(1)
+                raise RuntimeError("invalid pair of keys: %s" % pair)
             key1= items[0]
             key2 =items[1]
             if key1 in dkeys and key2 in dkeys:
@@ -469,8 +467,7 @@ if __name__ == "__main__":
 
     if args.output_time:
         if mrun.getType() != 0:
-            print("output_time: feature not implemented for tdms format")
-            sys.exit(0)
+            raise RuntimeError("output_time: feature not implemented for tdms format")
 
         times = args.output_time.split(";")
         print ("Select data at %s " % (times) )
@@ -483,8 +480,7 @@ if __name__ == "__main__":
 
     if args.output_timerange:
         if mrun.getType() != 0:
-            print("output_time: feature not implemented for tdms format")
-            sys.exit(0)
+            raise RuntimError("output_time: feature not implemented for tdms format")
 
         timerange = args.output_timerange.split(";")
 
@@ -496,8 +492,7 @@ if __name__ == "__main__":
 
     if args.output_key:
         if mrun.getType() != 0:
-            print("output_time: feature not implemented for tdms format")
-            sys.exit(0)
+            raise RuntimError("output_time: feature not implemented for tdms format")
 
         keys = args.output_key.split(";")
         keys.insert(0, 'Time')
@@ -513,15 +508,13 @@ if __name__ == "__main__":
 
     if args.extract_pairkeys:
         if mrun.getType():
-            print("output_time: feature not implemented for tdms format")
-            sys.exit(0)
+            raise RuntimError("output_time: feature not implemented for tdms format")
 
         pairs = args.extract_pairkeys.split(';')
         for pair in pairs:
             items = pair.split('-')
             if len(items) != 2:
-                print("invalid pair of keys: %s" % pair)
-                sys.exit(1)
+                raise RuntimeError("invalid pair of keys: %s" % pair)
             key1= items[0]
             key2 =items[1]
             newdf = mrun.getMData().extractData([key1, key2])
