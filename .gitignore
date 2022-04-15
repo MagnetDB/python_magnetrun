@@ -116,3 +116,6 @@ python_magnetrun/*.txt
 python_magnetrun/data/
 python_magnetrun/txt/
 python_magnetrun/png/
+
+M*txt
+M*json
