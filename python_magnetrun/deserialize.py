@@ -7,9 +7,9 @@ Provides tools to un/serialize data from json
 
 import json
 
-from MRecord import *
-from GObject import *
-from HMagnet import *
+from . import MRecord
+from . import GObject
+from . import HMagnet
 
 # From : http://chimera.labs.oreilly.com/books/1230000000393/ch06.html#_discussion_95
 # Dictionary mapping names to known classes

@@ -145,29 +145,42 @@ class MagnetData:
                 raise Exception("cannot get data for key %s: no such key" % key)
 
     def Units(self):
-        """set units and symbols for data"""
+        """
+        set units and symbols for data in record
+        
+        NB: to print unit use '[{:~P}]'.format(self.units[key][1])
+        """
         for key in self.keys:
             print(key)
             if key.startwith('I'):
-                self.units[key] = ('I', 'A')
+                self.units[key] = ('I', ureg.ampere)
             elif key.startwith('U'):
-                self.units[key] = ('U', 'V')
-            elif key.startwith('T') or key.startwith('teb') key.startwith('tsb') :
-                self.units[key] = ('T', 'C')
+                self.units[key] = ('U', ureg.volt)
+            elif key.startwith('T') or key.startwith('teb') or key.startwith('tsb') :
+                self.units[key] = ('T', ureg.degC)
             elif key == 't' :
-                self.units[key] = ('t', 's')
-            elif key.startwith('Flo') or key.startwith('debit'):
-                self.units[key] = ('Q', 'm3/s')
+                self.units[key] = ('t', ureg.second)
+            elif key.startwith('Rpm'):
+                self.units[key] = ('Rpm', 'rpm')
+            elif key.startwith('DR'):
+                self.units[key] = ('%', '')
+            elif key.startwith('Flo'):
+                self.units[key] = ('Q', ureg.liter/ureg.second)
+            elif key.startwith('debit'):
+                self.units[key] = ('Q', ureg.meter**3/ureg.second)
             elif key.startwith('Fie'):
-                self.units[key] = ('B', 'T')
+                self.units[key] = ('B', ureg.tesla)
             elif key.startwith('HP') or key.startwith('BP'):
-                self.units[key] = ('P', 'Pa')
-            elif key.startwith('P'):
-                self.units[key] = ('Power', 'W')
+                self.units[key] = ('P', ureg.bar)
+            elif key == "Pmagnet" or key == "Ptot":
+                self.units[key] = ('Power', ureg.megawatt)
+            elif key == "Q":
+                # TODO define a specific 'var' unit for this field
+                self.units[key] = ('Preac', ureg.megawatt)
 
     def getKeys(self):
         """return list of Data keys"""
-        print("type: ", type(self.Keys))
+        #print("type: ", type(self.Keys))
         return self.Keys
 
     def cleanupData(self):

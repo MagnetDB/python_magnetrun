@@ -133,7 +133,7 @@ def getTable(session, url_data, index, indices, cert, delimiter='//tbody', param
         print( "Data found: ", Mdata, "jid=", Mjid)
     return (Mdata, Mjid)
 
-def getMagnetRecord(session, url_data, magnetID, Magnets, missingIDs, cert, debug=False):
+def getMagnetRecord(session, url_data, magnetID, Magnets, cert, save=False, debug=False):
     """get records for a given magnetID"""
 
     if debug:
@@ -161,6 +161,7 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, missingIDs, cert, debu
 
             data = f.replace(replace_str,'').replace('</a>','') .replace('\'>',': ').split(': ')
             link = data[0].replace(' ','%20')
+            link = re.sub('<a?(.*?)file=', '', link,  flags=re.DOTALL)
             site = link.replace('../../../','')
             site = re.sub('/.*txt','',site)
 
@@ -177,32 +178,34 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, missingIDs, cert, debu
             actual_id = None
             if len(lines_items) == 2:
                 actual_id = lines_items[1]
-
+            # print(f'{magnetID}: actual_id={actual_id}, site={site} link={link}, param={params_downloads}')
+            
             if not actual_id:
-                print("%s: no name defined for Magnet" % link)
+                if debug: print("%s: no name defined for Magnet" % link)
             else:
+                record = MRecord.MRecord(timestamp, site, link)
+                data = record.getData(s, url_downloads, cert, save)
+
                 if actual_id != magnetID:
-                    missingIDs.append(actual_id)
-                    if not actual_id in Magnets.keys():
-                        if debug:
-                            print("Create a new entry: ", actual_id)
-                        Magnets[actual_id] = HMagnet.HMagnet(actual_id, 0, None, "Unknown", 0)
-                        MagnetRecords[actual_id] = []
-                    # Magnets[actual_id].addRecord( timestamp )
-                    record = MRecord.MRecord(timestamp, site, link)
-                    if not record in MagnetRecords[actual_id]:
-                        print("actual_id: %s - %s, %s %s" %(actual_id, timestamp, site, link) )
-                        MagnetRecords[actual_id].append( record )
+                    print(f"record: incoherent data magnetID {magnetID} actual_id: {actual_id} - {timestamp}, {site} {link}" )
+                    # TO change magnetID in txt once downloaded
+                    data = data.replace(actual_id,magnetID)
+                    # overwrite data
+                    if save:
+                        filename = link.replace('../../../','')
+                        filename = filename.replace('/','_').replace('%20','-')
+                        # print("save to %s" % filename)
+                        fo = open(filename, "w", newline='\n')
+                        fo.write(data)
+                        fo.close()
 
-                else:
-                    # Magnets[magnetID].addRecord( timestamp )
-                    if not magnetID in MagnetRecords:
-                        MagnetRecords[magnetID] = []
+                # Magnets[magnetID].addRecord( timestamp )
+                if not magnetID in MagnetRecords:
+                    MagnetRecords[magnetID] = []
 
-                    record = MRecord.MRecord(timestamp, site, link)
-                    if not record in MagnetRecords[magnetID]:
-                        # print("magnetID: %s - %s, %s %s" %(magnetID, timestamp, site, link) )
-                        MagnetRecords[magnetID].append( record )
+                if not record in MagnetRecords[magnetID]:
+                    if debug: print(f"{magnetID}: {timestamp} - {site}, {link}" )
+                    MagnetRecords[magnetID].append( record )
 
 
 if __name__ == "__main__":
@@ -255,7 +258,6 @@ if __name__ == "__main__":
     MagnetRecords = dict()
     MagnetComps = dict()
     Status = dict()
-    missingIDs = []
     Mats = dict()
     debug = args.debug
 
@@ -273,22 +275,12 @@ if __name__ == "__main__":
         (Status, jid) = getTable(s, url_status, 2, [3], args.cert)
 
         for i,magnetID in enumerate(Status): #Mids:
-            getMagnetRecord(s, url_files, magnetID, Magnets, missingIDs, args.cert)
+            getMagnetRecord(s, url_files, magnetID, Magnets, args.cert, args.save)
+            # print(f'getMagnetRecord({magnetID}): {MagnetRecords[magnetID]}')
             Magnets[magnetID].setStatus(Status[magnetID][-1])
             Magnets[magnetID].setIndex(jid[magnetID])
 
-        # check records for each missingID
-        while len(missingIDs) != 0 :
-            check_missingIDs = set(missingIDs)
-            missingIDs.clear()
-            if debug:
-                print("check missingIDs")
-            for magnetID in check_missingIDs:
-                if not magnetID in Status:
-                    Status[magnetID] = "missingref"
-                getMagnetRecord(s, url_files, magnetID, Magnets, missingIDs, args.cert)
-                Magnets[magnetID].setStatus(Status[magnetID][-1])
-
+        Parts = {}
         if debug:
             print("\nMagnets: ")
         for magnet in Magnets:
@@ -311,6 +303,9 @@ if __name__ == "__main__":
                 if debug:
                     print("helices:", helices, "jid:", jid, Magnets[magnet].getIndex() )
 
+            if not magnet in Parts:
+                Parts[magnet]=[]
+            print(f"{magnet}: jid={jid}, index={Magnets[magnet].getIndex()}")
             for data in helices:
                 # print("%s:" % data )
                 for i in range(len(helices[data])-1):
@@ -318,6 +313,7 @@ if __name__ == "__main__":
                     if debug:
                         print("%s:" % materialID )
                     if materialID != '-':
+                        Parts[magnet].append([i,materialID.replace('H','MA')])
                         r = s.post(url_materials, data={ 'REF': materialID, 'compact:': 'on', 'formsubmit': 'OK' }, verify=args.cert)
                         r.raise_for_status()
                         # if debug:
@@ -325,10 +321,12 @@ if __name__ == "__main__":
                         html = lh.fromstring(r.text.encode(r.encoding))
                         conductivity = html.xpath('//input[@name="CONDUCTIVITE"]/@value')[-1]
                         elasticlimit = html.xpath('//input[@name="LE"]/@value')[-1]
+                        nuance = html.xpath('//input[@name="NUANCE"]/@value')[-1]
+                        # print(materialID, nuance)
                         if not materialID in Mats:
                             Mats[materialID] = GObject.GObject(materialID, 0,0,
-                                                               {"sigma0":str(conductivity), "rpe": str(elasticlimit)},
-                                                               "Helix", "Unknown")
+                                                               {"sigma0":str(conductivity), "rpe": str(elasticlimit), "nuance": nuance},
+                                                               "helix", "Unknown")
                         #Magnets[magnet].addGObject(materialID)
                         if not magnet in MagnetComps:
                             MagnetComps[magnet] = []
@@ -350,7 +348,29 @@ if __name__ == "__main__":
                     print("MAGconfile=", Magconf_files, " **" )
                 Magnets[magnet].setMAGfile(Magconf_files)
 
-
+        print("\nMsites")
+        # ???
+        
+        print("\nMagnets:", len(Magnets))
+        PartName = {}
+        for magnet in Magnets:
+            # print(magnet, type(Magnets[magnet]))
+            carac = {'name':magnet.replace('M','M'),'status':Magnets[magnet].status}
+            magconf = Magnets[magnet].MAGfile
+            # print("parts:", Parts[magnet])
+            if magconf:
+                magconffile = magconf[0]
+                carac['config'] = magconffile
+                if Parts[magnet]:
+                    carac['parts'] = []
+                    for part in Parts[magnet]:
+                        pname = part[-1].replace('MA','H')
+                        pid = part[0]
+                        carac['parts'].append(pname)
+                        if not pname in PartName:
+                            PartName[pname] = f"HL-31_H{pid}"
+            print(magnet.replace('M','M'), carac)
+        
         print("\nMaterials")
         print("\nMaterials Found:", len(Mats))
         # Ref ou REF???
@@ -371,55 +391,113 @@ if __name__ == "__main__":
                     print("ref:", ref, type(ref), sigmas[i], elasticlimits[i])
                 Mats[ref] = GObject.GObject(str(ref), 0,0,
                                             {"sigma0":str(sigmas[i]), "rpe":str(elasticlimits[i])},
-                                            "Helix", "Unknown")
+                                            "helix", "Unknown")
 
-        #try:
-        print("=============================")
-        for i in [1, 5, 7, 8 , 9, 10]:
-            print("Loading txt files for M%d site" % i)
-            sitename = "/var/www/html/M%d/" % i
-            sitename = sitename.replace('/','%2F')
-            # print("sitename=", sitename)
+        print("\nMParts")
+        for mat in Mats:
+            # print(mat, type(Mats[mat]))
+            key = mat.replace('MA','H')
+            carac = {'name': mat.replace('MA','H'),
+                     'type': Mats[mat].category,
+                     'material': mat
+                    }
+            if key in PartName:
+                carac['geometry'] = PartName[key]
+            print(key, carac)
             
-            r = s.post(url=url_query, data={ 'dir': sitename  , }, verify=args.cert)
-            # print("r.url=", r.url)
-            r.raise_for_status()
-            # print("r.text=", r.text)
-            tree = lh.fromstring(r.text)
-            # print("tree:", tree)
-            for tr in tree.xpath('//a'):
-                if tr.text_content().endswith(".txt"):
-                    print('tr:', tr.text_content() )
-                    try:
-                        tformat="%Y.%m.%d - %H:%M:%S"
-                        timestamp = datetime.datetime.strptime(tr.text_content().replace('.txt',''), tformat)
-                    except:
-                        tformat="%Y.%m.%d - %H_%M_%S"
-                        timestamp = datetime.datetime.strptime(tr.text_content().replace('.txt',''), tformat)
-                        print("changed tformat: %s" % tr.text_content())
-                        pass
-
-                    link = "../../../M%d/%s" % (i,tr.text_content().replace(' ','%20'))
-
-                    # print("MRecord: ", timestamp, "M%d" % i, link)
-                    record = MRecord.MRecord(timestamp, "M%d" % i, link)
-                    data = record.getData(s, url_downloads, args.cert, save=args.save)
-                    # print("data=", data)
-                    mrun = python_magnetrun.MagnetRun.fromStringIO("M%d"%i, data)
-                    insert = mrun.getInsert()
-                    # print("M%d: insert=%s file=%s" % (i, insert, tr.text_content()) )
-                    if not insert in Magnets:
-                        Magnets[insert] = HMagnet.HMagnet(insert, 0, None, "Unknown", 0)
-                    if not insert in MagnetRecords:
-                        MagnetRecords[insert] = []
-                    if not record in MagnetRecords[insert]:
-                        #print("addRecord: %s, %s, %s" % (insert, "M%d"%i, link) )
-                        MagnetRecords[insert].append( record )
-        print("=============================")
-        # except:
-        #     print( "Failed to perform jqueryFileTree" )
-        #     pass
+        print("\nMaterials")
+        for mat in Mats:
+            carac = {'name':Mats[mat].name,
+                     'description': '',
+                     't_ref': 293,
+                     'volumic_mass': 9e+3,
+                     'specific_heat': 0,
+                     'alpha': 3.6e-3,
+                     'electrical_conductivity': Mats[mat].material['sigma0'],
+                     'thermal_conductivity': 380,
+                     'magnet_permeability': 1,
+                     'young': 117e+9,
+                     'poisson': 0.33,
+                     'expansion_coefficient': 18e-6,
+                     'rpe': Mats[mat].material['rpe']
+                     }
+            if 'nuance' in Mats[mat].material:
+                carac['nuance'] = Mats[mat].material['nuance']
+            print(mat, carac)
                       
+        # #try:
+        # print("=============================")
+        # for i in [1, 5, 7, 8 , 9, 10]:
+        #     print("Loading txt files for M%d site" % i)
+        #     sitename = "/var/www/html/M%d/" % i
+        #     sitename = sitename.replace('/','%2F')
+        #     # print("sitename=", sitename)
+            
+        #     r = s.post(url=url_query, data={ 'dir': sitename  , }, verify=args.cert)
+        #     # print("r.url=", r.url)
+        #     r.raise_for_status()
+        #     # print("r.text=", r.text)
+        #     tree = lh.fromstring(r.text)
+        #     # print("tree:", tree)
+        #     for tr in tree.xpath('//a'):
+        #         if tr.text_content().endswith(".txt") and not tr.text_content().startswith("dmesg"):
+        #             # print('tr:', tr.text_content() )
+        #             try:
+        #                 tformat="%Y.%m.%d - %H:%M:%S"
+        #                 timestamp = datetime.datetime.strptime(tr.text_content().replace('.txt',''), tformat)
+        #             except:
+        #                 tformat="%Y.%m.%d - %H_%M_%S"
+        #                 timestamp = datetime.datetime.strptime(tr.text_content().replace('.txt',''), tformat)
+        #                 print("changed tformat: %s" % tr.text_content())
+        #                 pass
+
+        #             link = "../../../M%d/%s" % (i,tr.text_content().replace(' ','%20'))
+
+        #             # print("MRecord: ", timestamp, "M%d" % i, link)
+        #             record = MRecord.MRecord(timestamp, "M%d" % i, link)
+        #             data = record.getData(s, url_downloads, args.cert, save=args.save)
+        #             # print("data=", data)
+        #             mrun = python_magnetrun.MagnetRun.fromStringIO("M%d"%i, data)
+        #             insert = mrun.getInsert()
+        #             # print("M%d: insert=%s file=%s" % (i, insert, tr.text_content()) )
+        #             if not insert in Magnets:
+        #                 Magnets[insert] = HMagnet.HMagnet(insert, 0, None, "Unknown", 0)
+        #             if not insert in MagnetRecords:
+        #                 MagnetRecords[insert] = []
+        #             if not record in MagnetRecords[insert]:
+        #                 #print("addRecord: %s, %s, %s" % (insert, "M%d"%i, link) )
+        #                 MagnetRecords[insert].append( record )
+        # print("=============================")
+        # # except:
+        # #     print( "Failed to perform jqueryFileTree" )
+        # #     pass
+
+        sites = {}
+        for magnet in Magnets:
+            housing_records={}
+            if magnet in MagnetRecords:
+                housing_records={}
+                for record in MagnetRecords[magnet]:
+                    filename = record.link.replace('../../../','')
+                    filename = filename.replace('/','_').replace('%20','-')
+                    housing = filename.split('_')[0]
+                    if housing in housing_records:
+                        housing_records[housing].append(filename)
+                    else:
+                        housing_records[housing] = [filename]
+
+                sites[ f'{housing}_{magnet}' ] = housing_records[housing]
+
+        print("\nSites:")
+        for site in sites:
+            housing = site.split('_')[0]
+            carac = {'name': site, 'status': 'in_study'}
+            print(site, carac)
+            
+        print("\nRecords:")
+        for site in sites:
+            for file in sites[site]:
+                print(site, {'file':file,'site':site})
 
     print("\nSum up: ")
     print("\nMagnets:")

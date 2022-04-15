@@ -85,5 +85,5 @@ class GObject:
         """
         convert to json
         """
-        import deserialize
+        from . import deserialize
         return json.dumps(self, default=deserialize.serialize_instance, sort_keys=True, indent=4)
