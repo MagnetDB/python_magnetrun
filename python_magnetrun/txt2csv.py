@@ -11,22 +11,12 @@ matplotlib.rcParams['text.usetex'] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 import matplotlib.pyplot as plt
 
-def rho(bar, celsius):
-    """compute rho"""
-    pascal = bar * 1e+5
-    kelvin = celsius+273.
-    return st.steam_pT(pascal, kelvin).rho
-
-def cp(bar, celsius):
-    """compute cp"""
-    pascal = bar * 1e+5
-    kelvin = celsius+273.
-    return st.steam_pT(pascal, kelvin).cp
+from water import getRho, getCp
 
 # Plot Rho*Cp on P,T range
 def rhocp(bar, celsius):
     """compute rho*cp"""
-    return rho(bar, celsius) * cp(bar, celsius)
+    return getRho(bar, celsius) * getCp(bar, celsius)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--input_file", help="input txt file (ex. HL31_2018.04.13.txt)")
