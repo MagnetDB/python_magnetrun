@@ -53,7 +53,7 @@ class MRecord:
         """set Link"""
         self.link = link
 
-    def getData(self, session, url, cert, save=False, debug=False):
+    def getData(self, session, url, save=False, debug=False):
         """download record"""
         from . import test_requests
     
@@ -61,7 +61,7 @@ class MRecord:
             raise Exception("MRecord.download: no session defined")
     
         params = 'file=%s&download=1' % self.link
-        data = test_requests.download(session, url, cert, params, self.link, save, debug)
+        data = test_requests.download(session, url, params, self.link, save, debug)
         return data
 
     def to_json(self):

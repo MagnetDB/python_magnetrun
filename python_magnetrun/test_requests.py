@@ -21,15 +21,12 @@ from . import MRecord
 from . import GObject
 from . import HMagnet
 
-def createSession(url_logging, payload, cert):
+def createSession(url_logging, payload):
     """create a request session"""
-
-    # import ssl
-    # ssl.match_hostname = lambda cert, hostname: hostname == cert['subjectAltName'][0][1]
 
     if debug:
         print( "connect:", url_logging )
-    p = s.post(url=url_logging, data=payload, verify=cert)
+    p = s.post(url=url_logging, data=payload, verify=True)
     # print the html returned or something more intelligent to see if it's a successful login page.
     if debug:
         print( "connect:", p.url, p.status_code )
@@ -40,10 +37,10 @@ def createSession(url_logging, payload, cert):
     p.raise_for_status()
     return p
 
-def download(session, url_data, cert, param, link=None, save=False, debug=False):
+def download(session, url_data, param, link=None, save=False, debug=False):
     """download """
 
-    d = session.get(url=url_data, params=param, verify=cert)
+    d = session.get(url=url_data, params=param, verify=True)
     if debug:
         print("downloads:", d.url, d.status_code)
     if d.status_code != 200:
@@ -64,15 +61,15 @@ def download(session, url_data, cert, param, link=None, save=False, debug=False)
 # for M1:
 # table fileTreeDemo_1, ul, <li  class="file ext_txt">, <a href=.., rel="filename" /a> </li>
 
-def getTable(session, url_data, index, indices, cert, delimiter='//tbody', param=None, debug=False):
+def getTable(session, url_data, index, indices, delimiter='//tbody', param=None, debug=False):
     """get table data from url_data"""
 
     # Perform some webscrapping to get all table data
     # see https://towardsdatascience.com/web-scraping-html-tables-with-python-c9baba21059
     if param is None:
-        page = session.get(url=url_data, verify=cert)
+        page = session.get(url=url_data, verify=True)
     else:
-        page = session.get(url=url_data, params=param, verify=cert)
+        page = session.get(url=url_data, params=param, verify=True)
     if debug:
         print( "connect:", page.url, page.status_code )
     if page.status_code != 200 :
@@ -99,7 +96,7 @@ def getTable(session, url_data, index, indices, cert, delimiter='//tbody', param
     if not tr_elements:
         if debug:
             print("page.text=", page.text, "**")
-        return Mdata
+        return (Mdata, Mjid)
 
     #For each row, store each first element (header) and an empty list
     for i,t in enumerate(tr_elements[0]):
@@ -133,7 +130,7 @@ def getTable(session, url_data, index, indices, cert, delimiter='//tbody', param
         print( "Data found: ", Mdata, "jid=", Mjid)
     return (Mdata, Mjid)
 
-def getMagnetRecord(session, url_data, magnetID, Magnets, cert, save=False, debug=False):
+def getMagnetRecord(session, url_data, magnetID, Magnets, save=False, debug=False):
     """get records for a given magnetID"""
 
     if debug:
@@ -147,7 +144,7 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, cert, save=False, debu
         ('link', ''),
     )
 
-    r = session.get(url=url_data, params=params_links, verify=cert)
+    r = session.get(url=url_data, params=params_links, verify=True)
     if debug:
         print( "data:", r.url, r.status_code, r.encoding )
     if r.status_code != 200:
@@ -170,7 +167,7 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, cert, save=False, debu
 
             # Download a specific file
             params_downloads = 'file=%s&download=1' % link
-            html = download(session, url_downloads, cert, param=params_downloads, link=link)
+            html = download(session, url_downloads, param=params_downloads, link=link)
 
             lines = html.split('\n')[0] # get 1st line
             lines_items = lines.split('\t')
@@ -184,7 +181,7 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, cert, save=False, debu
                 if debug: print("%s: no name defined for Magnet" % link)
             else:
                 record = MRecord.MRecord(timestamp, site, link)
-                data = record.getData(s, url_downloads, cert, save)
+                data = record.getData(s, url_downloads, save)
 
                 if actual_id != magnetID:
                     print(f"record: incoherent data magnetID {magnetID} actual_id: {actual_id} - {timestamp}, {site} {link}" )
@@ -218,8 +215,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", help="specify user")
-    parser.add_argument("--server", help="specify server", default="https://data")
-    parser.add_argument("--cert", help="specify server cert", default="lncmi-data.pem")
+    parser.add_argument("--server", help="specify server", default="https://srv-data-install.lncmi.cnrs.fr/")
     parser.add_argument("--save", help="save files", action='store_true')
     parser.add_argument("--debug", help="activate debug mode", action='store_true')
     args = parser.parse_args()
@@ -229,10 +225,6 @@ if __name__ == "__main__":
     else:
         print( 'Using readline' )
         password = sys.stdin.readline().rstrip()
-
-    if not os.path.isfile(args.cert):
-        print("failed to load server certificat: %s" % args.cert)
-        sys.exit(1)
 
     # print( 'Read: ', password )
 
@@ -263,19 +255,18 @@ if __name__ == "__main__":
 
     # Use 'with' to ensure the session context is closed after use.
     with requests.Session() as s:
-        p = createSession(url_logging, payload, args.cert)
-
+        p = createSession(url_logging, payload)
         # test connection
-        r = s.get(url=url_status, verify=args.cert)
+        r = s.get(url=url_status, verify=True)
         if r.url == url_logging:
             print("check connection failed: Wrong credentials" )
             sys.exit(1)
-
+        
         # Get Magnets from Status page
-        (Status, jid) = getTable(s, url_status, 2, [3], args.cert)
+        (Status, jid) = getTable(s, url_status, 2, [3])
 
         for i,magnetID in enumerate(Status): #Mids:
-            getMagnetRecord(s, url_files, magnetID, Magnets, args.cert, args.save)
+            getMagnetRecord(s, url_files, magnetID, Magnets, args.save)
             # print(f'getMagnetRecord({magnetID}): {MagnetRecords[magnetID]}')
             Magnets[magnetID].setStatus(Status[magnetID][-1])
             Magnets[magnetID].setIndex(jid[magnetID])
@@ -293,7 +284,7 @@ if __name__ == "__main__":
             )
 
             hindices = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,19]
-            res = getTable(s, url_helices, 1, hindices, args.cert, param=params_helix)
+            res = getTable(s, url_helices, 1, hindices, param=params_helix)
             helices = ()
             if res:
                 helices = res[0]
@@ -314,7 +305,7 @@ if __name__ == "__main__":
                         print("%s:" % materialID )
                     if materialID != '-':
                         Parts[magnet].append([i,materialID.replace('H','MA')])
-                        r = s.post(url_materials, data={ 'REF': materialID, 'compact:': 'on', 'formsubmit': 'OK' }, verify=args.cert)
+                        r = s.post(url_materials, data={ 'REF': materialID, 'compact:': 'on', 'formsubmit': 'OK' }, verify=True)
                         r.raise_for_status()
                         # if debug:
                         #     print("post MaterialID: ", r.url, r.status_code)
@@ -374,7 +365,7 @@ if __name__ == "__main__":
         print("\nMaterials")
         print("\nMaterials Found:", len(Mats))
         # Ref ou REF???
-        r = s.post(url_materials, data={ 'compact:': 'on', 'formsubmit': 'OK' }, verify=args.cert)
+        r = s.post(url_materials, data={ 'compact:': 'on', 'formsubmit': 'OK' }, verify=True)
         r.raise_for_status()
         # print("post Material: ", r.url, r.status_code)
         html = lh.fromstring(r.text.encode(r.encoding))
@@ -433,7 +424,7 @@ if __name__ == "__main__":
         #     sitename = sitename.replace('/','%2F')
         #     # print("sitename=", sitename)
             
-        #     r = s.post(url=url_query, data={ 'dir': sitename  , }, verify=args.cert)
+        #     r = s.post(url=url_query, data={ 'dir': sitename  , }, verify=True)
         #     # print("r.url=", r.url)
         #     r.raise_for_status()
         #     # print("r.text=", r.text)
@@ -455,7 +446,7 @@ if __name__ == "__main__":
 
         #             # print("MRecord: ", timestamp, "M%d" % i, link)
         #             record = MRecord.MRecord(timestamp, "M%d" % i, link)
-        #             data = record.getData(s, url_downloads, args.cert, save=args.save)
+        #             data = record.getData(s, url_downloads, save=args.save)
         #             # print("data=", data)
         #             mrun = python_magnetrun.MagnetRun.fromStringIO("M%d"%i, data)
         #             insert = mrun.getInsert()
@@ -525,7 +516,7 @@ if __name__ == "__main__":
             for record in MagnetRecords[magnet]:
                 ax = plt.gca()
 
-                data = record.getData(s, url_downloads, args.cert, save=args.save)
+                data = record.getData(s, url_downloads, save=args.save)
                 try:
                     mrun = python_magnetrun.MagnetRun.fromStringIO(record.getSite(), data)
                     mrun.plateaus(thresold=2.e-3, duration=10, save=args.save)
