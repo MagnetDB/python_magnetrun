@@ -200,7 +200,7 @@ def lagged_correlation(df, target, key, t):
 if __name__ == "__main__":
 
     import argparse
-    import python_magnetrun
+    from . import python_magnetrun
 
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file")
@@ -211,6 +211,7 @@ if __name__ == "__main__":
     # define subparser: filter, smooth, lag_correlation
     subparsers = parser.add_subparsers(title="commands", dest="command", help='sub-command help')
 
+    # parser_plot = subparsers.add_parser('plot', help='plot help')
     parser_filter = subparsers.add_parser('filter', help='filter help')
     parser_smooth = subparsers.add_parser('smooth', help='smooth help')
     parser_lag = subparsers.add_parser('lag', help='lag help')
