@@ -132,9 +132,8 @@ def getTable(session, url_data, index, indices, delimiter='//tbody', param=None,
 
 def getMagnetRecord(session, url_data, magnetID, Magnets, save=False, debug=False):
     """get records for a given magnetID"""
-
-    if debug:
-        print("MagnetID=%s" % magnetID)
+    print(f'getMagnetRecord({magnetID})')
+    
     if not magnetID in Magnets.keys():
         Magnets[magnetID] = HMagnet.HMagnet(magnetID, 0, None, "Unknown", 0)
 
@@ -146,7 +145,7 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, save=False, debug=Fals
 
     r = session.get(url=url_data, params=params_links, verify=True)
     if debug:
-        print( "data:", r.url, r.status_code, r.encoding )
+        print( f"data: url={r.url}, status={r.status_code}, encoding={r.encoding}, text={r.text}")
     if r.status_code != 200:
         print("error %d loading %s" % (p.status_code, url_data) )
         sys.exit(1)
@@ -173,9 +172,10 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, save=False, debug=Fals
             lines_items = lines.split('\t')
 
             actual_id = None
-            if len(lines_items) == 2:
+            if len(lines_items) >= 2:
                 actual_id = lines_items[1]
-            # print(f'{magnetID}: actual_id={actual_id}, site={site} link={link}, param={params_downloads}')
+            if debug:
+                print(f'{magnetID}: actual_id={actual_id}, site={site} link={link}, param={params_downloads}')
             
             if not actual_id:
                 if debug: print("%s: no name defined for Magnet" % link)
@@ -203,6 +203,9 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, save=False, debug=Fals
                 if not record in MagnetRecords[magnetID]:
                     if debug: print(f"{magnetID}: {timestamp} - {site}, {link}" )
                     MagnetRecords[magnetID].append( record )
+        else:
+            if debug:
+                print(f'getMagnetRecords({magnetID}): f={f}')
 
 
 if __name__ == "__main__":
@@ -257,6 +260,7 @@ if __name__ == "__main__":
     with requests.Session() as s:
         p = createSession(url_logging, payload)
         # test connection
+        # print(f'url_status={url_status}')
         r = s.get(url=url_status, verify=True)
         if r.url == url_logging:
             print("check connection failed: Wrong credentials" )
@@ -264,9 +268,11 @@ if __name__ == "__main__":
         
         # Get Magnets from Status page
         (Status, jid) = getTable(s, url_status, 2, [3])
+        if args.debug:
+            print(f'Status: {Status}, jid={jid}')
 
         for i,magnetID in enumerate(Status): #Mids:
-            getMagnetRecord(s, url_files, magnetID, Magnets, args.save)
+            getMagnetRecord(s, url_files, magnetID, Magnets, args.save, args.debug)
             # print(f'getMagnetRecord({magnetID}): {MagnetRecords[magnetID]}')
             Magnets[magnetID].setStatus(Status[magnetID][-1])
             Magnets[magnetID].setIndex(jid[magnetID])
@@ -275,9 +281,9 @@ if __name__ == "__main__":
         if debug:
             print("\nMagnets: ")
         for magnet in Magnets:
-            print("** %s: status=%s" % ( magnet, Magnets[magnet].getStatus() ) )
+            print(f"** {magnet}: status={Magnets[magnet].getStatus()}")
             if debug:
-                print("loading helices for: ", magnet)
+                print(f"loading helices for: {magnet}")
 
             params_helix = (
                 ('ref', magnet),
@@ -292,11 +298,12 @@ if __name__ == "__main__":
                 if Magnets[magnet].getIndex() is None:
                     Magnets[magnet].setIndex(jid[magnet])
                 if debug:
-                    print("helices:", helices, "jid:", jid, Magnets[magnet].getIndex() )
+                    print(f"helices: {helices}, jid: {jid} index: {Magnets[magnet].getIndex()}")
 
             if not magnet in Parts:
                 Parts[magnet]=[]
-            print(f"{magnet}: jid={jid}, index={Magnets[magnet].getIndex()}")
+            if debug:
+                print(f"{magnet}: jid={jid}, index={Magnets[magnet].getIndex()}")
             for data in helices:
                 # print("%s:" % data )
                 for i in range(len(helices[data])-1):
@@ -508,20 +515,25 @@ if __name__ == "__main__":
         ## Broken to json:
         #try:
         if Magnets[magnet].getStatus() == "En service":
-            print("%s: " % magnet)
             if args.save:
                 fo = open(magnet + ".json", "w", newline='\n')
                 fo.write(Magnets[magnet].to_json())
                 fo.close()
             for record in MagnetRecords[magnet]:
-                ax = plt.gca()
-
+                print(f"magnet={magnet}, record={record.getSite()}, link={record.getLink()},url_downloads={url_downloads}")
                 data = record.getData(s, url_downloads, save=args.save)
                 try:
                     mrun = python_magnetrun.MagnetRun.fromStringIO(record.getSite(), data)
-                    mrun.plateaus(thresold=2.e-3, duration=10, save=args.save)
                 except:
-                    print("record: trouble with data from %s" % record.getLink())
+                    print(f"record: trouble with data for {record.getLink()}")
+                    print(f"record={record}")
+                    pass
+
+                try:
+                    # mrun.plateaus(threshold=2.e-3, duration=10, save=args.save, debug=args.debug)
+                    mrun.plateaus(duration=10, save=args.save, debug=args.debug)
+                except:
+                    print(f"record: plateaus detection fails for {record.getLink()}")
                     pass
 
     print("\nMaterials:")
