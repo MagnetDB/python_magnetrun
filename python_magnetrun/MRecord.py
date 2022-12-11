@@ -55,7 +55,7 @@ class MRecord:
 
     def getData(self, session, url, save=False, debug=False):
         """download record"""
-        from . import test_requests
+        from .requests import test_requests
     
         if not session:
             raise Exception("MRecord.download: no session defined")
