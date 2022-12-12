@@ -106,6 +106,7 @@ class MagnetRun:
     @classmethod
     def fromtxt(cls, site, filename):
         """create from a txt file"""
+        print(f'pwd={os.getcwd()}')
         with open(filename, 'r') as f:
             insert=f.readline().split()[-1]
             data = MagnetData.fromtxt(filename)
@@ -132,20 +133,22 @@ class MagnetRun:
         """create from a stringIO"""
         from io import StringIO
 
-        # try:
-        ioname = StringIO(name)
-        # TODO rework: get item 2 otherwise set to unknown
+        data = None
         insert = "Unknown"
-        headers = ioname.readline().split()
-        if len(headers) >=2:
-            insert = headers[1]
-        data = MagnetData.fromStringIO(name)
-        # except:
-        #      print("cannot read data for %s insert, %s site" % (insert, site) )
-        #      fo = open("wrongdata.txt", "w", newline='\n')
-        #      fo.write(ioname)
-        #      fo.close()
-        #      sys.exit(1)
+
+        try:
+            ioname = StringIO(name)
+            # TODO rework: get item 2 otherwise set to unknown
+            headers = ioname.readline().split()
+            if len(headers) >=2:
+                insert = headers[1]
+            data = MagnetData.fromStringIO(name)
+        except:
+             print("cannot read data for %s insert, %s site" % (insert, site) )
+             fo = open("wrongdata.txt", "w", newline='\n')
+             fo.write(ioname)
+             fo.close()
+             sys.exit(1)
         return cls(site, insert, data)
 
     def __repr__(self):
@@ -229,7 +232,8 @@ class MagnetRun:
 
     def plateaus(self, twindows=6, threshold=1.e-4, b_threshold=1.e-3, duration=5, show=False, save=True, debug=False):
         """get plateaus, pics from the actual run"""
-
+        print(f'MagnetRun.plateaus: site={self.Site}, insert={self.Insert}')
+        
         # TODO:
         # pass b_thresold as input param
         # b_threshold = 1.e-3
