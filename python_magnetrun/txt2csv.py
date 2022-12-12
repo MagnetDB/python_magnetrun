@@ -11,15 +11,8 @@ matplotlib.rcParams['text.usetex'] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 import matplotlib.pyplot as plt
 
-from water import getRho, getCp
-
-# Plot Rho*Cp on P,T range
-def rhocp(bar, celsius):
-    """compute rho*cp"""
-    return getRho(bar, celsius) * getCp(bar, celsius)
-
 parser = argparse.ArgumentParser()
-parser.add_argument("--input_file", help="input txt file (ex. HL31_2018.04.13.txt)")
+parser.add_argument("--input_files", help="input txt file (ex. HL31_2018.04.13.txt)", nargs='+', metavar='Current', type=str, default="HL31_2018.04.13.txt")
 parser.add_argument("--plot_vs_time", help="select key(s) to plot (ex. \"Field[;Ucoil1]\")")
 parser.add_argument("--plot_key_vs_key", help="select pair(s) of keys to plot (ex. \"Field-Icoil1")
 parser.add_argument("--output_time", help="output key(s) for time")
@@ -36,15 +29,18 @@ args = parser.parse_args()
 
 sep=str(",")
 skiprows=0
-input_file = args.input_file
-
-if input_file.endswith(".txt"):
-    output_file = input_file.replace(".txt", ".csv")
-    skiprows=1
-    sep='\s+'
+input_files = args.input_files
+print(f'input_files: {input_files}')
 
 # Import Dataset
-df = pd.read_csv(input_file, sep=sep, engine='python', skiprows=skiprows)
+df_f = []
+for f in input_files:
+    if f.endswith(".txt"):
+        skiprows=1
+        sep='\s+'
+    df_f.append(pd.read_csv(f, sep=sep, engine='python', skiprows=skiprows))
+
+df = pd.concat(df_f, axis=0)
 
 # Get Name of columns
 keys = df.columns.values.tolist()
@@ -185,6 +181,7 @@ keys = df.columns.values.tolist()
 # df[['Field', 'Icoil1']] = df[['Field', 'Icoil1']].apply(pd.to_numeric)
 
 if args.plot_vs_time:
+    print("plot_vs_time=", args.plot_vs_time)
     ax = plt.gca()
     # split into keys
     items = args.plot_vs_time.split(';')
@@ -192,7 +189,7 @@ if args.plot_vs_time:
     # loop over key
     for key in items:
         if key in keys:
-            df.plot(x='Time', y=key, ax=ax)
+            df.plot(x='Time', y=key, grid=True, ax=ax)
         else:
             print("unknown key: %s" % key)
             print("valid keys: ", keys)
@@ -200,7 +197,7 @@ if args.plot_vs_time:
     if args.show:
         plt.show()
     else:
-        imagefile = input_file.replace(".txt", "")
+        imagefile = "Fields" # input_file.replace(".txt", "")
         plt.savefig('%s_vs_time.png' % imagefile, dpi=300 )
     plt.close()
 
@@ -209,7 +206,7 @@ if args.plot_key_vs_key:
     print("plot_key_vs_key=", args.plot_key_vs_key)
     pairs = args.plot_key_vs_key.split(';')
     for pair in pairs:
-        print("pair=", pair)
+        print(f"pair={pair}")
         ax = plt.gca()
         #print("pair=", pair, " type=", type(pair))
         items = pair.split('-')
@@ -219,7 +216,7 @@ if args.plot_key_vs_key:
         key1= items[0]
         key2 =items[1]
         if key1 in keys and key2 in keys:
-            df.plot(x=key1, y=key2,kind='scatter',color='red') # on graph per pair
+            df.plot(x=key1, y=key2,kind='scatter',color='red', grid=True, ax=ax) # on graph per pair
         else:
             print("unknown pair of keys: %s" % pair)
             print("valid keys: ", keys)
@@ -227,8 +224,7 @@ if args.plot_key_vs_key:
         if args.show:
             plt.show()
         else:
-            imagefile = input_file.replace(".txt", "")
-            plt.savefig('%s_%s_vs_%s.png' % (imagefile, key1, key2), dpi=300 )
+            plt.savefig('%s_vs_%s.png' % (key1, key2), dpi=300 )
         plt.close()
 
 if args.output_time:
@@ -243,7 +239,7 @@ if args.output_time:
 if args.output_timerange:
     timerange = args.output_timerange.split(";")
     print ("Select data from %s to %s" % (timerange[0],timerange[1]) )
-    file_name = input_file.replace(".txt", "")
+    file_name = "timerange" #input_file.replace(".txt", "")
     file_name = file_name + "_from" + str(timerange[0].replace(":", "-"))
     file_name = file_name + "_to" + str(timerange[1].replace(":", "-")) + ".csv"
 
@@ -275,25 +271,6 @@ if args.extract_pairkeys:
         file_name=str(pair)+".csv"
         newdf.to_csv(file_name, sep=str('\t'), index=False, header=False)
 
-# #rhocp = lambda bar, celsius: st.steam_pT(bar * 1e+5, celsius+273.).rho * st.steam_pT(bar * 1e+5, celsius+273.).cp
-# T = np.arange(min(df['Tin1'].min(),df['Tin2'].min()), df['Tout'].max(), 1)
-# P = np.arange(df['BP'].min(), max(df['HP1'].max(),df['HP2'].max()), 1)
-
-# # for p in P:
-# #     plt.plot(T, [cp(p, x) for x in T], label='%d bar' % p)
-# # plt.legend(loc='best')
-# # plt.xlabel(r'T[C]')
-# # plt.ylabel(r'$C_p[SI]$')
-# # plt.show()
-
-# # for p in P:
-# #     plt.plot(T, [rho(p, x) for x in T], label='%d bar' % p)
-# # plt.legend(loc='best')
-# # plt.xlabel(r'T[C]')
-# # plt.ylabel(r'$\rho[kg/m^3]$')
-# # plt.show()
-
-
 # Save to CSV
-if  args.convert and input_file.endswith(".txt"):
-    df.to_csv(output_file, index=False, header=True, date_format=str)
+if  args.convert:
+    df.to_csv("concatdf.csv", index=False, header=True, date_format=str)
