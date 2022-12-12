@@ -189,6 +189,7 @@ class MagnetData:
             print(f"Clean up Data")
             self.Data = self.Data.loc[:, (self.Data != 0.0).any(axis=0)]
             self.Keys = self.Data.columns.values.tolist()
+        # TODO remove duplicate
         return 0
 
     def removeData(self, key):

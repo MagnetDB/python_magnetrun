@@ -10,7 +10,7 @@ with open('README.rst') as readme_file:
 with open('HISTORY.rst') as history_file:
     history = history_file.read()
 
-requirements = [ 'itertools', 'lxml', 'requests', 'tabulate', 'matplotlib', 'pandas', 'numpy', 'ht', 'statsmodel', 'freesteam', 'iapws', 'clawpack' ]
+requirements = [ 'itertools', 'lxml', 'requests', 'tabulate', 'matplotlib', 'pandas', 'pint', 'numpy', 'ht', 'statsmodel', 'freesteam', 'iapws', 'clawpack' ]
 
 setup_requirements = [ ]
 
