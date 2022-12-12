@@ -12,11 +12,11 @@ import sys
 import os
 import re
 import datetime
+import json
 import requests
 import requests.exceptions
 import lxml.html as lh
 
-# import jsonpickle
 from . import MRecord
 from . import GObject
 from . import HMagnet
@@ -211,10 +211,6 @@ def getMagnetRecord(session, url_data, magnetID, Magnets, save=False, debug=Fals
 if __name__ == "__main__":
     import argparse
     from . import python_magnetrun
-    import matplotlib
-    import matplotlib.pyplot as plt
-    
-    requests.packages.urllib3.disable_warnings()
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", help="specify user")
@@ -359,15 +355,20 @@ if __name__ == "__main__":
             if magconf:
                 magconffile = magconf[0]
                 carac['config'] = magconffile
-                if Parts[magnet]:
-                    carac['parts'] = []
-                    for part in Parts[magnet]:
-                        pname = part[-1].replace('MA','H')
-                        pid = part[0]
-                        carac['parts'].append(pname)
-                        if not pname in PartName:
-                            PartName[pname] = f"HL-31_H{pid}"
-            print(magnet.replace('M','M'), carac)
+            if Parts[magnet]:
+                carac['parts'] = []
+                for part in Parts[magnet]:
+                    pname = part[-1].replace('MA','H')
+                    pid = part[0]
+                    carac['parts'].append(pname)
+                    if not pname in PartName:
+                        PartName[pname] = f"HL-31_H{pid}"
+            mname = magnet.replace('M','M')
+            print(mname, carac)
+            if args.save:
+                fo = open(f'{mname}.json', "w", newline='\n')
+                fo.write(json.dumps(carac, indent=4))
+                fo.close()
         
         print("\nMaterials")
         print("\nMaterials Found:", len(Mats))
@@ -402,7 +403,11 @@ if __name__ == "__main__":
             if key in PartName:
                 carac['geometry'] = PartName[key]
             print(key, carac)
-            
+            if args.save:
+                fo = open(f'{key}.json', "w", newline='\n')
+                fo.write(json.dumps(carac, indent=4))
+                fo.close()
+
         print("\nMaterials")
         for mat in Mats:
             carac = {'name':Mats[mat].name,
@@ -422,54 +427,11 @@ if __name__ == "__main__":
             if 'nuance' in Mats[mat].material:
                 carac['nuance'] = Mats[mat].material['nuance']
             print(mat, carac)
+            if args.save:
+                fo = open(f'{mat}.json', "w", newline='\n')
+                fo.write(json.dumps(carac, indent=4))
+                fo.close()
                       
-        # #try:
-        # print("=============================")
-        # for i in [1, 5, 7, 8 , 9, 10]:
-        #     print("Loading txt files for M%d site" % i)
-        #     sitename = "/var/www/html/M%d/" % i
-        #     sitename = sitename.replace('/','%2F')
-        #     # print("sitename=", sitename)
-            
-        #     r = s.post(url=url_query, data={ 'dir': sitename  , }, verify=True)
-        #     # print("r.url=", r.url)
-        #     r.raise_for_status()
-        #     # print("r.text=", r.text)
-        #     tree = lh.fromstring(r.text)
-        #     # print("tree:", tree)
-        #     for tr in tree.xpath('//a'):
-        #         if tr.text_content().endswith(".txt") and not tr.text_content().startswith("dmesg"):
-        #             # print('tr:', tr.text_content() )
-        #             try:
-        #                 tformat="%Y.%m.%d - %H:%M:%S"
-        #                 timestamp = datetime.datetime.strptime(tr.text_content().replace('.txt',''), tformat)
-        #             except:
-        #                 tformat="%Y.%m.%d - %H_%M_%S"
-        #                 timestamp = datetime.datetime.strptime(tr.text_content().replace('.txt',''), tformat)
-        #                 print("changed tformat: %s" % tr.text_content())
-        #                 pass
-
-        #             link = "../../../M%d/%s" % (i,tr.text_content().replace(' ','%20'))
-
-        #             # print("MRecord: ", timestamp, "M%d" % i, link)
-        #             record = MRecord.MRecord(timestamp, "M%d" % i, link)
-        #             data = record.getData(s, url_downloads, save=args.save)
-        #             # print("data=", data)
-        #             mrun = python_magnetrun.MagnetRun.fromStringIO("M%d"%i, data)
-        #             insert = mrun.getInsert()
-        #             # print("M%d: insert=%s file=%s" % (i, insert, tr.text_content()) )
-        #             if not insert in Magnets:
-        #                 Magnets[insert] = HMagnet.HMagnet(insert, 0, None, "Unknown", 0)
-        #             if not insert in MagnetRecords:
-        #                 MagnetRecords[insert] = []
-        #             if not record in MagnetRecords[insert]:
-        #                 #print("addRecord: %s, %s, %s" % (insert, "M%d"%i, link) )
-        #                 MagnetRecords[insert].append( record )
-        # print("=============================")
-        # # except:
-        # #     print( "Failed to perform jqueryFileTree" )
-        # #     pass
-
         sites = {}
         for magnet in Magnets:
             housing_records={}
@@ -491,11 +453,29 @@ if __name__ == "__main__":
             housing = site.split('_')[0]
             carac = {'name': site, 'status': 'in_study'}
             print(site, carac)
-            
+            if args.save:
+                fo = open(f'{housing}_{site}.json', "w", newline='\n')
+                fo.write(json.dumps(carac, indent=4))
+                fo.close()
+
         print("\nRecords:")
         for site in sites:
-            for file in sites[site]:
-                print(site, {'file':file,'site':site})
+            for i,file in enumerate(sites[site]):
+                # TODO save record
+                carac = {'file':file, 'site':site}
+                print(site, carac)
+                if args.save:
+                    fo = open(f'{site}_record{i}.json', "w", newline='\n')
+                    fo.write(json.dumps(carac, indent=4))
+                    fo.close()
+
+        # print("\nMaterials:")
+        # for mat in Mats:
+        #     print(mat, ":", Mats[mat])
+        #     if args.save:
+        #         fo = open(mat + ".json", "w", newline='\n')
+        #         fo.write(Mats[mat].to_json())
+        #         fo.close()
 
     print("\nSum up: ")
     print("\nMagnets:")
@@ -510,36 +490,22 @@ if __name__ == "__main__":
                                                              len(MagnetRecords[magnet]),
                                                              len(MagnetComps[magnet]) ) )
 
-    print("\nMagnets in Operation:")
+    print("\nMagnets - Basic stats:")
     for magnet in Magnets:
-        ## Broken to json:
-        #try:
-        if Magnets[magnet].getStatus() == "En service":
-            if args.save:
-                fo = open(magnet + ".json", "w", newline='\n')
-                fo.write(Magnets[magnet].to_json())
-                fo.close()
-            for record in MagnetRecords[magnet]:
-                print(f"magnet={magnet}, record={record.getSite()}, link={record.getLink()},url_downloads={url_downloads}")
-                data = record.getData(s, url_downloads, save=args.save)
-                try:
-                    mrun = python_magnetrun.MagnetRun.fromStringIO(record.getSite(), data)
-                except:
-                    print(f"record: trouble with data for {record.getLink()}")
-                    print(f"record={record}")
-                    pass
+        for record in MagnetRecords[magnet]:
+            print(f"magnet={magnet}, record={record.getSite()}, link={record.getLink()},url_downloads={url_downloads}")
+            data = record.getData(s, url_downloads, save=args.save)
+            try:
+                mrun = python_magnetrun.MagnetRun.fromStringIO(record.getSite(), data)
+            except:
+                print(f"record: trouble with data for {record.getLink()}")
+                print(f"record={record}")
+                pass
 
-                try:
-                    # mrun.plateaus(threshold=2.e-3, duration=10, save=args.save, debug=args.debug)
-                    mrun.plateaus(duration=10, save=args.save, debug=args.debug)
-                except:
-                    print(f"record: plateaus detection fails for {record.getLink()}")
-                    pass
+            try:
+                # mrun.plateaus(threshold=2.e-3, duration=10, save=args.save, debug=args.debug)
+                mrun.plateaus(duration=10, show=False, save=False, debug=args.debug)
+            except:
+                print(f"record: plateaus detection fails for {record.getLink()}")
+                pass
 
-    print("\nMaterials:")
-    for mat in Mats:
-        print(mat, ":", Mats[mat])
-        if args.save:
-            fo = open(mat + ".json", "w", newline='\n')
-            fo.write(Mats[mat].to_json())
-            fo.close()
