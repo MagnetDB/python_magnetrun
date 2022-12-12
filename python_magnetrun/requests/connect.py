@@ -24,8 +24,6 @@ from .. import HMagnet
 def createSession(s, url_logging, payload, debug=False):
     """create a request session"""
 
-    if debug:
-        print( "connect:", url_logging )
     p = s.post(url=url_logging, data=payload, verify=True)
     # print the html returned or something more intelligent to see if it's a successful login page.
     if debug:

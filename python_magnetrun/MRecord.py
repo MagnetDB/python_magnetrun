@@ -4,6 +4,7 @@
 """Magnet Record Object"""
 
 import json
+import datetime
 
 class MRecord:
     """
@@ -12,7 +13,7 @@ class MRecord:
     link
     """
 
-    def __init__(self, timestamp, site: str, link: str):
+    def __init__(self, timestamp: datetime.datetime, site: str, link: str):
         """default constructor"""
         self.timestamp = timestamp
         self.site = site
