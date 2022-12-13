@@ -45,7 +45,7 @@ def stats(Data: MagnetData):
 
 def plateaus(Data: MagnetData, twindows=6, threshold=1.e-4, b_threshold=1.e-3, duration=5, show=False, save=True, debug=False):
     """get plateaus, pics from the actual run"""
-    print(f'plateaus: show={show}, save={save}, debug={debug}')
+    #print(f'plateaus: show={show}, save={save}, debug={debug}')
 
     if show or save:
         ax = plt.gca()

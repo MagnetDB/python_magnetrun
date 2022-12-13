@@ -18,7 +18,7 @@ from .magnetdata import MagnetData
 def prepareData(data: MagnetData, housing: str):
     # cleanup data: remove empty columns aka columns with 0
     data.cleanupData()
-    print(f'prepareData cleanup done: {data.getKeys()}')
+    #print(f'prepareData cleanup done: {data.getKeys()}')
     
     # remove duplicates: get keys for Icoil\d+, keep first one and eventually latest (aka for Bitters),
     Ikeys = [ _key for _key in data.getKeys() if re.match("Icoil\d+", _key)]
@@ -30,7 +30,7 @@ def prepareData(data: MagnetData, housing: str):
 
     # add timestamp
     data.addTime()
-    print(f'addTime done')
+    # print(f'addTime done')
     
     # get duration
     duration = data.getDuration()
@@ -101,9 +101,9 @@ class MagnetRun:
         if len(headers) >=2:
             insert = headers[1]
         data = MagnetData.fromStringIO(name)
-        print(f'data keys: {data.getKeys()}')
+        #print(f'data keys({len(data.getKeys())}): {data.getKeys()}')
         prepareData(data, housing)
-        print(f'prepareData: data keys: {data.getKeys()}')
+        #print(f'prepareData: data keys({len(data.getKeys())}): {data.getKeys()}')
         
         # except:
         #      print("cannot read data for %s insert, %s site" % (insert, site) )

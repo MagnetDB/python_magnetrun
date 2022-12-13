@@ -106,28 +106,43 @@ def main():
 
         for item in _data:
             # print(f'{item}: status={_data[item]}, jid={jid[item]}')
-
-            # grep keys in _data with item_
-            match_expr = re.compile(f'{item}_\d+')
-            same_cfgs = [ key for key in _data if match_expr.match(key) and key != item]
-            if same_cfgs:
-                # print('same site cfg:', same_cfgs)
-                Sites[item]['decommissioned_at'] = Sites[same_cfgs[0]]['commissioned_at']
-                same_cfgs.pop(0)
-
+            res = item.split('_')
+            name = res[0]
+            if len(res) == 2:
+                num = int(res[-1])
+                cfg = f'{name}_{num+1}'
+            else:
+                cfg = f'{name}_1'
+                # print(f'{item} -> {cfg}')
+                
+            if cfg in _data:
+                Sites[item]['decommissioned_at'] = Sites[cfg]['commissioned_at']
         for site in Sites:
             print(f'site: {site}={Sites[site]}')
-
+        
         # Get records per site
         for ID in Sites: #Mids:
             getSiteRecord(s, url_files, ID, Sites, url_downloads, debug=args.debug)
             print(f"getSiteRecord({ID}): records={len(Sites[ID]['records'])}")
+
+        # Correct status: 'in_stock', 'in_study', 'in_operation', 'defunct'
+        # En Service -> in_operation
+        # En Stock
+        # Autre
+        for site in Sites:
+            if Sites[site]['records']:
+                housing = Sites[site]['records'][0].getHousing()
+                # housing = Sites[site]['records'][-1]
+                print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}")
+        sys.exit(1)
 
         # Create list of Magnets from sites
         # TODO replace Magnets by a dict that is similar to magnetdb magnet
         for site in Sites:
             magnetID = re.sub('_\d+','', site)
             # TODO replace HMagnet by a dict that is similar to magnetdb magnet
+            # status: inherited from site
+            status = "Unknown" 
             Magnets[magnetID] = HMagnet.HMagnet(magnetID, 0, None, "Unknown", 0)
         
         Parts = {}
@@ -162,6 +177,7 @@ def main():
                         Carac_Magnets[magnet]['parts'].append(pname)
                         if not pname in PartName:
                             PartName[pname] = f"HL-31_H{pid}"
+                            # set status from magnet status??
             print(f"name: {magnet}, carac={Carac_Magnets[magnet]}")
         
         print("\nMaterials: already found:", len(Mats))

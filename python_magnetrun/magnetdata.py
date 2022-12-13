@@ -187,7 +187,7 @@ class MagnetData:
     def cleanupData(self):
         """removes empty columns from Data"""
         if self.Type == 0 :
-            print(f"Clean up Data")
+            #print(f"Clean up Data")
             self.Data = self.Data.loc[:, (self.Data != 0.0).any(axis=0)]
             self.Keys = self.Data.columns.values.tolist()
         # TODO remove duplicate
@@ -241,15 +241,15 @@ class MagnetData:
     
     def getDuration(self):
         """compute duration of the run in seconds"""
-        print("magnetdata.getDuration")
+        #print("magnetdata.getDuration")
         duration = None
         if "timestamp" in self.Keys:
             start_time=self.Data["timestamp"].iloc[0]
             end_time = self.Data['timestamp'].iloc[-1]
             dt = (end_time - start_time)
-            print(f'dt={dt}')
+            #print(f'dt={dt}')
             duration = dt.seconds
-            print(f'duration={duration}')
+            #print(f'duration={duration}')
         else:
             print("magnetdata.getDuration: no timestamp key")
             print(f'available keys are: {self.Keys}')
@@ -257,7 +257,7 @@ class MagnetData:
 
     def addTime(self):
         """add a Time column to Data"""
-        print("magnetdata.AddTime")
+        #print("magnetdata.AddTime")
                 
         if self.Type == 0 :
             if "Date" in self.Keys and "Time" in self.Keys:
@@ -265,13 +265,13 @@ class MagnetData:
                 t0 = datetime.datetime.strptime(self.Data['Date'].iloc[0]+" "+self.Data['Time'].iloc[0], tformat)
                 self.Data["t"] = self.Data.apply(lambda row: (datetime.datetime.strptime(row.Date+" "+row.Time, tformat)-t0).total_seconds(), axis=1)
                 self.Data["timestamp"] = self.Data.apply(lambda row: datetime.datetime.strptime(row.Date+" "+row.Time, tformat), axis=1)
-                print("magnetdata.AddTime: add t and timestamp")
+                #print("magnetdata.AddTime: add t and timestamp")
                 # remove Date and Time ??
                 self.Data.drop(['Date','Time'], axis=1, inplace=True)
-                print("magnetdata.AddTime: drop done")
+                #print("magnetdata.AddTime: drop done")
                 # regenerate keys
                 self.Keys = self.Data.columns.values.tolist()
-                print("magnetdata.AddTime: regenerate keys")
+                #print("magnetdata.AddTime: regenerate keys")
                 
             else:
                 raise Exception("cannot add t[s] columnn: no Date or Time column")
