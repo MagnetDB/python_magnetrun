@@ -62,7 +62,7 @@ class MRecord:
         """set Link"""
         self.link = link
 
-    def getData(self, session, url, save=False, debug=False):
+    def getData(self, session, url):
         """download record"""
         if not session:
             raise Exception("MRecord.download: no session defined")

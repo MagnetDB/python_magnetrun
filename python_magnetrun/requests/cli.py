@@ -33,6 +33,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--user", help="specify user")
     parser.add_argument("--server", help="specify server", default="https://srv-data-install.lncmi.cnrs.fr/")
+    parser.add_argument("--check", help="sanity check for records", action='store_true')
     parser.add_argument("--save", help="save files", action='store_true')
     parser.add_argument("--debug", help="activate debug mode", action='store_true')
     args = parser.parse_args()
@@ -117,15 +118,18 @@ def main():
                 
             if cfg in _data:
                 Sites[item]['decommissioned_at'] = Sites[cfg]['commissioned_at']
-        for site in Sites:
-            print(f'site: {site}={Sites[site]}')
+        # for site in Sites:
+        #     print(f'site: {site}={Sites[site]}')
         
         # Get records per site
         for ID in Sites: #Mids:
             getSiteRecord(s, url_files, ID, Sites, url_downloads, debug=args.debug)
             print(f"getSiteRecord({ID}): records={len(Sites[ID]['records'])}")
 
-        # Correct status: 'in_stock', 'in_study', 'in_operation', 'defunct'
+        # Correct status:
+        # for site: 'in_study', 'in_operation', 'decommisioned'
+        # for magnet: 'in_study', 'in_operation', 'in_stock', 'defunct'
+        # for parts: 'in_study', 'in_operation', 'in_stock', 'defunct'
         # En Service -> in_operation
         # En Stock
         # Autre
@@ -133,38 +137,47 @@ def main():
             if Sites[site]['records']:
                 housing = Sites[site]['records'][0].getHousing()
                 # housing = Sites[site]['records'][-1]
-                print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}")
-        sys.exit(1)
+                if Sites[site]['decommissioned_at'] != stopped_at:
+                    Sites[site]['status'] = 'decommisioned'
+                else:
+                    Sites[site]['status'] = 'in_operation'
+                # print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}")
 
         # Create list of Magnets from sites
+        # NB use entries sorted by commisionned date
         # TODO replace Magnets by a dict that is similar to magnetdb magnet
-        for site in Sites:
+        import operator
+        print("\nSites:", len(Sites))
+        for site in sorted(Sites, key=operator.itemgetter(5)):
+            print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}, records={len(Sites[site]['records'])}")
+            # print(f"{Sites[site]['name']}: {Sites[site]}")
+            
+        for site in sorted(Sites, key=operator.itemgetter(5)):
             magnetID = re.sub('_\d+','', site)
             # TODO replace HMagnet by a dict that is similar to magnetdb magnet
             # status: inherited from site
-            status = "Unknown" 
-            Magnets[magnetID] = HMagnet.HMagnet(magnetID, 0, None, "Unknown", 0)
+            status = Sites[site]['status'] 
+            Magnets[magnetID] = HMagnet.HMagnet(magnetID, 0, None, status, 0)
         
         Parts = {}
         for magnetID in Magnets:
             magnet = re.sub('_\d+','',magnetID)
-            print(f"** {magnet}: data={Magnets[magnetID]}")
+            # print(f"** {magnet}: data={Magnets[magnetID]}")
             if debug:
                 print(f"loading helices for: {magnet}")
             getMagnetPart(s, magnet, url_helices, magnet, Magnets, url_materials, Parts, Mats, save=args.save, debug=args.debug)
-        if debug:
-            print("\nMagnets: ")
-        print("\nMagnets:", len(Magnets))
 
         # Create Parts from Magnets
         # TODO replace Parts by a dict that is similar to magnetdb part
+        # 'name', 'description', 'status', 'design_office_reference'
+        print("\nMagnets:", len(Magnets))
         PartName = {}
         Carac_Magnets = {}
         for magnetID in Magnets:
             # print(magnet, type(Magnets[magnet]))
             magnet = re.sub('_\d+','',magnetID)
-            print(f"** {magnet}: data={Magnets[magnetID]}")
-            Carac_Magnets[magnet] = {'name':magnet,'status':Magnets[magnetID].status}
+            # print(f"** {magnet}: data={Magnets[magnetID]}")
+            Carac_Magnets[magnet] = {'name':magnet, 'status':Magnets[magnetID].status, 'design_office_reference': ''}
             magconf = Magnets[magnetID].MAGfile
             if magconf:
                 magconffile = magconf[0]
@@ -176,30 +189,34 @@ def main():
                         pid = part[0]
                         Carac_Magnets[magnet]['parts'].append(pname)
                         if not pname in PartName:
-                            PartName[pname] = f"HL-31_H{pid}"
+                            PartName[pname] = [f"HL-31_H{pid}", f"{Magnets[magnetID].status}"]
                             # set status from magnet status??
-            print(f"name: {magnet}, carac={Carac_Magnets[magnet]}")
+            print(f"{magnet}: {Carac_Magnets[magnet]}")
         
-        print("\nMaterials: already found:", len(Mats))
-        # Ref ou REF???
-        getMaterial(s, None, url_materials, Mats, debug=args.debug)
 
         # Create Parts from Materials because in control/monitoring part==mat
         # TODO once Parts is complete no longer necessary
-        print("\nMParts")
+        # ['name', 'description', 'status', 'type', 'design_office_reference', 'material_id'
+        print(f"\nMParts: {len(Mats)}")
         for mat in Mats:
             # print(mat, type(Mats[mat]))
             key = mat.replace('MA','H')
             carac = {'name': mat.replace('MA','H'),
+                     'description': '',
+                     'status': 'unknown',
                      'type': Mats[mat].category,
+                     'design_office_reference': '',
                      'material': mat
                     }
             if key in PartName:
-                carac['geometry'] = PartName[key]
+                carac['geometry'] = PartName[key][0]
+                carac['status'] = PartName[key][1]
             print(key, carac)
             
         # TODO replace Materials by a dict that is similar to magnetdb material
-        print("\nMaterials")
+        # Ref ou REF???
+        getMaterial(s, None, url_materials, Mats, debug=args.debug)
+        print(f"\nMaterials: {len(Mats)}")
         for mat in Mats:
             carac = {'name':Mats[mat].name,
                      'description': '',
@@ -223,92 +240,25 @@ def main():
         print('\nRecords:')
         for site in Sites:
             for record in Sites[site]['records']:
-                print(f'{site}: record:{record}')
+                print(f'{site}: {record}')
                 data = record.getData(s, url_downloads)
-                try:
-                    mrun = MagnetRun.fromStringIO(record.getHousing(), record.getSite(), data)
-                except:
-                    print(f"record: trouble with data for {record.getLink()}")
-                    print(f"record={record}")
 
-                from ..processing.stats import plateaus
-                plateaus(Data=mrun.MagnetData, duration=10, save=args.save, debug=args.debug)
+                if args.check:
+                    try:
+                        mrun = MagnetRun.fromStringIO(record.getHousing(), record.getSite(), data)
+                    except:
+                        print(f"record: trouble with data for {record.getLink()}")
+                        print(f"record={record}")
 
-                break
+                    # from ..processing.stats import plateaus
+                    # plateaus(Data=mrun.MagnetData, duration=10, save=args.save, debug=args.debug)
+
+                if args.save:
+                    record.saveData(data)
+
+                # break
 
                 
-    #     sites = {}
-    #     for magnet in Magnets:
-    #         housing_records={}
-    #         if magnet in MagnetRecords:
-    #             housing_records={}
-    #             for record in MagnetRecords[magnet]:
-    #                 filename = record.link.replace('../../../','')
-    #                 filename = filename.replace('/','_').replace('%20','-')
-    #                 housing = filename.split('_')[0]
-    #                 if housing in housing_records:
-    #                     housing_records[housing].append(filename)
-    #                 else:
-    #                     housing_records[housing] = [filename]
-
-    #             sites[ f'{housing}_{magnet}' ] = housing_records[housing]
-
-    #     print("\nSites:")
-    #     for site in sites:
-    #         housing = site.split('_')[0]
-    #         carac = {'name': site, 'status': 'in_study'}
-    #         print(site, carac)
-            
-    #     print("\nRecords:")
-    #     for site in sites:
-    #         for file in sites[site]:
-    #             print(site, {'file':file,'site':site})
-
-    # print("\nSum up: ")
-    # print("\nMagnets:")
-    # for magnet in Magnets:
-    #     if not magnet in MagnetRecords:
-    #         MagnetRecords[magnet] = []
-    #     nhelix = 0
-    #     if magnet in Carac_Magnets:
-    #         if 'parts' in Carac_Magnets[magnet]:
-    #             nhelix = len(Carac_Magnets[magnet]['parts'])
-        
-    #     print(f"** {magnet}: status={Magnets[magnet].getStatus()}, records={len(MagnetRecords[magnet])}, helices={nhelix}" )
-
-    # # print("\nMagnets in Operation:")
-    # # for magnet in Magnets:
-    # #     ## Broken to json:
-    # #     #try:
-    # #     if Magnets[magnet].getStatus() == "En service":
-    # #         if args.save:
-    # #             fo = open(magnet + ".json", "w", newline='\n')
-    # #             fo.write(Magnets[magnet].to_json())
-    # #             fo.close()
-    # #         for record in MagnetRecords[magnet]:
-    # #             print(f"magnet={magnet}, record={record.getSite()}, link={record.getLink()},url_downloads={url_downloads}")
-    # #             data = record.getData(s, url_downloads, save=args.save)
-    # #             try:
-    # #                 mrun = python_magnetrun.MagnetRun.fromStringIO(record.getSite(), data)
-    # #             except:
-    # #                 print(f"record: trouble with data for {record.getLink()}")
-    # #                 print(f"record={record}")
-    # #                 pass
-
-    # #             try:
-    # #                 # mrun.plateaus(threshold=2.e-3, duration=10, save=args.save, debug=args.debug)
-    # #                 mrun.plateaus(duration=10, save=args.save, debug=args.debug)
-    # #             except:
-    # #                 print(f"record: plateaus detection fails for {record.getLink()}")
-    # #                 pass
-
-    # # print("\nMaterials:")
-    # # for mat in Mats:
-    # #     print(mat, ":", Mats[mat])
-    # #     if args.save:
-    # #         fo = open(mat + ".json", "w", newline='\n')
-    # #         fo.write(Mats[mat].to_json())
-    # #         fo.close()
 
 if __name__ == "__main__":
     main()
