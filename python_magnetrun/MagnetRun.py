@@ -4,6 +4,7 @@ import math
 import os
 import sys
 import datetime
+import re
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -11,7 +12,47 @@ import matplotlib.pyplot as plt
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams['text.usetex'] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
+
 from .magnetdata import MagnetData
+
+def prepareData(data: MagnetData, housing: str):
+    # cleanup data: remove empty columns aka columns with 0
+    data.cleanupData()
+    print(f'prepareData cleanup done: {data.getKeys()}')
+    
+    # remove duplicates: get keys for Icoil\d+, keep first one and eventually latest (aka for Bitters),
+    Ikeys = [ _key for _key in data.getKeys() if re.match("Icoil\d+", _key)]
+    print(f'Icoil keys from {Ikeys[0]} to {Ikeys[-1]}')
+            
+    # get start/end
+    (start_date, start_time, end_date, end_time) = data.getStartDate()
+    print(f'start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}')
+
+    # add timestamp
+    data.addTime()
+    print(f'addTime done')
+    
+    # get duration
+    duration = data.getDuration()
+    print(f'duration={duration}')
+
+    # TODO use a dict struct to simplify this?
+    # shall check if key exist beforehand
+    if housing == "M9":
+        data.addData("IH_ref", "IH_ref = Idcct1 + Idcct2")
+        data.addData("IB_ref", "IB_ref = Idcct3 + Idcct4")
+        # FlowH = Flow1, FlowB = Flow2
+        # RpmH = Rpm1, RpmB = Rpm2
+                
+    elif housing in ["M8", "M10"]:
+        data.addData("IH_ref", "IH_ref = Idcct3 + Idcct4")
+        data.addData("IB_ref", "IB_ref = Idcct1 + Idcct2")
+        # FlowH = Flow2, FlowB = Flow1
+        # RpmH = Rpm2, RpmB = Rpm1
+    # what about M1, M5 and M7???
+
+    # rename Icoil1 -> IH
+    # rename Icoil15 -> IB
 
 class MagnetRun:
     """
@@ -27,55 +68,15 @@ class MagnetRun:
         self.Housing = housing
         self.Site = site
         self.MagnetData = data
-
-        # start_date = None
-        # try:
-        #     if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
-        #         start_date=self.MagnetData.getData("Date").iloc[0]
-        #         start_time=self.MagnetData.getData("Time").iloc[0]
-        #         end_date=self.MagnetData.getData("Date").iloc[-1]
-        #         end_time = self.MagnetData.getData('Time').iloc[-1]
-
-        #         tformat="%Y.%m.%d %H:%M:%S"
-        #         t0 = datetime.datetime.strptime(start_date+" "+start_time, tformat)
-        #         t1 = datetime.datetime.strptime(end_date+" "+end_time, tformat)
-        #         dt = (t1-t0)
-        #         duration = dt / datetime.timedelta(seconds=1)
-                
-        # except:
-        #     print("MagnetRun.__init__: trouble loading data")
-        #     try:
-        #         file_name = "%s_%s_%s-wrongdata.txt" % (self.Housing, self.Site,start_date)
-        #         self.MagnetData.to_csv(file_name, sep=str('\t'), index=False, header=True)
-        #     except:
-        #         print("MagnetRun.__init__: trouble loading data - fail to save csv file")
-        #         pass
-        #     pass
             
     @classmethod
     def fromtxt(cls, housing, site, filename):
         """create from a txt file"""
+        print(f'MagnetRun/fromtxt: housing={housing}, site={site}, filename={filename}')
         with open(filename, 'r') as f:
             insert=f.readline().split()[-1]
             data = MagnetData.fromtxt(filename)
-            # cleanup data
-            # remove duplicates
-            # get start/end
-            # add timestamp
-            # get duration
-            
-            if housing == "M9":
-                data.addData("IH_ref", "IH_ref = Idcct1 + Idcct2")
-                data.addData("IB_ref", "IB_ref = Idcct3 + Idcct4")
-                # flowH = flowxx, flowB = flowyy
-            elif housing in ["M8", "M10"]:
-                data.addData("IH_ref", "IH_ref = Idcct3 + Idcct4")
-                data.addData("IB_ref", "IB_ref = Idcct1 + Idcct2")
-                # flowH = flowxx, flowB = flowyy
-            # what about M1, M5 and M7???
-
-            # remove Icoil duplicate for Helices, rename Icoil1 -> IH
-            # remove Icoil duplicate for Bitter, rename Icoil15 -> IB
+            prepareData(data, housing)
 
         # print("magnetrun.fromtxt: data=", data)
         return cls(housing, site, data)
@@ -89,6 +90,7 @@ class MagnetRun:
     @classmethod
     def fromStringIO(cls, housing, site, name):
         """create from a stringIO"""
+        print(f'MagnetRun/fromStringIO: housing={housing}, site={site}')
         from io import StringIO
 
         # try:
@@ -99,6 +101,10 @@ class MagnetRun:
         if len(headers) >=2:
             insert = headers[1]
         data = MagnetData.fromStringIO(name)
+        print(f'data keys: {data.getKeys()}')
+        prepareData(data, housing)
+        print(f'prepareData: data keys: {data.getKeys()}')
+        
         # except:
         #      print("cannot read data for %s insert, %s site" % (insert, site) )
         #      fo = open("wrongdata.txt", "w", newline='\n')

@@ -45,7 +45,7 @@ def stats(Data: MagnetData):
 
 def plateaus(Data: MagnetData, twindows=6, threshold=1.e-4, b_threshold=1.e-3, duration=5, show=False, save=True, debug=False):
     """get plateaus, pics from the actual run"""
-    print('plateaus: show={show}, save={save}, debug={debug}')
+    print(f'plateaus: show={show}, save={save}, debug={debug}')
 
     if show or save:
         ax = plt.gca()
@@ -79,7 +79,7 @@ def plateaus(Data: MagnetData, twindows=6, threshold=1.e-4, b_threshold=1.e-3, d
     # check gradient:
     #     if 0 in between two 1 (or -1), 0 may be replaced by 1 or -1 depending on ndiff values
     #     same for small sequense of 0 (less than 2s)
-    gradient = np.sign(df_["ndiff"].to_numpy())
+    gradient = np.sign(df_["ndiff"].to_numpy()) # TODO check runtime error from time to time ??
     gradkey = 'gradient-%s' % 'Field'
     df_[gradkey] = pd.Series(gradient)
 
@@ -114,13 +114,13 @@ def plateaus(Data: MagnetData, twindows=6, threshold=1.e-4, b_threshold=1.e-3, d
 
         if save:
             # imagefile = self.Site + "_" + self.Insert
-            imagefile = self.Site
+            imagefile = "plateaux"
             start_date = ""
             start_time = ""
-            if "Date" in Data.getKeys() and "Time" in Data.getKeys():
-                tformat="%Y.%m.%d %H:%M:%S"
-                start_date=Data.getData("Date").iloc[0]
-                start_time=Data.getData("Time").iloc[0]
+            if "timestamp" in Data.getKeys():
+                start_timestamp = Data.getData("timestamp").iloc[0]
+                start_date = start_timestamp.strftime("%Y.%m.%d")
+                start_time = start_timestamp.strftime("%H:%M:%S")
             
             plt.savefig('%s_%s---%s.png' % (imagefile,str(start_date),str(start_time)) , dpi=300 )
             plt.close()
@@ -140,21 +140,20 @@ def plateaus(Data: MagnetData, twindows=6, threshold=1.e-4, b_threshold=1.e-3, d
     # time_d_ms  = time_d / datetime.timedelta(milliseconds=1)
     plateaux = regimes_in_source(0)
     print( "%s plateaus(thresold=%g): %d" % ('Field', threshold, len(plateaux)) )
-    tformat="%Y.%m.%d %H:%M:%S"
     actual_plateaux = []
     for p in plateaux:
-        start=Data.getData('Date').iloc[p[0]]
-        start_time=Data.getData('Time').iloc[p[0]]
-        end=Data.getData('Date').iloc[p[1]]
-        end_time = Data.getData('Time').iloc[p[1]]
-
-        t0 = datetime.datetime.strptime(start+" "+start_time, tformat)
-        t1 = datetime.datetime.strptime(end+" "+end_time, tformat)
+        t0 = Data.getData('timestamp').iloc[p[0]]
+        t1 = Data.getData('timestamp').iloc[p[1]]
         dt = (t1-t0)
 
         # b0=Data.getData('Field').values.tolist()[p[0]]
         b0 = float(Data.getData('Field').iloc[p[0]])
         b1 = float(Data.getData('Field').iloc[p[1]])
+
+        tformat="%Y.%m.%d %H:%M:%S"
+        start_time = t0.strftime(tformat)
+        end_time =  t1.strftime(tformat)
+
         if debug:
             print( "\t%s\t%s\t%8.6g\t%8.4g\t%8.4g" % (start_time, end_time, dt.total_seconds(), b0, b1) )
 

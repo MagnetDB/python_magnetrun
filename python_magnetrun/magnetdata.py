@@ -233,35 +233,46 @@ class MagnetData:
                 tformat="%Y.%m.%d %H:%M:%S"
                 start_date=self.Data["Date"].iloc[0]
                 start_time=self.Data["Time"].iloc[0]
+                end_date=self.Data["Date"].iloc[-1]
                 end_time=self.Data["Time"].iloc[-1]
-                res = (start_date, start_time, end_time)
+                res = (start_date, start_time, end_date, end_time)
         return res
 
     
     def getDuration(self):
         """compute duration of the run in seconds"""
+        print("magnetdata.getDuration")
         duration = None
-        if "timestamp" in self.Data.getKeys():
-            start_time=self.Data.getData("timestamp").iloc[0]
-            end_time = self.Data.getData('timestamp').iloc[-1]
-            dt = (end_time - start_timet1)
+        if "timestamp" in self.Keys:
+            start_time=self.Data["timestamp"].iloc[0]
+            end_time = self.Data['timestamp'].iloc[-1]
+            dt = (end_time - start_time)
+            print(f'dt={dt}')
             duration = dt.seconds
+            print(f'duration={duration}')
+        else:
+            print("magnetdata.getDuration: no timestamp key")
+            print(f'available keys are: {self.Keys}')
         return duration
 
     def addTime(self):
         """add a Time column to Data"""
-
-        # print("magnetdata.AddTime")
+        print("magnetdata.AddTime")
+                
         if self.Type == 0 :
-            # print("keys=", self.Keys)
-            (start_date, start_time, end_time) = self.getStartDate()
             if "Date" in self.Keys and "Time" in self.Keys:
                 tformat="%Y.%m.%d %H:%M:%S"
                 t0 = datetime.datetime.strptime(self.Data['Date'].iloc[0]+" "+self.Data['Time'].iloc[0], tformat)
                 self.Data["t"] = self.Data.apply(lambda row: (datetime.datetime.strptime(row.Date+" "+row.Time, tformat)-t0).total_seconds(), axis=1)
                 self.Data["timestamp"] = self.Data.apply(lambda row: datetime.datetime.strptime(row.Date+" "+row.Time, tformat), axis=1)
+                print("magnetdata.AddTime: add t and timestamp")
                 # remove Date and Time ??
+                self.Data.drop(['Date','Time'], axis=1, inplace=True)
+                print("magnetdata.AddTime: drop done")
+                # regenerate keys
                 self.Keys = self.Data.columns.values.tolist()
+                print("magnetdata.AddTime: regenerate keys")
+                
             else:
                 raise Exception("cannot add t[s] columnn: no Date or Time column")
         return 0
