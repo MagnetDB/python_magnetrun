@@ -150,6 +150,7 @@ class MagnetData:
         
         NB: to print unit use '[{:~P}]'.format(self.units[key][1])
         """
+        # if self.Type == 0:
         for key in self.keys:
             print(key)
             if key.startwith('I'):
@@ -235,23 +236,31 @@ class MagnetData:
                 end_time=self.Data["Time"].iloc[-1]
                 res = (start_date, start_time, end_time)
         return res
+
     
+    def getDuration(self):
+        """compute duration of the run in seconds"""
+        duration = None
+        if "timestamp" in self.Data.getKeys():
+            start_time=self.Data.getData("timestamp").iloc[0]
+            end_time = self.Data.getData('timestamp').iloc[-1]
+            dt = (end_time - start_timet1)
+            duration = dt.seconds
+        return duration
+
     def addTime(self):
         """add a Time column to Data"""
 
         # print("magnetdata.AddTime")
         if self.Type == 0 :
             # print("keys=", self.Keys)
+            (start_date, start_time, end_time) = self.getStartDate()
             if "Date" in self.Keys and "Time" in self.Keys:
                 tformat="%Y.%m.%d %H:%M:%S"
-                start_date=self.Data["Date"].iloc[0]
-                start_time=self.Data["Time"].iloc[0]
-                end_time=self.Data["Time"].iloc[-1]
-                # print ("start_time=", start_time, "start_date=", start_date)
-
                 t0 = datetime.datetime.strptime(self.Data['Date'].iloc[0]+" "+self.Data['Time'].iloc[0], tformat)
                 self.Data["t"] = self.Data.apply(lambda row: (datetime.datetime.strptime(row.Date+" "+row.Time, tformat)-t0).total_seconds(), axis=1)
                 self.Data["timestamp"] = self.Data.apply(lambda row: datetime.datetime.strptime(row.Date+" "+row.Time, tformat), axis=1)
+                # remove Date and Time ??
                 self.Keys = self.Data.columns.values.tolist()
             else:
                 raise Exception("cannot add t[s] columnn: no Date or Time column")

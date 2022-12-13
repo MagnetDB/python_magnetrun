@@ -16,12 +16,11 @@ import requests
 import requests.exceptions
 import lxml.html as lh
 
-from .. import MRecord
-from .. import GObject
 from .. import HMagnet
 
-from .connect import createSession, download
-from .webscrapping import createSession, download, getTable, getSiteRecord, getMagnetPart, getMaterial
+from .connect import createSession
+from .webscrapping import getTable, getSiteRecord, getMagnetPart, getMaterial
+from ..MagnetRun import MagnetRun
 
 def main():
     import argparse
@@ -48,13 +47,13 @@ def main():
 
     # shall check if host ip up and running
     base_url=args.server
-    url_logging=base_url + "/site/sba/pages/" + "login.php"
-    url_downloads=base_url + "/site/sba/pages/" + "courbe.php"
-    url_status=base_url + "/site/sba/pages/" + "Etat.php"
-    url_files=base_url + "/site/sba/pages/" + "getfref.php"
-    url_helices=base_url + "/site/sba/pages/" + "Aimant2.php"
-    url_materials=base_url + "/site/sba/pages/" + "Mat.php"
-    url_query=base_url + "/site/sba/vendor/jqueryFileTree/connectors/jqueryFileTree.php"
+    url_logging=base_url + "site/sba/pages/" + "login.php"
+    url_downloads=base_url + "site/sba/pages/" + "courbe.php"
+    url_status=base_url + "site/sba/pages/" + "Etat.php"
+    url_files=base_url + "site/sba/pages/" + "getfref.php"
+    url_helices=base_url + "site/sba/pages/" + "Aimant2.php"
+    url_materials=base_url + "site/sba/pages/" + "Mat.php"
+    url_query=base_url + "site/sba/vendor/jqueryFileTree/connectors/jqueryFileTree.php"
 
 
     # Fill in your details here to be posted to the login form.
@@ -73,9 +72,11 @@ def main():
     # Use 'with' to ensure the session context is closed after use.
     with requests.Session() as s:
         p = createSession(s, url_logging, payload, args.debug)
-        # print('connect:', p)
         # test connection
         r = s.get(url=url_status, verify=True)
+        # print('try to connect:', r.url)
+        # print('should be:', url_logging)
+        # print('return url correct=', (r.url == url_logging))
         if r.url == url_logging:
             print("check connection failed: Wrong credentials" )
             sys.exit(1)
@@ -90,7 +91,7 @@ def main():
             # print(f'{item}: status={_data[item]}, jid={jid[item]}')
             housing = _data[item][2]
             magnet = re.sub('_\d+','',item)
-            status = _data[item][1]
+            status = _data[item][1] # TODO change status to match magnetdb status
             tformat="%Y-%m-%d"
             created_at = datetime.datetime.strptime(_data[item][0], tformat)
             stopped_at = datetime.datetime.strptime("2100-01-01", tformat)
@@ -123,10 +124,11 @@ def main():
             print(f"getSiteRecord({ID}): records={len(Sites[ID]['records'])}")
 
         # Create list of Magnets from sites
+        # TODO replace Magnets by a dict that is similar to magnetdb magnet
         for site in Sites:
             magnetID = re.sub('_\d+','', site)
+            # TODO replace HMagnet by a dict that is similar to magnetdb magnet
             Magnets[magnetID] = HMagnet.HMagnet(magnetID, 0, None, "Unknown", 0)
-
         
         Parts = {}
         for magnetID in Magnets:
@@ -139,6 +141,8 @@ def main():
             print("\nMagnets: ")
         print("\nMagnets:", len(Magnets))
 
+        # Create Parts from Magnets
+        # TODO replace Parts by a dict that is similar to magnetdb part
         PartName = {}
         Carac_Magnets = {}
         for magnetID in Magnets:
@@ -164,6 +168,8 @@ def main():
         # Ref ou REF???
         getMaterial(s, None, url_materials, Mats, debug=args.debug)
 
+        # Create Parts from Materials because in control/monitoring part==mat
+        # TODO once Parts is complete no longer necessary
         print("\nMParts")
         for mat in Mats:
             # print(mat, type(Mats[mat]))
@@ -176,6 +182,7 @@ def main():
                 carac['geometry'] = PartName[key]
             print(key, carac)
             
+        # TODO replace Materials by a dict that is similar to magnetdb material
         print("\nMaterials")
         for mat in Mats:
             carac = {'name':Mats[mat].name,
@@ -196,6 +203,24 @@ def main():
                 carac['nuance'] = Mats[mat].material['nuance']
             print(mat, carac)
 
+        # Try to read and make some stats on records
+        print('\nRecords:')
+        for site in Sites:
+            for record in Sites[site]['records']:
+                print(f'{site}: record:{record}')
+                data = record.getData(s, url_downloads)
+                try:
+                    mrun = MagnetRun.fromStringIO(record.getHousing(), record.getSite(), data)
+                except:
+                    print(f"record: trouble with data for {record.getLink()}")
+                    print(f"record={record}")
+
+                from ..processing.stats import plateaus
+                plateaus(Data=mrun.MagnetData, duration=10, save=args.save, debug=args.debug)
+
+                break
+
+                
     #     sites = {}
     #     for magnet in Magnets:
     #         housing_records={}

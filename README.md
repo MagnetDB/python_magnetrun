@@ -15,6 +15,8 @@ Python MagnetRun contains utils to view and analyse Magnet runs
 Features
 --------
 
+-   Extract data from control/monitoring system
+-   Inject data from control/monitoring system inot magnetdb
 -   Load txt, cvs and tdms files from control/monitoring system
 -   Extract field(s)
 -   Plot field(s) vs time
@@ -22,6 +24,10 @@ Features
 
 Examples
 --------
+
+- To retreive data from control/monitoring system
+
+```python3 -m  python_magnetrun.requests.cli --user email```
 
 _  To list fields recorded during an experiment:
 
@@ -58,6 +64,17 @@ TODO
 -   get MagnetRun files from control/monitoring system??
 -   for MagnetRun add missing fields [U1, Pe1, Tout1, U2 \...\],
     \--missing, \--nhelices - see txt2csv.py
+
+INSTALL
+----
+
+To install in a python virtual env
+
+```
+python -m venv --system-site-packages magnetrun-env
+source ./magnetrun-env/bin/activate
+pip install nptdms
+```
 
 Credits
 -------

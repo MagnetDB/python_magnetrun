@@ -16,11 +16,6 @@ import requests
 import requests.exceptions
 import lxml.html as lh
 
-# import jsonpickle
-from .. import MRecord
-from .. import GObject
-from .. import HMagnet
-
 def createSession(s, url_logging, payload, debug=False):
     """create a request session"""
 
@@ -35,7 +30,7 @@ def createSession(s, url_logging, payload, debug=False):
     p.raise_for_status()
     return p
 
-def download(session, url_data, param, link=None, save=False, debug=False):
+def download(session, url_data, param, link=None, debug=False):
     """download """
 
     d = session.get(url=url_data, params=param, verify=True)
@@ -45,14 +40,6 @@ def download(session, url_data, param, link=None, save=False, debug=False):
         print(f"error {d.status_code} dowmload {url_data}" )
         sys.exit(1)
     d.raise_for_status()
-
-    if save:
-        filename = link.replace('../../../','')
-        filename = filename.replace('/','_').replace('%20','-')
-        # print(f"save to {filename}")
-        fo = open(filename, "w", newline='\n')
-        fo.write(d.text)
-        fo.close()
 
     return d.text
 

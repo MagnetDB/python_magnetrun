@@ -1,19 +1,5 @@
 """Main module."""
 
-import math
-import os
-import sys
-import datetime
-import pandas as pd
-import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
-# print("matplotlib=", matplotlib.rcParams.keys())
-matplotlib.rcParams['text.usetex'] = True
-# matplotlib.rcParams['text.latex.unicode'] = True key not available
-from .magnetdata import MagnetData
-
-
 def list_sequence(lst, seq):
     """Return sequences of seq in lst"""
     sequences = []

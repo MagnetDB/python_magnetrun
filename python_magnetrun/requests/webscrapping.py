@@ -222,9 +222,7 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
         sys.exit(1)
     r.raise_for_status()
 
-    # create a site in the sense of magnetdb at this point
-    # housing_magnet[0], .., housing_magnet[n] comment faire?? dates contigue??
-    # better check in getTable
+    # Get list of records attached to ID
     for f in r.text.split('<br>'):
         if f and not '~' in f :
             replace_str='<a href='+'\''+url_downloads+'?file='
@@ -235,6 +233,8 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
             site = link.replace('../../../','')
             site = re.sub('/.*txt','',site)
 
+            housing = link.replace('../../../','').split('/')[0]
+            
             tformat="%Y.%m.%d - %H:%M:%S"
             timestamp = datetime.datetime.strptime(data[1].replace('.txt',''), tformat)
             # print(f'timestamp: {timestamp}, {type(timestamp)}')
@@ -256,7 +256,7 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
             #     if debug: print("%s: no name defined for Magnet" % link)
 
             #else:
-            record = MRecord.MRecord(timestamp, ID, link)
+            record = MRecord.MRecord(timestamp, housing, ID, link)
             created_at = Sites[ID]['commissioned_at']
             stopped_at = Sites[ID]['decommissioned_at']
             if record.timestamp < created_at or record.timestamp > stopped_at:

@@ -11,7 +11,9 @@ import matplotlib.pyplot as plt
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams['text.usetex'] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
+
 from ..magnetdata import MagnetData
+from ..utils.sequence import list_sequence, list_duplicates_of
 
 def stats(Data: MagnetData):
     """compute stats from the actual run"""
@@ -43,6 +45,10 @@ def stats(Data: MagnetData):
 
 def plateaus(Data: MagnetData, twindows=6, threshold=1.e-4, b_threshold=1.e-3, duration=5, show=False, save=True, debug=False):
     """get plateaus, pics from the actual run"""
+    print('plateaus: show={show}, save={save}, debug={debug}')
+
+    if show or save:
+        ax = plt.gca()
 
     # TODO:
     # pass b_thresold as input param
@@ -86,8 +92,10 @@ def plateaus(Data: MagnetData, twindows=6, threshold=1.e-4, b_threshold=1.e-3, d
     outlier_idx = difference > threshold
     # print("median[%d]:" % df_[gradkey][outlier_idx].size, df_[gradkey][outlier_idx])
 
-    kw = dict(marker='o', linestyle='none', color='g',label=str(threshold), legend=True)
-    df_[gradkey][outlier_idx].plot(**kw)
+    if show or save:
+        kw = dict(marker='o', linestyle='none', color='g',label=str(threshold), legend=True)
+        df_[gradkey][outlier_idx].plot(**kw)
+
     # not needed if center=True
     # df_['shifted\_pandas'] =  df_['pandas'].shift(periods=-twindows//2)
     df_.rename(columns={0:'Field'}, inplace=True)

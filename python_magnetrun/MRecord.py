@@ -5,17 +5,20 @@
 
 import json
 import datetime
+from .requests.connect import download
 
 class MRecord:
     """
     timestamp
+    housing
     site
     link
     """
 
-    def __init__(self, timestamp: datetime.datetime, site: str, link: str):
+    def __init__(self, timestamp: datetime.datetime, housing: str, site: str, link: str):
         """default constructor"""
         self.timestamp = timestamp
+        self.housing = housing
         self.site = site
         self.link = link
 
@@ -23,9 +26,10 @@ class MRecord:
         """
         representation of object
         """
-        return "%s(timestamp=%r, site=%r, link=%r)" % \
+        return "%s(timestamp=%r, housing=%r, site=%r, link=%r)" % \
             (self.__class__.__name__,
              self.timestamp,
+             self.housing,
              self.site,
              self.link
             )
@@ -34,8 +38,12 @@ class MRecord:
         """get timestamp"""
         return self.timestamp
 
+    def getHousing(self):
+        """get experimental site"""
+        return self.housing
+
     def getSite(self):
-        """get site"""
+        """get experimental site magnet"""
         return self.site
 
     def getLink(self):
@@ -56,14 +64,21 @@ class MRecord:
 
     def getData(self, session, url, save=False, debug=False):
         """download record"""
-        from .requests import test_requests
-    
         if not session:
             raise Exception("MRecord.download: no session defined")
     
         params = 'file=%s&download=1' % self.link
-        data = test_requests.download(session, url, params, self.link, save, debug)
+        data = download(session, url, params, self.link, debug)
+        # print('MRecord/getData:', data)
         return data
+
+    def saveData(self, data):
+        filename = self.link.replace('../../../','')
+        filename = filename.replace('/','_').replace('%20','-')
+        # print(f"save to {filename}")
+        fo = open(filename, "w", newline='\n')
+        fo.write(data)
+        fo.close()
 
     def to_json(self):
         """

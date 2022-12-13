@@ -15,7 +15,7 @@ import matplotlib.colors as colors
 
 # TODO use MagnetData instead of files
 
-def concat_files(input_files: list: list, debug: bool=False):
+def concat_files(input_files: list: list, keys: list, debug: bool=False):
     if debug:
         print(f'input_files: {input_files}')
 
