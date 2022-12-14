@@ -78,22 +78,18 @@ def main():
         p = createSession(s, url_logging, payload, args.debug)
         # test connection
         r = s.get(url=url_status, verify=True)
-        # print('try to connect:', r.url)
-        # print('should be:', url_logging)
-        # print('return url correct=', (r.url == url_logging))
         if r.url == url_logging:
             print("check connection failed: Wrong credentials" )
             sys.exit(1)
         
         # Get data from Status page
         # actually list of site in magnetdb sens
-        # eventually get also commentaire - if Démonté in commentaire then magnet status=defunct
         (_data, jid) = getTable(s, url_status, 2, [1,3,4], debug=args.debug)
-        # for item in _data:
-        #     print(f'{item}: status={_data[item]}, jid={jid[item]}')
+        if args.debug:
+            for item in _data:
+                print(f'{item}: status={_data[item]}, jid={jid[item]}')
         
         for item in _data:
-            # print(f'{item}: status={_data[item]}, jid={jid[item]}')
             housing = _data[item][2]
             magnet = re.sub('_\d+','',item)
             status = _data[item][1] # TODO change status to match magnetdb status
@@ -110,7 +106,6 @@ def main():
                            'decommissioned_at': stopped_at}
 
         for item in _data:
-            # print(f'{item}: status={_data[item]}, jid={jid[item]}')
             res = item.split('_')
             name = res[0]
             if len(res) == 2:
@@ -118,41 +113,57 @@ def main():
                 cfg = f'{name}_{num+1}'
             else:
                 cfg = f'{name}_1'
-                # print(f'{item} -> {cfg}')
                 
             if cfg in _data:
                 Sites[item]['decommissioned_at'] = Sites[cfg]['commissioned_at']
-        # for site in Sites:
-        #     print(f'site: {site}={Sites[site]}')
 
         print('\nSite names:')
         site_names = {}
         for item in _data:
-            # print(f'{item}: status={_data[item]}, jid={jid[item]}')
-
             # grep keys in _data with item_
             match_expr = re.compile(f'{item}_\d+')
             same_cfgs = [ key for key in _data if match_expr.match(key) and key != item]
             if same_cfgs:
-                # print('same site cfg:', same_cfgs)
                 site_names[item] = same_cfgs
             if not '_' in item and not same_cfgs:
                 site_names[item] = []
 
-        for item in site_names:
-            print(f'{item}: {site_names[item]}')
-
         # Get records per site
         for ID in Sites: #Mids:
             getSiteRecord(s, url_files, ID, Sites, url_downloads, debug=args.debug)
-            # print(f"getSiteRecord({ID}): records={len(Sites[ID]['records'])}")
 
+        # drop site if len(records)==0
+        remove_site = []
+        for site in Sites:
+            if len(Sites[site]['records']) == 0:
+                remove_site.append(site)
+        if args.debug:
+            print(f'\nSites to be removed (empty list of records): {remove_site}')
+        
+        for item in remove_site:
+            Sites.pop(item)
+            if item in site_names:
+                # watch out if site_names is not empty
+                if site_names[item]:
+                    s_ = site_names[item][0]
+                    site_names[s_] = site_names[item]
+                    site_names[s_].remove(s_)
+                site_names.pop(item)
+            else:
+                for name in site_names:
+                    if item in site_names[name]:
+                        # print(f'remove {item} from site_names[{name}]')
+                        site_names[name].remove(item)
+                        
+        for item in site_names:
+            print(f'{item}: {site_names[item]}')
+        
         # Correct status:
         # for site: 'in_study', 'in_operation', 'decommisioned'
         # for magnet: 'in_study', 'in_operation', 'in_stock', 'defunct'
         # for parts: 'in_study', 'in_operation', 'in_stock', 'defunct'
         # En Service -> in_operation
-        # En Stock
+        # En Stock: check latest record time to set status
         # Autre
         for site in Sites:
             if Sites[site]['decommissioned_at'] != stopped_at:
@@ -161,10 +172,79 @@ def main():
                 if Sites[site]['status'].lower() == 'en service':
                     Sites[site]['status'] = 'in_operation'
 
+                if Sites[site]['status'].lower() == 'en stock':
+                    latest_record = Sites[site]['records'][-1]
+                    latest_time = latest_record.getTimestamp() # not really a timestamp but a datetime.datetime
+                    today = datetime.datetime.now() # use today.timestamp() to get timestamp
+                    dt = today - latest_time
+                    # print(f'{site}: latest record is {dt.days} daysfrom now')
+                    if dt.days >= 4:
+                        Sites[site]['status'] = 'decommisioned'
+                        Sites[site]['decommissioned_at'] = latest_time
+
             if Sites[site]['records']:
                 housing = Sites[site]['records'][0].getHousing()
-                # housing = Sites[site]['records'][-1]
-                # print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}")
+
+        print(f"\nSites({len(Sites)}): orderer by names")
+        for site in site_names:
+            print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}, records={len(Sites[site]['records'])}")
+            for item in site_names[site]:
+                print(f"{Sites[item]['name']}: status={Sites[item]['status']}, housing={housing}, commissioned_at={Sites[item]['commissioned_at']}, decommissioned_at={Sites[item]['decommissioned_at']}, records={len(Sites[item]['records'])}")
+
+        # if Sites[site]['decommissioned_at'] - Sites[site]['commissioned_at'] < 0 day:
+        # transfert record to other site - aka magnet_[n-1] - from name site - aka magnet_n
+        # get latest_record from magnet_[n]
+        # add update Sites[site]['decommissioned_at'] to latest_time record
+        # remove site - aka magnet_[n]
+        print('\nCheck sites:')
+        remove_site = []
+        for site in Sites:
+            dt = Sites[site]['decommissioned_at'] - Sites[site]['commissioned_at']
+            if dt.days <= 0:
+                print(f'{site}: latest record is {dt.days} days from now')
+                res = site.split('_')
+                if len(res) != 1:
+                    name = res[0]
+                    num = int(res[1])
+                    previous_site = name
+                    if num > 1:
+                        previous_site = f'{name}_{num-1}'
+                    print(f"{site}: tranfert records to {previous_site}")
+                    for record in Sites[site]['records']:
+                        Sites[previous_site]['records'].append(record)
+                        record.setSite(previous_site)
+                remove_site.append(site)
+
+        for item in remove_site:
+            Sites.pop(item)
+            if item in site_names:
+                # watch out if site_names is not empty
+                if site_names[item]:
+                    s_ = site_names[item][0]
+                    site_names[s_] = site_names[item]
+                    site_names[s_].remove(s_)
+                site_names.pop(item)
+            else:
+                for name in site_names:
+                    if item in site_names[name]:
+                        # print(f'remove {item} from site_names[{name}]')
+                        site_names[name].remove(item)
+        
+                        
+        # verify if for site in_operation
+        # if latest_time - today >= 10 days
+        # change status to decommisionning and set decommisionned_at to latest_time
+        print('\nCheck sites in in_operation:')
+        for site in Sites:
+            if Sites[site]['status'] == 'in_operation':
+                latest_record = Sites[site]['records'][-1]
+                latest_time = latest_record.getTimestamp() # not really a timestamp but a datetime.datetime
+                today = datetime.datetime.now() # use today.timestamp() to get timestamp
+                dt = today - latest_time
+                if dt.days >= 10:
+                    print(f'{site}: latest record is {dt.days} days from now')
+                    Sites[site]['status'] = 'decommisioned'
+                    Sites[site]['decommissioned_at'] = latest_time
 
         # Create list of Magnets from sites
         # NB use entries sorted by commisionned date
@@ -175,12 +255,6 @@ def main():
             for item in site_names[site]:
                 print(f"{Sites[item]['name']}: status={Sites[item]['status']}, housing={housing}, commissioned_at={Sites[item]['commissioned_at']}, decommissioned_at={Sites[item]['decommissioned_at']}, records={len(Sites[item]['records'])}")
 
-        # import operator
-        # print(f"\nSites({len(Sites)}): orderer by commisioned_at")
-        # for site in sorted(Sites, key=operator.itemgetter(5)):
-        #     print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}, records={len(Sites[site]['records'])}")
-        #     # print(f"{Sites[site]['name']}: {Sites[site]}")
-            
         # print(f"\nMagnets: create and set magnet status")
         for site in site_names: #sorted(Sites, key=operator.itemgetter(5)):
             magnetID = re.sub('_\d+','', site)
