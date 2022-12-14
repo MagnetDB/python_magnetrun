@@ -163,46 +163,25 @@ def getMagnetPart(session, magnet, url_helices, magnetID, Magnets, url_materials
     if res:
         helices = res[0]
         jid = res[1]
-        if Magnets[magnet].getIndex() is None:
-            Magnets[magnet].setIndex(jid[magnet])
-        if debug:
-            print(f"helices: {helices}, jid: {jid} index: {Magnets[magnet].getIndex()}")
 
     if not magnet in Parts:
         Parts[magnet]=[]
     if debug:
-        print(f"{magnet}: jid={jid}, index={Magnets[magnet].getIndex()}")
+        # print(f"{magnet}: jid={jid}, index={Magnets[magnet].getIndex()}")
+        print(f"{magnet}: jid={jid}")
     for data in helices:
         # print(f"{data}:")
         for i in range(len(helices[data])-1):
             materialID = re.sub('H.* / ','',helices[data][i])
+            partID = materialID.replace('MA','H')
             if debug:
                 print("%s:" % materialID )
             if materialID != '-':
-                Parts[magnet].append([i,materialID.replace('H','MA')])
+                Parts[magnet].append([i,partID])
+                Magnets[magnet].addPart(partID)
                 getMaterial(session, materialID, url_materials, Mats, debug)
-                #Magnets[magnet].addGObject(materialID)
-                # # MagnetComps ???
-                # if not magnet in MagnetComps:
-                #     MagnetComps[magnet] = []
-                # MagnetComps[magnet].append(materialID)
-                # if debug:
-                #     print("MagnetComps[%s].append(%s)" % (magnet,materialID) )
-                
-                #     print("Material: %s" % materialID,
-                #           "Conductivity=", conductivity,
-                #           "ElasticLimit=", elasticlimit)
 
-        # # Shall be attached to site in magnetdb sense
-        # MAGconf = helices[data][-1]
-        # MAGconf.replace('  \t\t\t\t\t\t','')
-        # MAGconf.replace('\n',',')
-        # Magconf_files = MAGconf.split(' ')
-        # Magconf_files = [f for f in Magconf_files if f.endswith('.conf')]
-        # if debug:
-        #     print(f"MAGconfile={Magconf_files}  **")
-        # Magnets[magnet].setMAGfile(Magconf_files)
-
+    # print(f'{magnet}: Parts={Parts[magnet]}')
     
 def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
     """get records for a given ID"""

@@ -89,8 +89,8 @@ def main():
         # actually list of site in magnetdb sens
         # eventually get also commentaire - if Démonté in commentaire then magnet status=defunct
         (_data, jid) = getTable(s, url_status, 2, [1,3,4], debug=args.debug)
-        for item in _data:
-            print(f'{item}: status={_data[item]}, jid={jid[item]}')
+        # for item in _data:
+        #     print(f'{item}: status={_data[item]}, jid={jid[item]}')
         
         for item in _data:
             # print(f'{item}: status={_data[item]}, jid={jid[item]}')
@@ -124,7 +124,24 @@ def main():
                 Sites[item]['decommissioned_at'] = Sites[cfg]['commissioned_at']
         # for site in Sites:
         #     print(f'site: {site}={Sites[site]}')
-        
+
+        print('\nSite names:')
+        site_names = {}
+        for item in _data:
+            # print(f'{item}: status={_data[item]}, jid={jid[item]}')
+
+            # grep keys in _data with item_
+            match_expr = re.compile(f'{item}_\d+')
+            same_cfgs = [ key for key in _data if match_expr.match(key) and key != item]
+            if same_cfgs:
+                # print('same site cfg:', same_cfgs)
+                site_names[item] = same_cfgs
+            if not '_' in item and not same_cfgs:
+                site_names[item] = []
+
+        for item in site_names:
+            print(f'{item}: {site_names[item]}')
+
         # Get records per site
         for ID in Sites: #Mids:
             getSiteRecord(s, url_files, ID, Sites, url_downloads, debug=args.debug)
@@ -138,34 +155,47 @@ def main():
         # En Stock
         # Autre
         for site in Sites:
+            if Sites[site]['decommissioned_at'] != stopped_at:
+                Sites[site]['status'] = 'decommisioned'
+            else:
+                if Sites[site]['status'].lower() == 'en service':
+                    Sites[site]['status'] = 'in_operation'
+
             if Sites[site]['records']:
                 housing = Sites[site]['records'][0].getHousing()
                 # housing = Sites[site]['records'][-1]
-                if Sites[site]['decommissioned_at'] != stopped_at:
-                    Sites[site]['status'] = 'decommisioned'
-                else:
-                    if Sites[site]['status'] = 'En Service':
-                        Sites[site]['status'] = 'in_operation'
                 # print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}")
 
         # Create list of Magnets from sites
         # NB use entries sorted by commisionned date
         # TODO replace Magnets by a dict that is similar to magnetdb magnet
-        import operator
-        print("\nSites:", len(Sites))
-        for site in sorted(Sites, key=operator.itemgetter(5)):
+        print(f"\nSites({len(Sites)}): orderer by names")
+        for site in site_names:
             print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}, records={len(Sites[site]['records'])}")
-            # print(f"{Sites[site]['name']}: {Sites[site]}")
+            for item in site_names[site]:
+                print(f"{Sites[item]['name']}: status={Sites[item]['status']}, housing={housing}, commissioned_at={Sites[item]['commissioned_at']}, decommissioned_at={Sites[item]['decommissioned_at']}, records={len(Sites[item]['records'])}")
+
+        # import operator
+        # print(f"\nSites({len(Sites)}): orderer by commisioned_at")
+        # for site in sorted(Sites, key=operator.itemgetter(5)):
+        #     print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}, records={len(Sites[site]['records'])}")
+        #     # print(f"{Sites[site]['name']}: {Sites[site]}")
             
-        for site in sorted(Sites, key=operator.itemgetter(5)):
+        # print(f"\nMagnets: create and set magnet status")
+        for site in site_names: #sorted(Sites, key=operator.itemgetter(5)):
             magnetID = re.sub('_\d+','', site)
             # TODO replace HMagnet by a dict that is similar to magnetdb magnet
             # status: inherited from site
             status = Sites[site]['status']
+            if site_names[site]:
+                status = Sites[site_names[site][-1]]['status']
+            if status.lower() == 'en stock':
+                status = 'in_stock'
             # print(f'{magnetID}: {status}')
-            Magnets[magnetID] = HMagnet.HMagnet(magnetID, 0, None, status, 0)
-            print(f'{magnetID}: {Magnets[magnetID]}')
+            Magnets[magnetID] = HMagnet.HMagnet(magnetID, None, status, parts=[])
+            # print(f'{magnetID}: {Magnets[magnetID]}')
         
+        # print(f"\nMagnets: get parts by magnet and set part status")
         Parts = {}
         for magnetID in Magnets:
             magnet = re.sub('_\d+','',magnetID)
@@ -173,12 +203,28 @@ def main():
             if debug:
                 print(f"loading helices for: {magnet}")
             getMagnetPart(s, magnet, url_helices, magnet, Magnets, url_materials, Parts, Mats, save=args.save, debug=args.debug)
-        print("\nParts from getMagnetPart:", len(Parts))
+            # print(f"Parts from getMagnetPart[{magnet}] ({len(Parts[magnet])}): {[part for (i,part) in Parts[magnet]]}")
 
+        # for magnetID in Magnets:
+        #     print(f'{magnetID}: {Magnets[magnetID]}')
+            
+        
+        #
+        # print('Parts: create list of magnet per part')
+        PartMagnet = {}
+        for magnet in Parts:
+            for (i,part) in Parts[magnet]:
+                # print(i, part)
+                if not part in PartMagnet:
+                    PartMagnet[part] = []
+                PartMagnet[part].append(magnet)
+        # for part in PartMagnet:
+        #     print(f'{part} : magnets={PartMagnet[part]}')
+            
         # Create Parts from Magnets
         # TODO replace Parts by a dict that is similar to magnetdb part
         # 'name', 'description', 'status', 'design_office_reference'
-        print("\nMagnets:", len(Magnets))
+        print(f"\nMagnets ({len(Magnets)}):")
         PartName = {}
         Carac_Magnets = {}
         for magnetID in Magnets:
@@ -186,26 +232,33 @@ def main():
             magnet = re.sub('_\d+','',magnetID)
             # print(f"** {magnet}: data={Magnets[magnetID]}")
             Carac_Magnets[magnet] = {'name':magnet, 'status':Magnets[magnetID].status, 'design_office_reference': ''}
-            magconf = Magnets[magnetID].MAGfile
-            if magconf:
-                magconffile = magconf[0]
-                Carac_Magnets[magnet]['config'] = magconffile
-                if Parts[magnet]:
-                    Carac_Magnets[magnet]['parts'] = []
-                    for part in Parts[magnet]:
-                        pname = part[-1].replace('MA','H')
-                        pid = part[0]
-                        Carac_Magnets[magnet]['parts'].append(pname)
-                        if not pname in PartName:
-                            PartName[pname] = [f"HL-31_H{pid}", f"{Magnets[magnetID].status}"]
-                            # set status from magnet status??
+            if magnet in site_names:
+                Carac_Magnets[magnet]['sites'] = [magnet]
+                for site in site_names[magnet]:
+                    Carac_Magnets[magnet]['sites'].append(site)
+                    
+            # magconf = Magnets[magnetID].MAGfile
+            # if magconf:
+            #     magconffile = magconf[0]
+            #     Carac_Magnets[magnet]['config'] = magconffile
+            
+            if Parts[magnet]:
+                Carac_Magnets[magnet]['parts'] = []
+                for i,part in Parts[magnet]:
+                    pname = part.replace('MA','H')
+                    Carac_Magnets[magnet]['parts'].append(pname)
+                    if not pname in PartName:
+                        latest_magnet = PartMagnet[pname][-1]
+                        status = Magnets[latest_magnet].status
+                        PartName[pname] = [f"HL-31_H{i}", f"{status}", PartMagnet[pname]]
+                        # set status from magnet status??
             print(f"{magnet}: {Carac_Magnets[magnet]}")
         
 
         # Create Parts from Materials because in control/monitoring part==mat
         # TODO once Parts is complete no longer necessary
         # ['name', 'description', 'status', 'type', 'design_office_reference', 'material_id'
-        print(f"\nMParts: {len(Mats)}")
+        print(f"\nMParts ({len(Mats)}):")
         for mat in Mats:
             # print(mat, type(Mats[mat]))
             key = mat.replace('MA','H')
@@ -219,12 +272,13 @@ def main():
             if key in PartName:
                 carac['geometry'] = PartName[key][0]
                 carac['status'] = PartName[key][1]
-            print(key, carac)
+                carac['magets'] = PartName[key][2]
+            print(f"{key}: {carac}")
             
         # TODO replace Materials by a dict that is similar to magnetdb material
         # Ref ou REF???
         getMaterial(s, None, url_materials, Mats, debug=args.debug)
-        print(f"\nMaterials: {len(Mats)}")
+        print(f"\nMaterials ({len(Mats)}):")
         for mat in Mats:
             carac = {'name':Mats[mat].name,
                      'description': '',
@@ -242,7 +296,7 @@ def main():
                      }
             if 'nuance' in Mats[mat].material:
                 carac['nuance'] = Mats[mat].material['nuance']
-            print(mat, carac)
+            print(f"{mat}: {carac}")
 
         # Try to read and make some stats on records
         print('\nRecords:')
