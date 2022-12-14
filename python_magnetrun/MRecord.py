@@ -68,7 +68,7 @@ class MRecord:
             raise Exception("MRecord.download: no session defined")
     
         params = 'file=%s&download=1' % self.link
-        data = download(session, url, params, self.link, debug)
+        data = download(session, url, params, self.link)
         # print('MRecord/getData:', data)
         return data
 

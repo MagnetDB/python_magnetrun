@@ -44,6 +44,9 @@ def main():
         print( 'Using readline' )
         password = sys.stdin.readline().rstrip()
 
+    if args.save:
+        args.check = True
+
     # print( 'Read: ', password )
 
     # shall check if host ip up and running
@@ -84,9 +87,10 @@ def main():
         
         # Get data from Status page
         # actually list of site in magnetdb sens
+        # eventually get also commentaire - if Démonté in commentaire then magnet status=defunct
         (_data, jid) = getTable(s, url_status, 2, [1,3,4], debug=args.debug)
-        # for item in _data:
-        #     print(f'{item}: status={_data[item]}, jid={jid[item]}')
+        for item in _data:
+            print(f'{item}: status={_data[item]}, jid={jid[item]}')
         
         for item in _data:
             # print(f'{item}: status={_data[item]}, jid={jid[item]}')
@@ -124,7 +128,7 @@ def main():
         # Get records per site
         for ID in Sites: #Mids:
             getSiteRecord(s, url_files, ID, Sites, url_downloads, debug=args.debug)
-            print(f"getSiteRecord({ID}): records={len(Sites[ID]['records'])}")
+            # print(f"getSiteRecord({ID}): records={len(Sites[ID]['records'])}")
 
         # Correct status:
         # for site: 'in_study', 'in_operation', 'decommisioned'
@@ -140,7 +144,8 @@ def main():
                 if Sites[site]['decommissioned_at'] != stopped_at:
                     Sites[site]['status'] = 'decommisioned'
                 else:
-                    Sites[site]['status'] = 'in_operation'
+                    if Sites[site]['status'] = 'En Service':
+                        Sites[site]['status'] = 'in_operation'
                 # print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}")
 
         # Create list of Magnets from sites
@@ -156,8 +161,10 @@ def main():
             magnetID = re.sub('_\d+','', site)
             # TODO replace HMagnet by a dict that is similar to magnetdb magnet
             # status: inherited from site
-            status = Sites[site]['status'] 
+            status = Sites[site]['status']
+            # print(f'{magnetID}: {status}')
             Magnets[magnetID] = HMagnet.HMagnet(magnetID, 0, None, status, 0)
+            print(f'{magnetID}: {Magnets[magnetID]}')
         
         Parts = {}
         for magnetID in Magnets:
@@ -166,6 +173,7 @@ def main():
             if debug:
                 print(f"loading helices for: {magnet}")
             getMagnetPart(s, magnet, url_helices, magnet, Magnets, url_materials, Parts, Mats, save=args.save, debug=args.debug)
+        print("\nParts from getMagnetPart:", len(Parts))
 
         # Create Parts from Magnets
         # TODO replace Parts by a dict that is similar to magnetdb part
@@ -241,9 +249,9 @@ def main():
         for site in Sites:
             for record in Sites[site]['records']:
                 print(f'{site}: {record}')
-                data = record.getData(s, url_downloads)
 
                 if args.check:
+                    data = record.getData(s, url_downloads)
                     try:
                         mrun = MagnetRun.fromStringIO(record.getHousing(), record.getSite(), data)
                     except:
@@ -253,8 +261,8 @@ def main():
                     # from ..processing.stats import plateaus
                     # plateaus(Data=mrun.MagnetData, duration=10, save=args.save, debug=args.debug)
 
-                if args.save:
-                    record.saveData(data)
+                    if args.save:
+                        record.saveData(data)
 
                 # break
 
