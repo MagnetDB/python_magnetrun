@@ -182,14 +182,14 @@ def main():
                         Sites[site]['status'] = 'decommisioned'
                         Sites[site]['decommissioned_at'] = latest_time
 
-            if Sites[site]['records']:
+        if args.debug:
+            print(f"\nSites({len(Sites)}): orderer by names")
+            for site in site_names:
                 housing = Sites[site]['records'][0].getHousing()
-
-        print(f"\nSites({len(Sites)}): orderer by names")
-        for site in site_names:
-            print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}, records={len(Sites[site]['records'])}")
-            for item in site_names[site]:
-                print(f"{Sites[item]['name']}: status={Sites[item]['status']}, housing={housing}, commissioned_at={Sites[item]['commissioned_at']}, decommissioned_at={Sites[item]['decommissioned_at']}, records={len(Sites[item]['records'])}")
+                print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}, records={len(Sites[site]['records'])}")
+                for item in site_names[site]:
+                    housing = Sites[item]['records'][0].getHousing()
+                    print(f"{Sites[item]['name']}: status={Sites[item]['status']}, housing={housing}, commissioned_at={Sites[item]['commissioned_at']}, decommissioned_at={Sites[item]['decommissioned_at']}, records={len(Sites[item]['records'])}")
 
         # if Sites[site]['decommissioned_at'] - Sites[site]['commissioned_at'] < 0 day:
         # transfert record to other site - aka magnet_[n-1] - from name site - aka magnet_n
@@ -210,6 +210,9 @@ def main():
                     if num > 1:
                         previous_site = f'{name}_{num-1}'
                     print(f"{site}: tranfert records to {previous_site}")
+                    latest_record = Sites[site]['records'][-1]
+                    latest_time = latest_record.getTimestamp() # not really a timestamp but a datetime.datetime
+                    Sites[previous_site]['decommissioned_at'] = latest_time
                     for record in Sites[site]['records']:
                         Sites[previous_site]['records'].append(record)
                         record.setSite(previous_site)
@@ -249,10 +252,12 @@ def main():
         # Create list of Magnets from sites
         # NB use entries sorted by commisionned date
         # TODO replace Magnets by a dict that is similar to magnetdb magnet
-        print(f"\nSites({len(Sites)}): orderer by names")
+        print(f"\nSites({len(Sites)}):")
         for site in site_names:
+            housing = Sites[site]['records'][0].getHousing()
             print(f"{Sites[site]['name']}: status={Sites[site]['status']}, housing={housing}, commissioned_at={Sites[site]['commissioned_at']}, decommissioned_at={Sites[site]['decommissioned_at']}, records={len(Sites[site]['records'])}")
             for item in site_names[site]:
+                housing = Sites[item]['records'][0].getHousing()
                 print(f"{Sites[item]['name']}: status={Sites[item]['status']}, housing={housing}, commissioned_at={Sites[item]['commissioned_at']}, decommissioned_at={Sites[item]['decommissioned_at']}, records={len(Sites[item]['records'])}")
 
         # print(f"\nMagnets: create and set magnet status")
