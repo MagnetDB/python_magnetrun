@@ -68,7 +68,7 @@ def plot_files(input_files: list, key1: str, key2: str, from_i: int=0, to_i = No
     colormap = cm.viridis
     if to_i is None:
         colorlist = [colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(input_files))]
-    else
+    else:
         colorlist = [colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(to_i-from_i))]
 
 
