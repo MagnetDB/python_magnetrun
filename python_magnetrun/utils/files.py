@@ -15,7 +15,7 @@ import matplotlib.colors as colors
 
 # TODO use MagnetData instead of files
 
-def concat_files(input_files: list: list, debug: bool=False):
+def concat_files(input_files: list: list, keys: list, debug: bool=False):
     if debug:
         print(f'input_files: {input_files}')
 
@@ -26,9 +26,13 @@ def concat_files(input_files: list: list, debug: bool=False):
         try:
             if f.endswith(".txt"):
                 _df = pd.read_csv(f, sep='\s+', engine='python', skiprows=1)
-                df_f.append(_df)
             else:
-                df_f.append(pd.read_csv(f, sep="str(',')", engine='python', skiprows=0))
+                _df = pd.read_csv(f, sep="str(',')", engine='python', skiprows=0)
+                
+            if keys:
+                df_f.append(_df[keys])
+            else:
+                df_f.append(_df)
         except:
             print(f'load_files: failed to load {f} with pandas')
 
