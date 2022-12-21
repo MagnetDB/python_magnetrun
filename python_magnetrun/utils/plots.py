@@ -77,7 +77,7 @@ def plot_files(input_files: list, key1: str, key2: str, from_i: int=0, to_i = No
     for i, f in enumerate(input_files):
         if i <= from_i:
             continue
-        elif i >= to_i:
+        elif not to_i is None and i >= to_i:
             break;
         else:
             try:
