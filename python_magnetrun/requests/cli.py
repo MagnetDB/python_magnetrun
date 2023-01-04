@@ -351,7 +351,7 @@ def main():
             if key in PartName:
                 carac['geometry'] = PartName[key][0]
                 carac['status'] = PartName[key][1]
-                carac['magets'] = PartName[key][2]
+                carac['magnets'] = PartName[key][2]
             print(f"{key}: {carac}")
             
         # TODO replace Materials by a dict that is similar to magnetdb material
