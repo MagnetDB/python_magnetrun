@@ -43,15 +43,15 @@ def concat_files(input_files: list, keys: list, debug: bool=False):
     df = df.loc[:, (df != 0.0).any(axis=0)]
 
 
-    # Add a time column
-    tformat="%Y.%m.%d %H:%M:%S"
-    start_date=df["Date"].iloc[0]
-    start_time=df["Time"].iloc[0]
-    end_time=df["Time"].iloc[-1]
-    print ("start_time=", start_time, "start_date=", start_date)
-
-    t0 = datetime.datetime.strptime(df['Date'].iloc[0]+" "+df['Time'].iloc[0], tformat)
     try:
+        # Add a time column
+        tformat="%Y.%m.%d %H:%M:%S"
+        start_date=df["Date"].iloc[0]
+        start_time=df["Time"].iloc[0]
+        end_time=df["Time"].iloc[-1]
+        print ("start_time=", start_time, "start_date=", start_date)
+
+        t0 = datetime.datetime.strptime(df['Date'].iloc[0]+" "+df['Time'].iloc[0], tformat)
         df["t"] = df.apply(lambda row: (datetime.datetime.strptime(row.Date+" "+row.Time, tformat)-t0).total_seconds(), axis=1)
         # # del df['Date']
         # # del df['Time']
