@@ -44,7 +44,7 @@ def getTable(session, url_data, index, indices, delimiter='//tbody', param=None,
         sys.exit(1)
     page.raise_for_status()
     if debug:
-        print( "connect:", page.url, page.status_code )
+        print( "connect:", page.url, page.status_code, page.text )
         print( "index:", index )
         print( "indices:", indices )
         print( "params:", param )
@@ -148,6 +148,33 @@ def getMaterial(session, materialID: int, url_materials, Mats: dict, debug=False
                 
                 
 
+
+def getPartCADref(session, url_data, Parts, save: bool=False, debug: bool=False):
+    """get cadref and material for parts"""
+    
+    params = {'REF': '', 'compact': 'on', 'formsubmit': 'OK'}
+    res = session.post(url=url_data, data=params, verify=True)
+    if res.status_code != 200 :
+        print(f"getPartCADref: cannot logging to {url_data}")
+        res.raise_for_status()
+    # print(f'getPartCADref: status={res.status_code}') # res={res.text}
+    
+    doc = lh.fromstring(res.content)
+    
+    delimiter='//tbody'
+    tr_elements = doc.xpath(delimiter)
+    for i,t in enumerate(tr_elements[0]):
+        name = []
+        for j,d in enumerate(t):
+            name.append( d.text_content() )
+            if debug: print(f'\t{j}:{name[-1]}')
+        Parts[name[0]] = [name[1], name[-1].split()[0]] # Ebauche
+    
+    if debug:
+        print(f'getPartCADref:')
+        for key in Parts:
+            print(f'{key}: {Parts[key]}')
+    return True
 
 def getMagnetPart(session, magnet, url_helices, magnetID, Magnets, url_materials, Parts, Mats, Confs: dict={}, save: bool=False, debug: bool=False):
     """get parts for a given magnet"""

@@ -19,7 +19,7 @@ import lxml.html as lh
 from .. import HMagnet
 
 from .connect import createSession
-from .webscrapping import getTable, getSiteRecord, getMagnetPart, getMaterial
+from .webscrapping import getTable, getSiteRecord, getMagnetPart, getMaterial, getPartCADref
 from ..MagnetRun import MagnetRun
 
 def cleanup(remove_site: list, msg: str, site_names: dict, Sites: dict):
@@ -79,6 +79,7 @@ def main():
     url_status=base_url + "site/sba/pages/" + "Etat.php"
     url_files=base_url + "site/sba/pages/" + "getfref.php"
     url_helices=base_url + "site/sba/pages/" + "Aimant2.php"
+    url_helicescad=base_url + "site/sba/pages/" + "Helice.php"
     url_materials=base_url + "site/sba/pages/" + "Mat.php"
     url_query=base_url + "site/sba/vendor/jqueryFileTree/connectors/jqueryFileTree.php"
 
@@ -349,6 +350,10 @@ def main():
                 print(f"loading helices for: {magnet}")
             getMagnetPart(s, magnet, url_helices, magnet, Magnets, url_materials, Parts, Mats, Confs, save=args.save, debug=args.debug)
             # print(f"Parts from getMagnetPart[{magnet}] ({len(Parts[magnet])}): {[part for (i,part) in Parts[magnet]]}")
+        
+        # Get CAD ref for Parts
+        PartsCAD = {}
+        getPartCADref(s, url_helicescad, PartsCAD, save=args.save, debug=args.debug)
         
         #
         # print('Parts: create list of magnet per part')
