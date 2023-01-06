@@ -149,7 +149,7 @@ def getMaterial(session, materialID: int, url_materials, Mats: dict, debug=False
                 
 
 
-def getMagnetPart(session, magnet, url_helices, magnetID, Magnets, url_materials, Parts, Mats, save=False, debug=False):
+def getMagnetPart(session, magnet, url_helices, magnetID, Magnets, url_materials, Parts, Mats, Confs: dict={}, save: bool=False, debug: bool=False):
     """get parts for a given magnet"""
     #print(f'getMagnetPart({magnet})')
 
@@ -157,12 +157,14 @@ def getMagnetPart(session, magnet, url_helices, magnetID, Magnets, url_materials
         ('ref', magnet),
     )
 
-    hindices = [3,4,5,6,7,8,9,10,11,12,13,14,15,16,19]
+    hindices = [3,4,5,6,7,8,9,10,11,12,13,14,15,16]
     res = getTable(session, url_helices, 1, hindices, param=params_helix, debug=debug)
+    # print(f'getMagnetPart: res={res}')
     helices = ()
     if res:
         helices = res[0]
         jid = res[1]
+    # print(f'getMagnetPart: helices={helices}')
 
     if not magnet in Parts:
         Parts[magnet]=[]
@@ -172,16 +174,24 @@ def getMagnetPart(session, magnet, url_helices, magnetID, Magnets, url_materials
     for data in helices:
         # print(f"{data}:")
         for i in range(len(helices[data])-1):
-            materialID = re.sub('H.* / ','',helices[data][i])
-            partID = materialID.replace('MA','H')
-            if debug:
-                print("%s:" % materialID )
-            if materialID != '-':
+            ids = helices[data][i].split(' / ')
+            # print(ids)
+            if ids[0] != '-':
+                [partID, materialID] = ids
                 Parts[magnet].append([i,partID])
                 Magnets[magnet].addPart(partID)
                 getMaterial(session, materialID, url_materials, Mats, debug)
+                if debug:
+                    print("{partID}: {materialID}")
 
-    # print(f'{magnet}: Parts={Parts[magnet]}')
+    # get MagConfFile
+    hindices = [19]
+    res = getTable(session, url_helices, 1, hindices, param=params_helix, debug=debug)
+    data= res[0][magnet]
+    data= data[0].replace('\t','')
+    files = data.split()
+    Confs[magnet] = files
+    print(f'{magnet}: Confs={Confs[magnet]}')
     
 def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
     """get records for a given ID"""
@@ -197,7 +207,7 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
     if debug:
         print( f"data: url={r.url}, status={r.status_code}, encoding={r.encoding}, text={r.text}")
     if r.status_code != 200:
-        print("error %d loading %s" % (p.status_code, url_data) )
+        print(f"error {r.status_code} loading {url_data}")
         sys.exit(1)
     r.raise_for_status()
 
