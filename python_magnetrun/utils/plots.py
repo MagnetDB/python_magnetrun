@@ -24,14 +24,14 @@ def plot_vs_time(df, items, show: bool=False):
         if key in keys:
             df.plot(x='Time', y=key, grid=True, ax=ax)
         else:
-            print("unknown key: %s" % key)
-            print("valid keys: ", keys)
+            print(f"unknown key: {key}")
+            print(f"valid keys: {keys}")
             sys.exit(1)
     if show:
         plt.show()
     else:
         imagefile = "Fields" # input_file.replace(".txt", "")
-        plt.savefig('%s_vs_time.png' % imagefile, dpi=300 )
+        plt.savefig(f'{imagefile}_vs_time.png', dpi=300 )
     plt.close()
     
 def plot_key_vs_key(df, pairs, show: bool=False):
@@ -42,20 +42,20 @@ def plot_key_vs_key(df, pairs, show: bool=False):
         #print("pair=", pair, " type=", type(pair))
         items = pair.split('-')
         if len(items) != 2:
-            print("invalid pair of keys: %s" % pair)
+            print(f"invalid pair of keys: {pair}")
             sys.exit(1)
         key1= items[0]
         key2 =items[1]
         if key1 in keys and key2 in keys:
             df.plot(x=key1, y=key2,kind='scatter',color='red', grid=True, ax=ax) # on graph per pair
         else:
-            print("unknown pair of keys: %s" % pair)
-            print("valid keys: ", keys)
+            print(f"unknown pair of keys: {pair}")
+            print(f"valid keys: {keys}")
             sys.exit(1)
         if show:
            plt.show()
         else:
-            plt.savefig('%s_vs_%s.png' % (key1, key2), dpi=300 )
+            plt.savefig(f'{key1}_vs_{key2}.png', dpi=300 )
         plt.close()
 
 # TODO use MagnetData instead of files
@@ -77,8 +77,9 @@ def plot_files(input_files: list, key1: str, key2: str, from_i: int=0, to_i = No
     for i, f in enumerate(input_files):
         if i <= from_i:
             continue
-        elif not to_i is None and i >= to_i:
-            break;
+        elif not to_i is None:
+            if i >= to_i:
+                break;
         else:
             try:
                 if f.endswith(".txt"):
@@ -101,9 +102,11 @@ def plot_files(input_files: list, key1: str, key2: str, from_i: int=0, to_i = No
 
             # print(f'load_files: {f}')
 
-    ax.legend()
+    # ax.legend()
     plt.legend(loc='best')
     if show:
         plt.show()
     else:
         print('save to file - to be implemented')
+        plt.savefig(f'files-{key1}_vs_{key2}.png', dpi=300 )
+    plt.close()
