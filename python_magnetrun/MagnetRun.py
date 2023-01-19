@@ -16,17 +16,10 @@ matplotlib.rcParams['text.usetex'] = True
 from .magnetdata import MagnetData
 
 def prepareData(data: MagnetData, housing: str):
-    # cleanup data: remove empty columns aka columns with 0
-    data.cleanupData()
-    #print(f'prepareData cleanup done: {data.getKeys()}')
-    
-    # remove duplicates: get keys for Icoil\d+, keep first one and eventually latest (aka for Bitters),
-    Ikeys = [ _key for _key in data.getKeys() if re.match("Icoil\d+", _key)]
-    print(f'Icoil keys from {Ikeys[0]} to {Ikeys[-1]}')
             
     # get start/end
     (start_date, start_time, end_date, end_time) = data.getStartDate()
-    print(f'start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}')
+    # print(f'start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}')
 
     # add timestamp
     data.addTime()
@@ -34,7 +27,7 @@ def prepareData(data: MagnetData, housing: str):
     
     # get duration
     duration = data.getDuration()
-    print(f'duration={duration}')
+    # print(f'duration={duration}')
 
     # TODO use a dict struct to simplify this?
     # shall check if key exist beforehand
@@ -50,6 +43,14 @@ def prepareData(data: MagnetData, housing: str):
         # FlowH = Flow2, FlowB = Flow1
         # RpmH = Rpm2, RpmB = Rpm1
     # what about M1, M5 and M7???
+
+    # cleanup data: remove empty columns aka columns with 0
+    data.cleanupData()
+    #print(f'prepareData cleanup done: {data.getKeys()}')
+    
+    # remove duplicates: get keys for Icoil\d+, keep first one and eventually latest (aka for Bitters),
+    Ikeys = [ _key for _key in data.getKeys() if re.match("Icoil\d+", _key)]
+    # print(f'Icoil keys from {Ikeys[0]} to {Ikeys[-1]}')
 
     # rename Icoil1 -> IH
     # rename Icoil15 -> IB
@@ -90,27 +91,28 @@ class MagnetRun:
     @classmethod
     def fromStringIO(cls, housing, site, name):
         """create from a stringIO"""
-        print(f'MagnetRun/fromStringIO: housing={housing}, site={site}')
+        # print(f'MagnetRun/fromStringIO: housing={housing}, site={site}')
         from io import StringIO
 
-        # try:
-        ioname = StringIO(name)
-        # TODO rework: get item 2 otherwise set to unknown
-        insert = "Unknown"
-        headers = ioname.readline().split()
-        if len(headers) >=2:
-            insert = headers[1]
-        data = MagnetData.fromStringIO(name)
-        #print(f'data keys({len(data.getKeys())}): {data.getKeys()}')
-        prepareData(data, housing)
-        #print(f'prepareData: data keys({len(data.getKeys())}): {data.getKeys()}')
+        try:
+            ioname = StringIO(name)
+            # TODO rework: get item 2 otherwise set to unknown
+            insert = "Unknown"
+            headers = ioname.readline().split()
+            if len(headers) >=2:
+                insert = headers[1]
+            if not site.startswith(insert):
+                print(f'MagnetRun:fromStringIO: site={site}, insert={insert}')
+            data = MagnetData.fromStringIO(name)
+            #print(f'data keys({len(data.getKeys())}): {data.getKeys()}')
+            prepareData(data, housing)
+            #print(f'prepareData: data keys({len(data.getKeys())}): {data.getKeys()}')
         
-        # except:
-        #      print("cannot read data for %s insert, %s site" % (insert, site) )
-        #      fo = open("wrongdata.txt", "w", newline='\n')
-        #      fo.write(ioname)
-        #      fo.close()
-        #      sys.exit(1)
+        except:
+            with open("wrongdata.txt", "w", newline='\n') as fo:
+                fo.write(name)
+            print(f'cannot load data for {housing}, {insert} insert, {site} site"')
+            # raise RuntimeError(f'cannot load data for {housing}, {insert} insert, {site} site"')
         return cls(housing, site, data)
 
     def __repr__(self):
@@ -148,3 +150,7 @@ class MagnetRun:
         """return list of Data keys"""
         return self.MagnetData.Keys
     
+    def saveData(self, filename: str):
+        """save Data to file"""
+        with open(filename, "w", newline='\n') as f:
+            f.write(self.MagnetData)

@@ -178,7 +178,8 @@ def getPartCADref(session, url_data, Parts, save: bool=False, debug: bool=False)
 
 def getMagnetPart(session, magnet, url_helices, magnetID, Magnets, url_materials, Parts, Mats, Confs: dict={}, save: bool=False, debug: bool=False):
     """get parts for a given magnet"""
-    #print(f'getMagnetPart({magnet})')
+    if debug:
+        print(f'getMagnetPart({magnet})')
 
     params_helix = (
         ('ref', magnet),
@@ -199,10 +200,11 @@ def getMagnetPart(session, magnet, url_helices, magnetID, Magnets, url_materials
         # print(f"{magnet}: jid={jid}, index={Magnets[magnet].getIndex()}")
         print(f"{magnet}: jid={jid}")
     for data in helices:
-        # print(f"{data}:")
-        for i in range(len(helices[data])-1):
+        # print(f"data: {data}")
+        # print(f"helices: {len(helices[data])}")
+        for i in range(len(helices[data])):
             ids = helices[data][i].split(' / ')
-            # print(ids)
+            # print(f'ids[{i}={ids}')
             if ids[0] != '-':
                 [partID, materialID] = ids
                 Parts[magnet].append([i,partID])
@@ -218,7 +220,7 @@ def getMagnetPart(session, magnet, url_helices, magnetID, Magnets, url_materials
     data= data[0].replace('\t','')
     files = data.split()
     Confs[magnet] = files
-    print(f'{magnet}: Confs={Confs[magnet]}')
+    # print(f'{magnet}: Confs={Confs[magnet]}')
     
 def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
     """get records for a given ID"""

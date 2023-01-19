@@ -15,6 +15,7 @@ import datetime
 import requests
 import requests.exceptions
 import lxml.html as lh
+from io import StringIO
 
 from .. import HMagnet
 
@@ -312,7 +313,8 @@ def main():
             a_set = lst_records[i][0]
             for j in range(i+1, len(Sites)):
                 b_set = lst_records[j][0]
-                print(f'records common between {lst_records[i][1]} and {lst_records[j][1]}: {len(a_set.intersection(b_set))}')
+                if len(a_set.intersection(b_set)) != 0:
+                    print(f'records common between {lst_records[i][1]} and {lst_records[j][1]}: {len(a_set.intersection(b_set))}')
             
         # Create list of Magnets from sites
         # NB use entries sorted by commisionned date
@@ -354,6 +356,9 @@ def main():
         # Get CAD ref for Parts
         PartsCAD = {}
         getPartCADref(s, url_helicescad, PartsCAD, save=args.save, debug=args.debug)
+        print(f'getPartCADref:')
+        for key in PartsCAD:
+            print(f'{key}: {PartsCAD[key]}')
         
         #
         # print('Parts: create list of magnet per part')
@@ -376,7 +381,7 @@ def main():
         for magnetID in Magnets:
             # print(magnet, type(Magnets[magnet]))
             magnet = re.sub('_\d+','',magnetID)
-            # print(f"** {magnet}: data={Magnets[magnetID]}")
+            print(f"** {magnet}: data={Magnets[magnetID]}")
             Carac_Magnets[magnet] = {'name':magnet, 'status':Magnets[magnetID].status, 'design_office_reference': ''}
             if magnet in site_names:
                 Carac_Magnets[magnet]['sites'] = [magnet]
@@ -391,12 +396,14 @@ def main():
             if Parts[magnet]:
                 Carac_Magnets[magnet]['parts'] = []
                 for i,part in Parts[magnet]:
-                    pname = part.replace('MA','H')
+                    print(f'Part[{i}]: {part}')
+                    # pname = part.replace('MA','H')
+                    pname = part
                     Carac_Magnets[magnet]['parts'].append(pname)
                     if not pname in PartName:
                         latest_magnet = PartMagnet[pname][-1]
                         status = Magnets[latest_magnet].status
-                        PartName[pname] = [f"HL-31_H{i}", f"{status}", PartMagnet[pname]]
+                        PartName[pname] = [f"HL-31_H{i+1}", f"{status}", PartMagnet[pname]]
                         # set status from magnet status??
             print(f"{magnet}: {Carac_Magnets[magnet]}")
         
@@ -404,22 +411,22 @@ def main():
         # Create Parts from Materials because in control/monitoring part==mat
         # TODO once Parts is complete no longer necessary
         # ['name', 'description', 'status', 'type', 'design_office_reference', 'material_id'
-        print(f"\nMParts ({len(Mats)}):")
-        for mat in Mats:
+        print(f"\nMParts ({len(PartsCAD)}):")
+        for part in PartsCAD:
             # print(mat, type(Mats[mat]))
-            key = mat.replace('MA','H')
-            carac = {'name': mat.replace('MA','H'),
+            # key = mat.replace('MA','H')
+            carac = {'name': part,
                      'description': '',
                      'status': 'unknown',
-                     'type': Mats[mat].category,
-                     'design_office_reference': '',
-                     'material': mat
+                     'type': 'helix', # Mats[part].category,
+                     'design_office_reference': PartsCAD[part][0],
+                     'material': PartsCAD[part][1]
                     }
-            if key in PartName:
-                carac['geometry'] = PartName[key][0]
-                carac['status'] = PartName[key][1]
-                carac['magnets'] = PartName[key][2]
-            print(f"{key}: {carac}")
+            if part in PartName:
+                carac['geometry'] = PartName[part][0]
+                carac['status'] = PartName[part][1]
+                carac['magnets'] = PartName[part][2]
+            print(f"{part}: {carac}")
             
         # TODO replace Materials by a dict that is similar to magnetdb material
         # Ref ou REF???
@@ -432,13 +439,13 @@ def main():
                      'volumic_mass': 9e+3,
                      'specific_heat': 0,
                      'alpha': 3.6e-3,
-                     'electrical_conductivity': Mats[mat].material['sigma0'],
+                     'electrical_conductivity': float(Mats[mat].material['sigma0'].replace(',','.'))*1e+6,
                      'thermal_conductivity': 380,
                      'magnet_permeability': 1,
                      'young': 117e+9,
                      'poisson': 0.33,
                      'expansion_coefficient': 18e-6,
-                     'rpe': Mats[mat].material['rpe']
+                     'rpe': float(Mats[mat].material['rpe'])*1e+6
                      }
             if 'nuance' in Mats[mat].material:
                 carac['nuance'] = Mats[mat].material['nuance']
@@ -448,15 +455,16 @@ def main():
         print('\nRecords:')
         for site in Sites:
             for record in Sites[site]['records']:
-                print(f'{site}: {record}')
-
                 if args.check:
                     data = record.getData(s, url_downloads)
-                    try:
-                        mrun = MagnetRun.fromStringIO(record.getHousing(), record.getSite(), data)
-                    except:
-                        print(f"record: trouble with data for {record.getLink()}")
-                        print(f"record={record}")
+                    iodata = StringIO(data)
+                    headers = iodata.readline().split()
+                    if len(headers) >=2:
+                        insert = headers[1]
+                    if not site.startswith(insert):
+                        print(f'{site}: {record} - expected site={site} got {insert}')
+
+                    # mrun = MagnetRun.fromStringIO(record.getHousing(), record.getSite(), data)
 
                     # from ..processing.stats import plateaus
                     # plateaus(Data=mrun.MagnetData, duration=10, save=args.save, debug=args.debug)

@@ -50,15 +50,15 @@ class MRecord:
         """get link"""
         return self.link
 
-    def setTimestamp(self, timestamp):
+    def setTimestamp(self, timestamp: datetime.datetime):
         """set timestamp"""
         self.timestamp = timestamp
 
-    def setSite(self, site):
+    def setSite(self, site: str):
         """set Site"""
         self.site = site
 
-    def setLink(self, link):
+    def setLink(self, link: str):
         """set Link"""
         self.link = link
 
@@ -69,7 +69,6 @@ class MRecord:
     
         params = 'file=%s&download=1' % self.link
         data = download(session, url, params, self.link)
-        # print('MRecord/getData:', data)
         return data
 
     def saveData(self, data):
