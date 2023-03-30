@@ -14,7 +14,7 @@ import matplotlib.cm as cm
 import matplotlib.colors as colors
 
 # TODO use MagnetData instead of df
-def plot_vs_time(df, items, show: bool=False):
+def plot_vs_time(df, items, show: bool=False, wd: str = None):
     print(f"plot_vs_time: items={items}")
     keys = df.columns.values.tolist()
     
@@ -31,10 +31,14 @@ def plot_vs_time(df, items, show: bool=False):
         plt.show()
     else:
         imagefile = "Fields" # input_file.replace(".txt", "")
-        plt.savefig(f'{imagefile}_vs_time.png', dpi=300 )
+        filename = f'{imagefile}_vs_time.png'
+        if not wd is None:
+            filename = f'{wd}/{filename}'
+        print(f'save to file - {filename}')
+        plt.savefig(filename, dpi=300 )
     plt.close()
     
-def plot_key_vs_key(df, pairs, show: bool=False):
+def plot_key_vs_key(df, pairs, show: bool=False, wd: str = None):
     keys = df.columns.values.tolist()
     for pair in pairs:
         print(f"pair={pair}")
@@ -55,11 +59,15 @@ def plot_key_vs_key(df, pairs, show: bool=False):
         if show:
            plt.show()
         else:
-            plt.savefig(f'{key1}_vs_{key2}.png', dpi=300 )
+            filename = f'{key1}_vs_{key2}.png'
+            if not wd is None:
+                filename = f'{wd}/{filename}'
+            print(f'save to file - {filename}')
+            plt.savefig(filename, dpi=300 )
         plt.close()
 
 # TODO use MagnetData instead of files
-def plot_files(input_files: list, key1: str, key2: str, from_i: int=0, to_i = None, show: bool=False, debug: bool=False):
+def plot_files(name: str, input_files: list, key1: str, key2: str, from_i: int=0, to_i = None, show: bool=False, debug: bool=False, wd: str = None):
     if debug:
         print(f'input_files: {input_files}')
 
@@ -86,15 +94,14 @@ def plot_files(input_files: list, key1: str, key2: str, from_i: int=0, to_i = No
                     _df = pd.read_csv(f, sep='\s+', engine='python', skiprows=1)
                     df_f.append(_df)
                     keys = _df.columns.values.tolist()
-                    if show:
-                        if key1 in keys and key2 in keys:
-                            lname = f.replace("_","-")
-                            lname = lname.replace(".txt","")
-                            lname = lname.split('/')
-                            legends.append(f'{lname[-1]}')
-                            # print(f'rename Flow1 to {lname[-1]}')
-                            _df.plot.scatter(x=key1, y=key2, grid=True, label=f'{lname[-1]}', color=colorlist[i], ax=ax)
-                            # print(f'tttut')
+                    if key1 in keys and key2 in keys:
+                        lname = f.replace("_","-")
+                        lname = lname.replace(".txt","")
+                        lname = lname.split('/')
+                        legends.append(f'{lname[-1]}')
+                        # print(f'rename Flow1 to {lname[-1]}')
+                        _df.plot.scatter(x=key1, y=key2, grid=True, label=f'{lname[-1]}', color=colorlist[i], ax=ax)
+                        # print(f'tttut')
                 else:
                     df_f.append(pd.read_csv(f, sep="str(',')", engine='python', skiprows=0))
             except:
@@ -104,9 +111,12 @@ def plot_files(input_files: list, key1: str, key2: str, from_i: int=0, to_i = No
 
     # ax.legend()
     plt.legend(loc='best')
-    if show:
-        plt.show()
+    if not show:
+        filename = f'{name}-{key1}_vs_{key2}.png'
+        if not wd is None:
+           filename = f'{wd}/{filename}'
+        print(f'save to file - {filename}')
+        plt.savefig(filename, dpi=300 )
     else:
-        print('save to file - to be implemented')
-        plt.savefig(f'files-{key1}_vs_{key2}.png', dpi=300 )
+        plt.show()
     plt.close()
