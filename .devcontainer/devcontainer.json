@@ -12,7 +12,20 @@
 	// Use 'settings' to set *default* container specific settings.json values on container create. 
 	// You can edit these settings after create using File > Preferences > Settings > Remote.
 	"settings": { 
-		"terminal.integrated.defaultProfile.linux": "bash"
+		"terminal.integrated.defaultProfile.linux": "bash",
+		"python.defaultInterpreterPath": "/usr/bin/python",
+		"python.linting.enabled": true,
+		"python.linting.pylintEnabled": true,
+		"python.formatting.autopep8Path": "/usr/bin/autopep8",
+		"python.formatting.blackPath": "/usr/bin/black",
+		"python.formatting.yapfPath": "/usr/bin/yapf3",
+		"python.linting.banditPath": "/usr/bin/bandit",
+		"python.linting.flake8Path": "/usr/bin/flake8",
+		"python.linting.mypyPath": "/usr/bin/mypy",
+		"python.linting.pycodestylePath": "/usr/bin/pycodestyle",
+		"python.linting.pydocstylePath": "/usr/bin/pydocstyle",
+		"python.linting.pylintPath": "/usr/bin/pylint",
+		"python.testing.pytestPath": "/usr/bin/pytest-3"
 	},
 
 	// Use 'appPort' to create a container with published ports. If the port isn't working, be sure
