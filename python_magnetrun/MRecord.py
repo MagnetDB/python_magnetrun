@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-#-*- coding:utf-8 -*-
+# -*- coding:utf-8 -*-
 
 """Magnet Record Object"""
 
 import json
 import datetime
 from .requests.connect import download
+
 
 class MRecord:
     """
@@ -15,7 +16,9 @@ class MRecord:
     link
     """
 
-    def __init__(self, timestamp: datetime.datetime, housing: str, site: str, link: str):
+    def __init__(
+        self, timestamp: datetime.datetime, housing: str, site: str, link: str
+    ) -> None:
         """default constructor"""
         self.timestamp = timestamp
         self.housing = housing
@@ -26,39 +29,39 @@ class MRecord:
         """
         representation of object
         """
-        return "%s(timestamp=%r, housing=%r, site=%r, link=%r)" % \
-            (self.__class__.__name__,
-             self.timestamp,
-             self.housing,
-             self.site,
-             self.link
-            )
+        return "%s(timestamp=%r, housing=%r, site=%r, link=%r)" % (
+            self.__class__.__name__,
+            self.timestamp,
+            self.housing,
+            self.site,
+            self.link,
+        )
 
-    def getTimestamp(self):
+    def getTimestamp(self) -> datetime.datetime:
         """get timestamp"""
         return self.timestamp
 
-    def getHousing(self):
+    def getHousing(self) -> str:
         """get experimental site"""
         return self.housing
 
-    def getSite(self):
+    def getSite(self) -> str:
         """get experimental site magnet"""
         return self.site
 
-    def getLink(self):
+    def getLink(self) -> str:
         """get link"""
         return self.link
 
-    def setTimestamp(self, timestamp: datetime.datetime):
+    def setTimestamp(self, timestamp: datetime.datetime) -> None:
         """set timestamp"""
         self.timestamp = timestamp
 
-    def setSite(self, site: str):
+    def setSite(self, site: str) -> None:
         """set Site"""
         self.site = site
 
-    def setLink(self, link: str):
+    def setLink(self, link: str) -> None:
         """set Link"""
         self.link = link
 
@@ -66,29 +69,31 @@ class MRecord:
         """download record"""
         if not session:
             raise Exception("MRecord.download: no session defined")
-    
-        params = 'file=%s&download=1' % self.link
+
+        params = "file=%s&download=1" % self.link
         data = download(session, url, params, self.link)
         return data
 
     def saveData(self, data):
-        filename = self.link.replace('../../../','')
-        filename = filename.replace('/','_').replace('%20','-')
+        filename = self.link.replace("../../../", "")
+        filename = filename.replace("/", "_").replace("%20", "-")
         # print(f"save to {filename}")
-        fo = open(filename, "w", newline='\n')
-        fo.write(data)
-        fo.close()
+        with open(filename, "w", newline="\n") as fo:
+            fo.write(data)
 
     def to_json(self):
         """
         convert to json
         """
         from . import deserialize
-        return json.dumps(self, default=deserialize.serialize_instance, sort_keys=True, indent=4)
-    
+
+        return json.dumps(
+            self, default=deserialize.serialize_instance, sort_keys=True, indent=4
+        )
+
     def __eq__(self, other):
         """compare MRecords"""
-        if (isinstance(other, MRecord)):
+        if isinstance(other, MRecord):
             if self.timestamp != other.timestamp:
                 return False
             if self.site != other.site:
@@ -97,16 +102,15 @@ class MRecord:
                 return False
             return True
         return False
-    
+
     # def __le__(self, other):
     #     """compare MRecords"""
     #     if (isinstance(other, MRecord)):
     #         return self.timestamp <= other.timestamp:
     #     return False
-        
+
     # def __ge__(self, other):
     #     """compare MRecords"""
     #     if (isinstance(other, MRecord)):
     #         return self.timestamp >= other.timestamp:
     #     return False
-        

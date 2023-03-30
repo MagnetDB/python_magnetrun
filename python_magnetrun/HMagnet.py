@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-#-*- coding:utf-8 -*-
+# -*- coding:utf-8 -*-
 
 """HMagnet Object"""
 
 import json
+
 
 class HMagnet:
     """
@@ -13,7 +14,7 @@ class HMagnet:
     parts
     """
 
-    def __init__(self, name: str, cadref: str, status: str, parts: list):
+    def __init__(self, name: str, cadref: str, status: str, parts: list) -> None:
         """defaut constructor"""
         self.name = name
         self.cadref = cadref
@@ -24,20 +25,20 @@ class HMagnet:
         """
         representation of object
         """
-        return "%s(name=%r, cadref=%r, status=%r, parts=%r)" % \
-            (self.__class__.__name__,
-             self.name,
-             self.cadref,
-             self.status,
-             self.parts
-            )
+        return "%s(name=%r, cadref=%r, status=%r, parts=%r)" % (
+            self.__class__.__name__,
+            self.name,
+            self.cadref,
+            self.status,
+            self.parts,
+        )
 
-    def setParts(self, parts: list):
+    def setParts(self, parts: list) -> None:
         """set Parts"""
         if not self.parts:
             self.parts = parts
 
-    def addPart(self, part: str):
+    def addPart(self, part: str) -> None:
         """add to Parts"""
         if not part in self.parts:
             self.parts.append(part)
@@ -46,26 +47,28 @@ class HMagnet:
         """get parts"""
         return self.parts
 
-    def setCadref(self, cadref):
+    def setCadref(self, cadref) -> None:
         """set Cadref"""
         self.cadref = cadref
 
-    def getCadref(self):
+    def getCadref(self) -> str:
         """get cadref"""
         return self.cadref
 
-    def setStatus(self, status):
+    def setStatus(self, status) -> None:
         """set status"""
         self.status = status
 
-    def getStatus(self):
+    def getStatus(self) -> str:
         """get status"""
         return self.status
-
 
     def to_json(self):
         """
         convert to json
         """
         from . import deserialize
-        return json.dumps(self, default=deserialize.serialize_instance, sort_keys=True, indent=4)
+
+        return json.dumps(
+            self, default=deserialize.serialize_instance, sort_keys=True, indent=4
+        )
