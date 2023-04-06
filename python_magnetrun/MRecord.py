@@ -74,9 +74,13 @@ class MRecord:
         data = download(session, url, params, self.link)
         return data
 
-    def saveData(self, data):
+    def getDataFilename(self) -> str:
         filename = self.link.replace("../../../", "")
         filename = filename.replace("/", "_").replace("%20", "-")
+        return filename
+
+    def saveData(self, data):
+        filename = self.getDataFilename()
         # print(f"save to {filename}")
         with open(filename, "w", newline="\n") as fo:
             fo.write(data)
