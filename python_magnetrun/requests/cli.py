@@ -91,6 +91,7 @@ def main():
     url_helices = base_url + "site/sba/pages/" + "Aimant2.php"
     url_helicescad = base_url + "site/sba/pages/" + "Helice.php"
     url_materials = base_url + "site/sba/pages/" + "Mat.php"
+    url_confs = base_url + "site/sba/pages/downloadM.php"
     url_query = (
         base_url + "site/sba/vendor/jqueryFileTree/connectors/jqueryFileTree.php"
     )
@@ -401,7 +402,10 @@ def main():
                 url_materials,
                 Parts,
                 Mats,
+                url_confs,
                 Confs,
+                datadir=args.datadir,
+                save=args.save,
                 debug=args.debug,
             )
             """
@@ -540,6 +544,7 @@ def main():
                         record.saveData(data, args.datadir)
 
         # Get orphan part/material
+        print("\nOrphaned part/material - Generate files for import in MagnetDB:")
         part_names = [db_Parts[part]["name"] for part in db_Parts]
         part_magnets = [
             mvalues["parts"]
@@ -549,14 +554,36 @@ def main():
         orphan_parts = list(
             set(part_names).symmetric_difference(set(flatten(part_magnets)))
         )
-        print(f"orphan_parts={orphan_parts}")
 
         material_names = [mvalues["name"] for material, mvalues in db_Materials.items()]
         part_materials = [pvalues["material"] for part, pvalues in db_Parts.items()]
         orphan_materials = list(
             set(material_names).symmetric_difference(set(part_materials))
         )
-        print(f"orphan_materials={orphan_materials}")
+
+        # print(f"orphan_materials={orphan_materials}")
+        for mat in orphan_materials:
+            values = db_Materials[mat]
+            filename = f'{values["name"]}.json'
+            if args.datadir != ".":
+                filename = f"{args.datadir}/{filename}"
+            with open(filename, "w") as f:
+                print(f"Orphan_Materials/write_to_json: {filename}")
+                f.write(json.dumps(values, indent=4))
+
+        # print(f"orphan_parts={orphan_parts}")
+        for part in orphan_parts:
+            values = db_Parts[part]
+
+            values["material_data"] = db_Materials[values["material"]].copy()
+            values["material"] = values.pop("material_data")
+
+            filename = f'{values["name"]}.json'
+            if args.datadir != ".":
+                filename = f"{args.datadir}/{filename}"
+            with open(filename, "w") as f:
+                print(f"Orphan_Parts/write_to_json: {filename}")
+                f.write(json.dumps(values, indent=4))
 
         # For MagnetDB
         print("\nGenerate files for import in MagnetDB:")
@@ -568,7 +595,7 @@ def main():
             if "parts" in mvalues:
                 for part in mvalues["parts"]:
                     data_part = db_Parts[part].copy()
-                    print(f"parts[{part}]: {part}, data_part={data_part}")
+                    # print(f"parts[{part}]: {part}, data_part={data_part}")
                     if "magnets" in data_part:
                         del data_part["magnets"]
 
@@ -592,7 +619,7 @@ def main():
                 f.write(json.dumps(mvalues, indent=4))
 
         for site, svalues in db_Sites.items():
-            print(f"db_Sites[{site}]={svalues}")
+            # print(f"db_Sites[{site}]={svalues}")
 
             housing = svalues["records"][0].getHousing()
             name = svalues["name"]

@@ -215,7 +215,10 @@ def getMagnetPart(
     url_materials,
     Parts,
     Mats,
+    url_confs,
     Confs: dict = {},
+    datadir: str = ".",
+    save: bool = False,
     debug: bool = False,
 ):
     """get parts for a given magnet"""
@@ -259,8 +262,26 @@ def getMagnetPart(
     data = res[0][magnet]
     data = data[0].replace("\t", "")
     files = data.split()
+
     Confs[magnet] = files
-    # print(f'{magnet}: Confs={Confs[magnet]}')
+    if save:
+        for file in files:
+            r = download(
+                session,
+                url_data=url_confs,
+                param={"ID": res[1][magnet], "NAME": file},
+                debug=debug,
+            )
+            if debug:
+                print(f"conf[{magnet}]: {file}, r={r}")
+
+            filename = f"{magnet}_{file}"
+            if datadir != ".":
+                filename = f"{datadir}/{filename}"
+            with open(filename, "w") as f:
+                f.write(r)
+
+    pass
 
 
 def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
