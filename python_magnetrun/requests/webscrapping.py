@@ -178,7 +178,7 @@ def getMaterial(
             )
 
 
-def getPartCADref(session, url_data, Parts, save: bool = False, debug: bool = False):
+def getPartCADref(session, url_data, Parts, debug: bool = False):
     """get cadref and material for parts"""
 
     params = {"REF": "", "compact": "on", "formsubmit": "OK"}
@@ -211,13 +211,11 @@ def getMagnetPart(
     session,
     magnet,
     url_helices,
-    magnetID,
     Magnets,
     url_materials,
     Parts,
     Mats,
     Confs: dict = {},
-    save: bool = False,
     debug: bool = False,
 ):
     """get parts for a given magnet"""
@@ -270,10 +268,7 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
     # print(f'getSiteRecord({ID})')
 
     # To get files for ID
-    params_links = (
-        ("ref", re.sub("_\d+", "", ID)),
-        ("link", ""),
-    )
+    params_links = (("ref", re.sub("_\\d+", "", ID)), ("link", ""))
 
     r = session.get(url=url_data, params=params_links, verify=True)
     if debug:
@@ -302,6 +297,8 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
             site = re.sub("/.*txt", "", site)
 
             housing = link.replace("../../../", "").split("/")[0]
+            if debug:
+                print(f"data={data}, link={link}, site={site}, housing={housing}")
 
             tformat = "%Y.%m.%d - %H:%M:%S"
             timestamp = datetime.datetime.strptime(data[1].replace(".txt", ""), tformat)

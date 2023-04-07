@@ -79,8 +79,10 @@ class MRecord:
         filename = filename.replace("/", "_").replace("%20", "-")
         return filename
 
-    def saveData(self, data):
+    def saveData(self, data: str, datadir: str = "."):
         filename = self.getDataFilename()
+        if datadir != ".":
+            filename = f"{datadir}/{filename}"
         # print(f"save to {filename}")
         with open(filename, "w", newline="\n") as fo:
             fo.write(data)
