@@ -90,6 +90,7 @@ def main():
     url_files = base_url + "site/sba/pages/" + "getfref.php"
     url_helices = base_url + "site/sba/pages/" + "Aimant2.php"
     url_helicescad = base_url + "site/sba/pages/" + "Helice.php"
+    url_ringscad = base_url + "site/sba/pages/" + "Bague.php"
     url_materials = base_url + "site/sba/pages/" + "Mat.php"
     url_confs = base_url + "site/sba/pages/downloadM.php"
     url_query = (
@@ -425,6 +426,15 @@ def main():
             for key in PartsCAD:
                 print(f"{key}: {PartsCAD[key]}")
 
+        """
+        # Try to get rings like Helices - not working
+        getPartCADref(s, url_ringscad, PartsCAD, params={"REF": ""}, debug=True)
+        if debug:
+            print(f"\ngetPartCADref:")
+            for key in PartsCAD:
+                print(f"{key}: {PartsCAD[key]}")
+        """
+
         PartMagnet = {}
         for magnet in Parts:
             for (i, part) in Parts[magnet]:
@@ -454,6 +464,7 @@ def main():
             #     magconffile = magconf[0]
             #     Carac_Magnets[magnet]['config'] = magconffile
 
+            nhelices = 0
             if Parts[magnet]:
                 db_Magnets[magnet]["parts"] = []
                 for i, part in Parts[magnet]:
@@ -467,10 +478,12 @@ def main():
                             f"{status}",
                             PartMagnet[pname],
                         ]
+
+                nhelices = len(db_Magnets[magnet]["parts"])
                 db_Magnets[magnet][
                     "description"
-                ] = f'{len(db_Magnets[magnet]["parts"])} Helices, Phi = xx mm'
-            print(f"{magnet}: {db_Magnets[magnet]}")
+                ] = f'{nhelices} Helices, Phi = xx mm'
+            print(f"{magnet}: {db_Magnets[magnet]} - should add {nhelices-1} rings ")
 
         # Create Parts from Materials because in control/monitoring part==mat
         # TODO once Parts is complete no longer necessary
@@ -544,7 +557,17 @@ def main():
                         record.saveData(data, args.datadir)
 
         # Get orphan part/material
-        print("\nOrphaned part/material - Generate files for import in MagnetDB:")
+        print("\nOrphaned magnet/part/material - Generate files for import in MagnetDB:")
+        magnet_names = [db_Magnets[magnet]["name"] for magnet in db_Magnets]
+        site_magnets = [
+            svalues["magnets"]
+            for site, svalues in db_Sites.items()
+            if "magnets" in svalues
+        ]
+        orphan_magnets = list(
+            set(magnet_names).symmetric_difference(set(flatten(site_magnets)))
+        )
+
         part_names = [db_Parts[part]["name"] for part in db_Parts]
         part_magnets = [
             mvalues["parts"]
@@ -585,6 +608,10 @@ def main():
                 print(f"Orphan_Parts/write_to_json: {filename}")
                 f.write(json.dumps(values, indent=4))
 
+        print(f"orphan_magnets={orphan_magnets}")
+        for magnet in orphan_magnets:
+            values = db_Magnets[magnet]
+
         # For MagnetDB
         print("\nGenerate files for import in MagnetDB:")
         for magnet, mvalues in db_Magnets.items():
@@ -619,11 +646,10 @@ def main():
                 f.write(json.dumps(mvalues, indent=4))
 
         for site, svalues in db_Sites.items():
-            # print(f"db_Sites[{site}]={svalues}")
-
             housing = svalues["records"][0].getHousing()
             name = svalues["name"]
             svalues["name"] = f"{housing}_{name}"
+            print(f"db_Sites[{site}]: housing={housing}, magnet={svalues['magnets']}")
 
             svalues["commissioned_at"] = str(svalues["commissioned_at"])
             svalues["decommissioned_at"] = str(svalues["decommissioned_at"])
@@ -644,6 +670,11 @@ def main():
             del svalues["records"]
             svalues["records"] = svalues["data_records"]
             del svalues["data_records"]
+
+            if housing in ["M8", "M9", "M10"]:
+                svalues['magnets'].append(f'{housing}Bitters')
+            for magnet in svalues['magnets']:
+                print(f'magnets[{site}]: {magnet}')
 
             filename = f'{svalues["name"]}.json'
             if args.datadir != ".":
