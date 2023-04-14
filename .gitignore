@@ -119,3 +119,5 @@ python_magnetrun/json/
 M*.csv
 M*.txt
 M*.json
+H*.json
+M*.conf
