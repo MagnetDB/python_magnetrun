@@ -18,6 +18,7 @@ import requests.exceptions
 from io import StringIO
 
 from .. import HMagnet
+from .. import MRecord
 
 from .connect import createSession
 from .webscrapping import (
@@ -32,7 +33,6 @@ from ..utils.list import flatten
 
 
 def cleanup(remove_site: list, msg: str, site_names: dict, Sites: dict):
-
     print(f"Remove Site in {remove_site}: {msg}")
     for item in remove_site:
         Sites.pop(item)
@@ -91,6 +91,7 @@ def main():
     url_helices = base_url + "site/sba/pages/" + "Aimant2.php"
     url_helicescad = base_url + "site/sba/pages/" + "Helice.php"
     url_ringscad = base_url + "site/sba/pages/" + "Bague.php"
+    url_records = base_url + "site/sba/pages/" + "courbes.php"
     url_materials = base_url + "site/sba/pages/" + "Mat.php"
     url_confs = base_url + "site/sba/pages/downloadM.php"
     url_query = (
@@ -116,6 +117,10 @@ def main():
             print("check connection failed: Wrong credentials")
             sys.exit(1)
 
+        """
+        since data from url_status are broken
+        use E. Verney instead
+
         # Get data from Status page
         # actually list of site in magnetdb sens
         (_data, jid) = getTable(s, url_status, 2, [1, 3, 4], debug=args.debug)
@@ -123,25 +128,119 @@ def main():
             for item in _data:
                 print(f"{item}: status={_data[item]}, jid={jid[item]}")
 
+        print("ordered site data bt time")
+        from collections import OrderedDict
+
+        ordered_data = OrderedDict(sorted(_data.items(), key=lambda x: x[1][0]))
+        # print(f"ordered_data: {ordered_data}")
+        """
+        import csv
+
+        _data = {}
+        _counter = {}
+        print("load site history from M9_M10-history.csv")
+        with open("M9_M10-history.csv") as f:
+            _raw = csv.reader(f)
+
+            for row in _raw:
+                name = row[1]
+                _magnets = [name]
+                if not "??" in name:
+                    status = row[2]
+                    housing = row[3]
+                    # print(row)
+
+                    tformat = "%Y-%m-%d"
+                    created_at = None
+                    stopped_at = None
+
+                    if not name in _counter:
+                        _counter[name] = 0
+
+                    site = f"{name}_{_counter[name]}"
+
+                    created_at = None
+                    stopped_at = None
+                    if status.lower() == "en service":
+                        created_at = datetime.datetime.strptime(row[0], tformat)
+                        if site in db_Sites:
+                            db_Sites[site]["status"] = status.lower()
+                            db_Sites[site]["commissioned_at"] = stopped_at
+                            db_Sites[site]["housing"] = housing
+                        else:
+                            db_Sites[site] = {
+                                "name": site,
+                                "description": "",
+                                "status": status.lower(),
+                                "magnets": _magnets,
+                                "records": [],
+                                "commissioned_at": created_at,
+                                "decommissioned_at": stopped_at,
+                                "housing": housing,
+                            }
+
+                    else:
+                        stopped_at = datetime.datetime.strptime(row[0], tformat)
+                        _counter[name] += 1
+                        if site in db_Sites:
+                            db_Sites[site]["status"] = status.lower()
+                            db_Sites[site]["decommissioned_at"] = stopped_at
+                        else:
+                            db_Sites[site] = {
+                                "name": site,
+                                "description": "",
+                                "status": status.lower(),
+                                "magnets": _magnets,
+                                "records": [],
+                                "commissioned_at": created_at,
+                                "decommissioned_at": stopped_at,
+                                "housing": housing,
+                            }
+
+        for item, values in db_Sites.items():
+            housing = values["housing"]
+            name = values["name"]
+            if not "Bitters" in item:
+                values["magnets"].append(f"{housing}Bitters")
+            values["name"] = f"{housing}_{name}"
+            print(f"site={item}: {values}")
+        # TODO rename site with housing
+
+        """
         stopped_at = datetime.datetime.now()
         for item in _data:
+            print(f"data[{item}]: {_data[item]}")
             housing = _data[item][2]
             magnet = re.sub(f"_\\d+", "", item)
             status = _data[item][1]  # TODO change status to match magnetdb status
             tformat = "%Y-%m-%d"
-            created_at = datetime.datetime.strptime(_data[item][0], tformat)
-            stopped_at = datetime.datetime.strptime("2100-01-01", tformat)
+            timestamp = datetime.datetime.strptime(_data[item][0], tformat)
 
-            db_Sites[item] = {
-                "name": item,
-                "description": "",
-                "status": status,
-                "magnets": [magnet],
-                "records": [],
-                "commissioned_at": created_at,
-                "decommissioned_at": stopped_at,
-            }
+            created_at = None
+            stopped_at = None
+            if status.lower() == "en service":
+                created_at = timestamp
+                stopped_at = datetime.datetime.strptime("2100-01-01", tformat)
+            else:
+                stopped_at = timestamp
 
+            if item in db_Sites:
+                db_Sites[item]["status"] = status
+                db_Sites[item]["commissioned_at"] = created_at
+                db_Sites[item]["decommissioned_at"] = stopped_at
+            else:
+                db_Sites[item] = {
+                    "name": item,
+                    "description": "",
+                    "status": status,
+                    "magnets": [magnet],
+                    "records": [],
+                    "commissioned_at": created_at,
+                    "decommissioned_at": stopped_at,
+                }
+            print(f"db_Sites[{item}]: {db_Sites[item]}")
+
+        print("set [de]commisionned_at dates for site")
         for item in _data:
             res = item.split("_")
             name = res[0]
@@ -154,8 +253,8 @@ def main():
             if cfg in _data:
                 db_Sites[item]["decommissioned_at"] = db_Sites[cfg]["commissioned_at"]
 
-        if args.debug:
-            print("\nSite names:")
+            print(f"db_Sites[{item}]: {db_Sites[item]}")
+
         site_names = {}
         for item in _data:
             match_expr = re.compile(f"{item}_\\d+")
@@ -165,6 +264,7 @@ def main():
             if not "_" in item and not same_cfgs:
                 site_names[item] = []
         if args.debug:
+            print("\nSite names:")
             for name in site_names:
                 print(f"site_name[{name}]={site_names[name]}")
 
@@ -226,7 +326,8 @@ def main():
                     print(
                         f"{db_Sites[item]['name']}: status={db_Sites[item]['status']}, housing={housing}, commissioned_at={db_Sites[item]['commissioned_at']}, decommissioned_at={db_Sites[item]['decommissioned_at']}, records={len(db_Sites[item]['records'])}"
                     )
-
+        """
+        """
         # if db_Sites[site]['decommissioned_at'] - db_Sites[site]['commissioned_at'] < 0 day:
         # transfert record to other site - aka magnet_[n-1] - from name site - aka magnet_n
         # get latest_record from magnet_[n]
@@ -361,7 +462,9 @@ def main():
                     print(
                         f"records common between {lst_records[i][1]} and {lst_records[j][1]}: {len(a_set.intersection(b_set))}"
                     )
+        """
 
+        """
         # Create list of Magnets from db_Sites
         # NB use entries sorted by commisionned date
         # TODO replace Magnets by a dict that is similar to magnetdb magnet
@@ -388,32 +491,41 @@ def main():
             if status.lower() == "en stock":
                 status = "in_stock"
             Magnets[magnetID] = HMagnet.HMagnet(magnetID, "", status, parts=[])
+        """
+
+        for site, values in db_Sites.items():
+            status = values["status"]
+            for magnet in values["magnets"]:
+                Magnets[magnet] = HMagnet.HMagnet(magnet, "", status, parts=[])
+        print("Magnets:")
+        for magnet in Magnets:
+            print(f"{magnet}: {Magnets[magnet]}")
 
         Parts = {}
         Confs = {}
-        for magnetID in Magnets:
-            magnet = re.sub("_\\d+", "", magnetID)
-            if debug:
-                print(f"loading helices for: {magnet}")
-            getMagnetPart(
-                s,
-                magnet,
-                url_helices,
-                Magnets,
-                url_materials,
-                Parts,
-                Mats,
-                url_confs,
-                Confs,
-                datadir=args.datadir,
-                save=args.save,
-                debug=args.debug,
-            )
-            """
-            print(
-                f"{magnet}: Magnets={Magnets}, Mats={Mats}, Parts={Parts}, Confs={Confs[magnet]}"
-            )
-            """
+        for magnet in Magnets:
+            if not "Bitter" in magnet:
+                if debug:
+                    print(f"loading helices for: {magnet}")
+                getMagnetPart(
+                    s,
+                    magnet,
+                    url_helices,
+                    Magnets,
+                    url_materials,
+                    Parts,
+                    Mats,
+                    url_confs,
+                    Confs,
+                    datadir=args.datadir,
+                    save=args.save,
+                    debug=args.debug,
+                )
+                """
+                print(
+                    f"{magnet}: Magnets={Magnets}, Mats={Mats}, Parts={Parts}, Confs={Confs[magnet]}"
+                )
+                """
 
         for conf, values in Confs.items():
             print(f"Confs[{conf}]: {values}")
@@ -437,7 +549,7 @@ def main():
 
         PartMagnet = {}
         for magnet in Parts:
-            for (i, part) in Parts[magnet]:
+            for i, part in Parts[magnet]:
                 # print(i, part)
                 if not part in PartMagnet:
                     PartMagnet[part] = []
@@ -447,43 +559,46 @@ def main():
         print(f"\nMagnets ({len(Magnets)}):")
         PartName = {}
         db_Magnets = {}
-        for magnetID in Magnets:
-            magnet = re.sub("_\\d+", "", magnetID)
+        for magnet in Magnets:
             db_Magnets[magnet] = {
                 "name": magnet,
-                "status": Magnets[magnetID].status,
+                "status": Magnets[magnet].status,
                 "design_office_reference": "",
             }
-            if magnet in site_names:
-                db_Magnets[magnet]["sites"] = [magnet]
-                for site in site_names[magnet]:
-                    db_Magnets[magnet]["sites"].append(site)
+            for site in db_Sites:
+                if magnet in site:
+                    if not "sites" in db_Magnets[magnet]:
+                        db_Magnets[magnet]["sites"] = []
+                    db_Magnets[magnet]["sites"].append(magnet)
 
-            # magconf = Magnets[magnetID].MAGfile
+            # magconf = Magnets[magnet].MAGfile
             # if magconf:
             #     magconffile = magconf[0]
             #     Carac_Magnets[magnet]['config'] = magconffile
 
-            nhelices = 0
-            if Parts[magnet]:
-                db_Magnets[magnet]["parts"] = []
-                for i, part in Parts[magnet]:
-                    pname = part
-                    db_Magnets[magnet]["parts"].append(pname)
-                    if not pname in PartName:
-                        latest_magnet = PartMagnet[pname][-1]
-                        status = Magnets[latest_magnet].status
-                        PartName[pname] = [
-                            f"HL-31_H{i+1}",
-                            f"{status}",
-                            PartMagnet[pname],
-                        ]
+            if not "Bitters" in magnet:
+                nhelices = 0
+                if Parts[magnet]:
+                    db_Magnets[magnet]["parts"] = []
+                    for i, part in Parts[magnet]:
+                        pname = part
+                        db_Magnets[magnet]["parts"].append(pname)
+                        if not pname in PartName:
+                            latest_magnet = PartMagnet[pname][-1]
+                            status = Magnets[latest_magnet].status
+                            PartName[pname] = [
+                                f"HL-31_H{i+1}",
+                                f"{status}",
+                                PartMagnet[pname],
+                            ]
 
-                nhelices = len(db_Magnets[magnet]["parts"])
-                db_Magnets[magnet][
-                    "description"
-                ] = f'{nhelices} Helices, Phi = xx mm'
-            print(f"{magnet}: {db_Magnets[magnet]} - should add {nhelices-1} rings ")
+                    nhelices = len(db_Magnets[magnet]["parts"])
+                    db_Magnets[magnet][
+                        "description"
+                    ] = f"{nhelices} Helices, Phi = xx mm"
+                print(
+                    f"{magnet}: {db_Magnets[magnet]} - should add {nhelices-1} rings "
+                )
 
         # Create Parts from Materials because in control/monitoring part==mat
         # TODO once Parts is complete no longer necessary
@@ -535,7 +650,88 @@ def main():
 
         # Try to read and make some stats on records
         print("\nRecords:")
+        page = s.get(url=url_records, verify=True)
+        import lxml.html as lh
+
+        housing_names = []
+        doc = lh.document_fromstring(page.content)
+        # print(f"doc: {lh.tostring(doc)}")
+        tr_elements = doc.xpath("//*[@class='example']")
+        for i, t in enumerate(tr_elements):
+            content = t.text_content().rsplit()  # replace(' dmesg','')
+            # print(f"name[{i}]: content={content[0]}")
+            housing_names.append(content[0])
+
+        record_names = []
+        record_timestamps = []
+        tformat = "%Y.%m.%d-%H:%M:%S"
+
+        for name in housing_names:
+            url_housing = base_url + "/" + name
+            page = s.get(url=url_housing, verify=True)
+            doc = lh.document_fromstring(page.content)
+            tr_elements = doc.xpath("//a")  # [@href='example']")
+            for i, t in enumerate(tr_elements):
+                link = t.get("href")
+                if link.endswith(".txt") and not "dmesg" in link:
+                    nlink = ""
+                    if link.startswith("./"):
+                        nlink = link.replace("./", f"../../../{name}/")
+                    else:
+                        nlink = f"../../../{name}/{link}"
+
+                    try:
+                        record_names.append(nlink)
+
+                        timestamp = (
+                            link.split("/")[-1].replace("%20", "").replace(".txt", "")
+                        )
+                        # print(timestamp)
+                        record_timestamps.append(
+                            datetime.datetime.strptime(timestamp, tformat)
+                        )
+                    except:
+                        print(f"trouble with record={link} -record ignored")
+
+                    # fixed by Cedric
+                    # if not nlink.startswith(".."):
+                    #    print(f"{name}[{i}]: link={link}, nlink={nlink}")
+                    # # break
+
+        # Assign records to site from timestamps
+        # Create a panda datafram with ['link','timestamp']
+        import pandas as pd
+
+        df_records = pd.DataFrame(
+            list(zip(record_names, record_timestamps)), columns=["name", "timestamp"]
+        )
+
+        # for each site
+        #     get record with a timestamp in between site.commisionned_at and site.decommisioned_at
         for site, values in db_Sites.items():
+            housing = values["housing"]
+            t0 = values["commissioned_at"]
+            t1 = values["decommissioned_at"]
+
+            selected_df = None
+            if not t1 is None:
+                selected = df_records[
+                    df_records["timestamp"].between(t0, t1, inclusive="left")
+                ]
+                print(f"{site}: records={len(selected.index)}")
+            else:
+                selected = df_records[df_records["timestamp"] >= t0]
+                print(f"{site}: records={len(selected.index)} **")
+
+            for link, timestamp in zip(
+                selected["name"].tolist(), selected["timestamp"].tolist()
+            ):
+                if housing in link:
+                    record = MRecord.MRecord(timestamp, housing, site, link)
+                    values["records"].append(record)
+
+        for site, values in db_Sites.items():
+            sname = site.split("_")[0]
             for record in values["records"]:
                 if args.check:
                     data = record.getData(s, url_downloads)
@@ -543,9 +739,9 @@ def main():
                     headers = iodata.readline().split()
                     if len(headers) >= 2:
                         insert = headers[1]
-                        if not site.startswith(insert):
+                        if not sname.startswith(insert):
                             print(
-                                f"{site}: {record} - expected site={site} got {insert}"
+                                f"{site}: {record} - expected site={sname} got {insert}"
                             )
 
                     # mrun = MagnetRun.fromStringIO(record.getHousing(), record.getSite(), data)
@@ -556,8 +752,93 @@ def main():
                     if args.save:
                         record.saveData(data, args.datadir)
 
+        """
+        # Get orphan records
+        # How to get all records even those attached to experiments with Bitters only ??
+        """
+        print("\nOrphaned records:")
+        record_sites = [db_Sites[site]["records"] for site in db_Sites]
+        # print(f"record_names: {record_names[-1]}")
+        record_name_sites = [record.getLink() for record in flatten(record_sites)]
+        # print(f"record_name_sites: {record_name_sites[-1]}")
+        orphan_records = list(
+            set(record_names).symmetric_difference(set(flatten(record_name_sites)))
+        )
+
+        print(
+            f"orphan_records={len(orphan_records)} / {len(record_name_sites)} registered / {len(record_names)} records"
+        )
+
+        for housing in ["M9", "M10"]:
+            record_sites = [
+                db_Sites[site]["records"]
+                for site in db_Sites
+                if housing == db_Sites[site]["housing"]
+            ]
+            record_name_sites = [record.getLink() for record in flatten(record_sites)]
+            record_names_housing = [
+                record for record in record_names if housing in record
+            ]
+            orphan_records = list(
+                set(record_names_housing).symmetric_difference(
+                    set(flatten(record_name_sites))
+                )
+            )
+
+            print(
+                f"{housing}: orphan_records={len(orphan_records)} / {len(record_name_sites)} registered / {len(record_names_housing)} records"
+            )
+            """
+            print(
+                f"orphan record: first={orphan_records[0]} latest={orphan_records[-1]}"
+            )
+            """
+
+        # Display site history per site for M9 and M10 only
+        import matplotlib.pyplot as plt
+
+        print("\nSite History per Housing:")
+
+        history = {}
+        for housing in housing_names:
+            history[housing] = {
+                "site": [],
+                "commissioned_at": [],
+                "decommissioned_at": [],
+            }
+
+        for site in db_Sites:
+            data = db_Sites[site]
+            housing = data["housing"]
+            # print(f"site={site}, housing={housing}")
+
+            hdata = history[housing]
+            hdata["site"].append(site.replace("_", "-"))
+            hdata["commissioned_at"].append(data["commissioned_at"])
+            hdata["decommissioned_at"].append(data["decommissioned_at"])
+
+        for housing in ["M9", "M10"]:
+            hdata = history[housing]
+            df = pd.DataFrame(hdata)
+            ax = df.plot(x="site", y="decommissioned_at", kind="bar")
+            df.plot(x="site", y="commissioned_at", kind="bar", ax=ax, color="white")
+
+            today = datetime.date.today()
+
+            tformat = "%Y-%m-%d"
+            ymin = df.min(axis=0)["commissioned_at"]
+            ymax = today  # datetime.datetime.strptime(today, tformat)
+            ax.set_ylim([ymin, ymax])
+
+            ax.get_legend().remove()
+            ax.grid(visible=True)
+
+            plt.show()
+
         # Get orphan part/material
-        print("\nOrphaned magnet/part/material - Generate files for import in MagnetDB:")
+        print(
+            "\nOrphaned magnet/part/material - Generate files for import in MagnetDB:"
+        )
         magnet_names = [db_Magnets[magnet]["name"] for magnet in db_Magnets]
         site_magnets = [
             svalues["magnets"]
@@ -646,9 +927,9 @@ def main():
                 f.write(json.dumps(mvalues, indent=4))
 
         for site, svalues in db_Sites.items():
-            housing = svalues["records"][0].getHousing()
+            housing = svalues["housing"]
             name = svalues["name"]
-            svalues["name"] = f"{housing}_{name}"
+            # svalues["name"] = f"{housing}_{name}"
             print(f"db_Sites[{site}]: housing={housing}, magnet={svalues['magnets']}")
 
             svalues["commissioned_at"] = str(svalues["commissioned_at"])
@@ -671,10 +952,8 @@ def main():
             svalues["records"] = svalues["data_records"]
             del svalues["data_records"]
 
-            if housing in ["M8", "M9", "M10"]:
-                svalues['magnets'].append(f'{housing}Bitters')
-            for magnet in svalues['magnets']:
-                print(f'magnets[{site}]: {magnet}')
+            for magnet in svalues["magnets"]:
+                print(f"magnets[{site}]: {magnet}")
 
             filename = f'{svalues["name"]}.json'
             if args.datadir != ".":
