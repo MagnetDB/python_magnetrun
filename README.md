@@ -7,7 +7,7 @@ Python3 MagnetRun
 
 [![Documentation Status](https://readthedocs.org/projects/python-magnetrun/badge/?version=latest)](https://python-magnetrun.readthedocs.io/en/latest/?badge=latest)
 
-Python MagnetRun contains utils to view and analyse Magnet runs
+Python MagnetRun contains utilities to view and analyze Magnet runs
 
 -   Free software: MIT license
 -   Documentation: <https://python-magnetrun.readthedocs.io>.
@@ -16,7 +16,7 @@ Features
 --------
 
 -   Extract data from control/monitoring system
--   Inject data from control/monitoring system inot magnetdb
+-   Inject data from control/monitoring system into magnetdb
 -   Load txt, cvs and tdms files from control/monitoring system
 -   Extract field(s)
 -   Plot field(s) vs time
@@ -25,16 +25,16 @@ Features
 Examples
 --------
 
-- To retreive data from control/monitoring system
+- To retrieve data from control/monitoring system
 
-```python3 -m  python_magnetrun.requests.cli --user email```
+```python3 -m  python_magnetrun.requests.cli --user email --datadir datadir [--save]```
 
-_  To list fields recorded during an experiment:
+_ To list fields recorded during an experiment:
 
 ```python3 python_magnetrun.py M9_2019.02.14-23_00_38.txt --list```
 
 
-_  To view the magnetic field during an experiment:
+_ To view the magnetic field during an experiment:
 
 
 ```python3 python_magnetrun.py M9_2019.02.14-23_00_38.txt --plot_vs_time "Field" --show```
@@ -51,18 +51,18 @@ _  To view the magnetic field during an experiment:
 TODO
 ----
 
--   tdms to pandas see
+- For 'tdms' to pandas see
     <https://nptdms.readthedocs.io/en/stable/apireference.html>
--   check addData complex formula (involving fresteam for ex) with help of python pyparsing??
--   how to add columns coming from freesteam, for instance like rho,
+- Check 'addData' complex formula (involving 'freesteam' for ex) with help of python 'pyparsing'??
+- How to add columns coming from 'freesteam', for instance like rho,
     cp\...??
--   export Data to prettytables? tabular? cvs2md?
--   how to pass option to matplotlib within plotData()?\*args PARAMETER
+- Export Data to 'prettytables', 'tabular' or 'cvs2md'?
+- How to pass option to 'matplotlib' within 'plotData()' \*args PARAMETER
     TO MAKE OPTIONAL ARGUMENTS?
--   add support for origin files (for B experimental profil) - use
-    labplot?? liborigin?? python bindings??
--   get MagnetRun files from control/monitoring system??
--   for MagnetRun add missing fields [U1, Pe1, Tout1, U2 \...\],
+- Add support for origin files (for B experimental profile) - use
+    'labplot'?? 'liborigin'?? python bindings??
+- Get MagnetRun files from control/monitoring system??
+- For MagnetRun add missing fields [U1, Pe1, Tout1, U2 \...\],
     \--missing, \--nhelices - see txt2csv.py
 
 INSTALL
