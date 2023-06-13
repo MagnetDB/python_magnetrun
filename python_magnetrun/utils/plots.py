@@ -67,7 +67,7 @@ def plot_key_vs_key(df, pairs, show: bool=False, wd: str = None):
         plt.close()
 
 # TODO use MagnetData instead of files
-def plot_files(name: str, input_files: list, key1: str, key2: str, from_i: int=0, to_i = None, show: bool=False, debug: bool=False, wd: str = None):
+def plot_files(name: str, input_files: list, key1: str, key2: str, from_i: int=0, to_i = None, fit: tuple=None, show: bool=False, debug: bool=False, wd: str = None):
     if debug:
         print(f'input_files: {input_files}')
 
@@ -108,6 +108,11 @@ def plot_files(name: str, input_files: list, key1: str, key2: str, from_i: int=0
                 print(f'load_files: failed to load {f} with pandas')
 
             # print(f'load_files: {f}')
+
+    # add fit if present
+    if fit:
+        (x, y) = fit
+        ax.plot(x, y, color='red', linestyle='dashed', linewidth=2, label='fit')
 
     # ax.legend()
     plt.legend(loc='best')
