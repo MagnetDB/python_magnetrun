@@ -28,11 +28,10 @@ def stats(Data: MagnetData):
 
     # see https://github.com/astanin/python-tabulate for tablefmt
     if isinstance(Data.Data, pd.DataFrame):
-
         print("Statistics:\n")
         tables = []
         headers = ["Name", "Mean", "Max", "Min", "Std", "Median", "Mode"]
-        for (f, unit) in zip(
+        for f, unit in zip(
             ["Field", "Pmagnet", "teb", "debitbrut"], ["T", "MW", "C", "m\u00B3/h"]
         ):
             df = Data.Data[f]
@@ -57,6 +56,86 @@ def stats(Data: MagnetData):
     else:
         raise RuntimeError("stats: not supported for TdmsFile data")
     return 0
+
+
+def nplateaus(
+    Data: MagnetData,
+    xField: tuple,
+    yField: tuple,
+    threshold: float = 2.0e-2,
+    num_points_threshold: int = 600,
+    show: bool = False,
+    save: bool = False,
+) -> list:
+    df = Data.getData()
+    if not isinstance(df, pd.DataFrame):
+        raise RuntimeError(
+            f"nplateaux: {Data.FileName}, unexpectype type of data: {type(df)}"
+        )
+
+    # filter and group plateaus
+    max_difference = threshold
+    min_number_points = num_points_threshold
+    # group by maximum difference
+    group_ids = (abs(df[yField[0]].diff(1)) > max_difference).cumsum()
+    plateau_idx = 0
+
+    plt.plot(
+        df[xField[0]],
+        df[yField[0]],
+        label=f"original data",
+        marker="x",
+        lw=0.5,
+        ms=2.0,
+        color="black",
+    )
+
+    plateau_data = []
+    for group_idx, group_data in df.groupby(group_ids):
+        # filter non-plateaus by min number of points
+        if len(group_data) < min_number_points:
+            continue
+
+        _start = group_data[xField[0]].iloc[0]
+        _end = group_data[xField[0]].iloc[-1]
+        if abs(_start - _end) <= 0.1:
+            continue
+
+        plateau_idx += 1
+
+        plt.plot(
+            group_data[xField[0]],
+            group_data[yField[0]],
+            label=f"Plateau-{plateau_idx}",
+            marker="x",
+            lw=1.5,
+            ms=5.0,
+        )
+        _time = group_data[xField[0]].mean()
+        _value = group_data[yField[0]].mean()
+
+        plateau_data.append({"start": _start, "end": _end, "value": _value})
+        print(f"plateau[{plateau_idx}]: {plateau_data[-1]}")
+        plt.annotate(
+            f"Plateau-{plateau_idx}: {yField[0]}={_value} {yField[1]}",
+            (_time, _value + 0.1),
+            ha="center",
+        )
+    print(f"detected plateaux: {plateau_idx}")
+
+    plt.legend()
+    plt.grid(b=True)
+    plt.title(Data.FileName)
+    plt.ylabel(f"[{yField[1]}]")
+    plt.xlabel(f"[{xField[1]}]")
+
+    if show:
+        plt.show()
+    if save:
+        plt.savefig(f"{yField[0]}-{xField[0]}.png")
+        print("save to png not implemented")
+
+    return plateau_data
 
 
 def plateaus(

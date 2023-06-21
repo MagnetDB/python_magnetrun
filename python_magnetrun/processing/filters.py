@@ -8,18 +8,18 @@ https://xavierbourretsicotte.github.io/loess.html
 import os
 import sys
 
-from math import ceil
 import numpy as np
-from scipy import linalg
 
 import matplotlib.pyplot as plt
 import pandas as pd
+
 ##from IPython.display import Image
 ##from IPython.display import display
-#plt.style.use('seaborn-white')
+# plt.style.use('seaborn-white')
 ## if jupyter: %matplotlib inline
 
 import statsmodels.api as sm
+
 
 def filterpikes(mrun, key, inplace, threshold, twindows, debug, show, input_file):
     """
@@ -28,23 +28,29 @@ def filterpikes(mrun, key, inplace, threshold, twindows, debug, show, input_file
     """
 
     print("type(mrun):", type(mrun))
-    df = mrun.getData() #.extractData(keys)
+    df = mrun.getData()  # .extractData(keys)
 
-    kw = dict(marker='o', linestyle='none', color='r', alpha=0.3)
+    kw = dict(marker="o", linestyle="none", color="r", alpha=0.3)
     mean = df[key].mean()
     # print("%s=" % key, type(df[key]), df[key])
 
     if mean != 0:
         var = df[key].var()
         # print("mean(%s)=%g" % (key,mean), "std=%g" % math.sqrt(var) )
-        filtered = df[key].rolling(window=twindows, center=True).median().fillna(method='bfill').fillna(method='ffill')
+        filtered = (
+            df[key]
+            .rolling(window=twindows, center=True)
+            .median()
+            .fillna(method="bfill")
+            .fillna(method="ffill")
+        )
         filteredkey = "filtered%s" % key
         # print("** ", filteredkey, type(filtered))
 
         df = df.assign(**{filteredkey: filtered.values})
         # print("*** ", filteredkey, df[filteredkey])
 
-        difference = np.abs((df[key] - filtered)/mean*100)
+        difference = np.abs((df[key] - filtered) / mean * 100)
         outlier_idx = difference > threshold
 
         if debug:
@@ -56,7 +62,7 @@ def filterpikes(mrun, key, inplace, threshold, twindows, debug, show, input_file
 
             ax.legend()
             plt.grid(b=True)
-            plt.title(mrun.getInsert().replace(r"_",r"\_") + ": Filtered %s" % key)
+            plt.title(mrun.getInsert().replace(r"_", r"\_") + ": Filtered %s" % key)
             if show:
                 plt.show()
             else:
@@ -73,6 +79,7 @@ def filterpikes(mrun, key, inplace, threshold, twindows, debug, show, input_file
 
     return mrun
 
+
 def lagged_correlation(df, target, key, t):
     """
     Compute lag correlation between target and key df column
@@ -81,5 +88,3 @@ def lagged_correlation(df, target, key, t):
     lagged_correlation = df[target].corr(df[key].shift(+t))
     print("type(lagged_correlation):", type(lagged_correlation))
     print("lagged_correlation(t=%g):" % t, lagged_correlation)
-
-

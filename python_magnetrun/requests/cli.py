@@ -211,7 +211,7 @@ def main():
         for item in _data:
             print(f"data[{item}]: {_data[item]}")
             housing = _data[item][2]
-            magnet = re.sub(f"_\\d+", "", item)
+            magnet = re.sub("_\\d+", "", item)
             status = _data[item][1]  # TODO change status to match magnetdb status
             tformat = "%Y-%m-%d"
             timestamp = datetime.datetime.strptime(_data[item][0], tformat)
@@ -521,11 +521,6 @@ def main():
                     save=args.save,
                     debug=args.debug,
                 )
-                """
-                print(
-                    f"{magnet}: Magnets={Magnets}, Mats={Mats}, Parts={Parts}, Confs={Confs[magnet]}"
-                )
-                """
 
         for conf, values in Confs.items():
             print(f"Confs[{conf}]: {values}")
@@ -556,6 +551,7 @@ def main():
                 PartMagnet[part].append(magnet)
 
         # Create Parts from Magnets
+        diameter = {14: 34, 12: 50, 6: 170}
         print(f"\nMagnets ({len(Magnets)}):")
         PartName = {}
         db_Magnets = {}
@@ -576,6 +572,7 @@ def main():
             #     magconffile = magconf[0]
             #     Carac_Magnets[magnet]['config'] = magconffile
 
+            # TODO read from cvs part <-> geometry (yaml file)
             if not "Bitters" in magnet:
                 nhelices = 0
                 if Parts[magnet]:
@@ -595,16 +592,19 @@ def main():
                     nhelices = len(db_Magnets[magnet]["parts"])
                     db_Magnets[magnet][
                         "description"
-                    ] = f"{nhelices} Helices, Phi = xx mm"
+                    ] = f"{nhelices} Helices, Phi = {diameter[nhelices]} mm"
                 print(
                     f"{magnet}: {db_Magnets[magnet]} - should add {nhelices-1} rings "
                 )
+            else:
+                db_Magnets[magnet]["description"] = f"Phi = 400 mm"
 
         # Create Parts from Materials because in control/monitoring part==mat
         # TODO once Parts is complete no longer necessary
         # ['name', 'description', 'status', 'type', 'design_office_reference', 'material_id'
         print(f"\nMParts ({len(PartsCAD)}):")
         db_Parts = {}
+        cad_Parts = {}
         for part in PartsCAD:
             carac = {
                 "name": part,
@@ -614,12 +614,27 @@ def main():
                 "design_office_reference": PartsCAD[part][0],
                 "material": PartsCAD[part][1],
             }
+            # TODO geometry field must be consistant with magnetapi -
             if part in PartName:
                 carac["geometry"] = PartName[part][0]
                 carac["status"] = PartName[part][1]
                 carac["magnets"] = PartName[part][2]
+                cad = re.sub("-[a-zA-Z]", "", PartsCAD[part][0])
+                if cad in cad_Parts:
+                    if not part in cad_Parts[cad]:
+                        cad_Parts[cad].append(part)
+                else:
+                    cad_Parts[cad] = [part]
             print(f"{part}: {carac}")
             db_Parts[part] = carac
+
+        print(f"\ncad/Parts ({len(cad_Parts)}):")
+
+        from collections import OrderedDict
+
+        ordered_data = OrderedDict(sorted(cad_Parts.items(), key=lambda x: x))
+        for cad, values in ordered_data.items():
+            print(f"{cad} parts={values}")
 
         getMaterial(s, None, url_materials, Mats, debug=args.debug)
         print(f"\nMaterials ({len(Mats)}):")
@@ -788,11 +803,6 @@ def main():
             print(
                 f"{housing}: orphan_records={len(orphan_records)} / {len(record_name_sites)} registered / {len(record_names_housing)} records"
             )
-            """
-            print(
-                f"orphan record: first={orphan_records[0]} latest={orphan_records[-1]}"
-            )
-            """
 
         # Display site history per site for M9 and M10 only
         import matplotlib.pyplot as plt
@@ -881,6 +891,7 @@ def main():
 
             values["material_data"] = db_Materials[values["material"]].copy()
             values["material"] = values.pop("material_data")
+            values["status"] = "in_stock"
 
             filename = f'{values["name"]}.json'
             if args.datadir != ".":
@@ -894,11 +905,13 @@ def main():
             values = db_Magnets[magnet]
 
         # For MagnetDB
+        magnet_status = {"en service": "in_operation", "en stock": "in_stock"}
         print("\nGenerate files for import in MagnetDB:")
         for magnet, mvalues in db_Magnets.items():
             if "sites" in mvalues:
                 del mvalues["sites"]
 
+            mvalues["status"] = magnet_status[mvalues["status"].lower()]
             mvalues["db_parts"] = []
             if "parts" in mvalues:
                 for part in mvalues["parts"]:
@@ -909,7 +922,7 @@ def main():
 
                     data_part["material_data"] = db_Materials[data_part["material"]]
                     data_part["material"] = data_part.pop("material_data")
-
+                    data_part["status"] = magnet_status[data_part["status"].lower()]
                     mvalues["db_parts"].append(data_part)
 
                 del mvalues["parts"]
@@ -926,20 +939,22 @@ def main():
                 print(f"db_Magnets/write_to_json: {filename}")
                 f.write(json.dumps(mvalues, indent=4))
 
+        site_status = {"en service": "in_operation", "en stock": "decommisioned"}
         for site, svalues in db_Sites.items():
             housing = svalues["housing"]
             name = svalues["name"]
             # svalues["name"] = f"{housing}_{name}"
             print(f"db_Sites[{site}]: housing={housing}, magnet={svalues['magnets']}")
 
+            svalues["status"] = site_status[svalues["status"].lower()]
             svalues["commissioned_at"] = str(svalues["commissioned_at"])
             svalues["decommissioned_at"] = str(svalues["decommissioned_at"])
 
             svalues["data_records"] = []
             for record in svalues["records"]:
                 filename = record.getDataFilename()
-                if args.datadir != ".":
-                    filename = f"{args.datadir}/{filename}"
+                # if args.datadir != ".":
+                #    filename = f"{args.datadir}/{filename}"
                 data_record = {
                     "name": record.getDataFilename(),
                     "description": "",
