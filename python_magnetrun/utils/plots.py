@@ -6,23 +6,25 @@ import pandas as pd
 import freesteam as st
 import numpy as np
 import matplotlib
+
 # print("matplotlib=", matplotlib.rcParams.keys())
-matplotlib.rcParams['text.usetex'] = True
+matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as colors
 
+
 # TODO use MagnetData instead of df
-def plot_vs_time(df, items, show: bool=False, wd: str = None):
+def plot_vs_time(df, items, show: bool = False, wd: str = None):
     print(f"plot_vs_time: items={items}")
     keys = df.columns.values.tolist()
-    
+
     ax = plt.gca()
     # loop over key
     for key in items:
         if key in keys:
-            df.plot(x='Time', y=key, grid=True, ax=ax)
+            df.plot(x="Time", y=key, grid=True, ax=ax)
         else:
             print(f"unknown key: {key}")
             print(f"valid keys: {keys}")
@@ -30,55 +32,73 @@ def plot_vs_time(df, items, show: bool=False, wd: str = None):
     if show:
         plt.show()
     else:
-        imagefile = "Fields" # input_file.replace(".txt", "")
-        filename = f'{imagefile}_vs_time.png'
+        imagefile = "Fields"  # input_file.replace(".txt", "")
+        filename = f"{imagefile}_vs_time.png"
         if not wd is None:
-            filename = f'{wd}/{filename}'
-        print(f'save to file - {filename}')
-        plt.savefig(filename, dpi=300 )
+            filename = f"{wd}/{filename}"
+        print(f"save to file - {filename}")
+        plt.savefig(filename, dpi=300)
     plt.close()
-    
-def plot_key_vs_key(df, pairs, show: bool=False, wd: str = None):
+
+
+def plot_key_vs_key(df, pairs, show: bool = False, wd: str = None):
     keys = df.columns.values.tolist()
     for pair in pairs:
         print(f"pair={pair}")
         ax = plt.gca()
-        #print("pair=", pair, " type=", type(pair))
-        items = pair.split('-')
+        # print("pair=", pair, " type=", type(pair))
+        items = pair.split("-")
         if len(items) != 2:
             print(f"invalid pair of keys: {pair}")
             sys.exit(1)
-        key1= items[0]
-        key2 =items[1]
+        key1 = items[0]
+        key2 = items[1]
         if key1 in keys and key2 in keys:
-            df.plot(x=key1, y=key2,kind='scatter',color='red', grid=True, ax=ax) # on graph per pair
+            df.plot(
+                x=key1, y=key2, kind="scatter", color="red", grid=True, ax=ax
+            )  # on graph per pair
         else:
             print(f"unknown pair of keys: {pair}")
             print(f"valid keys: {keys}")
             sys.exit(1)
         if show:
-           plt.show()
+            plt.show()
         else:
-            filename = f'{key1}_vs_{key2}.png'
+            filename = f"{key1}_vs_{key2}.png"
             if not wd is None:
-                filename = f'{wd}/{filename}'
-            print(f'save to file - {filename}')
-            plt.savefig(filename, dpi=300 )
+                filename = f"{wd}/{filename}"
+            print(f"save to file - {filename}")
+            plt.savefig(filename, dpi=300)
         plt.close()
 
+
 # TODO use MagnetData instead of files
-def plot_files(name: str, input_files: list, key1: str, key2: str, from_i: int=0, to_i = None, fit: tuple=None, show: bool=False, debug: bool=False, wd: str = None):
+def plot_files(
+    name: str,
+    input_files: list,
+    key1: str,
+    key2: str,
+    from_i: int = 0,
+    to_i=None,
+    fit: tuple = None,
+    show: bool = False,
+    debug: bool = False,
+    wd: str = None,
+):
     if debug:
-        print(f'input_files: {input_files}')
+        print(f"input_files: {input_files}")
 
     # Import Dataset
     ax = plt.gca()
     colormap = cm.viridis
     if to_i is None:
-        colorlist = [colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(input_files))]
+        colorlist = [
+            colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(input_files))
+        ]
     else:
-        colorlist = [colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(to_i-from_i))]
-
+        colorlist = [
+            colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(to_i - from_i))
+        ]
 
     df_f = []
     legends = []
@@ -87,41 +107,51 @@ def plot_files(name: str, input_files: list, key1: str, key2: str, from_i: int=0
             continue
         elif not to_i is None:
             if i >= to_i:
-                break;
+                break
         else:
             try:
                 if f.endswith(".txt"):
-                    _df = pd.read_csv(f, sep='\s+', engine='python', skiprows=1)
+                    _df = pd.read_csv(f, sep="\s+", engine="python", skiprows=1)
                     df_f.append(_df)
                     keys = _df.columns.values.tolist()
                     if key1 in keys and key2 in keys:
-                        lname = f.replace("_","-")
-                        lname = lname.replace(".txt","")
-                        lname = lname.split('/')
-                        legends.append(f'{lname[-1]}')
+                        lname = f.replace("_", "-")
+                        lname = lname.replace(".txt", "")
+                        lname = lname.split("/")
+                        legends.append(f"{lname[-1]}")
                         # print(f'rename Flow1 to {lname[-1]}')
-                        _df.plot.scatter(x=key1, y=key2, grid=True, label=f'{lname[-1]}', color=colorlist[i], ax=ax)
+                        _df.plot.scatter(
+                            x=key1,
+                            y=key2,
+                            grid=True,
+                            label=f"{lname[-1]}",
+                            color=colorlist[i],
+                            markersize=3,
+                            ax=ax,
+                        )
                         # print(f'tttut')
                 else:
-                    df_f.append(pd.read_csv(f, sep="str(',')", engine='python', skiprows=0))
+                    df_f.append(
+                        pd.read_csv(f, sep="str(',')", engine="python", skiprows=0)
+                    )
             except:
-                print(f'load_files: failed to load {f} with pandas')
+                print(f"load_files: failed to load {f} with pandas")
 
             # print(f'load_files: {f}')
 
     # add fit if present
     if fit:
         (x, y) = fit
-        ax.plot(x, y, color='red', linestyle='dashed', linewidth=2, label='fit')
+        ax.plot(x, y, color="red", linestyle="dashed", linewidth=2, label="fit")
 
     # ax.legend()
-    plt.legend(loc='best')
+    plt.legend(loc="best")
     if not show:
-        filename = f'{name}-{key1}_vs_{key2}.png'
+        filename = f"{name}-{key1}_vs_{key2}.png"
         if not wd is None:
-           filename = f'{wd}/{filename}'
-        print(f'save to file - {filename}')
-        plt.savefig(filename, dpi=300 )
+            filename = f"{wd}/{filename}"
+        print(f"save to file - {filename}")
+        plt.savefig(filename, dpi=300)
     else:
         plt.show()
     plt.close()
