@@ -83,7 +83,7 @@ def nplateaus(
     plt.plot(
         df[xField[0]],
         df[yField[0]],
-        label=f"original data",
+        label=f"measured",
         marker="x",
         lw=0.5,
         ms=2.0,
@@ -96,8 +96,8 @@ def nplateaus(
         if len(group_data) < min_number_points:
             continue
 
-        _start = group_data[xField[0]].iloc[0]
-        _end = group_data[xField[0]].iloc[-1]
+        _start = min(group_data[xField[0]].iloc[0], group_data[xField[0]].iloc[-1])
+        _end = max(group_data[xField[0]].iloc[0], group_data[xField[0]].iloc[-1])
         if abs(_start - _end) <= 0.1:
             continue
 
@@ -117,8 +117,8 @@ def nplateaus(
         plateau_data.append({"start": _start, "end": _end, "value": _value})
         print(f"plateau[{plateau_idx}]: {plateau_data[-1]}")
         plt.annotate(
-            f"Plateau-{plateau_idx}: {yField[0]}={_value} {yField[1]}",
-            (_time, _value + 0.1),
+            f"{_value:.2e}",
+            (_time, _value * (1 + 0.01)),
             ha="center",
         )
     print(f"detected plateaux: {plateau_idx}")
@@ -126,14 +126,13 @@ def nplateaus(
     plt.legend()
     plt.grid(b=True)
     plt.title(Data.FileName)
-    plt.ylabel(f"[{yField[1]}]")
-    plt.xlabel(f"[{xField[1]}]")
+    plt.ylabel(f"{yField[0]} [{yField[1]}]")
+    plt.xlabel(f"{xField[0]} [{xField[1]}]")
 
     if show:
         plt.show()
     if save:
         plt.savefig(f"{yField[0]}-{xField[0]}.png")
-        print("save to png not implemented")
 
     return plateau_data
 
