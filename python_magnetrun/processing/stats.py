@@ -67,6 +67,10 @@ def nplateaus(
     show: bool = False,
     save: bool = False,
 ) -> list:
+    """
+    detect plateau vs index aka time
+    """
+
     df = Data.getData()
     if not isinstance(df, pd.DataFrame):
         raise RuntimeError(
@@ -98,7 +102,11 @@ def nplateaus(
 
         _start = min(group_data[xField[0]].iloc[0], group_data[xField[0]].iloc[-1])
         _end = max(group_data[xField[0]].iloc[0], group_data[xField[0]].iloc[-1])
+        _time = group_data[xField[0]].mean()
+        _value = group_data[yField[0]].mean()
+        pdata = {"start": _start, "end": _end, "value": _value}
         if abs(_start - _end) <= 0.1:
+            print(f"ignore plateau: {pdata}")
             continue
 
         plateau_idx += 1
@@ -106,16 +114,16 @@ def nplateaus(
         plt.plot(
             group_data[xField[0]],
             group_data[yField[0]],
-            label=f"Plateau-{plateau_idx}",
+            label=f"Plateau-{plateau_idx} {yField[0]}={_value:.2e} {yField[1]}",
             marker="x",
             lw=1.5,
             ms=5.0,
         )
-        _time = group_data[xField[0]].mean()
-        _value = group_data[yField[0]].mean()
 
-        plateau_data.append({"start": _start, "end": _end, "value": _value})
-        print(f"plateau[{plateau_idx}]: {plateau_data[-1]}")
+        plateau_data.append(pdata)
+        print(
+            f"plateau[{plateau_idx}]: {plateau_data[-1]}, duration={abs(_start - _end)} {xField[1]}"
+        )
         plt.annotate(
             f"{_value:.2e}",
             (_time, _value * (1 + 0.01)),
@@ -125,14 +133,20 @@ def nplateaus(
 
     plt.legend()
     plt.grid(b=True)
-    plt.title(Data.FileName)
+
+    lname = Data.FileName.replace("_", "-")
+    lname = lname.replace(".txt", "")
+    lname = lname.split("/")
+    plt.title(lname[-1])
     plt.ylabel(f"{yField[0]} [{yField[1]}]")
     plt.xlabel(f"{xField[0]} [{xField[1]}]")
+    plt.grid(True)
 
     if show:
         plt.show()
     if save:
         plt.savefig(f"{yField[0]}-{xField[0]}.png")
+    plt.close()
 
     return plateau_data
 

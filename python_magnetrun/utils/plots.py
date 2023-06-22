@@ -1,4 +1,5 @@
 from __future__ import unicode_literals
+from typing import Optional
 import sys
 import argparse
 import datetime
@@ -16,7 +17,7 @@ import matplotlib.colors as colors
 
 
 # TODO use MagnetData instead of df
-def plot_vs_time(df, items, show: bool = False, wd: str = None):
+def plot_vs_time(df, items, show: bool = False, wd: Optional[str] = None):
     print(f"plot_vs_time: items={items}")
     keys = df.columns.values.tolist()
 
@@ -41,7 +42,7 @@ def plot_vs_time(df, items, show: bool = False, wd: str = None):
     plt.close()
 
 
-def plot_key_vs_key(df, pairs, show: bool = False, wd: str = None):
+def plot_key_vs_key(df, pairs, show: bool = False, wd: Optional[str] = None):
     keys = df.columns.values.tolist()
     for pair in pairs:
         print(f"pair={pair}")
@@ -79,40 +80,36 @@ def plot_files(
     key1: str,
     key2: str,
     from_i: int = 0,
-    to_i=None,
-    fit: tuple = None,
+    to_i: Optional[int] = None,
+    fit: Optional[tuple] = None,
     show: bool = False,
     debug: bool = False,
-    wd: str = None,
+    wd: Optional[str] = None,
 ):
     if debug:
-        print(f"input_files: {input_files}")
+        print(f"plot_files: input_files={input_files}, key1={key1}, key2={key2}")
 
     # Import Dataset
     ax = plt.gca()
     colormap = cm.viridis
-    if to_i is None:
-        colorlist = [
-            colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(input_files))
-        ]
-    else:
-        colorlist = [
-            colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(to_i - from_i))
-        ]
+    colorlist = [
+        colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(input_files))
+    ]
 
-    df_f = []
     legends = []
     for i, f in enumerate(input_files):
         if i <= from_i:
+            # print(f"plot_files: skip {i}")
             continue
         elif not to_i is None:
             if i >= to_i:
+                # print(f"plot_files: break {i}")
                 break
         else:
+            # print(f"plot_files: try to plot i={i}, f={f}, key1={key1}, key2={key2}")
             try:
                 if f.endswith(".txt"):
-                    _df = pd.read_csv(f, sep="\s+", engine="python", skiprows=1)
-                    df_f.append(_df)
+                    _df = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=1)
                     keys = _df.columns.values.tolist()
                     if key1 in keys and key2 in keys:
                         lname = f.replace("_", "-")
@@ -126,18 +123,15 @@ def plot_files(
                             grid=True,
                             label=f"{lname[-1]}",
                             color=colorlist[i],
-                            markersize=3,
                             ax=ax,
                         )
-                        # print(f'tttut')
-                else:
-                    df_f.append(
-                        pd.read_csv(f, sep="str(',')", engine="python", skiprows=0)
-                    )
+                        # print(f"{f}: displayed")
+                    else:
+                        print(
+                            f"{f}: no displayed - key1={key1} and key2={key2} not in keys"
+                        )
             except:
-                print(f"load_files: failed to load {f} with pandas")
-
-            # print(f'load_files: {f}')
+                print(f"plot_files: failed to load {f} with pandas")
 
     # add fit if present
     if fit:
@@ -146,6 +140,9 @@ def plot_files(
 
     # ax.legend()
     plt.legend(loc="best")
+    plt.ylabel(key2)
+    plt.xlabel(key1)
+
     if not show:
         filename = f"{name}-{key1}_vs_{key2}.png"
         if not wd is None:

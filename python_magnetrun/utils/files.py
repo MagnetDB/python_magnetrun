@@ -19,26 +19,28 @@ import matplotlib.colors as colors
 
 def concat_files(input_files: list, keys: list, debug: bool = False):
     if debug:
-        print(f"input_files: {input_files}")
+        print(f"concat_files: input_files={input_files}, keys={keys}")
 
     df_f = []
     for i, f in enumerate(input_files):
-        # if i > 40:
-        #     break;
+        _df = pd.DataFrame()
+        if debug:
+            print(f"concat_files: process {f}")
         try:
             if f.endswith(".txt"):
-                _df = pd.read_csv(f, sep="\\s+", engine="python", skiprows=1)
+                _df = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=1)
             else:
                 _df = pd.read_csv(f, sep="str(',')", engine="python", skiprows=0)
 
-            if keys:
-                df_f.append(_df[keys])
-            else:
-                df_f.append(_df)
         except:
             print(f"load_files: failed to load {f} with pandas")
 
         # print(f'load_files: {f}')
+        if keys:
+            df_f.append(_df[keys])
+        else:
+            df_f.append(_df)
+
     df = pd.concat(df_f, axis=0)
 
     # Drop empty columns
@@ -67,4 +69,3 @@ def concat_files(input_files: list, keys: list, debug: bool = False):
         pass
 
     return df
-
