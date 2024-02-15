@@ -170,7 +170,7 @@ class MagnetData:
             elif key.startwith("Flo"):
                 self.units[key] = ("Q", ureg.liter / ureg.second)
             elif key.startwith("debit"):
-                self.units[key] = ("Q", ureg.meter ** 3 / ureg.second)
+                self.units[key] = ("Q", ureg.meter**3 / ureg.second)
             elif key.startwith("Fie"):
                 self.units[key] = ("B", ureg.tesla)
             elif key.startwith("HP") or key.startwith("BP"):
@@ -291,10 +291,9 @@ class MagnetData:
                 raise Exception("cannot add t[s] columnn: no Date or Time column")
         return 0
 
-    def extractData(self, keys):
+    def extractData(self, keys) -> pd.DataFrame:
         """extract columns keys to Data"""
 
-        newdf = None
         if self.Type == 0:
             for key in keys:
                 if not key in self.Keys:
@@ -305,12 +304,12 @@ class MagnetData:
 
             return pd.concat([self.Data[key] for key in keys], axis=1)
 
-        return newdf
+        else:
+            raise RuntimeError("extractData: magnetdata type ({self.Type})unsupported")
 
-    def extractTimeData(self, timerange):
+    def extractTimeData(self, timerange) -> pd.DataFrame:
         """extract column to Data"""
 
-        selected_df = None
         if isinstance(self.Data, pd.DataFrame):
             trange = timerange.split(";")
             print("Select data from %s to %s" % (trange[0], trange[1]))
@@ -318,7 +317,10 @@ class MagnetData:
             return self.Data[
                 self.Data["Time"].between(trange[0], trange[1], inclusive="both")
             ]
-        return selected_df
+        else:
+            raise RuntimeError(
+                "extractTimeData: magnetdata type ({self.Type})unsupported"
+            )
 
     def saveData(self, keys, filename):
         """save Data to csv format"""

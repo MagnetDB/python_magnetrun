@@ -82,6 +82,7 @@ def getTable(
     # For each row, store each first element (header) and an empty list
     for i, t in enumerate(tr_elements[0]):
         name = t.text_content()
+        # print(f"name[{i}]={name}")
         # get date ID status comment from sub element
         data = []
         for j, d in enumerate(t):
@@ -105,6 +106,7 @@ def getTable(
             else:
                 Found[Mid] = 0
             Mdata[Mid] = data
+            # print(f"Mdat[{Mid}] = {data}")
             Mjid[Mid] = jid
 
     # Mids = sorted(set(Mids)) #uniq only: list(set(Mids))
@@ -186,7 +188,8 @@ def getPartCADref(session, url_data, Parts, debug: bool = False):
     if res.status_code != 200:
         print(f"getPartCADref: cannot logging to {url_data}")
         res.raise_for_status()
-    # print(f'getPartCADref: status={res.status_code}') # res={res.text}
+    if debug:
+        print(f"getPartCADref: status={res.status_code}, res={res.text}")
 
     doc = lh.fromstring(res.content)
 
@@ -318,6 +321,7 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
             site = re.sub("/.*txt", "", site)
 
             housing = link.replace("../../../", "").split("/")[0]
+            # print(f"link={link}, site={site}, housing={housing}")
             if debug:
                 print(f"data={data}, link={link}, site={site}, housing={housing}")
 

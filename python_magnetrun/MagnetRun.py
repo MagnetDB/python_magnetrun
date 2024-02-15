@@ -8,7 +8,6 @@ from .magnetdata import MagnetData
 
 
 def prepareData(data: MagnetData, housing: str):
-
     # get start/end
     (start_date, start_time, end_date, end_time) = data.getStartDate()
     # print(f'start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}')
@@ -41,7 +40,7 @@ def prepareData(data: MagnetData, housing: str):
     # print(f'prepareData cleanup done: {data.getKeys()}')
 
     # remove duplicates: get keys for Icoil\d+, keep first one and eventually latest (aka for Bitters),
-    Ikeys = [_key for _key in data.getKeys() if re.match("Icoil\d+", _key)]
+    Ikeys = [_key for _key in data.getKeys() if re.match(r"Icoil\d+", _key)]
     # print(f'Icoil keys from {Ikeys[0]} to {Ikeys[-1]}')
 
     # rename Icoil1 -> IH
@@ -93,7 +92,7 @@ class MagnetRun:
         from io import StringIO
 
         insert = "Unknown"
-        data = MagnetData()
+        data = MagnetData(filename="", Groups={}, Keys=[])
         try:
             ioname = StringIO(name)
             # TODO rework: get item 2 otherwise set to unknown
@@ -141,10 +140,12 @@ class MagnetRun:
         else:
             raise RuntimeError("MagnetRun.getType: no MagnetData associated")
 
-    def getMData(self):
+    def getMData(self) -> MagnetData:
         """return Magnet Data object"""
         if not self.MagnetData is None:
             return self.MagnetData
+        else:
+            raise RuntimeError("no magnetdata attached to this magnetrun")
 
     def getData(self, key: str = ""):
         """return Data"""

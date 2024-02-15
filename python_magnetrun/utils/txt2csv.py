@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as colors
 
-from .files import load_files
+from .files import concat_files
 from .plots import plot_vs_time
 from .plots import plot_key_vs_key
 
@@ -34,7 +34,7 @@ def main():
     parser.add_argument("--check", help="returns True if active voltage taps==nhelices", action='store_true')
     args = parser.parse_args()
 
-    df = load_files(args.input_files)
+    df = concat_files(args.input_files)
 
     # Get Name of columns
     keys = df.columns.values.tolist()

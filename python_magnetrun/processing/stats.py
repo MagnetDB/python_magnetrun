@@ -28,11 +28,10 @@ def stats(Data: MagnetData):
 
     # see https://github.com/astanin/python-tabulate for tablefmt
     if isinstance(Data.Data, pd.DataFrame):
-
         print("Statistics:\n")
         tables = []
         headers = ["Name", "Mean", "Max", "Min", "Std", "Median", "Mode"]
-        for (f, unit) in zip(
+        for f, unit in zip(
             ["Field", "Pmagnet", "teb", "debitbrut"], ["T", "MW", "C", "m\u00B3/h"]
         ):
             df = Data.Data[f]
@@ -57,6 +56,99 @@ def stats(Data: MagnetData):
     else:
         raise RuntimeError("stats: not supported for TdmsFile data")
     return 0
+
+
+def nplateaus(
+    Data: MagnetData,
+    xField: tuple,
+    yField: tuple,
+    threshold: float = 2.0e-2,
+    num_points_threshold: int = 600,
+    show: bool = False,
+    save: bool = False,
+) -> list:
+    """
+    detect plateau vs index aka time
+    """
+
+    df = Data.getData()
+    if not isinstance(df, pd.DataFrame):
+        raise RuntimeError(
+            f"nplateaux: {Data.FileName}, unexpectype type of data: {type(df)}"
+        )
+
+    # filter and group plateaus
+    max_difference = threshold
+    min_number_points = num_points_threshold
+    # group by maximum difference
+    group_ids = (abs(df[yField[0]].diff(1)) > max_difference).cumsum()
+    plateau_idx = 0
+
+    plt.plot(
+        df[xField[0]],
+        df[yField[0]],
+        label=f"measured",
+        marker="x",
+        lw=0.5,
+        ms=2.0,
+        color="black",
+    )
+
+    plateau_data = []
+    for group_idx, group_data in df.groupby(group_ids):
+        # filter non-plateaus by min number of points
+        if len(group_data) < min_number_points:
+            continue
+
+        _start = min(group_data[xField[0]].iloc[0], group_data[xField[0]].iloc[-1])
+        _end = max(group_data[xField[0]].iloc[0], group_data[xField[0]].iloc[-1])
+        _time = group_data[xField[0]].mean()
+        _value = group_data[yField[0]].mean()
+        pdata = {"start": _start, "end": _end, "value": _value}
+        if abs(_start - _end) <= 0.1:
+            print(f"ignore plateau: {pdata}")
+            continue
+
+        plateau_idx += 1
+
+        plt.plot(
+            group_data[xField[0]],
+            group_data[yField[0]],
+            label=f"Plateau-{plateau_idx} {yField[0]}={_value:.2e} {yField[1]}",
+            marker="x",
+            lw=1.5,
+            ms=5.0,
+        )
+
+        plateau_data.append(pdata)
+        print(
+            f"plateau[{plateau_idx}]: {plateau_data[-1]}, duration={abs(_start - _end)} {xField[1]}"
+        )
+        plt.annotate(
+            f"{_value:.2e}",
+            (_time, _value * (1 + 0.01)),
+            ha="center",
+        )
+    print(f"detected plateaux: {plateau_idx}")
+
+    plt.legend()
+    plt.grid(b=True)
+
+    lname = Data.FileName.replace("_", "-")
+    lname = lname.replace(".txt", "")
+    lname = lname.split("/")
+    plt.title(lname[-1])
+    plt.ylabel(f"{yField[0]} [{yField[1]}]")
+    plt.xlabel(f"{xField[0]} [{xField[1]}]")
+    plt.grid(True)
+
+    if show:
+        plt.show()
+    if save:
+        plt.savefig(f"{yField[0]}-{xField[0]}.png")
+    plt.close()
+
+    return plateau_data
 
 
 def plateaus(
