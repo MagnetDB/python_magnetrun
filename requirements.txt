@@ -1,9 +1,12 @@
 nptdms
 pandas
 statsmodels
+numpy
 matplotlib
 seaborn
 tabulate
+requests
+lxml
 
 iapws
 pint

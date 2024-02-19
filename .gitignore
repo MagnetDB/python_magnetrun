@@ -121,3 +121,6 @@ M*.txt
 M*.json
 H*.json
 M*.conf
+
+*log
+*old

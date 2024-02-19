@@ -137,6 +137,11 @@ def plot_files(
         (x, y) = fit
         ax.plot(x, y, color="red", linestyle="dashed", linewidth=2, label="fit")
 
+    # add fit if present
+    if fit:
+        (x, y) = fit
+        ax.plot(x, y, color='red', linestyle='dashed', linewidth=2, label='fit')
+
     # ax.legend()
     plt.legend(loc="best")
     plt.ylabel(key2)
