@@ -1,0 +1,14 @@
+nptdms
+pandas
+statsmodels
+matplotlib
+seaborn
+tabulate
+
+iapws
+pint
+
+# for cooling directory
+ht
+nlopt
+clawpack
