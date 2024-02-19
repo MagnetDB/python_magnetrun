@@ -31,6 +31,10 @@ from .webscrapping import (
 from ..MagnetRun import MagnetRun
 from ..utils.list import flatten
 
+import lxml.html as lh
+import matplotlib.pyplot as plt
+import pandas as pd
+from collections import OrderedDict
 
 def cleanup(remove_site: list, msg: str, site_names: dict, Sites: dict):
     print(f"Remove Site in {remove_site}: {msg}")
@@ -143,64 +147,69 @@ def main():
             _raw = csv.reader(f)
 
             for row in _raw:
-                name = row[1]
-                _magnets = [name]
-                if not "??" in name:
-                    status = row[2]
-                    housing = row[3]
-                    # print(row)
+                print(row)
+                try:
+                    name = row[1]
+                    _magnets = [name]
+                    if "??" not in name:
+                        status = row[2]
+                        housing = row[3]
 
-                    tformat = "%Y-%m-%d"
-                    created_at = None
-                    stopped_at = None
+                        tformat = "%Y-%m-%d"
+                        created_at = None
+                        stopped_at = None
 
-                    if not name in _counter:
-                        _counter[name] = 0
+                        if name not in _counter:
+                            _counter[name] = 0
 
-                    site = f"{name}_{_counter[name]}"
+                        site = f"{name}_{_counter[name]}"
 
-                    created_at = None
-                    stopped_at = None
-                    if status.lower() == "en service":
-                        created_at = datetime.datetime.strptime(row[0], tformat)
-                        if site in db_Sites:
-                            db_Sites[site]["status"] = status.lower()
-                            db_Sites[site]["commissioned_at"] = stopped_at
-                            db_Sites[site]["housing"] = housing
+                        created_at = None
+                        stopped_at = None
+                        print(f'status={status}, date={row[0]}', flush=True)
+                        if status.lower() == "en service":
+                            created_at = datetime.datetime.strptime(row[0], tformat)
+                            if site in db_Sites:
+                                db_Sites[site]["status"] = status.lower()
+                                db_Sites[site]["commissioned_at"] = stopped_at
+                                db_Sites[site]["housing"] = housing
+                            else:
+                                db_Sites[site] = {
+                                    "name": site,
+                                    "description": "",
+                                    "status": status.lower(),
+                                    "magnets": _magnets,
+                                    "records": [],
+                                    "commissioned_at": created_at,
+                                    "decommissioned_at": stopped_at,
+                                    "housing": housing,
+                                }
+
                         else:
-                            db_Sites[site] = {
-                                "name": site,
-                                "description": "",
-                                "status": status.lower(),
-                                "magnets": _magnets,
-                                "records": [],
-                                "commissioned_at": created_at,
-                                "decommissioned_at": stopped_at,
-                                "housing": housing,
-                            }
-
-                    else:
-                        stopped_at = datetime.datetime.strptime(row[0], tformat)
-                        _counter[name] += 1
-                        if site in db_Sites:
-                            db_Sites[site]["status"] = status.lower()
-                            db_Sites[site]["decommissioned_at"] = stopped_at
-                        else:
-                            db_Sites[site] = {
-                                "name": site,
-                                "description": "",
-                                "status": status.lower(),
-                                "magnets": _magnets,
-                                "records": [],
-                                "commissioned_at": created_at,
-                                "decommissioned_at": stopped_at,
-                                "housing": housing,
-                            }
-
+                            stopped_at = datetime.datetime.strptime(row[0], tformat)
+                            _counter[name] += 1
+                            if site in db_Sites:
+                                db_Sites[site]["status"] = status.lower()
+                                db_Sites[site]["decommissioned_at"] = stopped_at
+                            else:
+                                db_Sites[site] = {
+                                    "name": site,
+                                    "description": "",
+                                    "status": status.lower(),
+                                    "magnets": _magnets,
+                                    "records": [],
+                                    "commissioned_at": created_at,
+                                    "decommissioned_at": stopped_at,
+                                    "housing": housing,
+                                }
+                except:
+                    print(f'problem loading: {row} -skipped')
+                    pass
+                
         for item, values in db_Sites.items():
             housing = values["housing"]
             name = values["name"]
-            if not "Bitters" in item:
+            if "Bitters" not in item:
                 values["magnets"].append(f"{housing}Bitters")
             values["name"] = f"{housing}_{name}"
             print(f"site={item}: {values}")
@@ -630,7 +639,6 @@ def main():
 
         print(f"\ncad/Parts ({len(cad_Parts)}):")
 
-        from collections import OrderedDict
 
         ordered_data = OrderedDict(sorted(cad_Parts.items(), key=lambda x: x))
         for cad, values in ordered_data.items():
@@ -666,7 +674,6 @@ def main():
         # Try to read and make some stats on records
         print("\nRecords:")
         page = s.get(url=url_records, verify=True)
-        import lxml.html as lh
 
         housing_names = []
         doc = lh.document_fromstring(page.content)
@@ -715,8 +722,6 @@ def main():
 
         # Assign records to site from timestamps
         # Create a panda datafram with ['link','timestamp']
-        import pandas as pd
-
         df_records = pd.DataFrame(
             list(zip(record_names, record_timestamps)), columns=["name", "timestamp"]
         )
@@ -805,7 +810,6 @@ def main():
             )
 
         # Display site history per site for M9 and M10 only
-        import matplotlib.pyplot as plt
 
         print("\nSite History per Housing:")
 
