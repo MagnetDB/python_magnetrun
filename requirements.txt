@@ -1,0 +1,13 @@
+ht
+iapws
+#itertools
+lxml
+matplotlib
+numpy
+pandas
+nptdms
+pint
+requests
+statsmodels
+seaborn
+
