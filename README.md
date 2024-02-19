@@ -31,13 +31,13 @@ Examples
 
 _ To list fields recorded during an experiment:
 
-```python3 python_magnetrun.py M9_2019.02.14-23_00_38.txt --list```
+```python3 -m python_magnetrun.utils.txt2csv data/M9_2019.02.14-23_00_38.txt --list```
 
 
 _ To view the magnetic field during an experiment:
 
 
-```python3 python_magnetrun.py M9_2019.02.14-23_00_38.txt --plot_vs_time "Field" --show```
+```python3 -m python_magnetrun.utils.txt2csv data/M9_2019.02.14-23_00_38.txt --plot_vs_time "Field" --show```
 
 - To model transient:
 
@@ -48,9 +48,28 @@ _ To view the magnetic field during an experiment:
 ```python3 heatexchanger_primary.py M9_2019.02.14-23_00_38.txt --ohtc=2103.09 --dT=4.93827 [find]```
 
 
+- List records that last at least 60 s and with a magnetic filed above 18:
+
+```
+python -m python_magnetrun.examples.get-record 'python_magnetrun/txt/M8*.txt' select --duration 60 --field 18.
+python -m python_magnetrun.examples.get-record 'python_magnetrun/txt/M*.txt' plot --xfield timestamp --fields teb --show
+```
+
+INSTALL
+----
+
+To install in a python virtual env
+
+```
+python -m venv --system-site-packages magnetrun-env
+source ./magnetrun-env/bin/activate
+pip install -r requirements.txt
+```
+
 TODO
 ----
 
+- rewrite txt2csv to use methods in utils and plots
 - For 'tdms' to pandas see
     <https://nptdms.readthedocs.io/en/stable/apireference.html>
 - Check 'addData' complex formula (involving 'freesteam' for ex) with help of python 'pyparsing'??
@@ -64,17 +83,6 @@ TODO
 - Get MagnetRun files from control/monitoring system??
 - For MagnetRun add missing fields [U1, Pe1, Tout1, U2 \...\],
     \--missing, \--nhelices - see txt2csv.py
-
-INSTALL
-----
-
-To install in a python virtual env
-
-```
-python -m venv --system-site-packages magnetrun-env
-source ./magnetrun-env/bin/activate
-pip install nptdms
-```
 
 Credits
 -------
