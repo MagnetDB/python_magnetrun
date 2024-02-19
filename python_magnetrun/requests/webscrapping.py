@@ -6,7 +6,6 @@ Retreive MagnetID list
 For each MagnetID list of attached record
 Check record consistency
 """
-from typing import Union
 
 import getpass
 import sys
@@ -116,7 +115,7 @@ def getTable(
 
 
 def getMaterial(
-    session, materialID: Union[int, None], url_materials, Mats: dict, debug=False
+    session, materialID: int | None, url_materials, Mats: dict, debug=False
 ):
     """get material"""
     # print(f'getMaterial({materialID})')

@@ -1,5 +1,4 @@
 """MagnetData"""
-from typing import Union, Optional
 
 import os
 import sys
@@ -32,14 +31,14 @@ class MagnetData:
         Groups: dict,
         Keys: list,
         Type: int = 0,
-        Data: Optional[Union[pd.DataFrame, TdmsFile]] = None,
+        Data: pd.DataFrame | TdmsFile | None = None,
     ) -> None:
         """default constructor"""
         self.FileName = filename
         self.Groups = Groups
         self.Keys = Keys
         self.Type = Type  # 0 for Pandas, 1 for Tdms, 2: for Ensight
-        if not Data is None:
+        if Data is not None:
             self.Data = Data
         self.units = dict()
 
@@ -49,7 +48,7 @@ class MagnetData:
         Keys = []
         Groups = {}
         Data = None
-        with open(name, "r") as f:
+        with open(name, "r"):
             f_extension = os.path.splitext(name)[-1]
             # print("f_extension: % s" % f_extension)
             if f_extension == ".tdms":
@@ -129,7 +128,7 @@ class MagnetData:
         """returns Data Type"""
         return self.Type
 
-    def getData(self, key: str = ""):
+    def getData(self, key: str = None):
         """return Data"""
         if not key:
             return self.Data
@@ -140,7 +139,7 @@ class MagnetData:
                 elif isinstance(self.Data, TdmsFile):
                     return self.Data[self.Groups[key]]
             else:
-                raise Exception("cannot get data for key %s: no such key" % key)
+                raise Exception(f"cannot get data for key {key}: no such key")
 
     def Units(self):
         """
@@ -188,23 +187,71 @@ class MagnetData:
 
     def cleanupData(self):
         """removes empty columns from Data"""
+
+        # print(f"Clean up Data")
         if isinstance(self.Data, pd.DataFrame):
-            # print(f"Clean up Data")
-            self.Data = self.Data.loc[:, (self.Data != 0.0).any(axis=0)]
+            import re
+
+            # print(f'self.Keys = {self.Keys}') # Data.columns.values.tolist()}')
+            Ikeys = [_key for _key in self.Keys if re.match(r"Icoil\d+", _key)]
+            Fkeys = [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
+            Fkeys += [_key for _key in self.Keys if re.match(r"\w+_ref", _key)]
+            # print(f'IKeys = {Ikeys}')
+            # print(f'FKeys = {Fkeys}')
+
+            # drop duplicates
+            _df = self.Data.T.drop_duplicates().T
+            # print(f'uniq Keys = {_df.columns.values.tolist()}')
+
+            # TODO remove empty column except that with a name that starts with Icoil*
+            empty_cols = [
+                col
+                for col in _df.columns
+                if _df[col].isnull().all()
+                and not col.startswith("Icoil")
+                and not col.startswith("Flow")
+            ]
+            if empty_cols:
+                # print(f'empty cols: {empty_cols}')
+                _df.drop(empty_cols, axis=1, inplace=True)
+                # print(f'uniq Keys wo empty cols = {_df.columns.values.tolist()}')
+
+            # Always add latest Ikeys if not already in _df
+            if Ikeys[-1] not in _df.columns.values.tolist():
+                _df = pd.concat([_df, self.Data[Ikeys[-1]]], axis=1)
+
+            # Kepp Fkeys if not already in _df
+            _df_keys = _df.columns.values.tolist()
+            for key in Fkeys:
+                if key not in _df_keys:
+                    _df = pd.concat([_df, self.Data[key]], axis=1)
+
+            self.Data = _df
             self.Keys = self.Data.columns.values.tolist()
-        # TODO remove duplicate
+            # print(f'--> self.Keys = {self.Keys}') # Data.columns.values.tolist()}')
         return 0
 
-    def removeData(self, key):
+    def removeData(self, keys: list):
         """remove a column to Data"""
         if isinstance(self.Data, pd.DataFrame):
-            if key in self.Keys:
-                print(f"Remove {key}")
-                del self.Data[key]
-                self.Keys = self.Data.columns.values.tolist()
-        else:
-            raise RuntimeError(f"cannot remove {key}: no such key")
+            for key in keys:
+                if key in self.Keys:
+                    # print(f"Remove {key}")
+                    del self.Data[key]
+                else:
+                    print(f"cannot remove {key}: no such key - skip operation")
+            self.Keys = self.Data.columns.values.tolist()
         return 0
+
+    def renameData(self, columns: dict):
+        """
+        rename columns
+        """
+        if isinstance(self.Data, pd.DataFrame):
+            self.Data.rename(columns=columns, inplace=True)
+            self.Keys = self.Data.columns.values.tolist()
+        else:
+            raise RuntimeError(f"cannot rename {columns.keys()}: no such columns")
 
     def addData(self, key, formula):
         """
@@ -296,30 +343,41 @@ class MagnetData:
 
         if self.Type == 0:
             for key in keys:
-                if not key in self.Keys:
+                if key not in self.Keys:
                     raise Exception(
-                        "%s.%s: no %s key"
-                        % (self.__class__.__name__, sys._getframe().f_code.co_name, key)
+                        f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {key} key"
                     )
 
             return pd.concat([self.Data[key] for key in keys], axis=1)
 
         else:
-            raise RuntimeError("extractData: magnetdata type ({self.Type})unsupported")
+            raise RuntimeError(f"extractData: magnetdata type ({self.Type})unsupported")
+
+    def extractDataThreshold(self, key, threshold):
+        """extra data above a given threshold for field"""
+        if isinstance(self.Data, pd.DataFrame):
+            if key not in self.Keys:
+                raise Exception(
+                    f"extractData: key={key} - no such keys in dataframe (valid keys are: {self.Keys()}"
+                )
+
+            return self.Data.loc[self.Data[key] >= threshold]
+        else:
+            raise Exception(f"extractData: not implement for {type(self.Data)}")
 
     def extractTimeData(self, timerange) -> pd.DataFrame:
         """extract column to Data"""
 
         if isinstance(self.Data, pd.DataFrame):
             trange = timerange.split(";")
-            print("Select data from %s to %s" % (trange[0], trange[1]))
+            print(f"Select data from {trange[0]} to {trange[1]}")
 
             return self.Data[
                 self.Data["Time"].between(trange[0], trange[1], inclusive="both")
             ]
         else:
             raise RuntimeError(
-                "extractTimeData: magnetdata type ({self.Type})unsupported"
+                f"extractTimeData: magnetdata type ({self.Type})unsupported"
             )
 
     def saveData(self, keys, filename):
@@ -331,18 +389,16 @@ class MagnetData:
     def plotData(self, x, y, ax):
         """plot x vs y"""
 
-        # print("plotData Type:", self.Type, "x=%s, y=%s" % (x,y) )
-        if not x in self.Keys:
+        # print("plotData Type:", self.Type, f"x={x}, y={y}" )
+        if x not in self.Keys:
             if isinstance(self.Data, pd.DataFrame):
                 raise Exception(
-                    "%s.%s: no x=%s key"
-                    % (self.__class__.__name__, sys._getframe().f_code.co_name, x)
+                    f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no x={x} key"
                 )
             else:
                 if x != "Time":
                     Exception(
-                        "%s.%s: no %s key"
-                        % (self.__class__.__name__, sys._getframe().f_code.co_name, x)
+                        f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {x} key"
                     )
 
         if y in self.Keys:
@@ -379,10 +435,27 @@ class MagnetData:
 
         else:
             raise Exception(
-                "%s.%s: no y=%s key"
-                % (self.__class__.__name__, sys._getframe().f_code.co_name, y)
+                f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {y} key"
             )
 
-    def stats(self):
-        """compute stats fro the actual run"""
-        return 0
+    def stats(self, key: str = None):
+        """returns stats for key"""
+        print("magnetdata.stats")
+        if isinstance(self.Data, pd.DataFrame):
+            # print(f'keys: {self.Keys}')
+            if key is not None:
+                if key in self.Keys:
+                    print(f"stats[{key}]: {self.Data[key].mean()}")
+                    return self.Data[key].describe()
+                else:
+                    raise Exception(
+                        f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {y} key"
+                    )
+            else:
+                for _key in self.Keys:
+                    if _key not in ["timestamp"]:
+                        print(
+                            f'stats[{_key}]: {self.Data[_key].describe(include="all")}'
+                        )
+        else:
+            raise Exception("data is not a panda dataframe: cannot get stats")

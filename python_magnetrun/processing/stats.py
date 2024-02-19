@@ -87,7 +87,7 @@ def nplateaus(
     plt.plot(
         df[xField[0]],
         df[yField[0]],
-        label=f"measured",
+        label="measured",
         marker="x",
         lw=0.5,
         ms=2.0,
@@ -165,7 +165,7 @@ def plateaus(
     # print(f'plateaus: show={show}, save={save}, debug={debug}')
 
     if not isinstance(Data.Data, pd.DataFrame):
-        raise RuntimeError(f"plateaus not available for Tdms data")
+        raise RuntimeError("plateaus not available for Tdms data")
 
     df = Data.Data
     if show or save:
@@ -284,7 +284,7 @@ def plateaus(
 
         if debug:
             msg = f"\t{start_time}\t{end_time}"
-            print("\t%8.6g\t%8.4g\t%8.4g" % (msg, dt.total_seconds(), b0, b1))
+            print("\t%8.6g\t%8.4g\t%8.4g" % msg, dt.total_seconds(), b0, b1)
 
         # if (b1-b0)/b1 > b_thresold: reject plateau
         # if abs(b1) < b_thresold and abs(b0) < b_thresold: reject plateau

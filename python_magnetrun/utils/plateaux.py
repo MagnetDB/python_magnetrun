@@ -1,10 +1,5 @@
 #! /usr/bin/python3
 
-import numpy as np
-import pandas as pd
-from matplotlib import pyplot as plt
-
-import datetime
 from ..magnetdata import MagnetData
 from ..processing.stats import nplateaus
 

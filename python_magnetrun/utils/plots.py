@@ -1,23 +1,22 @@
 from __future__ import unicode_literals
-from typing import Optional
+
 import sys
-import argparse
-import datetime
-import pandas as pd
-import freesteam as st
-import numpy as np
+
 import matplotlib
+import numpy as np
+import pandas as pd
 
 # print("matplotlib=", matplotlib.rcParams.keys())
-matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
-import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as colors
+import matplotlib.pyplot as plt
+
+matplotlib.rcParams["text.usetex"] = True
 
 
 # TODO use MagnetData instead of df
-def plot_vs_time(df, items, show: bool = False, wd: Optional[str] = None):
+def plot_vs_time(df: pd.DataFrame, items: list, show: bool = False, wd: str | None = None):
     print(f"plot_vs_time: items={items}")
     keys = df.columns.values.tolist()
 
@@ -35,14 +34,14 @@ def plot_vs_time(df, items, show: bool = False, wd: Optional[str] = None):
     else:
         imagefile = "Fields"  # input_file.replace(".txt", "")
         filename = f"{imagefile}_vs_time.png"
-        if not wd is None:
+        if wd is not None:
             filename = f"{wd}/{filename}"
         print(f"save to file - {filename}")
         plt.savefig(filename, dpi=300)
     plt.close()
 
 
-def plot_key_vs_key(df, pairs, show: bool = False, wd: Optional[str] = None):
+def plot_key_vs_key(df, pairs, show: bool = False, wd: str | None = None):
     keys = df.columns.values.tolist()
     for pair in pairs:
         print(f"pair={pair}")
@@ -66,7 +65,7 @@ def plot_key_vs_key(df, pairs, show: bool = False, wd: Optional[str] = None):
             plt.show()
         else:
             filename = f"{key1}_vs_{key2}.png"
-            if not wd is None:
+            if wd is not None:
                 filename = f"{wd}/{filename}"
             print(f"save to file - {filename}")
             plt.savefig(filename, dpi=300)
@@ -80,11 +79,11 @@ def plot_files(
     key1: str,
     key2: str,
     from_i: int = 0,
-    to_i: Optional[int] = None,
-    fit: Optional[tuple] = None,
+    to_i: int | None = None,
+    fit: tuple | None = None,
     show: bool = False,
     debug: bool = False,
-    wd: Optional[str] = None,
+    wd: str | None = None,
 ):
     if debug:
         print(f"plot_files: input_files={input_files}, key1={key1}, key2={key2}")
@@ -101,7 +100,7 @@ def plot_files(
         if i <= from_i:
             # print(f"plot_files: skip {i}")
             continue
-        elif not to_i is None:
+        elif to_i is not None:
             if i >= to_i:
                 # print(f"plot_files: break {i}")
                 break
@@ -145,9 +144,9 @@ def plot_files(
 
     if not show:
         filename = f"{name}-{key1}_vs_{key2}.png"
-        if not wd is None:
+        if wd is not None:
             filename = f"{wd}/{filename}"
-        print(f"save to file - {filename}")
+        # print(f"save to file - {filename}")
         plt.savefig(filename, dpi=300)
     else:
         plt.show()

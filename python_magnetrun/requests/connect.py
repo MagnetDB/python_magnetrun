@@ -6,14 +6,13 @@ Retreive MagnetID list
 For each MagnetID list of attached record
 Check record consistency
 """
-from typing import Optional
 
 import sys
 import requests
 import requests.exceptions
 
 
-def createSession(s, url_logging: str, payload: dict, debug: Optional[bool] = False):
+def createSession(s, url_logging: str, payload: dict, debug: bool | None = False):
     """create a request session"""
 
     p = s.post(url=url_logging, data=payload, verify=True)
@@ -29,7 +28,7 @@ def createSession(s, url_logging: str, payload: dict, debug: Optional[bool] = Fa
 
 
 def download(
-    session, url_data, param, link: Optional[str] = None, debug: Optional[bool] = False
+        session, url_data, param, link: str | None = None, debug: bool | None = False
 ):
     """download """
 

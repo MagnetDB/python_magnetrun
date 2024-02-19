@@ -1,23 +1,11 @@
 from __future__ import unicode_literals
-import sys
-import argparse
 import datetime
 import pandas as pd
-import freesteam as st
-import numpy as np
-import matplotlib
-
-# print("matplotlib=", matplotlib.rcParams.keys())
-matplotlib.rcParams["text.usetex"] = True
-# matplotlib.rcParams['text.latex.unicode'] = True key not available
-import matplotlib.pyplot as plt
-import matplotlib.cm as cm
-import matplotlib.colors as colors
 
 # TODO use MagnetData instead of files
 
 
-def concat_files(input_files: list, keys: list, debug: bool = False):
+def concat_files(input_files: list, keys: list = [], debug: bool = False):
     if debug:
         print(f"concat_files: input_files={input_files}, keys={keys}")
 
@@ -33,7 +21,7 @@ def concat_files(input_files: list, keys: list, debug: bool = False):
                 _df = pd.read_csv(f, sep="str(',')", engine="python", skiprows=0)
 
         except:
-            print(f"load_files: failed to load {f} with pandas")
+            raise RuntimeError(f"load_files: failed to load {f} with pandas")
 
         # print(f'load_files: {f}')
         if keys:

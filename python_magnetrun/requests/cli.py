@@ -145,7 +145,7 @@ def main():
             for row in _raw:
                 name = row[1]
                 _magnets = [name]
-                if not "??" in name:
+                if "??" not in name:
                     status = row[2]
                     housing = row[3]
                     # print(row)
@@ -154,7 +154,7 @@ def main():
                     created_at = None
                     stopped_at = None
 
-                    if not name in _counter:
+                    if name not in _counter:
                         _counter[name] = 0
 
                     site = f"{name}_{_counter[name]}"
@@ -200,7 +200,7 @@ def main():
         for item, values in db_Sites.items():
             housing = values["housing"]
             name = values["name"]
-            if not "Bitters" in item:
+            if "Bitters" not in item:
                 values["magnets"].append(f"{housing}Bitters")
             values["name"] = f"{housing}_{name}"
             print(f"site={item}: {values}")
@@ -504,7 +504,7 @@ def main():
         Parts = {}
         Confs = {}
         for magnet in Magnets:
-            if not "Bitter" in magnet:
+            if "Bitter" not in magnet:
                 if debug:
                     print(f"loading helices for: {magnet}")
                 getMagnetPart(
@@ -529,7 +529,7 @@ def main():
         PartsCAD = {}
         getPartCADref(s, url_helicescad, PartsCAD, debug=args.debug)
         if debug:
-            print(f"\ngetPartCADref:")
+            print("\ngetPartCADref:")
             for key in PartsCAD:
                 print(f"{key}: {PartsCAD[key]}")
 
@@ -546,7 +546,7 @@ def main():
         for magnet in Parts:
             for i, part in Parts[magnet]:
                 # print(i, part)
-                if not part in PartMagnet:
+                if part not in PartMagnet:
                     PartMagnet[part] = []
                 PartMagnet[part].append(magnet)
 
@@ -563,7 +563,7 @@ def main():
             }
             for site in db_Sites:
                 if magnet in site:
-                    if not "sites" in db_Magnets[magnet]:
+                    if "sites" not in db_Magnets[magnet]:
                         db_Magnets[magnet]["sites"] = []
                     db_Magnets[magnet]["sites"].append(magnet)
 
@@ -573,14 +573,14 @@ def main():
             #     Carac_Magnets[magnet]['config'] = magconffile
 
             # TODO read from cvs part <-> geometry (yaml file)
-            if not "Bitters" in magnet:
+            if "Bitters" not in magnet:
                 nhelices = 0
                 if Parts[magnet]:
                     db_Magnets[magnet]["parts"] = []
                     for i, part in Parts[magnet]:
                         pname = part
                         db_Magnets[magnet]["parts"].append(pname)
-                        if not pname in PartName:
+                        if pname not in PartName:
                             latest_magnet = PartMagnet[pname][-1]
                             status = Magnets[latest_magnet].status
                             PartName[pname] = [
@@ -597,7 +597,7 @@ def main():
                     f"{magnet}: {db_Magnets[magnet]} - should add {nhelices-1} rings "
                 )
             else:
-                db_Magnets[magnet]["description"] = f"Phi = 400 mm"
+                db_Magnets[magnet]["description"] = "Phi = 400 mm"
 
         # Create Parts from Materials because in control/monitoring part==mat
         # TODO once Parts is complete no longer necessary
@@ -621,7 +621,7 @@ def main():
                 carac["magnets"] = PartName[part][2]
                 cad = re.sub("-[a-zA-Z]", "", PartsCAD[part][0])
                 if cad in cad_Parts:
-                    if not part in cad_Parts[cad]:
+                    if part not in cad_Parts[cad]:
                         cad_Parts[cad].append(part)
                 else:
                     cad_Parts[cad] = [part]
@@ -688,7 +688,7 @@ def main():
             tr_elements = doc.xpath("//a")  # [@href='example']")
             for i, t in enumerate(tr_elements):
                 link = t.get("href")
-                if link.endswith(".txt") and not "dmesg" in link:
+                if link.endswith(".txt") and "dmesg" not in link:
                     nlink = ""
                     if link.startswith("./"):
                         nlink = link.replace("./", f"../../../{name}/")
@@ -729,7 +729,7 @@ def main():
             t1 = values["decommissioned_at"]
 
             selected_df = None
-            if not t1 is None:
+            if t1 is not None:
                 selected = df_records[
                     df_records["timestamp"].between(t0, t1, inclusive="left")
                 ]

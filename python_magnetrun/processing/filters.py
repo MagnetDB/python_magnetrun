@@ -6,19 +6,15 @@ https://xavierbourretsicotte.github.io/loess.html
 """
 
 import os
-import sys
 
 import numpy as np
 
 import matplotlib.pyplot as plt
-import pandas as pd
 
 ##from IPython.display import Image
 ##from IPython.display import display
 # plt.style.use('seaborn-white')
 ## if jupyter: %matplotlib inline
-
-import statsmodels.api as sm
 
 
 def filterpikes(mrun, key, inplace, threshold, twindows, debug, show, input_file):
