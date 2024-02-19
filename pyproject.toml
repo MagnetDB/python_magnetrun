@@ -13,7 +13,6 @@ readme = "README.rst"
 [tool.poetry.dependencies]
 python = "*"
 clawpack = "*"
-freesteam = "*"
 ht = "*"
 iapws = "*"
 itertools = "*"
