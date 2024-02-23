@@ -230,14 +230,15 @@ def getMagnetPart(
     params_helix = (("ref", magnet),)
 
     hindices = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-    res = getTable(session, url_helices, 1, hindices, param=params_helix, debug=debug)
+    res = getTable(session, url_helices, 1, hindices, param=params_helix, debug=False)
     # print(f'getMagnetPart: res={res}')
     helices = ()
     jid = None
     if res:
         helices = res[0]
         jid = res[1]
-    # print(f'getMagnetPart: helices={helices}')
+    if debug:
+        print(f'getMagnetPart: helices={helices}')
 
     if not magnet in Parts:
         Parts[magnet] = []
@@ -256,22 +257,31 @@ def getMagnetPart(
                 Magnets[magnet].addPart(partID)
                 getMaterial(session, materialID, url_materials, Mats, debug)
                 if debug:
-                    print("{partID}: {materialID}")
+                    print(f"{partID}: {materialID}")
 
     # get MagConfFile
     hindices = [19]
-    res = getTable(session, url_helices, 1, hindices, param=params_helix, debug=debug)
+    res = getTable(session, url_helices, 1, hindices, param=params_helix, debug=False)
+    print(f'res={res}', flush=True)
     data = res[0][magnet]
+    print(f'data={data}', flush=True)
+    id = res[1][magnet]
+    print(f'id={id}', flush=True)
     data = data[0].replace("\t", "")
+    print(f'data={data}', flush=True)
     files = data.split()
-
+    print(f'ID: {id}, files={files}', flush=True)
+    if files == ['Pas', 'de', 'fichiers']:
+        files = []
+        
     Confs[magnet] = files
     if save:
         for file in files:
+            print(f'file={file}')
             r = download(
                 session,
                 url_data=url_confs,
-                param={"ID": res[1][magnet], "NAME": file},
+                param={"ID": id, "NAME": file},
                 debug=debug,
             )
             if debug:
