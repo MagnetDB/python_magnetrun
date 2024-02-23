@@ -10,7 +10,7 @@ from ..magnetdata import MagnetData
 
 from datetime import datetime
 import pandas as pd
-            
+
 
 def load_record(file: str, args, show: bool = False) -> MagnetData:
     """Load record."""
@@ -62,13 +62,14 @@ def getTimestamp(file: str, debug: bool = False) -> datetime:
     """
     extract timestamp from file
     """
+    # print(f"getTime({file}):", flush=True)
 
     filename = ""
-    if '/' in file:
-        filename = file.split('/')
+    if "/" in file:
+        filename = file.split("/")
     res = filename[-1].split("_")
     if debug:
-        print(f'getTime({file})={res}', flush=True)
+        print(f"getTime({file})={res}", flush=True)
 
     (site, date_string) = res
     date_string = date_string.replace(".txt", "")
@@ -82,7 +83,7 @@ def getTimestamp(file: str, debug: bool = False) -> datetime:
 def main():
     """Console script."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("inputfile", help="specify inputfile", nargs='+')
+    parser.add_argument("inputfile", help="specify inputfile", nargs="+")
     parser.add_argument("--debug", help="enable debug mode", action="store_true")
 
     subparsers = parser.add_subparsers(
@@ -124,8 +125,12 @@ def main():
     parser_aggregate.add_argument(
         "--name", help="set basename of file to be saved", type=str
     )
-    parser_aggregate.add_argument("--show", help="enable show mode", action="store_true")
-    parser_aggregate.add_argument("--save", help="enable save mode", action="store_true")
+    parser_aggregate.add_argument(
+        "--show", help="enable show mode", action="store_true"
+    )
+    parser_aggregate.add_argument(
+        "--save", help="enable save mode", action="store_true"
+    )
 
     # subcommand stats
     parser_stats.add_argument("--fields", help="select fields", type=str, nargs="+")
@@ -144,16 +149,16 @@ def main():
 
     selected_keys = []
     if args.command == "plot" and args.xfield:
-        selected_keys  += [args.xfield]
+        selected_keys += [args.xfield]
     if args.fields:
-        selected_keys  += args.fields
+        selected_keys += args.fields
     else:
-        selected_fields += ['Field']
-        
+        selected_keys += ["Field"]
+
     if "timestamp" not in selected_keys:
         selected_keys.append("timestamp")
-    print(f'selected_keys={selected_keys}', flush=True)
-    
+    print(f"selected_keys={selected_keys}", flush=True)
+
     """
     https://stackoverflow.com/questions/57601552/how-to-plot-timeseries-using-pandas-with-monthly-groupby
     https://gist.github.com/vincentarelbundock/3485014
@@ -172,15 +177,17 @@ def main():
     """
 
     ax = plt.gca()
-                
+
     if args.command == "aggregate":
         df_ = []
-    
+
         for file in files:
             try:
                 data = load_record(file, args)
                 print(
-                    f'record: {data.FileName}, duration: {data.getDuration()} s', end=" ", flush=True
+                    f"record: {data.FileName}, duration: {data.getDuration()} s",
+                    end=" ",
+                    flush=True,
                 )
                 if data.getDuration() >= 60:
                     if args.fields:
@@ -188,17 +195,21 @@ def main():
                             df_.append(data.Data[selected_keys])
                             print(f"- extract {selected_keys}")
                         except:
-                            print(f"- ignored dataset: {args.keys} not all in {data.getKeys()}")
+                            print(
+                                f"- ignored dataset: {args.keys} not all in {data.getKeys()}"
+                            )
                             pass
-                        
+                else:
+                    print("- skipped")
+
             except:
                 print("- fail to load")
                 pass
-            
+
         print(f"plot over time with seaborn: {len(df_)} dataframes", flush=True)
 
         df = pd.concat(df_, axis=0)
-        df.to_csv('teb.csv')
+        df.to_csv("teb.csv")
         print(f"concat dataframe: {df.head()}", flush=True)
         print(f"{df.columns.values.tolist()} to {os.getcwd()}/teb.csv", flush=True)
 
@@ -211,6 +222,7 @@ def main():
         if args.fields:
             import statsmodels.api as sm
             import seaborn as sns
+
             for key in args.fields:
                 print(f"seaborn plot for {key} per months over years", flush=True)
                 ax = sns.lineplot(x="month", y=key, hue="year", data=df)
@@ -220,23 +232,29 @@ def main():
                     x="month", y=key, hue="year", data=df.query("year>1995")
                 )
                 """
+                plt.grid()
                 if args.show:
                     plt.show()
                 if args.save:
-                    print(f"seaborn plot for {key} per months over years saved to {os.getcwd()}/{key}-seaborn.png", flush=True)
+                    print(
+                        f"seaborn plot for {key} per months over years saved to {os.getcwd()}/{key}-seaborn.png",
+                        flush=True,
+                    )
                     plt.savefig(f"{key}-seaborn.png", dpi=300)
                 plt.close()
 
         return 0
-    
+
     # other commands
     legends = {}
-    
+
     for file in files:
         try:
             data = load_record(file, args)
             print(
-                f'record: {data.FileName}, duration: {data.getDuration()} s', end=" ", flush=True
+                f"record: {data.FileName}, duration: {data.getDuration()} s",
+                end=" ",
+                flush=True,
             )
             if args.command == "select":
                 if select_data(data, args):
@@ -256,17 +274,13 @@ def main():
             elif args.command == "plot":
 
                 if args.xfield not in data.Keys:
-                    print(
-                        f"- missing xfield={args.xfield} - ignored dataset"
-                    )
+                    print(f"- missing xfield={args.xfield} - ignored dataset")
                 else:
                     if data.getDuration() >= 60:
                         if args.fields:
                             for key in args.fields:
                                 if key not in data.Keys:
-                                    print(
-                                        f"\t- missing field={key} ignored dataset"
-                                    )
+                                    print(f"\t- missing field={key} ignored dataset")
                                 else:
                                     bfield = data.getData(key)
                                     print(
@@ -277,20 +291,22 @@ def main():
 
                                     # overwrite legend
                                     if key in legends:
-                                        legends[key].append(f"{data.FileName.replace('.txt','')}")
+                                        legends[key].append(
+                                            f"{data.FileName.replace('.txt','')}"
+                                        )
                                     else:
-                                        legends[key] = [data.FileName.replace('.txt','')]
+                                        legends[key] = [
+                                            data.FileName.replace(".txt", "")
+                                        ]
 
                             try:
                                 df_.append(data.Data[selected_keys])
                             except:
                                 pass
                     else:
-                        print(
-                            f"- ignored dataset"
-                        )
+                        print(f"- ignored dataset")
         except:
-            print(f'- fail to load')
+            print(f"- fail to load")
             pass
 
     if args.command == "plot":
@@ -309,9 +325,13 @@ def main():
             if args.show:
                 plt.show()
             if args.save:
-                plt.savefig("tutu.png", dpi=300)
+                pfile = ""
+                for field in args.fields:
+                    pfile += f"{field}-"
+                pfile = pfile[:-1] + "-vs-" + xargs.xfield
+                
+                plt.savefig(f"{pfile}.png", dpi=300)
             plt.close()
-
 
     return 0
 
