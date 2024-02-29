@@ -2,6 +2,7 @@
 
 import re
 import pandas as pd
+from natsort import natsorted
 
 from .magnetdata import MagnetData
 
@@ -47,7 +48,7 @@ def prepareData(data: MagnetData, housing: str, debug: bool = False):
     data.removeData(["Idcct1", "Idcct2", "Idcct3", "Idcct4"])
 
     data.cleanupData(debug)
-    Ikey = [_key for _key in data.getKeys() if re.match(r"Icoil\d+", _key)]
+    Ikey = natsorted([_key for _key in data.getKeys() if re.match(r"Icoil\d+", _key)])
     if debug:
         print(f"MagnetRun/prepareData: housing={housing}, Ikey={Ikey}")
 

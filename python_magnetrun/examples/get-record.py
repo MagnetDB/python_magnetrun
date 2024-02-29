@@ -136,6 +136,11 @@ def main():
 
     # subcommand stats
     parser_stats.add_argument("--fields", help="select fields", type=str, nargs="+")
+    parser_stats.add_argument(
+        "--pairplot", help="enable save mode", action="store_true"
+    )
+    parser_stats.add_argument("--show", help="enable show mode", action="store_true")
+    parser_stats.add_argument("--save", help="enable save mode", action="store_true")
 
     args = parser.parse_args()
 
@@ -258,19 +263,73 @@ def main():
                 end=" ",
                 flush=True,
             )
+        except:
+            print(f"- fail to load")
+
+        else:
+            data.Units()
             if args.command == "select":
                 if select_data(data, args):
                     bfield = data.getData("Field")
                     print(
-                        f"- Field: min={bfield.min()}, mean={bfield.mean()}, max={bfield.max()}"
+                        f"- Field: min={bfield.min()}, mean={bfield.mean()}, max={bfield.max()}",
+                        flush=True,
                     )
 
             elif args.command == "stats":
+                if args.pairplot and data.getDuration() >= 1000:
+                    import seaborn as sns
+                    import re
+                    from natsort import natsorted
+
+                    selected_keys = [
+                        "Field",
+                        "IH",
+                        "IB",
+                        "TinH",
+                        "TinB",
+                        "Tout",
+                        "HPH",
+                        "HPB",
+                        "BP",
+                        "FlowH",
+                        "FlowB",
+                        "RpmH",
+                        "RpmB",
+                        "Pmagnet",
+                        "Ptot",
+                        "teb",
+                        "tsb",
+                        "debitbrut",
+                    ]
+
+                    if args.fields:
+                        selected_keys = args.fields
+
+                    selected_df = data.getData(selected_keys)
+                    print(
+                        f"pairplot: selected_keys={len(selected_keys)}",
+                        flush=True,
+                    )
+                    ax = sns.pairplot(selected_df)
+                    if args.show:
+                        plt.show()
+                    if args.save:
+                        pfile = f"{file}-pairplot"
+                        plt.savefig(f"{pfile}.png", dpi=300)
+                    plt.close()
+
                 if args.fields:
+                    # save to tabular
+                    print(f"stats for {args.fields}")
+                    print(data.getData(args.fields).head(20))
+
                     for key in args.fields:
-                        bfield = data.getData(args.fields)
+                        bfield = data.getData(key).to_numpy()
+                        (symbol, unit) = data.getUnitKey(key)
                         print(
-                            f"\t- Field: min={bfield.min()}, mean={bfield.mean()}, max={bfield.max()}"
+                            f"\t- {key}[{unit:~P}]: min={bfield.min()}, mean={bfield.mean()}, max={bfield.max()}",
+                            flush=True,
                         )
 
             elif args.command == "plot":
@@ -284,9 +343,10 @@ def main():
                                 if key not in data.Keys:
                                     print(f"\t- missing field={key} ignored dataset")
                                 else:
-                                    bfield = data.getData(key)
+                                    bfield = data.getData(key).to_numpy()
+                                    (symbol, unit) = data.getUnitKey(key)
                                     print(
-                                        f"- {key}: min={bfield.min()}, mean={bfield.mean()}, max={bfield.max()}",
+                                        f"- {key}[{unit:~P}]: min={bfield.min()}, mean={bfield.mean()}, max={bfield.max()}",
                                         flush=True,
                                     )
                                     data.plotData(args.xfield, key, ax)
@@ -303,9 +363,6 @@ def main():
 
                     else:
                         print(f"- ignored dataset")
-        except:
-            print(f"- fail to load")
-            pass
 
     if args.command == "plot":
         print(f"plot: {len(legends)} subplots", flush=True)

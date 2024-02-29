@@ -130,18 +130,32 @@ class MagnetData:
         """returns Data Type"""
         return self.Type
 
-    def getData(self, key: str = None):
-        """return Data"""
-        if not key:
+    def getData(self, key: list[str] | str | None):
+        """return Data or a selection using key"""
+        # print(f"MagnetData/Data({key}): {self.FileName}", flush=True)
+
+        if key is None:
             return self.Data
         else:
-            if key in self.Keys:
-                if isinstance(self.Data, pd.DataFrame):
-                    return self.Data[key]
-                elif isinstance(self.Data, TdmsFile):
-                    return self.Data[self.Groups[key]]
-            else:
-                raise Exception(f"cannot get data for key {key}: no such key")
+            selected_keys = []
+            if isinstance(key, list):
+                selected_keys = key
+            elif isinstance(key, str):
+                selected_keys = [key]
+
+            for item in selected_keys:
+                if item not in self.Keys:
+                    raise Exception(
+                        f"MagnetData/Data({key}): {self.FileName}: cannot get data for key {item}: no such key"
+                    )
+        # print(f"selected_keys={selected_keys}", flush=True)
+        if isinstance(self.Data, pd.DataFrame):
+            _df = self.Data[selected_keys]
+            _df_keys = _df.columns.values.tolist()
+            # print(f"_df_keys = {_df_keys}", flush=True)
+            return _df
+        elif isinstance(self.Data, TdmsFile):
+            return self.Data[self.Groups[selected_keys]]
 
     def Units(self, debug: bool = False):
         """
@@ -225,6 +239,8 @@ class MagnetData:
             if debug:
                 print(f"init_Ikeys: {init_Ikeys}")
             Fkeys = [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
+            Fkeys += [_key for _key in self.Keys if re.match(r"Rpm\w+", _key)]
+            Fkeys += [_key for _key in self.Keys if re.match(r"HP\w+", _key)]
             Fkeys += [_key for _key in self.Keys if re.match(r"\w+_ref", _key)]
             Fkeys += [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
             Fkeys += [_key for _key in self.Keys if re.match(r"Ptot", _key)]
@@ -295,6 +311,39 @@ class MagnetData:
             #    f"_df uniq Keys = {natsorted(_df.columns.values.tolist())}", flush=True
             # )
 
+            # Find Ucoil for Helices and Bitters
+            Ukeys = natsorted(
+                [
+                    str(_key)
+                    for _key in _df.columns.values.tolist()
+                    if re.match(r"Ucoil\d+", _key)
+                ]
+            )
+            # print(f"UKeys = {Ukeys}")
+
+            from itertools import groupby
+
+            Uindex = [int(i.replace("Ucoil", "")) for i in Ukeys]
+            # print(f"Uindex = {Uindex}")
+
+            # Enumerate and get differences between counter—integer pairs
+            # Group by differences (consecutive integers have equal differences)
+            gb = groupby(enumerate(Uindex), key=lambda x: x[0] - x[1])
+
+            # Repack elements from each group into list
+            all_groups = ([i[1] for i in g] for _, g in gb)
+
+            # Filter out one element lists
+            Uprobes = list(filter(lambda x: len(x) > 1, all_groups))
+            # print(f"Uprobes: {Uprobes}")
+            UH = [f"Ucoil{i}" for i in Uprobes[0]]
+            UB = [f"Ucoil{i}" for i in Uprobes[1]]
+            if debug:
+                print(f"UH: {UH}")
+                print(f"UB: {UB}")
+            _df["UH"] = _df[UH].sum(axis=1)
+            _df["UB"] = _df[UB].sum(axis=1)
+
             # Always add latest Ikeys if not already in _df
             Ikeys = natsorted(
                 [
@@ -304,25 +353,32 @@ class MagnetData:
                 ]
             )
             if debug:
-                print(f"IKeys = {Ikeys}")
+                print(f"IKeys = {Ikeys} ({len(Ikeys)})")
             if Ikeys:
                 # print(
-                #    f"nonnull Ikeys: {natsorted(set(init_Ikeys).difference(set(empty_Ikeys)))}"
+                #     f"nonnull Ikeys: {natsorted(set(init_Ikeys).difference(set(empty_Ikeys)))}"
                 # )
                 if len(Ikeys) == 1:
                     if debug:
                         print(
                             f"{self.FileName}: check if {init_Ikeys[-1]} or {init_Ikeys[-2]} in _df"
                         )
-                    if (
-                        init_Ikeys[-1] not in _df.columns.values.tolist()
-                        and init_Ikeys[-2] not in _df.columns.values.tolist()
-                    ):
+                    if init_Ikeys[-1] not in Ikeys and init_Ikeys[-2] not in Ikeys:
                         # IH only
+                        # print(f"add {init_Ikeys[-2]}")
                         _df = pd.concat([_df, self.Data[init_Ikeys[-2]]], axis=1)
                     else:
                         # IB only: first Icoil item of natsorted(init_Ikeys) not in really_dropped_columns
+                        # print(f"add {init_Ikeys[0]}")
                         _df = pd.concat([_df, self.Data[init_Ikeys[0]]], axis=1)
+
+                    Ikeys = natsorted(
+                        [
+                            _key
+                            for _key in _df.columns.values.tolist()
+                            if re.match(r"Icoil\d+", _key)
+                        ]
+                    )
 
                 elif len(Ikeys) == 2:
                     if debug:
@@ -389,16 +445,15 @@ class MagnetData:
                         if re.match(r"Ucoil\d+", _key)
                     ]
                 )
-                print(
-                    f"{self.FileName}: empty Ikeys - try to recover Ikeys from Ukeys={Ukeys}"
-                )
+                # print(
+                #     f"{self.FileName}: empty Ikeys - try to recover Ikeys from Ukeys={Ukeys}"
+                # )
                 for i, key in enumerate(Ukeys):
                     Ukeys[i] = key.replace("U", "I")
                 Ikeys = [Ukeys[0], Ukeys[-1]]
                 _df = pd.concat([_df, self.Data[Ikeys[0]], self.Data[Ikeys[1]]], axis=1)
 
-            # if Ikeys[-1] not in _df.columns.values.tolist():
-            #    _df = pd.concat([_df, self.Data[Ikeys[-1]]], axis=1)
+            # print(f"IKeys = {Ikeys}")
 
             # Keep Fkeys if not already in _df
             _df_keys = _df.columns.values.tolist()
@@ -536,7 +591,7 @@ class MagnetData:
                 )
         return 0
 
-    def extractData(self, keys) -> pd.DataFrame:
+    def extractData(self, keys: list[str]) -> pd.DataFrame:
         """extract columns keys to Data"""
 
         if self.Type == 0:
