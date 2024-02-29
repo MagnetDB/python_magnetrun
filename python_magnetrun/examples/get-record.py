@@ -22,6 +22,8 @@ def load_record(file: str, args, show: bool = False) -> MagnetData:
 
     mrun = MagnetRun.fromtxt(housing, site, file)
     data = mrun.MagnetData
+    if not isinstance(data, MagnetData):
+        raise RuntimeError(f"{file}: cannot load data as MagnetData")
     return data
 
 
@@ -299,10 +301,6 @@ def main():
                                             data.FileName.replace(".txt", "")
                                         ]
 
-                            try:
-                                df_.append(data.Data[selected_keys])
-                            except:
-                                pass
                     else:
                         print(f"- ignored dataset")
         except:
@@ -328,8 +326,8 @@ def main():
                 pfile = ""
                 for field in args.fields:
                     pfile += f"{field}-"
-                pfile = pfile[:-1] + "-vs-" + xargs.xfield
-                
+                pfile = pfile[:-1] + "-vs-" + args.xfield
+
                 plt.savefig(f"{pfile}.png", dpi=300)
             plt.close()
 
