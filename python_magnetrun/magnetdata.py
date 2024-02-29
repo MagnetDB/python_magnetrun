@@ -2,7 +2,6 @@
 
 import os
 import sys
-import datetime
 import matplotlib.pyplot as plt
 from nptdms import TdmsFile
 import pandas as pd
@@ -12,6 +11,9 @@ import matplotlib
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
+
+from natsort import natsorted
+from datetime import datetime
 
 
 class MagnetData:
@@ -141,7 +143,7 @@ class MagnetData:
             else:
                 raise Exception(f"cannot get data for key {key}: no such key")
 
-    def Units(self):
+    def Units(self, debug: bool = False):
         """
         set units and symbols for data in record
 
@@ -150,77 +152,255 @@ class MagnetData:
         from pint import UnitRegistry
 
         ureg = UnitRegistry()
+        ureg.define("percent = 1 / 100 = %")
+        ureg.define("ppm = 1e-6 = ppm")
+        ureg.define("var = 1")
 
         # if self.Type == 0:
         for key in self.Keys:
-            print(key)
-            if key.startwith("I"):
+            if key.startswith("I"):
                 self.units[key] = ("I", ureg.ampere)
-            elif key.startwith("U"):
+            elif key.startswith("U"):
                 self.units[key] = ("U", ureg.volt)
-            elif key.startwith("T") or key.startwith("teb") or key.startwith("tsb"):
+            elif key.startswith("T") or key.startswith("teb") or key.startswith("tsb"):
                 self.units[key] = ("T", ureg.degC)
             elif key == "t":
                 self.units[key] = ("t", ureg.second)
-            elif key.startwith("Rpm"):
-                self.units[key] = ("Rpm", "rpm")
-            elif key.startwith("DR"):
-                self.units[key] = ("%", "")
-            elif key.startwith("Flo"):
+            elif key.startswith("Rpm"):
+                self.units[key] = ("Rpm", ureg.rpm)
+            elif key.startswith("DR"):
+                self.units[key] = ("%", ureg.percent)
+            elif key.startswith("Flo"):
                 self.units[key] = ("Q", ureg.liter / ureg.second)
-            elif key.startwith("debit"):
+            elif key.startswith("debit"):
                 self.units[key] = ("Q", ureg.meter**3 / ureg.second)
-            elif key.startwith("Fie"):
+            elif key.startswith("Fie"):
                 self.units[key] = ("B", ureg.tesla)
-            elif key.startwith("HP") or key.startwith("BP"):
+            elif key.startswith("HP") or key.startswith("BP"):
                 self.units[key] = ("P", ureg.bar)
             elif key == "Pmagnet" or key == "Ptot":
                 self.units[key] = ("Power", ureg.megawatt)
             elif key == "Q":
                 # TODO define a specific 'var' unit for this field
-                self.units[key] = ("Preac", ureg.megawatt)
+                self.units[key] = ("Preac", ureg.megavar)
+
+        if debug:
+            print(f"Units: {self.Keys}")
+            for key, values in self.units.items():
+                symbol = values[0]
+                unit = values[1]
+                print(f"{key}: symbol={symbol}, unit={unit:~P}", flush=True)
+
+    def getUnitKey(self, key: str) -> tuple:
+        if not self.units:
+            print("units not defined - create", flush=True)
+            self.Units()
+            # print(f"units: {self.units}", flush=True)
+
+        if key not in self.Keys:
+            raise RuntimeError(
+                f"{key} not defined in data - availabe keys are {self.Keys}"
+            )
+        return self.units[key]
 
     def getKeys(self):
         """return list of Data keys"""
         # print("type: ", type(self.Keys))
         return self.Keys
 
-    def cleanupData(self):
+    def cleanupData(self, debug: bool = False):
         """removes empty columns from Data"""
 
-        # print(f"Clean up Data")
+        if debug:
+            print(
+                f"Clean up Data: filename={self.FileName}, keys={self.Keys}", flush=True
+            )
         if isinstance(self.Data, pd.DataFrame):
             import re
 
             # print(f'self.Keys = {self.Keys}') # Data.columns.values.tolist()}')
-            Ikeys = [_key for _key in self.Keys if re.match(r"Icoil\d+", _key)]
+            init_Ikeys = natsorted(
+                [_key for _key in self.Keys if re.match(r"Icoil\d+", _key)]
+            )
+            if debug:
+                print(f"init_Ikeys: {init_Ikeys}")
             Fkeys = [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
             Fkeys += [_key for _key in self.Keys if re.match(r"\w+_ref", _key)]
-            # print(f'IKeys = {Ikeys}')
+            Fkeys += [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
+            Fkeys += [_key for _key in self.Keys if re.match(r"Ptot", _key)]
+
             # print(f'FKeys = {Fkeys}')
 
             # drop duplicates
-            _df = self.Data.T.drop_duplicates().T
-            # print(f'uniq Keys = {_df.columns.values.tolist()}')
+            def getDuplicateColumns(df):
+
+                # Create an empty set
+                duplicateColumnNames = set()
+
+                # Iterate through all the columns of dataframe
+                for x in range(df.shape[1]):
+
+                    # Take column at xth index.
+                    col = df.iloc[:, x]
+
+                    for y in range(x + 1, df.shape[1]):
+
+                        # Take column at yth index.
+                        otherCol = df.iloc[:, y]
+
+                        if col.equals(otherCol):
+                            duplicateColumnNames.add(df.columns.values[y])
+
+                # Return list of unique column names whose contents are duplicates.
+                return list(duplicateColumnNames)
+
+            if debug:
+                print(
+                    f"zero columns: {natsorted(self.Data.columns[(self.Data == 0).all()].values.tolist())}",
+                    flush=True,
+                )
 
             # TODO remove empty column except that with a name that starts with Icoil*
             empty_cols = [
                 col
-                for col in _df.columns
-                if _df[col].isnull().all()
-                and not col.startswith("Icoil")
-                and not col.startswith("Flow")
+                for col in self.Data.columns[(self.Data == 0).all()].values.tolist()
+                if not col.startswith("Flow") and not col.startswith("Field")
             ]
+            empty_Ikeys = natsorted(
+                [_key for _key in empty_cols if re.match(r"Icoil\d+", _key)]
+            )
+            # print(f"empty cols: {natsorted(empty_cols)}")
+            # print(f"empty Ikeys: {empty_Ikeys}")
             if empty_cols:
-                # print(f'empty cols: {empty_cols}')
-                _df.drop(empty_cols, axis=1, inplace=True)
+                _df = self.Data.drop(empty_cols, axis=1)
                 # print(f'uniq Keys wo empty cols = {_df.columns.values.tolist()}')
 
-            # Always add latest Ikeys if not already in _df
-            if Ikeys[-1] not in _df.columns.values.tolist():
-                _df = pd.concat([_df, self.Data[Ikeys[-1]]], axis=1)
+            dropped_columns = getDuplicateColumns(_df)
+            # print(
+            #    f"duplicated columns: {natsorted(dropped_columns)}",
+            #    flush=True,
+            # )
+            # faster but drop every detected duplicates: _df = _df.T.drop_duplicates().T
+            # instead detect remove colums which are duplicated
+            # do not remove Ucoil duplicates
+            really_dropped_columns = natsorted(
+                [col for col in dropped_columns if not col.startswith("Ucoil")]
+            )
+            # print(
+            #    f"really duplicated columns: {really_dropped_columns}",
+            #    flush=True,
+            # )
+            _df.drop(really_dropped_columns, axis=1, inplace=True)
+            # print(
+            #    f"_df uniq Keys = {natsorted(_df.columns.values.tolist())}", flush=True
+            # )
 
-            # Kepp Fkeys if not already in _df
+            # Always add latest Ikeys if not already in _df
+            Ikeys = natsorted(
+                [
+                    _key
+                    for _key in _df.columns.values.tolist()
+                    if re.match(r"Icoil\d+", _key)
+                ]
+            )
+            if debug:
+                print(f"IKeys = {Ikeys}")
+            if Ikeys:
+                # print(
+                #    f"nonnull Ikeys: {natsorted(set(init_Ikeys).difference(set(empty_Ikeys)))}"
+                # )
+                if len(Ikeys) == 1:
+                    if debug:
+                        print(
+                            f"{self.FileName}: check if {init_Ikeys[-1]} or {init_Ikeys[-2]} in _df"
+                        )
+                    if (
+                        init_Ikeys[-1] not in _df.columns.values.tolist()
+                        and init_Ikeys[-2] not in _df.columns.values.tolist()
+                    ):
+                        # IH only
+                        _df = pd.concat([_df, self.Data[init_Ikeys[-2]]], axis=1)
+                    else:
+                        # IB only: first Icoil item of natsorted(init_Ikeys) not in really_dropped_columns
+                        _df = pd.concat([_df, self.Data[init_Ikeys[0]]], axis=1)
+
+                elif len(Ikeys) == 2:
+                    if debug:
+                        print("need to check consistancy")
+
+                else:
+                    if debug:
+                        print(
+                            f"{self.FileName}:try to cure dataset - got {Ikeys} expect at most 2 values",
+                            flush=True,
+                        )
+                    ikeys = self.Data[Ikeys]
+                    remove_Ikeys = []
+                    for i in range(len(Ikeys)):
+                        for j in range(i + 1, len(Ikeys)):
+                            ikeys[f"diff{i}_{j}"] = ikeys[Ikeys[i]] - ikeys[Ikeys[j]]
+                            error = ikeys[f"diff{i}_{j}"].mean()
+                            stderror = ikeys[f"diff{i}_{j}"].std()
+                            if debug:
+                                print(f"diff{i}_{j}: mean={error}, std={stderror}")
+                            if abs(error) <= 1.0e-4:
+                                remove_Ikeys.append(Ikeys[j])
+
+                    if debug:
+                        print(f"remove_Ikeys: {remove_Ikeys}")
+                    if remove_Ikeys:
+                        _df.drop(remove_Ikeys, axis=1, inplace=True)
+
+                    Ikeys = natsorted(
+                        [
+                            _key
+                            for _key in _df.columns.values.tolist()
+                            if re.match(r"Icoil\d+", _key)
+                        ]
+                    )
+
+                    if len(Ikeys) == 1:
+                        if debug:
+                            print(
+                                f"{self.FileName}: check if {init_Ikeys[-1]} or {init_Ikeys[-2]} in _df"
+                            )
+                        if (
+                            init_Ikeys[-1] not in _df.columns.values.tolist()
+                            and init_Ikeys[-2] not in _df.columns.values.tolist()
+                        ):
+                            # IH only
+                            _df = pd.concat([_df, self.Data[init_Ikeys[-2]]], axis=1)
+                        else:
+                            # IB only
+                            _df = pd.concat([_df, self.Data[init_Ikeys[0]]], axis=1)
+
+                    elif len(Ikeys) > 2:
+                        _df[Ikeys].to_csv(f"{self.FileName}.ikey")
+                        raise RuntimeError(
+                            f"{self.FileName}: strange number of Ikeys detected - got {Ikeys} expect at most 2 values"
+                        )
+
+            else:
+                # TODO: not working as expected if Ucoils are not correct
+                Ukeys = natsorted(
+                    [
+                        str(_key)
+                        for _key in _df.columns.values.tolist()
+                        if re.match(r"Ucoil\d+", _key)
+                    ]
+                )
+                print(
+                    f"{self.FileName}: empty Ikeys - try to recover Ikeys from Ukeys={Ukeys}"
+                )
+                for i, key in enumerate(Ukeys):
+                    Ukeys[i] = key.replace("U", "I")
+                Ikeys = [Ukeys[0], Ukeys[-1]]
+                _df = pd.concat([_df, self.Data[Ikeys[0]], self.Data[Ikeys[1]]], axis=1)
+
+            # if Ikeys[-1] not in _df.columns.values.tolist():
+            #    _df = pd.concat([_df, self.Data[Ikeys[-1]]], axis=1)
+
+            # Keep Fkeys if not already in _df
             _df_keys = _df.columns.values.tolist()
             for key in Fkeys:
                 if key not in _df_keys:
@@ -228,7 +408,8 @@ class MagnetData:
 
             self.Data = _df
             self.Keys = self.Data.columns.values.tolist()
-            # print(f'--> self.Keys = {self.Keys}') # Data.columns.values.tolist()}')
+            if debug:
+                print(f"--> self.Keys = {self.Keys}")  # Data.columns.values.tolist()}')
         return 0
 
     def removeData(self, keys: list):
@@ -287,10 +468,10 @@ class MagnetData:
                 res = (start_date, start_time, end_date, end_time)
         return res
 
-    def getDuration(self):
+    def getDuration(self) -> float:
         """compute duration of the run in seconds"""
         # print("magnetdata.getDuration")
-        duration = None
+        duration = 0
         if "timestamp" in self.Keys:
             start_time = self.Data["timestamp"].iloc[0]
             end_time = self.Data["timestamp"].iloc[-1]
@@ -310,22 +491,37 @@ class MagnetData:
         if isinstance(self.Data, pd.DataFrame):
             if "Date" in self.Keys and "Time" in self.Keys:
                 tformat = "%Y.%m.%d %H:%M:%S"
-                t0 = datetime.datetime.strptime(
-                    self.Data["Date"].iloc[0] + " " + self.Data["Time"].iloc[0], tformat
-                )
+
+                try:
+                    self.Data["Date"] = pd.to_datetime(
+                        self.Data.Date, cache=True, format="%Y.%m.%d"
+                    )
+                except:
+                    raise RuntimeError(
+                        f"MagnetData/AddTime {self.FileName}: failed to convert Date"
+                    )
+
+                try:
+                    self.Data["Time"] = pd.to_timedelta(self.Data.Time)
+                except:
+                    raise RuntimeError(
+                        f"MagnetData/AddTime {self.FileName}: failed to convert Time"
+                    )
+
+                try:
+                    self.Data["timestamp"] = self.Data.Date + self.Data.Time
+                except:
+                    raise RuntimeError(
+                        f"MagnetData/AddTime {self.FileName}: failed to create timestamp column"
+                    )
+                else:
+                    t0 = self.Data.iloc[0]["timestamp"]
+
                 self.Data["t"] = self.Data.apply(
-                    lambda row: (
-                        datetime.datetime.strptime(row.Date + " " + row.Time, tformat)
-                        - t0
-                    ).total_seconds(),
+                    lambda row: (row.timestamp - t0).total_seconds(),
                     axis=1,
                 )
-                self.Data["timestamp"] = self.Data.apply(
-                    lambda row: datetime.datetime.strptime(
-                        row.Date + " " + row.Time, tformat
-                    ),
-                    axis=1,
-                )
+
                 # print("magnetdata.AddTime: add t and timestamp")
                 # remove Date and Time ??
                 self.Data.drop(["Date", "Time"], axis=1, inplace=True)
@@ -335,7 +531,9 @@ class MagnetData:
                 # print("magnetdata.AddTime: regenerate keys")
 
             else:
-                raise Exception("cannot add t[s] columnn: no Date or Time column")
+                raise RuntimeError(
+                    f"MagnetData/AddTime {self.FileName}: cannot add t[s] columnn: no Date or Time columns"
+                )
         return 0
 
     def extractData(self, keys) -> pd.DataFrame:
@@ -358,7 +556,7 @@ class MagnetData:
         if isinstance(self.Data, pd.DataFrame):
             if key not in self.Keys:
                 raise Exception(
-                    f"extractData: key={key} - no such keys in dataframe (valid keys are: {self.Keys()}"
+                    f"extractData: key={key} - no such keys in dataframe (valid keys are: {self.Keys}"
                 )
 
             return self.Data.loc[self.Data[key] >= threshold]

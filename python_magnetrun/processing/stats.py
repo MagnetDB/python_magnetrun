@@ -15,7 +15,7 @@ from ..magnetdata import MagnetData
 from ..utils.sequence import list_sequence, list_duplicates_of
 
 
-def stats(Data: MagnetData):
+def stats(Data: MagnetData, debug: bool = False):
     """compute stats from the actual run"""
 
     # TODO:
@@ -29,27 +29,48 @@ def stats(Data: MagnetData):
     # see https://github.com/astanin/python-tabulate for tablefmt
     if isinstance(Data.Data, pd.DataFrame):
         print("Statistics:\n")
+        # print(f"data keys: {Data.getKeys()}", flush=True)
         tables = []
         headers = ["Name", "Mean", "Max", "Min", "Std", "Median", "Mode"]
-        for f, unit in zip(
-            ["Field", "Pmagnet", "teb", "debitbrut"], ["T", "MW", "C", "m\u00B3/h"]
-        ):
-            df = Data.Data[f]
-            v_min = float(df.min())
-            v_max = float(df.max())
-            v_mean = float(df.mean())
-            v_var = float(df.var())
-            v_median = float(df.median())
-            v_mode = float(df.mode())
+        for f in ["Field", "Pmagnet", "Ptot", "teb", "tsb", "debitbrut"]:
             table = [
-                f"{f}[{unit}]",
-                v_mean,
-                v_max,
-                v_min,
-                math.sqrt(v_var),
-                v_median,
-                v_mode,
+                f"{f}[N/A]",
+                np.NaN,
+                np.NaN,
+                np.NaN,
+                np.NaN,
+                np.NaN,
+                np.NaN,
+                np.NaN,
+                np.NaN,
             ]
+            if f in Data.getKeys():
+                fname, unit = Data.getUnitKey(f)
+                df = Data.Data[f]
+                if debug:
+                    print(f"get stats for {f} ({Data.getKeys()})", flush=True)
+                    print(f"{f}: {df.head()}", flush=True)
+                v_min = float(df.min())
+                v_max = float(df.max())
+                v_mean = float(df.mean())
+                v_var = float(df.var())
+                v_median = float(df.median())
+                v_mode = np.NaN  # Most frequent value in a data set
+                try:
+                    v_mode = float(df.mode())
+                except:
+                    # print(f"{f}: failed to compute df.mode()")
+                    pass
+                table = [
+                    f"{f}[{unit:~P}]",
+                    v_mean,
+                    v_max,
+                    v_min,
+                    math.sqrt(v_var),
+                    v_median,
+                    v_mode,
+                ]
+
             tables.append(table)
 
         print(tabulate(tables, headers, tablefmt="simple"), "\n")
@@ -66,6 +87,7 @@ def nplateaus(
     num_points_threshold: int = 600,
     show: bool = False,
     save: bool = False,
+    verbose: bool = False,
 ) -> list:
     """
     detect plateau vs index aka time
@@ -121,15 +143,18 @@ def nplateaus(
         )
 
         plateau_data.append(pdata)
-        print(
-            f"plateau[{plateau_idx}]: {plateau_data[-1]}, duration={abs(_start - _end)} {xField[1]}"
-        )
+        if verbose:
+            print(
+                f"plateau[{plateau_idx}]: {plateau_data[-1]}, duration={abs(_start - _end)} {xField[1]}",
+                flush=True,
+            )
         plt.annotate(
             f"{_value:.2e}",
             (_time, _value * (1 + 0.01)),
             ha="center",
         )
-    print(f"detected plateaux: {plateau_idx}")
+    if verbose:
+        print(f"detected plateaux: {plateau_idx}", flush=True)
 
     plt.legend()
     plt.grid(b=True)
@@ -267,7 +292,7 @@ def plateaus(
     # time_d_min = time_d / datetime.timedelta(minutes=1)
     # time_d_ms  = time_d / datetime.timedelta(milliseconds=1)
     plateaux = regimes_in_source(0)
-    print("%s plateaus(thresold=%g): %d" % ("Field", threshold, len(plateaux)))
+    print(f"Field plateaus(thresold={threshold}: {len(plateaux)})")
     actual_plateaux = []
     for p in plateaux:
         t0 = Data.Data["timestamp"].iloc[p[0]]
@@ -284,7 +309,7 @@ def plateaus(
 
         if debug:
             msg = f"\t{start_time}\t{end_time}"
-            print("\t%8.6g\t%8.4g\t%8.4g" % msg, dt.total_seconds(), b0, b1)
+            print(f"{msg}\t{dt.total_seconds():8.6g}\t{b0:8.4g}\t{b1:8.4g}")
 
         # if (b1-b0)/b1 > b_thresold: reject plateau
         # if abs(b1) < b_thresold and abs(b0) < b_thresold: reject plateau

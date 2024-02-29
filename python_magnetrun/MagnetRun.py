@@ -6,7 +6,7 @@ import pandas as pd
 from .magnetdata import MagnetData
 
 
-def prepareData(data: MagnetData, housing: str, cleanup: bool = False):
+def prepareData(data: MagnetData, housing: str, debug: bool = False):
     # get start/end
     (start_date, start_time, end_date, end_time) = data.getStartDate()
     # print(f'start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}')
@@ -36,7 +36,7 @@ def prepareData(data: MagnetData, housing: str, cleanup: bool = False):
         # print('M8/M10 housing case')
         data.addData("IH_ref", "IH_ref = Idcct3 + Idcct4")
         data.addData("IB_ref", "IB_ref = Idcct1 + Idcct2")
-        
+
         # FlowH = Flow2, FlowB = Flow1
         for field in ["Flow", "Rpm", "Tin", "HP"]:
             data.renameData(
@@ -44,17 +44,15 @@ def prepareData(data: MagnetData, housing: str, cleanup: bool = False):
             )
     # what about M1, M5 and M7???
 
-    data.removeData(['Idcct1', 'Idcct2', 'Idcct3', 'Idcct4'])
-    
-    data.cleanupData()
-    Ikey = [_key
-        for _key in data.getKeys()
-        if re.match(r"Icoil\d+", _key)]
-    # print(f"Ikey={Ikey}")
+    data.removeData(["Idcct1", "Idcct2", "Idcct3", "Idcct4"])
+
+    data.cleanupData(debug)
+    Ikey = [_key for _key in data.getKeys() if re.match(r"Icoil\d+", _key)]
+    if debug:
+        print(f"MagnetRun/prepareData: housing={housing}, Ikey={Ikey}")
 
     data.renameData(columns={f"{Ikey[0]}": "IH"})
     data.renameData(columns={f"{Ikey[-1]}": "IB"})
-
 
     # print(f"data.keys={data.getKeys()}")
 
@@ -80,25 +78,25 @@ class MagnetRun:
         self.MagnetData = data
 
     @classmethod
-    def fromtxt(cls, housing, site, filename):
+    def fromtxt(cls, housing: str, site: str, filename: str, debug: bool = False):
         """create from a txt file"""
         # print(f"MagnetRun/fromtxt: housing={housing}, site={site}, filename={filename}")
         with open(filename, "r") as f:
             insert = f.readline().split()[-1]
             data = MagnetData.fromtxt(filename)
-            prepareData(data, housing)
+            prepareData(data, housing, debug=debug)
 
         # print("magnetrun.fromtxt: data=", data)
         return cls(housing, site, data)
 
     @classmethod
-    def fromcsv(cls, housing, site, filename):
+    def fromcsv(cls, housing: str, site: str, filename: str, debug: bool = False):
         """create from a csv file"""
         data = MagnetData.fromcsv(filename)
         return cls(housing, site, data)
 
     @classmethod
-    def fromStringIO(cls, housing, site, name):
+    def fromStringIO(cls, housing: str, site: str, name: str, debug: bool = False):
         """create from a stringIO"""
         # print(f'MagnetRun/fromStringIO: housing={housing}, site={site}')
         from io import StringIO
@@ -115,7 +113,7 @@ class MagnetRun:
                 print(f"MagnetRun:fromStringIO: site={site}, insert={insert}")
             data = MagnetData.fromStringIO(name)
             # print(f'data keys({len(data.getKeys())}): {data.getKeys()}')
-            prepareData(data, housing)
+            prepareData(data, housing, debug=debug)
             # print(f'prepareData: data keys({len(data.getKeys())}): {data.getKeys()}')
 
         except:
@@ -164,22 +162,22 @@ class MagnetRun:
         if self.MagnetData is not None:
             return self.MagnetData.getData(key)
         else:
-            raise RuntimeError("MagnetRun.getType: no MagnetData associated")
+            raise RuntimeError("MagnetRun.getData: no MagnetData associated")
 
     def getKeys(self):
         """return list of Data keys"""
         if self.MagnetData is not None:
             return self.MagnetData.Keys
         else:
-            raise RuntimeError("MagnetRun.getType: no MagnetData associated")
+            raise RuntimeError("MagnetRun.getKeys: no MagnetData associated")
 
-    def getStats(self, field: str=None):
+    def getStats(self, field: str = None):
         """return basic stats"""
         if self.MagnetData is not None:
             return self.MagnetData.stats(field)
         else:
-            raise RuntimeError("MagnetRun.getType: no MagnetData associated")
-    
+            raise RuntimeError("MagnetRun.getStats: no MagnetData associated")
+
     def saveData(self, filename: str):
         """save Data to file"""
         if self.MagnetData is not None:
