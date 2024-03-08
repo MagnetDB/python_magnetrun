@@ -116,6 +116,9 @@ python_magnetrun/txt/
 python_magnetrun/png/
 python_magnetrun/json/
 
+srvdata
+*.csv
+
 M*.csv
 M*.txt
 M*.json
@@ -124,3 +127,6 @@ M*.conf
 
 *log
 *old
+*orig
+*new
+

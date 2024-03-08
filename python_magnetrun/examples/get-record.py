@@ -7,9 +7,13 @@ import matplotlib.pyplot as plt
 
 from ..MagnetRun import MagnetRun
 from ..magnetdata import MagnetData
+from ..processing.stats import stats, plateaus, nplateaus, pearson
 
 from datetime import datetime
 import pandas as pd
+import numpy as np
+import math
+from tabulate import tabulate
 
 
 def load_record(file: str, args, show: bool = False) -> MagnetData:
@@ -139,6 +143,15 @@ def main():
     parser_stats.add_argument(
         "--pairplot", help="enable save mode", action="store_true"
     )
+    parser_stats.add_argument(
+        "--pearson", help="enable Pearson correlation calculation", action="store_true"
+    )
+    parser_stats.add_argument(
+        "--tlcc", help="enable TLCC correlation calculation", action="store_true"
+    )
+    parser_stats.add_argument(
+        "--dtw", help="enable DTW correlation calculation", action="store_true"
+    )
     parser_stats.add_argument("--show", help="enable show mode", action="store_true")
     parser_stats.add_argument("--save", help="enable save mode", action="store_true")
 
@@ -265,6 +278,8 @@ def main():
             )
         except:
             print(f"- fail to load")
+            # is it possible to curate txt files
+            # reading csv line by line with import csv??
 
         else:
             data.Units()
@@ -277,7 +292,9 @@ def main():
                     )
 
             elif args.command == "stats":
-                if args.pairplot and data.getDuration() >= 1000:
+                if args.pearson and data.getDuration() >= 1000:
+                    pearson(data, args.fields, args.save, args.show, args.debug)
+                elif args.pairplot and data.getDuration() >= 1000:
                     import seaborn as sns
                     import re
                     from natsort import natsorted
@@ -322,15 +339,9 @@ def main():
                 if args.fields:
                     # save to tabular
                     print(f"stats for {args.fields}")
-                    print(data.getData(args.fields).head(20))
+                    # print(data.getData(args.fields).head(20))
 
-                    for key in args.fields:
-                        bfield = data.getData(key).to_numpy()
-                        (symbol, unit) = data.getUnitKey(key)
-                        print(
-                            f"\t- {key}[{unit:~P}]: min={bfield.min()}, mean={bfield.mean()}, max={bfield.max()}",
-                            flush=True,
-                        )
+                    stats(data, args.fields, args.debug)
 
             elif args.command == "plot":
 

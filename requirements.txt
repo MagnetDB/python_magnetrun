@@ -2,12 +2,15 @@ nptdms
 pandas
 statsmodels
 numpy
+scipy
 matplotlib
 seaborn
 tabulate
 requests
 lxml
 natsort
+
+# dtw # for Dynamic Time Warping
 
 iapws
 pint
