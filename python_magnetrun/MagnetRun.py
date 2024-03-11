@@ -64,7 +64,7 @@ class MagnetRun:
 
     Housing: name of the housing
     Site: name of site (magnetdb sense)
-    MagnetData: pandas dataframe or tdms file
+    MagnetData: pandas dataframe
     """
 
     def __init__(
@@ -77,6 +77,16 @@ class MagnetRun:
         self.Housing = housing
         self.Site = site
         self.MagnetData = data
+
+    @classmethod
+    def fromtdms(cls, site, insert, filename):
+        """create from a tdms file"""
+        print(f'MagnetRun:frontdms: {filename}', flush=True)
+        with open(filename, 'r') as f:
+            data = MagnetData.fromtdms(filename)
+
+       # print("magnetrun.fromtxt: data=", data)
+        return cls(site, insert, data)
 
     @classmethod
     def fromtxt(cls, housing: str, site: str, filename: str, debug: bool = False):
