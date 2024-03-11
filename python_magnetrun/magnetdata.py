@@ -55,21 +55,18 @@ class MagnetData:
             # print("f_extension: % s" % f_extension)
 
             if f_extension != ".tdms":
-                raise("fromtdms: expect a tdms filename - got %s" % name)
+                raise(f"fromtdms: expect a tdms filename - got {name}")
             
             rawData = TdmsFile.open(name, 'r')
             print(f'rawData: {rawData.properties}')
             for group in rawData.groups():
-                print(f'group: {group.name}', flush=True)
+                # print(f'group: {group.name}', flush=True)
                 Groups[group.name] = []
                 for channel in group.channels():
-                    print(f'channel: {channel.name}', flush=True)
+                    #print(f'channel: {channel.name}', flush=True)
                     Groups[group.name].append(channel.name)
 
             Data = rawData.as_dataframe(time_index=True, absolute_time=True, scaled_data=True, arrow_dtypes=False)
-            Keys = Data.columns.values.tolist()
-            print(f'keys: {Keys}')
-            print(f'Data: {Data.head()}')
             
             t0 = Data.index[0]
             print(f't0: {t0}')
@@ -78,6 +75,11 @@ class MagnetData:
                     axis=1,
                 )
             
+            Keys = Data.columns.values.tolist()
+            print(f'keys: {Keys}')
+            print(f'Data: {Data.head()}')
+            
+            """
             # show how to plot data
             first_key = list(Groups.keys())[0]
             key = f"/\'{first_key}\'/\'{Groups[first_key][0]}\'"
@@ -86,6 +88,7 @@ class MagnetData:
             Data.plot(x='t', y=key, grid=True, ax=ax)
             plt.show()
             plt.close()
+            """
 
             """
             else:
@@ -702,7 +705,7 @@ class MagnetData:
         if x not in self.Keys:
             #if isinstance(self.Data, pd.DataFrame):
             raise Exception(
-                f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no x={x} key"
+                f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no x={x} key (valid keys= {self.Keys})"
             )
             #else:
             #    if x != "Time":

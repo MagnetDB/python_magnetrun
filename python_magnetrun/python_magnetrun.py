@@ -19,8 +19,8 @@ if __name__ == "__main__":
     parser.add_argument("input_file") # can be a list
     parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9") # use housing instead
     parser.add_argument("--insert", help="specify an insert", default="notdefined")
-    parser.add_argument("--plot_vs_time", help="select key(s) to plot (ex. \"Field [Ucoil1]\")", nargs="+") # use nargs instead
-    parser.add_argument("--plot_key_vs_key", help="select pair(s) of keys to plot (ex. \"Field-Icoil1")
+    parser.add_argument("--plot_vs_time", help="select key(s) to plot (ex. \"Field [Ucoil1]\")", nargs="+")
+    parser.add_argument("--plot_key_vs_key", help="select pair(s) of keys to plot (ex. \"Field-Icoil1") # use nargs instead??
     parser.add_argument("--output_time", help="output key(s) for time")
     parser.add_argument(
         "--output_timerange", help="set time range to extract (start;end)"
@@ -121,8 +121,8 @@ if __name__ == "__main__":
         if args.show:
             plt.show()
         else:
-            imagefile = args.input_file.replace(".txt", "")
-            print(f"saveto: {imagefile}", flush=True)
+            imagefile = args.input_file.replace(file_extension, "")
+            print(f"saveto: {imagefile}_vs_time.png", flush=True)
             plt.savefig(f'{imagefile}_vs_time.png', dpi=300 )
         plt.close()
 
@@ -150,8 +150,10 @@ if __name__ == "__main__":
             if args.show:
                 plt.show()
             else:
-                imagefile = args.input_file.replace(".txt", "")
-                plt.savefig(f'{imagefile}_{key1}_vs_{key2}.png', dpi=300 )
+                # check key syntax to avoid "/" when tdms data
+                imagefile = args.input_file.replace(file_extension, "")
+                print(f"saveto: {imagefile}_{key1}_vs_{key2}.png", flush=True)
+            plt.savefig(f'{imagefile}_{key1}_vs_{key2}.png', dpi=300 )
             plt.close()
 
     if args.output_time:
