@@ -97,7 +97,7 @@ def plot_files(
 
     legends = []
     for i, f in enumerate(input_files):
-        if i <= from_i:
+        if i < from_i:
             # print(f"plot_files: skip {i}")
             continue
         elif to_i is not None:
