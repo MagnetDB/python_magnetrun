@@ -33,7 +33,7 @@ class MagnetData:
         Groups: dict,
         Keys: list,
         Type: int = 0,
-        Data: pd.DataFrame | TdmsFile | None = None,
+        Data: pd.DataFrame | None = None,
     ) -> None:
         """default constructor"""
         self.FileName = filename
@@ -53,14 +53,72 @@ class MagnetData:
         with open(name, "r"):
             f_extension = os.path.splitext(name)[-1]
             # print("f_extension: % s" % f_extension)
-            if f_extension == ".tdms":
-                Data = TdmsFile.open(name)
-                for group in Data.groups():
-                    for channel in group.channels():
-                        Keys.append(channel.name)
-                        Groups[channel.name] = group.name
+
+            if f_extension != ".tdms":
+                raise(f"fromtdms: expect a tdms filename - got {name}")
+            
+            rawData = TdmsFile.open(name, 'r')
+            print(f'rawData: {rawData.properties}')
+            for group in rawData.groups():
+                # print(f'group: {group.name}', flush=True)
+                Groups[group.name] = []
+                for channel in group.channels():
+                    #print(f'channel: {channel.name}', flush=True)
+                    Groups[group.name].append(channel.name)
+
+            Data = rawData.as_dataframe(time_index=True, absolute_time=True, scaled_data=True, arrow_dtypes=False)
+            
+            t0 = Data.index[0]
+            print(f't0: {t0}')
+            Data["t"] = Data.apply(
+                    lambda row: (row.name - t0).total_seconds(),
+                    axis=1,
+                )
+            
+            Keys = Data.columns.values.tolist()
+            print(f'keys: {Keys}')
+            print(f'Data: {Data.head()}')
+            
+            """
+            # show how to plot data
+            first_key = list(Groups.keys())[0]
+            key = f"/\'{first_key}\'/\'{Groups[first_key][0]}\'"
+            print(f'key: {key}', flush=True)
+            ax = plt.gca()
+            Data.plot(x='t', y=key, grid=True, ax=ax)
+            plt.show()
+            plt.close()
+            """
+
+            """
             else:
-                raise RuntimeError(f"fromtdms: expect a tdms filename - got {name}")
+                group = self.Data[self.Groups[y]]
+                channel = group[y]
+                samples = channel.properties["wf_samples"]
+
+                if x == "Time":
+                    increment = channel.properties["wf_increment"]
+                    time_steps = np.array([i * increment for i in range(0, samples)])
+
+                    plt.plot(time_steps, self.Data[self.Groups[y]][y], label=y)
+                    plt.ylabel(" [" + channel.properties["unit_string"] + "]")
+                    plt.xlabel("t [s]")
+                else:
+                    group = self.Data[self.Groups[x]]
+                    xchannel = group[x]
+
+                    plt.plot(
+                        self.Data[self.Groups[x]][x],
+                        self.Data[self.Groups[y]][y],
+                        label=y,
+                    )
+                    plt.ylabel(" [" + channel.properties["unit_string"] + "]")
+                    plt.xlabel(
+                        xchannel.name + " [" + xchannel.properties["unit_string"] + "]"
+                    )
+
+            """
+        print(f'magnetdata/fromtdms: Groups={Groups}', flush=True)
         return cls(name, Groups, Keys, 1, Data)
 
     @classmethod
@@ -149,13 +207,13 @@ class MagnetData:
                         f"MagnetData/Data({key}): {self.FileName}: cannot get data for key {item}: no such key"
                     )
         # print(f"selected_keys={selected_keys}", flush=True)
-        if isinstance(self.Data, pd.DataFrame):
-            _df = self.Data[selected_keys]
-            _df_keys = _df.columns.values.tolist()
-            # print(f"_df_keys = {_df_keys}", flush=True)
-            return _df
-        elif isinstance(self.Data, TdmsFile):
-            return self.Data[self.Groups[selected_keys]]
+        # if isinstance(self.Data, pd.DataFrame):
+        _df = self.Data[selected_keys]
+        _df_keys = _df.columns.values.tolist()
+        # print(f"_df_keys = {_df_keys}", flush=True)
+        return _df
+        #elif isinstance(self.Data, TdmsFile):
+        #    return self.Data[self.Groups[selected_keys]]
 
     def Units(self, debug: bool = False):
         """
@@ -198,6 +256,8 @@ class MagnetData:
                 # TODO define a specific 'var' unit for this field
                 self.units[key] = ("Preac", ureg.megavar)
 
+        # if self.Type == 1 # aka data from tdms
+        # load units from tdms but check if coherent
         if debug:
             print(f"Units: {self.Keys}")
             for key, values in self.units.items():
@@ -229,7 +289,7 @@ class MagnetData:
             print(
                 f"Clean up Data: filename={self.FileName}, keys={self.Keys}", flush=True
             )
-        if isinstance(self.Data, pd.DataFrame):
+        if self.Type == 0: # isinstance(self.Data, pd.DataFrame):
             import re
 
             # print(f'self.Keys = {self.Keys}') # Data.columns.values.tolist()}')
@@ -469,25 +529,25 @@ class MagnetData:
 
     def removeData(self, keys: list):
         """remove a column to Data"""
-        if isinstance(self.Data, pd.DataFrame):
-            for key in keys:
-                if key in self.Keys:
-                    # print(f"Remove {key}")
-                    del self.Data[key]
-                else:
-                    print(f"cannot remove {key}: no such key - skip operation")
-            self.Keys = self.Data.columns.values.tolist()
+        #if isinstance(self.Data, pd.DataFrame):
+        for key in keys:
+            if key in self.Keys:
+                # print(f"Remove {key}")
+                del self.Data[key]
+            else:
+                print(f"cannot remove {key}: no such key - skip operation")
+        self.Keys = self.Data.columns.values.tolist()
         return 0
 
     def renameData(self, columns: dict):
         """
         rename columns
         """
-        if isinstance(self.Data, pd.DataFrame):
-            self.Data.rename(columns=columns, inplace=True)
-            self.Keys = self.Data.columns.values.tolist()
-        else:
-            raise RuntimeError(f"cannot rename {columns.keys()}: no such columns")
+        #if isinstance(self.Data, pd.DataFrame):
+        self.Data.rename(columns=columns, inplace=True)
+        self.Keys = self.Data.columns.values.tolist()
+        #else:
+        #    raise RuntimeError(f"cannot rename {columns.keys()}: no such columns")
 
     def addData(self, key, formula):
         """
@@ -499,20 +559,19 @@ class MagnetData:
         """
 
         # print("addData: %s = %s" % (key, formula) )
-        if isinstance(self.Data, pd.DataFrame):
-            if key in self.Keys:
-                print(f"Key {key} already exists in DataFrame")
-            else:
-                # check formula using pyparsing
-
-                self.Data.eval(formula, inplace=True)
-                self.Keys = self.Data.columns.values.tolist()
+        #if isinstance(self.Data, pd.DataFrame):
+        if key in self.Keys:
+            print(f"Key {key} already exists in DataFrame")
+        else:
+            # check formula using pyparsing
+            self.Data.eval(formula, inplace=True)
+            self.Keys = self.Data.columns.values.tolist()
         return 0
 
     def getStartDate(self) -> tuple:
         """get start timestamps"""
         res = ()
-        if isinstance(self.Data, pd.DataFrame):
+        if self.Type == 0: #isinstance(self.Data, pd.DataFrame):
             # print("keys=", self.Keys)
             if "Date" in self.Keys and "Time" in self.Keys:
                 tformat = "%Y.%m.%d %H:%M:%S"
@@ -543,7 +602,7 @@ class MagnetData:
         """add a Time column to Data"""
         # print("magnetdata.AddTime")
 
-        if isinstance(self.Data, pd.DataFrame):
+        if self.Type == 0 : #isinstance(self.Data, pd.DataFrame):
             if "Date" in self.Keys and "Time" in self.Keys:
                 tformat = "%Y.%m.%d %H:%M:%S"
 
@@ -594,34 +653,34 @@ class MagnetData:
     def extractData(self, keys: list[str]) -> pd.DataFrame:
         """extract columns keys to Data"""
 
-        if self.Type == 0:
-            for key in keys:
-                if key not in self.Keys:
-                    raise Exception(
-                        f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {key} key"
-                    )
+        #if self.Type == 0:
+        for key in keys:
+            if key not in self.Keys:
+                raise Exception(
+                    f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {key} key"
+                )
 
-            return pd.concat([self.Data[key] for key in keys], axis=1)
+        return pd.concat([self.Data[key] for key in keys], axis=1)
 
-        else:
-            raise RuntimeError(f"extractData: magnetdata type ({self.Type})unsupported")
+        #else:
+        #    raise RuntimeError(f"extractData: magnetdata type ({self.Type})unsupported")
 
     def extractDataThreshold(self, key, threshold):
         """extra data above a given threshold for field"""
-        if isinstance(self.Data, pd.DataFrame):
-            if key not in self.Keys:
-                raise Exception(
-                    f"extractData: key={key} - no such keys in dataframe (valid keys are: {self.Keys}"
-                )
+        #if isinstance(self.Data, pd.DataFrame):
+        if key not in self.Keys:
+            raise Exception(
+                f"extractData: key={key} - no such keys in dataframe (valid keys are: {self.Keys}"
+            )
 
-            return self.Data.loc[self.Data[key] >= threshold]
-        else:
-            raise Exception(f"extractData: not implement for {type(self.Data)}")
+        return self.Data.loc[self.Data[key] >= threshold]
+        #else:
+        #    raise Exception(f"extractData: not implement for {type(self.Data)}")
 
     def extractTimeData(self, timerange) -> pd.DataFrame:
         """extract column to Data"""
 
-        if isinstance(self.Data, pd.DataFrame):
+        if self.Type == 0: # isinstance(self.Data, pd.DataFrame):
             trange = timerange.split(";")
             print(f"Select data from {trange[0]} to {trange[1]}")
 
@@ -635,56 +694,30 @@ class MagnetData:
 
     def saveData(self, keys, filename):
         """save Data to csv format"""
-        if isinstance(self.Data, pd.DataFrame):
-            self.Data[keys].to_csv(filename, sep=str("\t"), index=False, header=True)
-            return 0
+        #if isinstance(self.Data, pd.DataFrame):
+        self.Data[keys].to_csv(filename, sep=str("\t"), index=False, header=True)
+        return 0
 
     def plotData(self, x, y, ax):
         """plot x vs y"""
 
         # print("plotData Type:", self.Type, f"x={x}, y={y}" )
         if x not in self.Keys:
-            if isinstance(self.Data, pd.DataFrame):
-                raise Exception(
-                    f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no x={x} key"
-                )
-            else:
-                if x != "Time":
-                    Exception(
-                        f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {x} key"
-                    )
+            #if isinstance(self.Data, pd.DataFrame):
+            raise Exception(
+                f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no x={x} key (valid keys= {self.Keys})"
+            )
+            #else:
+            #    if x != "Time":
+            #        Exception(
+            #            f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {x} key"
+            #        )
 
         if y in self.Keys:
-            if isinstance(self.Data, pd.DataFrame):
-                self.Data.plot(x=x, y=y, ax=ax, grid=True)
-            else:
-                group = self.Data[self.Groups[y]]
-                channel = group[y]
-                samples = channel.properties["wf_samples"]
+            #if isinstance(self.Data, pd.DataFrame):
+            self.Data.plot(x=x, y=y, ax=ax, grid=True)
+            # add xlabel, ylabel from units
 
-                if x == "Time":
-                    increment = channel.properties["wf_increment"]
-                    time_steps = np.array([i * increment for i in range(0, samples)])
-
-                    plt.plot(time_steps, self.Data[self.Groups[y]][y], label=y)
-                    plt.ylabel(" [" + channel.properties["unit_string"] + "]")
-                    plt.xlabel("t [s]")
-                else:
-                    group = self.Data[self.Groups[x]]
-                    xchannel = group[x]
-
-                    plt.plot(
-                        self.Data[self.Groups[x]][x],
-                        self.Data[self.Groups[y]][y],
-                        label=y,
-                    )
-                    plt.ylabel(" [" + channel.properties["unit_string"] + "]")
-                    plt.xlabel(
-                        xchannel.name + " [" + xchannel.properties["unit_string"] + "]"
-                    )
-
-                plt.grid(b=True)
-                ax.legend()
 
         else:
             raise Exception(
@@ -694,21 +727,21 @@ class MagnetData:
     def stats(self, key: str = None):
         """returns stats for key"""
         print("magnetdata.stats")
-        if isinstance(self.Data, pd.DataFrame):
-            # print(f'keys: {self.Keys}')
-            if key is not None:
-                if key in self.Keys:
-                    print(f"stats[{key}]: {self.Data[key].mean()}")
-                    return self.Data[key].describe()
-                else:
-                    raise Exception(
-                        f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {y} key"
-                    )
+        #if isinstance(self.Data, pd.DataFrame):
+        # print(f'keys: {self.Keys}')
+        if key is not None:
+            if key in self.Keys:
+                print(f"stats[{key}]: {self.Data[key].mean()}")
+                return self.Data[key].describe()
             else:
-                for _key in self.Keys:
-                    if _key not in ["timestamp"]:
-                        print(
-                            f'stats[{_key}]: {self.Data[_key].describe(include="all")}'
-                        )
+                raise Exception(
+                    f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {y} key"
+                )
         else:
-            raise Exception("data is not a panda dataframe: cannot get stats")
+            for _key in self.Keys:
+                if _key not in ["timestamp"]:
+                    print(
+                        f'stats[{_key}]: {self.Data[_key].describe(include="all")}'
+                    )
+        #else:
+        #    raise Exception("data is not a panda dataframe: cannot get stats")
