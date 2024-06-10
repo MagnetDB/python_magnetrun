@@ -66,7 +66,7 @@ class MagnetData:
                     #print(f'channel: {channel.name}', flush=True)
                     Groups[group.name].append(channel.name)
 
-            Data = rawData.as_dataframe(time_index=True, absolute_time=True, scaled_data=True, arrow_dtypes=False)
+            Data = rawData.as_dataframe(time_index=True, absolute_time=True, scaled_data=True) # arrow_dtypes=False for pandas 2.xx
             
             t0 = Data.index[0]
             print(f't0: {t0}')
@@ -118,6 +118,7 @@ class MagnetData:
                     )
 
             """
+
         print(f'magnetdata/fromtdms: Groups={Groups}', flush=True)
         return cls(name, Groups, Keys, 1, Data)
 

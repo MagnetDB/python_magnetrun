@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 
+
 from .MagnetRun import MagnetRun
 
 if __name__ == "__main__":
@@ -89,6 +90,7 @@ if __name__ == "__main__":
             mrun = MagnetRun.fromtdms(args.site, args.insert, args.input_file)
         case '.csv':
             mrun = MagnetRun.fromcsv(args.site, args.insert, args.input_file)
+
         case _:
             raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")        
 
@@ -112,11 +114,13 @@ if __name__ == "__main__":
     if args.plot_vs_time:
         my_ax = plt.gca()
         # split into keys
+
         items = args.plot_vs_time
         print(f"items={items}", flush=True)
         # loop over key
         for key in items:
             print(f"plot key={key}, type={type(key)}")
+
             mrun.getMData().plotData(x='t', y=key, ax=my_ax)
         if args.show:
             plt.show()
@@ -125,6 +129,7 @@ if __name__ == "__main__":
             print(f"saveto: {imagefile}_vs_time.png", flush=True)
             plt.savefig(f'{imagefile}_vs_time.png', dpi=300 )
         plt.close()
+
 
     if args.plot_key_vs_key:
         # split pairs in key1, key2
@@ -162,6 +167,7 @@ if __name__ == "__main__":
 
         times = args.output_time.split(";")
         print (f"Select data at {times}" )
+
         df = mrun.getData()
         if args.output_key:
             keys = args.output_key.split(";")
@@ -187,7 +193,6 @@ if __name__ == "__main__":
     if args.output_key:
         if mrun.getType() != 0:
             raise RuntimeError("output_time: feature not implemented for tdms format")
-            raise RuntimeError("output_time: feature not implemented for tdms format")
 
         keys = args.output_key.split(";")
         keys.insert(0, "Time")
@@ -207,13 +212,13 @@ if __name__ == "__main__":
     if args.extract_pairkeys:
         if mrun.getType():
             raise RuntimeError("output_time: feature not implemented for tdms format")
-            raise RuntimeError("output_time: feature not implemented for tdms format")
 
         pairs = args.extract_pairkeys.split(";")
         for pair in pairs:
             items = pair.split("-")
             if len(items) != 2:
                 raise RuntimeError(f"invalid pair of keys: {pair}")
+
             key1 = items[0]
             key2 = items[1]
             data = mrun.getMData()

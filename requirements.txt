@@ -1,23 +1,23 @@
-nptdms
-pandas
+nptdms >= 1.7.0
+pandas >=1.4.1
 statsmodels
-numpy
-scipy
+numpy >= 1.19.5
+scipy >= 1.6.0
 matplotlib
 seaborn
 tabulate
-requests
-lxml
+requests >=2.27.1
+lxml >= 4.9.2
 natsort
-
-# dtw # for Dynamic Time Warping
-
+rich >= 9.11.0
 iapws
 pint
 
+# dtw # for Dynamic Time Warping
 # for cooling directory
 ht
 nlopt
 clawpack
 
 pytest
+
