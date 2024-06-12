@@ -8,19 +8,43 @@ keywords = ["python_magnetrun"]
 classifiers = ["Development Status :: 2 - Pre-Alpha", "Intended Audience :: Developers", "License :: OSI Approved :: MIT License", "Natural Language :: English", "Programming Language :: Python :: 3", "Programming Language :: Python :: 3.5", "Programming Language :: Python :: 3.6", "Programming Language :: Python :: 3.7", "Programming Language :: Python :: 3.8"]
 homepage = "https://github.com/Trophime/python_magnetrun"
 authors = ["Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>"]
-readme = "README.rst"
+readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "*"
-clawpack = "*"
-ht = "*"
 iapws = "*"
 itertools = "*"
 lxml = "*"
 matplotlib = "*"
+seaborn = "*"
 numpy = "*"
+scipy = "*"
 pandas = "*"
+nptdms = "*"
 pint = "*"
 requests = "*"
 statsmodel = "*"
 tabulate = "*"
+natsort
+nlopt
+
+[tool.poetry.optional-dependencies]
+system = [
+  clawpack = "*"
+  ht = "*"
+]
+signal = [
+  ruptures = "*"
+]
+
+[tool.poetry.dev-dependencies]
+pytest = "*"
+
+[tools.poetry.doc-dependencies]
+sphinx
+sphinx-rtd-theme
+sphinx-mermaid
+myst_parser
+
+
+
