@@ -350,7 +350,7 @@ def main():
                         yField=("Field", "T"),
                         threshold=args.thresold,
                         num_points_threshold=600,
-                        show=args.show,
+                        show=args.debug,
                         save=args.save,
                         verbose=False,
                     )

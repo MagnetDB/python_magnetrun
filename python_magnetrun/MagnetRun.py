@@ -8,6 +8,15 @@ from .magnetdata import MagnetData
 
 
 def prepareData(data: MagnetData, housing: str, debug: bool = False):
+    """_summary_
+
+    :param data: _description_
+    :type data: MagnetData
+    :param housing: _description_
+    :type housing: str
+    :param debug: _description_, defaults to False
+    :type debug: bool, optional
+    """
     # get start/end
     (start_date, start_time, end_date, end_time) = data.getStartDate()
     # print(f'start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}')
@@ -81,11 +90,11 @@ class MagnetRun:
     @classmethod
     def fromtdms(cls, site, insert, filename):
         """create from a tdms file"""
-        print(f'MagnetRun:frontdms: {filename}', flush=True)
-        with open(filename, 'r') as f:
+        print(f"MagnetRun:fromtdms: {filename}", flush=True)
+        with open(filename, "r") as f:
             data = MagnetData.fromtdms(filename)
 
-       # print("magnetrun.fromtxt: data=", data)
+        # print("magnetrun.fromtxt: data=", data)
         return cls(site, insert, data)
 
     @classmethod

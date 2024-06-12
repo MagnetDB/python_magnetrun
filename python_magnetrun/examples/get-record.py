@@ -7,13 +7,11 @@ import matplotlib.pyplot as plt
 
 from ..MagnetRun import MagnetRun
 from ..magnetdata import MagnetData
-from ..processing.stats import stats, plateaus, nplateaus, pearson
+from ..processing.stats import stats
+from ..processing.correlations import pearson
 
 from datetime import datetime
 import pandas as pd
-import numpy as np
-import math
-from tabulate import tabulate
 
 
 def load_record(file: str, args, show: bool = False) -> MagnetData:

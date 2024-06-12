@@ -32,7 +32,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file")
     parser.add_argument(
-        "--keys", help="specify keys to select (eg: Tin1;Tin2)", default="Tin1"
+        "--keys",
+        nargs="+",
+        help="specify keys to select (eg: Tin1;Tin2)",
+        default="Tin1",
     )
     parser.add_argument(
         "--show",
@@ -83,6 +86,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    print(f"args: {args}")
 
     threshold = 0.5
     twindows = 10
@@ -108,7 +112,7 @@ if __name__ == "__main__":
             smoothing_iter = int(params[2])
 
     f_extension = os.path.splitext(args.input_file)[-1]
-    if f_extension != ".txt":
+    if f_extension not in [".txt", ".tdms"]:
         print("so far only txt file support is implemented")
         sys.exit(0)
 
@@ -123,14 +127,17 @@ if __name__ == "__main__":
         except:
             print("no site detected - use args.site argument instead")
             pass
+
     mrun = MagnetRun.fromtxt(housing, args.site, filename)
     mdata = mrun.getMData()
-    mdata.addTime()
+    if f_extension == ".txt":
+        mdata.addTime()
+
     start_timestamp = mdata.getStartDate()
     dkeys = mrun.getKeys()
 
     inplace = False
-    skeys = args.keys.split(";")
+    skeys = args.keys
     if args.command == "filter":
         for key in skeys:
             filterpikes(
