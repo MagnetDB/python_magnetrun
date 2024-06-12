@@ -1,4 +1,6 @@
 *~
+\#*\#
+*.rej
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -106,6 +108,11 @@ ENV/
 # IDE settings
 .vscode/
 
+# Sphinx
+docs/build
+docs/source/_static
+docs/source/_templates
+
 # Log files from installation
 log*
 python_magnetrun/_output/
@@ -118,6 +125,8 @@ python_magnetrun/json/
 
 srvdata
 *.csv
+*.csv.*
+*.tdms
 
 M*.csv
 M*.txt
