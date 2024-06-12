@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 
+
 from .MagnetRun import MagnetRun
 
 if __name__ == "__main__":
@@ -149,21 +150,33 @@ if __name__ == "__main__":
                 print("no site detected - use args.site argument instead")
                 pass
 
-        match file_extension:
-            case ".txt":
-                mrun = MagnetRun.fromtxt(site, args.insert, file)
-            case ".tdms":
-                mrun = MagnetRun.fromtdms(site, args.insert, file)
-            case ".csv":
-                mrun = MagnetRun.fromcsv(site, args.insert, file)
-            case _:
-                raise RuntimeError(
-                    f"so far file with extension in {supported_formats} are implemented"
-                )
+    match file_extension:
+        case ".txt":
+            mrun = MagnetRun.fromtxt(args.site, args.insert, args.input_file)
+        case ".tdms":
+            mrun = MagnetRun.fromtdms(args.site, args.insert, args.input_file)
+        case ".csv":
+            mrun = MagnetRun.fromcsv(args.site, args.insert, args.input_file)
+        case _:
+            raise RuntimeError(
+                f"so far file with extension in {supported_formats} are implemented"
+            )
 
-        inputs[file] = {"data": mrun}
-        if args.command == "info":
-            mrun.getMData().info()
+    dkeys = mrun.getKeys()
+
+    if args.list:
+        print("Valid keys are:")
+        for key in dkeys:
+            print(key)
+        sys.exit(0)
+
+    if args.convert:
+        extension = os.path.splitext(args.input_file)[-1]
+        file_name = args.input_file.replace(extension, ".csv")
+        data = mrun.getMData()
+        if isinstance(data, pd.DataFrame):
+            data.to_csv(file_name, sep=str("\t"), index=False, header=True)
+        sys.exit(0)
 
     # perform operations defined by options
     if args.command == "plot":
