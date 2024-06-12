@@ -63,6 +63,9 @@ RUN apt update \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 
+# To be added:
+# python3-myst-parser python3-sphinxcontrib-mermaid python3-sphinx-rtd-theme
+
 # Switch back to dialog for any ad-hoc use of apt-get
 ENV DEBIAN_FRONTEND=dialog
 
