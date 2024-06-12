@@ -37,6 +37,7 @@ RUN apt update \
     && apt-get -y install python3-numpy python3-scipy \
     && apt-get -y install python3-requests python3-requests-toolbelt \
     && apt-get -y install python3-natsort \
+    && pat-get -y install python3-myst-parser python3-sphinxcontrib-mermaid python3-sphinx-rtd-theme \
     # \
     # Add specific packages from lncmi debian repository \
     && apt install -y debian-keyring \
