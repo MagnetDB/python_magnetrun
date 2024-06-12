@@ -38,6 +38,7 @@ if __name__ == "__main__":
 
     # add info subcommand
     parser_info.add_argument("--list", help="list key in csv", action="store_true")
+    parser_info.add_argument("--convert", help="save to csv", action="store_true")
 
     # add plot subcommand
     parser_plot.add_argument(
@@ -133,7 +134,6 @@ if __name__ == "__main__":
 
     for file in args.input_file:
         f_extension = os.path.splitext(file)[-1]
-        file_name, file_extension = os.path.splitext(file)
         if f_extension not in supported_formats:
             raise RuntimeError(
                 f"so far file with extension in {supported_formats} are implemented"
@@ -141,6 +141,7 @@ if __name__ == "__main__":
 
         filename = os.path.basename(file)
         result = filename.startswith("M")
+        insert = "tututu"
         if result:
             try:
                 index = filename.index("_")
@@ -150,33 +151,39 @@ if __name__ == "__main__":
                 print("no site detected - use args.site argument instead")
                 pass
 
-    match file_extension:
-        case ".txt":
-            mrun = MagnetRun.fromtxt(args.site, args.insert, args.input_file)
-        case ".tdms":
-            mrun = MagnetRun.fromtdms(args.site, args.insert, args.input_file)
-        case ".csv":
-            mrun = MagnetRun.fromcsv(args.site, args.insert, args.input_file)
-        case _:
-            raise RuntimeError(
-                f"so far file with extension in {supported_formats} are implemented"
+        match f_extension:
+            case ".txt":
+                mrun = MagnetRun.fromtxt(site, insert, file)
+            case ".tdms":
+                mrun = MagnetRun.fromtdms(site, insert, file)
+            case ".csv":
+                mrun = MagnetRun.fromcsv(site, insert, file)
+            case _:
+                raise RuntimeError(
+                    f"so far file with extension in {supported_formats} are implemented"
             )
 
-    dkeys = mrun.getKeys()
+        inputs[file] = {"data": mrun}
 
-    if args.list:
-        print("Valid keys are:")
-        for key in dkeys:
-            print(key)
-        sys.exit(0)
+        if args.command == "info":
+            mrun.getMData().info()
+            if args.list:
+                print(f"{file}: valid keys")
+                for key in mrun.getKeys():
+                    print('\t', key)
 
-    if args.convert:
-        extension = os.path.splitext(args.input_file)[-1]
-        file_name = args.input_file.replace(extension, ".csv")
-        data = mrun.getMData()
-        if isinstance(data, pd.DataFrame):
-            data.to_csv(file_name, sep=str("\t"), index=False, header=True)
-        sys.exit(0)
+            if args.convert:
+                mdata = mrun.getMData()
+                data = mdata.Data
+                if mdata.Type == 0:
+                    csvfile = file.replace(f_extension, ".csv")
+                    data.to_csv(csvfile, sep=str("\t"), index=True, header=True)
+                elif mdata.Type == 1:
+                    for key, df in data.items():
+                        print(f'convert: key={key}', flush=True)
+                        csvfile = file.replace(f_extension, f"-{key}.csv")
+                        df.to_csv(csvfile, sep=str("\t"), index=True, header=True)
+
 
     # perform operations defined by options
     if args.command == "plot":

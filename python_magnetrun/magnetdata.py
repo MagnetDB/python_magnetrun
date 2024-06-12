@@ -67,70 +67,34 @@ class MagnetData:
             rawData = TdmsFile.open(name)
             # print(f"rawData: {rawData.properties}", flush=True)
             for group in rawData.groups():
-                # print(f'group: {group.name}', flush=True)
-                Groups[group.name] = []
-                for channel in group.channels():
-                    # print(f'channel: {channel.name}', flush=True)
-                    Groups[group.name].append(channel.name)
+                print(f'group: {group.name}', flush=True)
+                Groups[group.name] = {}
+                if group.name != 'Infos':
+                    Data[group.name] = {}
+                    for channel in group.channels():
+                        print(f'channel: {channel.name}', flush=True)
+                        Keys.append(f'{group.name}/{channel.name}')
 
-            Data = rawData.as_dataframe(
-                time_index=True,
-                absolute_time=True,
-                scaled_data=True,
-                arrow_dtypes=False,
-            )
+                    # arrow_dtypes=False, when pandas 2.xx
+                    Data[group.name] = group.as_dataframe(
+                        time_index=True,
+                        absolute_time=True,
+                        scaled_data=True,
+                    )
 
-            t0 = Data.index[0]
-            print(f"t0: {t0}")
-            Data["t"] = Data.apply(
-                lambda row: (row.name - t0).total_seconds(),
-                axis=1,
-            )
-
-            Keys = Data.columns.values.tolist()
-            print(f"keys: {Keys}")
-            print(f"Data: {Data.head()}")
-
-            """
-            # show how to plot data
-            first_key = list(Groups.keys())[0]
-            key = f"/\'{first_key}\'/\'{Groups[first_key][0]}\'"
-            print(f'key: {key}', flush=True)
-            ax = plt.gca()
-            Data.plot(x='t', y=key, grid=True, ax=ax)
-            plt.show()
-            plt.close()
-            """
-
-            """
-            else:
-                group = self.Data[self.Groups[y]]
-                channel = group[y]
-                samples = channel.properties["wf_samples"]
-
-                if x == "Time":
-                    increment = channel.properties["wf_increment"]
-                    time_steps = np.array([i * increment for i in range(0, samples)])
-
-                    plt.plot(time_steps, self.Data[self.Groups[y]][y], label=y)
-                    plt.ylabel(" [" + channel.properties["unit_string"] + "]")
-                    plt.xlabel("t [s]")
+                    t0 = Data[group.name].index[0]
+                    Groups[group.name] = t0
+                    print(f"t0: {t0}")
+                    Data[group.name]["t"] = Data[group.name].apply(
+                        lambda row: (row.name - t0).total_seconds(),
+                        axis=1,
+                    )
                 else:
-                    group = self.Data[self.Groups[x]]
-                    xchannel = group[x]
+                    Groups[group.name]['Infos'] = group
+            print(f"keys: {Keys}")
+            # print(f"Data: {Data.head()}")
 
-                    plt.plot(
-                        self.Data[self.Groups[x]][x],
-                        self.Data[self.Groups[y]][y],
-                        label=y,
-                    )
-                    plt.ylabel(" [" + channel.properties["unit_string"] + "]")
-                    plt.xlabel(
-                        xchannel.name + " [" + xchannel.properties["unit_string"] + "]"
-                    )
-
-            """
-        print(f"magnetdata/fromtdms: Groups={Groups}", flush=True)
+        # print(f"magnetdata/fromtdms: Groups={Groups}", flush=True)
         return cls(name, Groups, Keys, 1, Data)
 
     @classmethod
@@ -386,12 +350,12 @@ class MagnetData:
 
         if self.Type == 0:
             return self.units[key]
-        elif self.type == 1:
+        elif self.Type == 1:
             (group, channel) = key.split("/")
             # !!! do not use tdms units - they are wrong !!!
             # unit_name = self.Data[group][channel].properties["NI_UnitDescription"]
             # unit_string = self.Data[group][channel].properties["unit_string"]
-            return self.PigBrotherUnits(channel)
+            return self.PigBrotherUnits(group)
         return ()
 
     def getKeys(self):
