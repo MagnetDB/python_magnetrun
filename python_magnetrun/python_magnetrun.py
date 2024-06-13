@@ -6,9 +6,11 @@ import traceback
 
 # import logging
 
+import numpy as np
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib import gridspec
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True
@@ -16,6 +18,10 @@ matplotlib.rcParams["text.usetex"] = True
 
 
 from .MagnetRun import MagnetRun
+from .processing.smoothers import savgol
+from scipy.signal import find_peaks
+
+from tabulate import tabulate
 
 if __name__ == "__main__":
     import argparse
@@ -84,6 +90,12 @@ if __name__ == "__main__":
 
     # add stats subcommand
     parser_stats.add_argument(
+        "--detect_bkpts", help="find breaking points", action="store_true"
+    )
+    parser_stats.add_argument(
+        "--plateau", help="find plateau", action="store_true"
+    )
+    parser_stats.add_argument(
         "--save", help="save graphs (png format)", action="store_true"
     )
     parser_stats.add_argument(
@@ -114,6 +126,9 @@ if __name__ == "__main__":
     )
     parser_stats.add_argument(
         "--window", help="stopping criteria for nlopt", type=int, default=10
+    )
+    parser_stats.add_argument(
+        "--level", help="select level", type=int, default=90
     )
     args = parser.parse_args()
     print(f"args: {args}", flush=True)
@@ -390,69 +405,136 @@ if __name__ == "__main__":
             mrun = inputs[file]["data"]
             mdata = mrun.getMData()
 
-            stats.stats(mdata)
+            if not args.plateau and not args.detect_bkpts:
+                stats.stats(mdata)
 
             try:
-                if mdata.Type == 0:
-                    if args.keys:
-                        for key in args.keys:
+                if args.keys:
+                    for key in args.keys:
+                        if mdata.Type == 0:
                             print(f"pupitre: stats for {key}", flush=True)
-                            symbol = mdata.getUnitKey(key)[0]
-                            plateaus(
-                                mdata,
-                                yField=(key, symbol),
-                                twindows=args.window,
-                                threshold=args.threshold,
-                                b_threshold=args.bthreshold,
-                                duration=args.dthreshold,
-                                show=args.show,
-                                save=args.save,
-                                debug=args.debug,
-                            )
+                            (symbol, unit) = mdata.getUnitKey(key)
 
-                            pdata = nplateaus(
-                                mdata,
-                                xField=("t", "s"),
-                                yField=(key, symbol),
-                                threshold=args.threshold,
-                                num_points_threshold=600,
-                                save=args.save,
-                                show=args.show,
-                                verbose=False,
-                            )
-                            for plateau in pdata:
-                                if plateau["value"] > 1.0:
-                                    print(f"{plateau}", flush=True)
-
-                elif mdata.Type == 1:
-                    if args.keys:
-                        for key in args.keys:
+                            period = 1
+                            num_points_threshold = int(args.dthreshold/period)
+                        elif mdata.Type == 1:
                             print(f"pigbrother: stats for {key}", flush=True)
-                            symbol = mdata.getUnitKey(key)[0]
-                            plateaus(
-                                mdata,
-                                yField=(key, symbol),
-                                twindows=args.window,
-                                threshold=args.threshold,
-                                b_threshold=args.bthreshold,
-                                duration=args.dthreshold,
-                                show=args.show,
-                                save=args.save,
-                                debug=args.debug,
-                            )
+                            (symbol, unit) = mdata.getUnitKey(key)
+
+                            # compute num_points_threshold from dthresold
+                            (group, channel) = key.split("/")
+                            period = mdata.Groups[group][channel]['wf_increment']
+                            num_points_threshold = int(args.dthreshold/period)
+
+                        if args.plateau:
                             pdata = nplateaus(
                                 mdata,
-                                xField=("t", "s"),
-                                yField=(key, symbol),
+                                xField=("t", "t", "s"),
+                                yField=(key, symbol, unit),
                                 threshold=args.threshold,
-                                num_points_threshold=600,
+                                num_points_threshold=num_points_threshold,
                                 save=args.save,
                                 show=args.show,
                                 verbose=False,
                             )
-                            for plateau in pdata:
-                                if plateau["value"] > 1.0:
-                                    print(f"{plateau}", flush=True)
+                            print(f'display plateaus for {key}')
+                            df_plateaux = pd.DataFrame()
+                            for entry in ["start", "end", "value"]:
+                                df_plateaux[entry] = [ plateau[entry]for plateau in pdata]
+
+                            # rename column value using symbol and unit
+                            print(tabulate(df_plateaux, headers="keys", tablefmt="psql", showindex=False))
+
+                        if args.detect_bkpts:
+                            ts = None
+                            if mdata.Type == 0:
+                                ts = mdata.Data[key]
+                            elif mdata.Type == 1:
+                                ts = mdata.Data[group][channel]
+
+                            smoothed = savgol(y=ts.to_numpy(), window=args.window, polyorder=3, deriv=0)
+                            print(f'stats for smoothed')
+                            print(f'min: {abs(smoothed).min()}')
+                            print(f'mean: {abs(smoothed).mean()}')
+                            print(f'max: {abs(smoothed).max()}')
+                            print(f'std: {abs(smoothed).std()}')
+                            quantiles = {}
+                            for level in range(5,100,5):
+                                quantiles[str(level)] = np.quantile(abs(smoothed), level/100.)
+
+                            level = args.level
+                            max_level_50 = abs(1-abs(smoothed).max()/quantiles['50'])*100.
+                            max_level_75 = abs(1-abs(smoothed).max()/quantiles['75'])*100.
+                            print(f'max_level_50={max_level_50}, max_level_75={max_level_75}')
+                            if max_level_75 >= 1000:
+                                print(f'overwrite level: {level} -> 80')
+                                level = 80
+                            if max_level_75 <= 500:
+                                print(f'overwrite level: {level} -> 95')
+                                level = 95
+                            if max_level_75 <= 60:
+                                print(f'overwrite level: {level} -> 96')
+                                level = 96
+                            if max_level_75 <= 20:
+                                print(f'overwrite level: {level} -> 97')
+                                level = 97
+                            if max_level_75 <= 10:
+                                print(f'overwrite level: {level} -> 98')
+                                level = 98
+                            if max_level_75 <= 0.1:
+                                print(f'overwrite level: {level} -> 99')
+                                level = 99
+                            if max_level_75 <= 0.02:
+                                print(f'overwrite level: {level} -> 99.5')
+                                level = 99.5
+                            # print(f'{file}: {max_level}%', flush=True)
+
+                            smoothed_der2 = savgol(y=ts.to_numpy(), window=args.window, polyorder=3, deriv=2)
+                            print(f'stats for smoother 2nd order derivate')
+                            print(f'min: {abs(smoothed_der2).min()}')
+                            print(f'mean: {abs(smoothed_der2).mean()}')
+                            print(f'max: {abs(smoothed_der2).max()}')
+                            print(f'std: {abs(smoothed_der2).std()}')
+                            quantiles_der = {}
+                            for i in range(100):
+                                quantiles_der[str(i)] = np.quantile(abs(smoothed_der2), i/100.)
+                                print(f'{i}%: {quantiles_der[str(i)]}', flush=True)
+                            if max_level_75 <= 0.02:
+                                quantiles_der['99.5'] = np.quantile(abs(smoothed_der2), 0.995)
+
+                            fig = plt.figure(figsize=(32, 12))
+                            gs = gridspec.GridSpec(2, 1)
+
+                            ax0 = plt.subplot(gs[0])
+                            ax0.plot(ts.to_numpy(), label=key, color='blue', marker="o", linestyle='None')
+                            ax0.plot(smoothed, label="smoothed", color='red')
+                            ax0.legend()
+                            ax0.grid()
+                            ax0.set_xlabel('t [s]')
+                            ax0.set_ylabel(f'{symbol} [{unit:~P}]')
+                            ax0.set_title(f"{file}: {key}")
+
+                            ax1 = plt.subplot(gs[1])
+                            ax1.plot(smoothed_der2, label=key, color='red')
+                            ax1.legend()
+                            ax1.grid()
+                            ax1.set_xlabel('t [s]')
+                            ax1.set_title(f"Savgo filter [2nd order der]: ({level}\%: {quantiles_der[str(level)]:.3e})")
+
+                            peaks, peaks_properties = find_peaks(abs(smoothed_der2), height=quantiles_der[str(level)])
+                            if peaks.shape[0] != 0:
+                                ax0.plot(peaks, smoothed[peaks], "go", label="peaks")
+                                ax0.legend()
+
+                                ax1.plot(peaks, smoothed_der2[peaks], "go", label="peaks")
+                                ax1.legend()
+
+                            if args.save:
+                                plt.savefig(f'{file.replace(f_extension,"")}-detect_bkpts.png', dpi=300)
+                            else:
+                                plt.show()
+                            plt.close()
+
             except Exception as e:
                 print(traceback.format_exc())
                 pass

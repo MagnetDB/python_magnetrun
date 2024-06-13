@@ -16,29 +16,28 @@ matplotlib.rcParams["text.usetex"] = True
 
 
 # TODO use MagnetData instead of df
-def plot_vs_time(df: pd.DataFrame, items: list, show: bool = False, wd: str | None = None):
-    print(f"plot_vs_time: items={items}")
+def plot_vs_time(df: pd.DataFrame, items: list, show: bool = False, wd: str | None = None, ax=None, close: bool=False):
+    print(f"plot_vs_time: items={items}, close={close}", flush=True)
     keys = df.columns.values.tolist()
 
     ax = plt.gca()
     # loop over key
     for key in items:
         if key in keys:
-            df.plot(x="Time", y=key, grid=True, ax=ax)
+            df.plot(x="t", y=key, grid=True, ax=ax)
         else:
-            print(f"unknown key: {key}")
-            print(f"valid keys: {keys}")
-            sys.exit(1)
-    if show:
-        plt.show()
-    else:
-        imagefile = "Fields"  # input_file.replace(".txt", "")
-        filename = f"{imagefile}_vs_time.png"
-        if wd is not None:
-            filename = f"{wd}/{filename}"
-        print(f"save to file - {filename}")
-        plt.savefig(filename, dpi=300)
-    plt.close()
+            raise RuntimeError(f"unknown key: {key}")
+    if close:
+        if show:
+            plt.show()
+        else:
+            imagefile = "Fields"  # input_file.replace(".txt", "")
+            filename = f"{imagefile}_vs_time.png"
+            if wd is not None:
+                filename = f"{wd}/{filename}"
+            print(f"save to file - {filename}")
+            plt.savefig(filename, dpi=300)
+        plt.close()
 
 
 def plot_key_vs_key(df, pairs, show: bool = False, wd: str | None = None):

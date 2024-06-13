@@ -9,7 +9,7 @@ from ..magnetdata import MagnetData
 from .sequence import list_duplicates_of, list_sequence
 
 from datetime import timedelta
-
+from tabulate import tabulate
 
 def tuple_type(strings: str) -> tuple:
     strings = strings.replace("(", "").replace(")", "")
@@ -31,7 +31,7 @@ def nplateaus(
     detect plateau vs index aka time
     """
 
-    print(f"nplateaus: xField={xField}, yField={yField}", flush=True)
+    print(f"nplateaus: xField={xField}, yField={yField}, threshold={threshold}, num_points_threshold={num_points_threshold}", flush=True)
 
     df = pd.DataFrame()
     if not isinstance(Data.Data, pd.DataFrame):
@@ -39,15 +39,33 @@ def nplateaus(
             (group, channel) = yField[0].split("/")
             df = Data.getData([f"{group}/t", yField[0]])
             ykey = channel
+
     else:
         df = Data.getData()
         ykey = yField[0]
 
+    ysymbol = yField[1]
+    yunit = yField[2]
+
+    if verbose:
+        print(f'nplateau for {ykey}: type=={type(df[ykey].describe())}', flush=True)
+        print(df[ykey].describe(), flush=True)
+
     # filter and group plateaus
     max_difference = threshold
     min_number_points = num_points_threshold
+
     # group by maximum difference
-    group_ids = (abs(df[ykey].diff(1)) > max_difference).cumsum()
+    df['abs'] = df[ykey].diff(1).abs()
+    heuristic = df["abs"].describe().loc["50%"]
+    if max_difference <= heuristic:
+        print(f'!!! overwrite max_difference: {max_difference} -> {heuristic}')
+        max_difference = heuristic
+
+    # group_ids = (abs(df[ykey].diff(period)) > max_difference).cumsum()
+    group_ids = (df['abs'] > max_difference).cumsum()
+    # print(f'group_ids: type={type(group_ids)}')
+    # print(f'ngroups: {df.groupby(group_ids).ngroups}')
     plateau_idx = 0
 
     plt.plot(
@@ -64,41 +82,38 @@ def nplateaus(
     for group_idx, group_data in df.groupby(group_ids):
         # filter non-plateaus by min number of points
         if len(group_data) < min_number_points:
+            # print(f"ignore group_data: {len(group_data)}")
             continue
 
         _start = min(group_data[xField[0]].iloc[0], group_data[xField[0]].iloc[-1])
         _end = max(group_data[xField[0]].iloc[0], group_data[xField[0]].iloc[-1])
         _time = group_data[xField[0]].mean()
+
         _value = group_data[ykey].mean()
         pdata = {"start": _start, "end": _end, "value": _value}
-        if abs(_start - _end) <= 0.1:
-            print(f"ignore plateau: {pdata}")
-            continue
 
         plateau_idx += 1
-
-        plt.plot(
-            group_data[xField[0]],
-            group_data[ykey],
-            label=f"Plateau-{plateau_idx} {yField[0]}={_value:.2e} {yField[1]}",
-            marker="x",
-            lw=1.5,
-            ms=5.0,
-        )
-
         plateau_data.append(pdata)
         if verbose:
             print(
                 f"plateau[{plateau_idx}]: {plateau_data[-1]}, duration={abs(_start - _end)} {xField[1]}",
                 flush=True,
             )
+
+        plt.plot(
+            group_data[xField[0]],
+            group_data[ykey],
+            label=f"Plateau-{plateau_idx} {ykey}={_value:.2e} {yunit}",
+            marker="x",
+            lw=1.5,
+            ms=5.0,
+        )
+
         plt.annotate(
             f"{_value:.2e}",
             (_time, _value * (1 + 0.01)),
             ha="center",
         )
-    if verbose:
-        print(f"detected plateaux: {plateau_idx}", flush=True)
 
     plt.legend()
     plt.grid(b=True)
@@ -107,8 +122,8 @@ def nplateaus(
     lname = lname.replace(".txt", "")
     lname = lname.split("/")
     plt.title(lname[-1])
-    plt.ylabel(f"{ykey} [{yField[1]}]")
-    plt.xlabel(f"{xField[0]} [{xField[1]}]")
+    plt.ylabel(f"{ykey} [{yunit:~P}]")
+    plt.xlabel(f"{xField[1]} [{xField[2]}]")
     plt.grid(True)
 
     if show:
@@ -118,12 +133,52 @@ def nplateaus(
 
     plt.close()
 
+    if verbose:
+        print(f"detected plateaux: {plateau_idx}", flush=True)
+
+    drop_plateau = []
+    for i in range(1,len(plateau_data)):
+        _start = plateau_data[i-1]["start"]
+        _end = plateau_data[i-1]["end"]
+        _value = plateau_data[i-1]["value"]
+        # print(f'plateau[{i-1}]: _start={_start}, _end={plateau_data[i-1]["end"]}, _value={_value}')
+
+        if (plateau_data[i]["start"] - _end ) == 1:
+            _value_diff = abs(_value / plateau_data[i]["value"] -1)
+            if _value_diff < 1.e-3:
+                # get new value
+                new_length = (plateau_data[i]["end"]-_start)
+                mean_value = _value * (_end - _start)
+                mean_value += plateau_data[i]["value"] * (plateau_data[i]["end"] - plateau_data[i]["start"])
+
+                # add mean for intermediate time
+                mean_value += (_value + plateau_data[i]["value"]) /2.
+
+                mean_value /= new_length
+                # print(((_end - _start)+(plateau_data[i]["end"] - plateau_data[i]["start"]) ) / new_length)
+                # print(f'concat plateau {i-1} and {i}: {_value_diff}, new_value={mean_value}, _value={_value}, _value={plateau_data[i]["value"]}')
+
+                # store new_data
+                plateau_data[i-1]["end"] = plateau_data[i]["end"]
+                plateau_data[i-1]["value"] = mean_value
+                # print(f'plateau[{i-1}]: _start={_start}, _end={plateau_data[i-1]["end"]}, _value={plateau_data[i-1]["value"]} **')
+
+                # mark to plateau has to be dropped
+                drop_plateau.append(i)
+
+    if drop_plateau:
+        print(f'{len(drop_plateau)} plateau marked has to be concatened')
+
+
+        for i in reversed(drop_plateau):
+            del(plateau_data[i])
+
     return plateau_data
 
 
 def plateaus(
     Data: MagnetData,
-    yField: tuple = ("Field", "T"),
+    yField: tuple = ("Field", "B", "T"),
     twindows=6,
     threshold=1.0e-4,
     b_threshold=1.0e-3,
@@ -144,6 +199,9 @@ def plateaus(
     else:
         df = Data.getData()
         ykey = yField[0]
+
+    ysymbol = yField[1]
+    yunit = yField[2]
 
     ax = plt.gca()
 
@@ -302,7 +360,7 @@ def plateaus(
 
     from tabulate import tabulate
 
-    headers = ["start", "end", "duration", "B0[T]", "B1[T]", "\u0394B/B[%]"]
+    headers = ["start", "end", "duration", f"{ysymbol}0[{yunit}]", f"{ysymbol}1[{yunit}]", "\u0394[%]"]
     print(tabulate(tables, headers, tablefmt="simple"), "\n")
 
     return 0

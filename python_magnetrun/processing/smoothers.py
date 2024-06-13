@@ -39,7 +39,7 @@ def savgol(y: np.array, window: float, polyorder: int = 3, deriv=0) -> np.array:
     """
     from scipy.signal import savgol_filter
 
-    return savgol_filter(y, windows_length=window, polyorder=polyorder, deriv=deriv)
+    return savgol_filter(y, window_length=window, polyorder=polyorder, deriv=deriv)
 
 
 # Defining the bell shaped kernel function - used for plotting later on
