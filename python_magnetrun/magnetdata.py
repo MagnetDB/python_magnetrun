@@ -67,13 +67,14 @@ class MagnetData:
             rawData = TdmsFile.open(name)
             # print(f"rawData: {rawData.properties}", flush=True)
             for group in rawData.groups():
-                print(f'group: {group.name}', flush=True)
+                # print(f'group: {group.name}', flush=True)
                 Groups[group.name] = {}
                 if group.name != 'Infos':
                     Data[group.name] = {}
                     for channel in group.channels():
-                        print(f'channel: {channel.name}', flush=True)
+                        # print(f'channel: {channel.name}', flush=True)
                         Keys.append(f'{group.name}/{channel.name}')
+                        Groups[group.name][channel.name] = channel.properties
 
                     # arrow_dtypes=False, when pandas 2.xx
                     Data[group.name] = group.as_dataframe(
@@ -83,16 +84,15 @@ class MagnetData:
                     )
 
                     t0 = Data[group.name].index[0]
-                    Groups[group.name] = t0
-                    print(f"t0: {t0}")
+                    Groups[group.name]['t0'] = t0
+                    # print(f"t0: {t0}")
                     Data[group.name]["t"] = Data[group.name].apply(
                         lambda row: (row.name - t0).total_seconds(),
                         axis=1,
                     )
                 else:
                     Groups[group.name]['Infos'] = group
-            print(f"keys: {Keys}")
-            # print(f"Data: {Data.head()}")
+            # print(f"keys: {Keys}")
 
         # print(f"magnetdata/fromtdms: Groups={Groups}", flush=True)
         return cls(name, Groups, Keys, 1, Data)
@@ -294,7 +294,7 @@ class MagnetData:
                     self.units[entry] = self.PigBrotherUnits(group)
             pass
 
-        elif self.type > 1:
+        elif self.Type > 1:
             print(f"magnetdata/getUnits: ignore for type={self.Type}")
             pass
 
@@ -335,14 +335,6 @@ class MagnetData:
                 print(f"{key}: symbol={symbol}, unit={unit:~P}", flush=True)
 
     def getUnitKey(self, key: str) -> tuple:
-        if self.Type != 1:
-            if not self.units:
-                print("units not defined - create", flush=True)
-                self.Units()
-                # print(f"units: {self.units}", flush=True)
-        else:
-            print(f"{key}: get unit from tdms table - not implemented")
-
         if key not in self.Keys:
             raise RuntimeError(
                 f"{key} not defined in data - availabe keys are {self.Keys}"
@@ -950,6 +942,16 @@ class MagnetData:
 
         # TODO for tdms display Infos group
         if self.Type == 1:
+            from collections import OrderedDict
+            for group, values in self.Groups.items():
+                print(f'group={group}')
+                for item in values:
+                    if isinstance(values[item], dict) or isinstance(values[item], OrderedDict):
+                        for sitem in values[item]:
+                            print(f'  {sitem}: {values[item][sitem]} **')
+                    else:
+                        print(f'  {item}: {values[item]}')
+            """
             with TdmsFile.open(self.FileName) as rawData:
                 print(f'Infos: {self.Groups["Infos"]}')
                 for group in rawData.groups():
@@ -958,6 +960,7 @@ class MagnetData:
                         print(f"\t* {channel.name}: properties")
                         for entry, value in channel.properties.items():
                             print(f"\t\t{entry}={value}")
+            """
 
-        print("stats:")
-        self.stats()
+        # print("stats:")
+        # self.stats()
