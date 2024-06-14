@@ -59,15 +59,30 @@ python -m python_magnetrun.examples.get-record 'python_magnetrun/txt/M8*.txt' se
 python -m python_magnetrun.examples.get-record 'python_magnetrun/txt/M*.txt' plot --xfield timestamp --fields teb --show
 ```
 
-- For all pupitre files, perform plateaux detections:
+- For all `pupitre` files, perform plateaux detections:
 
 ```bash
 python -m python_magnetrun.python_magnetrun ~/M9_Overview_240430*.tdms  stats --show --keys Courants_Alimentations/Référence_A1 --threshold 1
 ```
 
+- Plot `pigbrother` and `pupitre` current for Helices insert:
+
+```bash
+python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms ~/M9_2024.05.09---16_34_03.txt \
+    plot --vs_time Courants_Alimentations/Courant_GR1 --vs_time IH
+```
+
+- Detect Breaking points and anomalies:
+
+Example is functional, but the results are good. The method does not work correctly for other examples
+
+```bash
+python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms  stats --show --keys Courants_Alimentations/Référence_GR1 --detect_bkpts --sav
+```
+
 # INSTALL
 
-To install in a python virtual env on linux
+To install in a python virtual env on Linux
 
 ```bash
 python -m venv --system-site-packages magnetrun-env
@@ -87,7 +102,7 @@ To quit the virtual env, run `deactivate`.
 
 
 
-# TODO
+# To-do
 
 - Rewrite txt2csv to use methods in `utils` and `plots`
 - For `tdms` to pandas see
