@@ -25,26 +25,29 @@ pint = "*"
 requests = "*"
 statsmodel = "*"
 tabulate = "*"
-natsort
-nlopt
+natsort = "*"
+nlopt = "*"
 
-[tool.poetry.optional-dependencies]
-system = [
-  clawpack = "*"
-  ht = "*"
-]
-signal = [
-  ruptures = "*"
-]
+[tool.poetry.groups.system]
+optional = true
+
+[tool.poetry.groups.system.dependencies]
+clawpack = "*"
+ht = "*"
+
+[tool.poetry.groups.signal]
+optional = true
+[tool.poetry.groups.signal.dependencies]
+ruptures = "*"
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
 
 [tools.poetry.doc-dependencies]
-sphinx
-sphinx-rtd-theme
-sphinx-mermaid
-myst_parser
+sphinx = "*"
+sphinx-rtd-theme = "*"
+sphinx-mermaid = "*"
+myst_parser = "*"
 
 
 
