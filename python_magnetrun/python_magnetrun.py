@@ -1,8 +1,13 @@
 """Main module."""
 
 import os
-import sys
 import traceback
+
+from .MagnetRun import MagnetRun
+from .processing.smoothers import savgol
+from scipy.signal import find_peaks
+
+from tabulate import tabulate
 
 # import logging
 
@@ -17,11 +22,106 @@ matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 
 
-from .MagnetRun import MagnetRun
-from .processing.smoothers import savgol
-from scipy.signal import find_peaks
+def plot_bkpts(
+    file: str,
+    channel: str,
+    symbol: str,
+    unit: str,
+    ts: pd.tseries,
+    smoothed: np.ndarray,
+    smoothed_der1: np.ndarray,
+    smoothed_der2: np.ndarray,
+    quantiles_der: float,
+    peaks: np.ndarray,
+    ignore_peaks: list[int],
+    anomalies: list[int],
+    save: bool = False,
+):
+    """_summary_
 
-from tabulate import tabulate
+    :param file: _description_
+    :type file: str
+    :param channel: _description_
+    :type channel: str
+    :param symbol: _description_
+    :type symbol: str
+    :param unit: _description_
+    :type unit: str
+    :param ts: _description_
+    :type ts: pd.tseries
+    :param smoothed: _description_
+    :type smoothed: np.ndarray
+    :param smoothed_der1: _description_
+    :type smoothed_der1: np.ndarray
+    :param smoothed_der2: _description_
+    :type smoothed_der2: np.ndarray
+    :param quantiles_der: _description_
+    :type quantiles_der: float
+    :param peaks: _description_
+    :type peaks: np.ndarray
+    :param ignore_peaks: _description_
+    :type ignore_peaks: list[int]
+    :param anomalies: _description_
+    :type anomalies: list[int]
+    :param save: _description_, defaults to False
+    :type save: bool, optional
+    """
+    fig = plt.figure(figsize=(16, 12))
+    gs = gridspec.GridSpec(3, 1)
+
+    ax0 = plt.subplot(gs[0])
+    ax0.plot(ts.to_numpy(), label=key, color="blue", marker="o", linestyle="None")
+    ax0.plot(smoothed, label="smoothed", color="red")
+    ax0.legend()
+    ax0.grid()
+    # ax0.set_xlabel('t [s]')
+    ax0.set_ylabel(f"{symbol} [{unit:~P}]")
+    ax0.set_title(f"{file}: {key}")
+
+    ax1 = plt.subplot(gs[1])
+    ax1.plot(smoothed_der2, label=key, color="red")
+    ax1.legend()
+    ax1.grid()
+    # ax1.set_xlabel('t [s]')
+    ax1.set_title(f"Savgo filter [2nd order der]: ({level}\%: {quantiles_der:.3e})")
+
+    ax2 = plt.subplot(gs[2])
+    std_ts = ts.rolling(window=args.window).std()
+    ax2.plot(std_ts.to_numpy(), label="rolling std", color="blue")
+    ax2.legend()
+    ax2.grid()
+    ax2.set_xlabel("t [s]")
+    ax2.set_title("Rolling std")
+
+    if peaks.shape[0]:
+        ax0.plot(peaks, smoothed[peaks], "go", label="peaks")
+        ax0.legend()
+
+        ax1.plot(peaks, smoothed_der2[peaks], "go", label="peaks")
+        ax1.legend()
+
+    if ignore_peaks:
+        ax0.plot(ignore_peaks, smoothed[ignore_peaks], "yo", label="ignore peaks")
+        ax0.legend()
+
+        ax1.plot(ignore_peaks, smoothed_der2[ignore_peaks], "yo", label="ignore peaks")
+        ax1.legend()
+
+    if anomalies:
+        ax0.plot(anomalies, smoothed[anomalies], "ro", label="anomalies")
+        ax0.legend()
+
+        ax1.plot(anomalies, smoothed_der2[anomalies], "ro", label="anomalies")
+        ax1.legend()
+
+    if save:
+        plt.savefig(
+            f'{file.replace(f_extension,"")}-{channel}-detect_bkpts.png', dpi=300
+        )
+    else:
+        plt.show()
+    plt.close()
+
 
 if __name__ == "__main__":
     import argparse
@@ -47,6 +147,7 @@ if __name__ == "__main__":
     parser_info.add_argument("--convert", help="save to csv", action="store_true")
 
     # add plot subcommand
+    parser_plot.add_argument("--normalize", help="normalize data before plot", action="store_true")
     parser_plot.add_argument(
         "--vs_time",
         help='select key(s) to plot (ex. "Field [Ucoil1]")',
@@ -92,9 +193,7 @@ if __name__ == "__main__":
     parser_stats.add_argument(
         "--detect_bkpts", help="find breaking points", action="store_true"
     )
-    parser_stats.add_argument(
-        "--plateau", help="find plateau", action="store_true"
-    )
+    parser_stats.add_argument("--plateau", help="find plateau", action="store_true")
     parser_stats.add_argument(
         "--save", help="save graphs (png format)", action="store_true"
     )
@@ -127,9 +226,7 @@ if __name__ == "__main__":
     parser_stats.add_argument(
         "--window", help="stopping criteria for nlopt", type=int, default=10
     )
-    parser_stats.add_argument(
-        "--level", help="select level", type=int, default=90
-    )
+    parser_stats.add_argument("--level", help="select level", type=int, default=90)
     args = parser.parse_args()
     print(f"args: {args}", flush=True)
 
@@ -162,7 +259,7 @@ if __name__ == "__main__":
                 index = filename.index("_")
                 site = filename[0:index]
                 print(f"site detected: {site}")
-            except:
+            except Exception:
                 print("no site detected - use args.site argument instead")
                 pass
 
@@ -176,33 +273,31 @@ if __name__ == "__main__":
             case _:
                 raise RuntimeError(
                     f"so far file with extension in {supported_formats} are implemented"
-            )
+                )
 
         inputs[file] = {"data": mrun}
 
         if args.command == "info":
-            mrun.getMData().info()
+            mdata = mrun.getMData()
+            mdata.info()
             if args.list:
                 print(f"{file}: valid keys")
                 for key in mrun.getKeys():
-                    print('\t', key)
+                    print("\t", key)
 
             if args.convert:
-                mdata = mrun.getMData()
                 data = mdata.Data
                 if mdata.Type == 0:
                     csvfile = file.replace(f_extension, ".csv")
                     data.to_csv(csvfile, sep=str("\t"), index=True, header=True)
                 elif mdata.Type == 1:
                     for key, df in data.items():
-                        print(f'convert: key={key}', flush=True)
+                        print(f"convert: key={key}", flush=True)
                         csvfile = file.replace(f_extension, f"-{key}.csv")
                         df.to_csv(csvfile, sep=str("\t"), index=True, header=True)
 
-
     # perform operations defined by options
     if args.command == "plot":
-
         if args.vs_time:
             assert len(args.vs_time) == len(
                 extensions
@@ -212,13 +307,21 @@ if __name__ == "__main__":
 
             items = args.vs_time
             # print(f"items={items}", flush=True)
+            title = ""
             for file in args.input_file:
+                title = os.path.basename(file)
                 f_extension = os.path.splitext(file)[-1]
                 plot_args = items[extensions[f_extension][0]]
-                mrun = inputs[file]["data"]
+                mrun: MagnetRun = inputs[file]["data"]
+                mdata = mrun.getMData()
                 for key in plot_args:
-                    print(f"plot key={key}, type={type(key)}", flush=True)
-                    mrun.getMData().plotData(x="t", y=key, ax=my_ax)
+                    # print(f"plot key={key}, type={type(key)}", flush=True)
+                    mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
+
+                if args.normalize:
+                    plt.ylabel('')
+
+            plt.title(title)
             if not args.save:
                 plt.show()
             else:
@@ -240,7 +343,8 @@ if __name__ == "__main__":
             for file in args.input_file:
                 f_extension = os.path.splitext(file)[-1]
                 plot_args = pairs[extensions[f_extension][0]]
-                mrun = inputs[file]["data"]
+                mrun: MagnetRun = inputs[file]["data"]
+                mdata = mrun.getMData()
 
                 for pair in plot_args:
                     print(f"pair={pair}")
@@ -250,7 +354,7 @@ if __name__ == "__main__":
                         raise RuntimeError(f"invalid pair of keys:{pair}")
                     key1 = items[0]
                     key2 = items[1]
-                    mrun.plotData(x=key1, y=key2, ax=my_ax)
+                    mdata.plotData(x=key1, y=key2, ax=my_ax)
 
             if not args.save:
                 plt.show()
@@ -271,7 +375,7 @@ if __name__ == "__main__":
             print(f"Select data at {times}")
             for file in inputs:
                 f_extension = os.path.splitext(file)[-1]
-                mrun = inputs[file]["data"]
+                mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
                 select_args = times[extensions[f_extension][0]]
                 select_args_str = "_at"
@@ -301,7 +405,7 @@ if __name__ == "__main__":
             timerange = args.output_timerange.split(";")
             for file in inputs:
                 f_extension = os.path.splitext(file)[-1]
-                mrun = inputs[file]["data"]
+                mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
                 select_args = args.output_timerange[extensions[f_extension][0]]
                 for item in select_args:
@@ -317,14 +421,14 @@ if __name__ == "__main__":
 
                     if mdata.Type == 0:
                         selected_df = mdata.extractTimeData(timerange)
-                        if not selected_df is None:
+                        if selected_df is not None:
                             selected_df.to_csv(
                                 file_name, sep=str("\t"), index=False, header=True
                             )
                     elif mdata.Type == 1:
                         for group in mdata.Data:
                             selected_df = mdata.extractTimeData(timerange, group)
-                            if not selected_df is None:
+                            if selected_df is not None:
                                 selected_df.to_csv(
                                     file_name, sep=str("\t"), index=False, header=True
                                 )
@@ -336,7 +440,7 @@ if __name__ == "__main__":
 
             for file in inputs:
                 f_extension = os.path.splitext(file)[-1]
-                mrun = inputs[file]["data"]
+                mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
                 select_args = args.output_key[extensions[f_extension][0]]
                 for item in select_args:
@@ -350,7 +454,7 @@ if __name__ == "__main__":
                     file_name = file_name + "_vs_Time.csv"
 
                     selected_df = mdata.extractData(keys)
-                    if not selected_df is None:
+                    if selected_df is not None:
                         selected_df.to_csv(
                             file_name, sep=str("\t"), index=False, header=True
                         )
@@ -361,7 +465,7 @@ if __name__ == "__main__":
             ), f"expected {len(extensions)} extract_pairkeys arguments - got {len(args.extract_pairkeys)} "
             for file in inputs:
                 f_extension = os.path.splitext(file)[-1]
-                mrun = inputs[file]["data"]
+                mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
                 select_args = args.extract_pairkeys[extensions[f_extension][0]]
                 for item in select_args:
@@ -372,9 +476,9 @@ if __name__ == "__main__":
                             raise RuntimeError(f"invalid pair of keys: {pair}")
                         key1 = items[0]
                         key2 = items[1]
-                        if not mdata is None:
+                        if mdata is not None:
                             newdf = mdata.extractData([key1, key2])
-                            if not newdf is None:
+                            if newdf is not None:
                                 # Remove line with I=0
                                 newdf = newdf[newdf[key1] != 0]
                                 newdf = newdf[newdf[key2] != 0]
@@ -386,7 +490,7 @@ if __name__ == "__main__":
 
         if args.convert:
             for file in inputs:
-                mrun = inputs[file]["data"]
+                mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
 
                 extension = os.path.splitext(file)[-1]
@@ -396,13 +500,15 @@ if __name__ == "__main__":
 
     if args.command == "stats":
         from .processing import stats
-        from .utils.plateaux import plateaus, nplateaus
+
+        if args.plateau:
+            from .utils.plateaux import nplateaus
 
         print("Stats:")
         for file in inputs:
             print(file)
             extension = os.path.splitext(file)[-1]
-            mrun = inputs[file]["data"]
+            mrun: MagnetRun = inputs[file]["data"]
             mdata = mrun.getMData()
 
             if not args.plateau and not args.detect_bkpts:
@@ -416,15 +522,15 @@ if __name__ == "__main__":
                             (symbol, unit) = mdata.getUnitKey(key)
 
                             period = 1
-                            num_points_threshold = int(args.dthreshold/period)
+                            num_points_threshold = int(args.dthreshold / period)
                         elif mdata.Type == 1:
                             print(f"pigbrother: stats for {key}", flush=True)
                             (symbol, unit) = mdata.getUnitKey(key)
 
                             # compute num_points_threshold from dthresold
                             (group, channel) = key.split("/")
-                            period = mdata.Groups[group][channel]['wf_increment']
-                            num_points_threshold = int(args.dthreshold/period)
+                            period = mdata.Groups[group][channel]["wf_increment"]
+                            num_points_threshold = int(args.dthreshold / period)
 
                         if args.plateau:
                             pdata = nplateaus(
@@ -437,13 +543,22 @@ if __name__ == "__main__":
                                 show=args.show,
                                 verbose=False,
                             )
-                            print(f'display plateaus for {key}')
+                            print(f"display plateaus for {key}")
                             df_plateaux = pd.DataFrame()
                             for entry in ["start", "end", "value"]:
-                                df_plateaux[entry] = [ plateau[entry]for plateau in pdata]
+                                df_plateaux[entry] = [
+                                    plateau[entry] for plateau in pdata
+                                ]
 
                             # rename column value using symbol and unit
-                            print(tabulate(df_plateaux, headers="keys", tablefmt="psql", showindex=False))
+                            print(
+                                tabulate(
+                                    df_plateaux,
+                                    headers="keys",
+                                    tablefmt="psql",
+                                    showindex=False,
+                                )
+                            )
 
                         if args.detect_bkpts:
                             ts = None
@@ -452,89 +567,199 @@ if __name__ == "__main__":
                             elif mdata.Type == 1:
                                 ts = mdata.Data[group][channel]
 
-                            smoothed = savgol(y=ts.to_numpy(), window=args.window, polyorder=3, deriv=0)
-                            print(f'stats for smoothed')
-                            print(f'min: {abs(smoothed).min()}')
-                            print(f'mean: {abs(smoothed).mean()}')
-                            print(f'max: {abs(smoothed).max()}')
-                            print(f'std: {abs(smoothed).std()}')
+                            smoothed = savgol(
+                                y=ts.to_numpy(),
+                                window=args.window,
+                                polyorder=3,
+                                deriv=0,
+                            )
+                            print(f"{file}: stats for smoothed")
+                            print(f"min: {abs(smoothed).min()}")
+                            print(f"mean: {abs(smoothed).mean()}")
+                            print(f"max: {abs(smoothed).max()}")
+                            print(f"std: {abs(smoothed).std()}")
                             quantiles = {}
-                            for level in range(5,100,5):
-                                quantiles[str(level)] = np.quantile(abs(smoothed), level/100.)
+                            for level in range(5, 100, 5):
+                                quantiles[str(level)] = np.quantile(
+                                    abs(smoothed), level / 100.0
+                                )
 
                             level = args.level
-                            max_level_50 = abs(1-abs(smoothed).max()/quantiles['50'])*100.
-                            max_level_75 = abs(1-abs(smoothed).max()/quantiles['75'])*100.
-                            print(f'max_level_50={max_level_50}, max_level_75={max_level_75}')
+                            max_level_50 = (
+                                abs(1 - abs(smoothed).max() / quantiles["50"]) * 100.0
+                            )
+                            max_level_75 = (
+                                abs(1 - abs(smoothed).max() / quantiles["75"]) * 100.0
+                            )
+                            print(
+                                f"max_level_50={max_level_50}, max_level_75={max_level_75}"
+                            )
+                            if max_level_75 >= 5000:
+                                print(f"overwrite level: {level} -> 40")
+                                level = 40
                             if max_level_75 >= 1000:
-                                print(f'overwrite level: {level} -> 80')
+                                print(f"overwrite level: {level} -> 80")
                                 level = 80
                             if max_level_75 <= 500:
-                                print(f'overwrite level: {level} -> 95')
+                                print(f"overwrite level: {level} -> 95")
                                 level = 95
                             if max_level_75 <= 60:
-                                print(f'overwrite level: {level} -> 96')
+                                print(f"overwrite level: {level} -> 96")
                                 level = 96
                             if max_level_75 <= 20:
-                                print(f'overwrite level: {level} -> 97')
+                                print(f"overwrite level: {level} -> 97")
                                 level = 97
                             if max_level_75 <= 10:
-                                print(f'overwrite level: {level} -> 98')
+                                print(f"overwrite level: {level} -> 98")
                                 level = 98
                             if max_level_75 <= 0.1:
-                                print(f'overwrite level: {level} -> 99')
+                                print(f"overwrite level: {level} -> 99")
                                 level = 99
                             if max_level_75 <= 0.02:
-                                print(f'overwrite level: {level} -> 99.5')
-                                level = 99.5
+                                print(f"overwrite level: {level} -> 99.7")
+                                level = 99.7
                             # print(f'{file}: {max_level}%', flush=True)
 
-                            smoothed_der2 = savgol(y=ts.to_numpy(), window=args.window, polyorder=3, deriv=2)
-                            print(f'stats for smoother 2nd order derivate')
-                            print(f'min: {abs(smoothed_der2).min()}')
-                            print(f'mean: {abs(smoothed_der2).mean()}')
-                            print(f'max: {abs(smoothed_der2).max()}')
-                            print(f'std: {abs(smoothed_der2).std()}')
-                            quantiles_der = {}
-                            for i in range(100):
-                                quantiles_der[str(i)] = np.quantile(abs(smoothed_der2), i/100.)
-                                print(f'{i}%: {quantiles_der[str(i)]}', flush=True)
-                            if max_level_75 <= 0.02:
-                                quantiles_der['99.5'] = np.quantile(abs(smoothed_der2), 0.995)
+                            smoothed_der1 = savgol(
+                                y=ts.to_numpy(),
+                                window=args.window,
+                                polyorder=3,
+                                deriv=1,
+                            )
+                            smoothed_der2 = savgol(
+                                y=ts.to_numpy(),
+                                window=args.window,
+                                polyorder=3,
+                                deriv=2,
+                            )
+                            print(f"{file}: stats for smoother 2nd order derivate")
+                            print(f"min: {abs(smoothed_der2).min()}")
+                            print(f"mean: {abs(smoothed_der2).mean()}")
+                            print(f"max: {abs(smoothed_der2).max()}")
+                            print(f"std: {abs(smoothed_der2).std()}")
+                            quantiles_der = np.quantile(
+                                abs(smoothed_der2), level / 100.0
+                            )
 
-                            fig = plt.figure(figsize=(32, 12))
-                            gs = gridspec.GridSpec(2, 1)
+                            # find peak of der2
+                            peaks, peaks_properties = find_peaks(
+                                abs(smoothed_der2), height=quantiles_der
+                            )
 
-                            ax0 = plt.subplot(gs[0])
-                            ax0.plot(ts.to_numpy(), label=key, color='blue', marker="o", linestyle='None')
-                            ax0.plot(smoothed, label="smoothed", color='red')
-                            ax0.legend()
-                            ax0.grid()
-                            ax0.set_xlabel('t [s]')
-                            ax0.set_ylabel(f'{symbol} [{unit:~P}]')
-                            ax0.set_title(f"{file}: {key}")
+                            # get peaks where std is above a giventhresold
+                            # filtered_std_df = std_ts.gt(10)
+                            ignore_peaks = []
+                            """
+                            for peak in peaks:
+                                # print(f'peak={peak}', flush=True)
+                                num = peak-1  # args.window
+                                before = smoothed_der1[num]
+                                num = peak+1 #args.window
+                                after = smoothed_der1[num]
+                                diff = abs(before-after)
+                                # print(f'{peak}: before={before} after={after} diff={diff}', end="")
+                                if diff <= 1:
+                                    # print(' **')
+                                    ignore_peaks.append(peak)
+                                print(flush=True)
+                            """
+                            print(
+                                f"{channel}: peaks={peaks.shape[0]}, ignore_peaks={len(ignore_peaks)}"
+                            )
 
-                            ax1 = plt.subplot(gs[1])
-                            ax1.plot(smoothed_der2, label=key, color='red')
-                            ax1.legend()
-                            ax1.grid()
-                            ax1.set_xlabel('t [s]')
-                            ax1.set_title(f"Savgo filter [2nd order der]: ({level}\%: {quantiles_der[str(level)]:.3e})")
+                            plot_bkpts(
+                                file,
+                                channel,
+                                symbol,
+                                unit,
+                                ts,
+                                smoothed,
+                                smoothed_der1,
+                                smoothed_der2,
+                                quantiles_der,
+                                peaks,
+                                ignore_peaks,
+                                [],
+                                args.save,
+                            )
 
-                            peaks, peaks_properties = find_peaks(abs(smoothed_der2), height=quantiles_der[str(level)])
-                            if peaks.shape[0] != 0:
-                                ax0.plot(peaks, smoothed[peaks], "go", label="peaks")
-                                ax0.legend()
+                            if mdata.Type == 1:
+                                # select key from GR1 or GR2
+                                selected = [
+                                    t
+                                    for t in mdata.Keys
+                                    if t.startswith("Tensions_Aimant/Interne")
+                                ]
+                                print(f"selected: {selected}")
+                                for key in selected:
+                                    (symbol, unit) = mdata.getUnitKey(key)
 
-                                ax1.plot(peaks, smoothed_der2[peaks], "go", label="peaks")
-                                ax1.legend()
+                                    (group, channel) = key.split("/")
+                                    period = mdata.Groups[group][channel][
+                                        "wf_increment"
+                                    ]
+                                    num_points_threshold = int(args.dthreshold / period)
 
-                            if args.save:
-                                plt.savefig(f'{file.replace(f_extension,"")}-detect_bkpts.png', dpi=300)
-                            else:
-                                plt.show()
-                            plt.close()
+                                    ts = mdata.Data[group][channel]
+                                    smoothed = savgol(
+                                        y=ts.to_numpy(),
+                                        window=args.window,
+                                        polyorder=3,
+                                        deriv=0,
+                                    )
+                                    smoothed_der1 = savgol(
+                                        y=ts.to_numpy(),
+                                        window=args.window,
+                                        polyorder=3,
+                                        deriv=1,
+                                    )
+                                    smoothed_der2 = savgol(
+                                        y=ts.to_numpy(),
+                                        window=args.window,
+                                        polyorder=3,
+                                        deriv=2,
+                                    )
+                                    quantiles_der = np.quantile(
+                                        abs(smoothed_der2), level / 100.0
+                                    )
+                                    cpeaks, cpeaks_properties = find_peaks(
+                                        abs(smoothed_der2), height=quantiles_der
+                                    )
 
-            except Exception as e:
+                                    if cpeaks.shape[0] != peaks.shape[0]:
+                                        # print(f'{channel}: peaks={cpeaks.shape[0]}')
+                                        # print(f'peaks: {peaks}')
+                                        # print(f'cpeaks: {cpeaks}')
+                                        isin = np.isin(cpeaks, peaks)
+                                        anomalies = []
+                                        for i, item in enumerate(isin):
+                                            if not item:
+                                                first = np.isin([cpeaks[i] - 1], peaks)
+                                                last = np.isin([cpeaks[i] + 1], peaks)
+                                                # print(cpeaks[i], first, last, item)
+                                                if not first[0] and not last[0]:
+                                                    anomalies.append(cpeaks[i])
+
+                                        if anomalies:
+                                            print(f"anomalies: {anomalies}")
+                                            plot_bkpts(
+                                                file,
+                                                channel,
+                                                symbol,
+                                                unit,
+                                                ts,
+                                                smoothed,
+                                                smoothed_der1,
+                                                smoothed_der2,
+                                                quantiles_der,
+                                                cpeaks,
+                                                [],
+                                                anomalies,
+                                                args.save,
+                                            )
+
+            except Exception:
                 print(traceback.format_exc())
                 pass
+
+

@@ -1,19 +1,19 @@
 """MagnetData"""
 
+from natsort import natsorted
+from datetime import datetime
+
 import os
 import sys
 import matplotlib.pyplot as plt
 from nptdms import TdmsFile
 import pandas as pd
-import numpy as np
 import matplotlib
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 
-from natsort import natsorted
-from datetime import datetime
 
 
 class MagnetData:
@@ -94,6 +94,17 @@ class MagnetData:
                     Groups[group.name]['Infos'] = group
             # print(f"keys: {Keys}")
 
+        # Add refrence for GR1, GR2
+        print(f'Data: {Data.keys()}', flush=True)
+        if 'Référence_A1' in Data["Courants_Alimentations"]:
+            Data['Courants_Alimentations']['Référence_GR1'] = Data['Courants_Alimentations']['Référence_A1'] + Data['Courants_Alimentations']['Référence_A2']
+            Keys.append('Courants_Alimentations/Référence_GR1')
+            Groups['Courants_Alimentations']['Référence_GR1'] = Groups['Courants_Alimentations']['Référence_A1'] # "Added Référence_A1+Référence_A2"
+        if 'Référence_A3' in Data["Courants_Alimentations"]:
+            Data['Courants_Alimentations']['Référence_GR2'] = Data['Courants_Alimentations']['Référence_A3'] + Data['Courants_Alimentations']['Référence_A4']
+            Keys.append('Courants_Alimentations/Référence_GR2')
+            Groups['Courants_Alimentations']['Référence_GR2'] = Groups['Courants_Alimentations']['Référence_A3'] # "Added Référence_A3+Référence_A4"
+
         # print(f"magnetdata/fromtdms: Groups={Groups}", flush=True)
         return cls(name, Groups, Keys, 1, Data)
 
@@ -133,7 +144,7 @@ class MagnetData:
         """create from a cvs file"""
         with open(name, "r") as f:
             # get file extension
-            f_extension = os.path.splitext(name)[-1]
+            # f_extension = os.path.splitext(name)[-1]
             Data = pd.read_csv(f, sep=str(","), engine="python", skiprows=0)
             Keys = Data.columns.values.tolist()
         return cls(name, {}, Keys, 0, Data)
@@ -150,7 +161,7 @@ class MagnetData:
                 StringIO(name), sep=sep, engine="python", skiprows=skiprows
             )
             Keys = Data.columns.values.tolist()
-        except:
+        except Exception:
             print("magnetdata.fromStringIO: trouble loading data")
             with open("wrongdata.txt", "w", newline="\n") as fo:
                 fo.write(name)
@@ -260,6 +271,7 @@ class MagnetData:
         from pint import UnitRegistry
 
         ureg = UnitRegistry()
+
         PigBrotherUnits = {
             "Courant": ("I", ureg.ampere),
             "Tension": ("U", ureg.volt),
@@ -336,7 +348,12 @@ class MagnetData:
 
     def getUnitKey(self, key: str) -> tuple:
         if key not in self.Keys:
-            raise RuntimeError(
+            if key == "t":
+                from pint import UnitRegistry
+                ureg = UnitRegistry()
+                return ("t", ureg.second)
+            else:
+                raise RuntimeError(
                 f"{key} not defined in data - availabe keys are {self.Keys}"
             )
 
@@ -664,7 +681,7 @@ class MagnetData:
                 res = (start_date, start_time, end_date, end_time)
         elif self.Type == 1:
             start_t = self.Data[group]["timestamp"].iloc[0]
-            end_t = self.Data[group]["timestamp"].iloc[-1]
+            # end_t = self.Data[group]["timestamp"].iloc[-1]
 
             dformat = "%Y.%m.%d"
             tformat = "%H:%M:%S"
@@ -703,27 +720,27 @@ class MagnetData:
 
         if self.Type == 0:  # isinstance(self.Data, pd.DataFrame):
             if "Date" in self.Keys and "Time" in self.Keys:
-                tformat = "%Y.%m.%d %H:%M:%S"
+               #  tformat = "%Y.%m.%d %H:%M:%S"
 
                 try:
                     self.Data["Date"] = pd.to_datetime(
                         self.Data.Date, cache=True, format="%Y.%m.%d"
                     )
-                except:
+                except Exception:
                     raise RuntimeError(
                         f"MagnetData/AddTime {self.FileName}: failed to convert Date"
                     )
 
                 try:
                     self.Data["Time"] = pd.to_timedelta(self.Data.Time)
-                except:
+                except Exception:
                     raise RuntimeError(
                         f"MagnetData/AddTime {self.FileName}: failed to convert Time"
                     )
 
                 try:
                     self.Data["timestamp"] = self.Data.Date + self.Data.Time
-                except:
+                except Exception:
                     raise RuntimeError(
                         f"MagnetData/AddTime {self.FileName}: failed to create timestamp column"
                     )
@@ -812,8 +829,16 @@ class MagnetData:
                 f"extractTimeData: magnetdata type ({self.Type})unsupported"
             )
 
-    def saveData(self, keys, filename):
-        """save Data to csv format"""
+    def saveData(self, keys: list[str], filename: str):
+        """save Data to csv format
+
+        :param keys:list of selected keys
+        :type keys: list[str]
+        :param filename: _description_
+        :type filename: str
+        :return: _description_
+        :rtype: _type_
+        """
         if self.Type == 0:
             self.Data[keys].to_csv(filename, sep=str("\t"), index=False, header=True)
         elif self.Type == 1:
@@ -826,8 +851,23 @@ class MagnetData:
 
         return 0
 
-    def plotData(self, x, y, ax, label: str = None):
-        """plot x vs y"""
+    def plotData(self, x: str, y: str, ax, label: str = None, normalize: bool = False):
+        """plot x vs y
+
+        :param x: _description_
+        :type x: _type_
+        :param y: _description_
+        :type y: _type_
+        :param ax: _description_
+        :type ax: _type_
+        :param label: _description_, defaults to None
+        :type label: str, optional
+        :param normalize: _description_, defaults to False
+        :type normalize: bool, optional
+        :raises RuntimeError: _description_
+        :raises RuntimeError: _description_
+        :raises Exception: _description_
+        """
 
         # print("plotData Type:", self.Type, f"x={x}, y={y}" )
         if x != "t" and x not in self.Keys:
@@ -836,9 +876,18 @@ class MagnetData:
             )
 
         if y in self.Keys:
+            (ysymbol, yunit) = self.getUnitKey(y)
+
             # if isinstance(self.Data, pd.DataFrame):
             if self.Type == 0:
-                self.Data.plot(x=x, y=y, ax=ax, grid=True)
+                if normalize:
+                    df = self.Data.copy()
+                    ymax = abs(df[y].max())
+                    df[y] /= ymax
+                    df.plot(x=x, y=y, ax=ax, label=f'{y} (norm with {ymax:.3e} {yunit:~P})',grid=True)
+                    del df
+                else:
+                    self.Data.plot(x=x, y=y, ax=ax, grid=True)
             elif self.Type == 1:
                 (ygroup, ychannel) = y.split("/")
                 if x != "t":
@@ -848,15 +897,23 @@ class MagnetData:
                     xchannel = "t"
 
                 if xgroup == ygroup:
-                    self.Data[xgroup].plot(x=xchannel, y=ychannel, ax=ax, grid=True)
+                    if normalize:
+                        df = self.Data[xgroup].copy()
+                        ymax = abs(df[ychannel].max())
+                        df[ychannel] /= ymax
+                        df.plot(x=xchannel, y=ychannel, ax=ax, label=f'{ychannel} (norm with {ymax:.3e} {yunit:~P})', grid=True)
+                        del df
+                    else:
+                        self.Data[xgroup].plot(x=xchannel, y=ychannel, ax=ax, grid=True)
                 else:
                     raise RuntimeError(
                         f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: xgroup={xgroup} != {ygroup}"
                     )
 
             # add xlabel, ylabel from units
-            # plt.ylabel()
-            # plt.xlabel()
+            plt.ylabel(f"{ysymbol} [{yunit:~P}]")
+            (xsymbol, xunit) = self.getUnitKey(x)
+            plt.xlabel(f"{xsymbol} [{xunit:~P}]")
 
         else:
             raise Exception(
@@ -951,16 +1008,6 @@ class MagnetData:
                             print(f'  {sitem}: {values[item][sitem]} **')
                     else:
                         print(f'  {item}: {values[item]}')
-            """
-            with TdmsFile.open(self.FileName) as rawData:
-                print(f'Infos: {self.Groups["Infos"]}')
-                for group in rawData.groups():
-                    print(f"{group.name}:")
-                    for channel in group.channels():
-                        print(f"\t* {channel.name}: properties")
-                        for entry, value in channel.properties.items():
-                            print(f"\t\t{entry}={value}")
-            """
 
         # print("stats:")
         # self.stats()

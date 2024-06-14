@@ -90,9 +90,9 @@ class MagnetRun:
     @classmethod
     def fromtdms(cls, site, insert, filename):
         """create from a tdms file"""
-        print(f"MagnetRun:fromtdms: {filename}", flush=True)
-        with open(filename, "r") as f:
-            data = MagnetData.fromtdms(filename)
+        # print(f"MagnetRun:fromtdms: {filename}", flush=True)
+        # with open(filename, "r") as f:
+        data = MagnetData.fromtdms(filename)
 
         # print("magnetrun.fromtxt: data=", data)
         return cls(site, insert, data)
@@ -101,10 +101,10 @@ class MagnetRun:
     def fromtxt(cls, housing: str, site: str, filename: str, debug: bool = False):
         """create from a txt file"""
         # print(f"MagnetRun/fromtxt: housing={housing}, site={site}, filename={filename}")
-        with open(filename, "r") as f:
-            insert = f.readline().split()[-1]
-            data = MagnetData.fromtxt(filename)
-            prepareData(data, housing, debug=debug)
+        # with open(filename, "r") as f:
+        # insert = f.readline().split()[-1]
+        data = MagnetData.fromtxt(filename)
+        prepareData(data, housing, debug=debug)
 
         # print("magnetrun.fromtxt: data=", data)
         return cls(housing, site, data)
@@ -136,7 +136,7 @@ class MagnetRun:
             prepareData(data, housing, debug=debug)
             # print(f'prepareData: data keys({len(data.getKeys())}): {data.getKeys()}')
 
-        except:
+        except Exception:
             with open("wrongdata.txt", "w", newline="\n") as fo:
                 fo.write(name)
             print(f'cannot load data for {housing}, {insert} insert, {site} site"')
