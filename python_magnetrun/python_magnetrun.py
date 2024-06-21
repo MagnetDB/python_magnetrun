@@ -27,7 +27,7 @@ def plot_bkpts(
     channel: str,
     symbol: str,
     unit: str,
-    ts: pd.tseries,
+    ts: pd.DataFrame,
     smoothed: np.ndarray,
     smoothed_der1: np.ndarray,
     smoothed_der2: np.ndarray,
@@ -147,7 +147,9 @@ if __name__ == "__main__":
     parser_info.add_argument("--convert", help="save to csv", action="store_true")
 
     # add plot subcommand
-    parser_plot.add_argument("--normalize", help="normalize data before plot", action="store_true")
+    parser_plot.add_argument(
+        "--normalize", help="normalize data before plot", action="store_true"
+    )
     parser_plot.add_argument(
         "--vs_time",
         help='select key(s) to plot (ex. "Field [Ucoil1]")',
@@ -299,8 +301,8 @@ if __name__ == "__main__":
     # perform operations defined by options
     if args.command == "plot":
         if args.vs_time:
-            assert len(args.vs_time) == len(
-                extensions
+            assert (
+                len(args.vs_time) == len(extensions)
             ), f"expected {len(extensions)} vs_time arguments - got {len(args.vs_time)} "
 
             my_ax = plt.gca()
@@ -319,7 +321,7 @@ if __name__ == "__main__":
                     mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
 
                 if args.normalize:
-                    plt.ylabel('')
+                    plt.ylabel("")
 
             plt.title(title)
             if not args.save:
@@ -331,8 +333,8 @@ if __name__ == "__main__":
             plt.close()
 
         if args.key_vs_key:
-            assert len(args.key_vs_key) == len(
-                extensions
+            assert (
+                len(args.key_vs_key) == len(extensions)
             ), f"expected {len(extensions)} key_vs_key arguments - got {len(args.key_vs_key)} "
 
             my_ax = plt.gca()
@@ -367,8 +369,8 @@ if __name__ == "__main__":
     if args.command == "select":
         # plot_args = items[extensions[f_extension][0]]
         if args.output_time:
-            assert len(args.output_time) == len(
-                extensions
+            assert (
+                len(args.output_time) == len(extensions)
             ), f"expected {len(extensions)} output_time arguments - got {len(args.output_time)} "
 
             times = args.output_time.split(";")
@@ -398,8 +400,8 @@ if __name__ == "__main__":
                         df.to_csv()
 
         if args.output_timerange:
-            assert len(args.output_timerange) == len(
-                extensions
+            assert (
+                len(args.output_timerange) == len(extensions)
             ), f"expected {len(extensions)} output_timerange arguments - got {len(args.output_timerange)} "
 
             timerange = args.output_timerange.split(";")
@@ -434,8 +436,8 @@ if __name__ == "__main__":
                                 )
 
         if args.output_key:
-            assert len(args.output_key) == len(
-                extensions
+            assert (
+                len(args.output_key) == len(extensions)
             ), f"expected {len(extensions)} output_key arguments - got {len(args.output_key)} "
 
             for file in inputs:
@@ -460,8 +462,8 @@ if __name__ == "__main__":
                         )
 
         if args.extract_pairkeys:
-            assert len(args.extract_pairkeys) == len(
-                extensions
+            assert (
+                len(args.extract_pairkeys) == len(extensions)
             ), f"expected {len(extensions)} extract_pairkeys arguments - got {len(args.extract_pairkeys)} "
             for file in inputs:
                 f_extension = os.path.splitext(file)[-1]
@@ -564,8 +566,12 @@ if __name__ == "__main__":
                             ts = None
                             if mdata.Type == 0:
                                 ts = mdata.Data[key]
+                                freq = 1
+                                print(f"{key}: freq={freq} Hz", flush=True)
                             elif mdata.Type == 1:
                                 ts = mdata.Data[group][channel]
+                                freq = 1 / mdata.Groups[group][channel]["wf_increment"]
+                                print(f"{group}/{channel}: freq={freq} Hz", flush=True)
 
                             smoothed = savgol(
                                 y=ts.to_numpy(),
@@ -732,6 +738,7 @@ if __name__ == "__main__":
                                         # print(f'cpeaks: {cpeaks}')
                                         isin = np.isin(cpeaks, peaks)
                                         anomalies = []
+                                        real_anomalies = []
                                         for i, item in enumerate(isin):
                                             if not item:
                                                 first = np.isin([cpeaks[i] - 1], peaks)
@@ -740,8 +747,29 @@ if __name__ == "__main__":
                                                 if not first[0] and not last[0]:
                                                     anomalies.append(cpeaks[i])
 
-                                        if anomalies:
-                                            print(f"anomalies: {anomalies}")
+                                                    # calculate the difference array
+                                                    difference_array = np.absolute(
+                                                        peaks - cpeaks[i]
+                                                    )
+
+                                                    # find the index of minimum element from the array
+                                                    index = difference_array.argmin()
+                                                    msg = f"{i}: closest values in peaks={peaks[index]}, cpeaks[{i}]={cpeaks[i]}"
+
+                                                    if (
+                                                        abs(peaks[index] - cpeaks[i])
+                                                        >= args.window
+                                                    ):
+                                                        msg += " **"
+                                                        real_anomalies.append(cpeaks[i])
+                                                    print(f"{msg}")
+
+                                        print(
+                                            f"anomalies: {len(anomalies)} - likely {len(real_anomalies)}"
+                                        )
+                                        if real_anomalies:
+                                            # if args.verbose:
+                                            #     print(f"anomalies: {anomalies}")
                                             plot_bkpts(
                                                 file,
                                                 channel,
@@ -754,12 +782,10 @@ if __name__ == "__main__":
                                                 quantiles_der,
                                                 cpeaks,
                                                 [],
-                                                anomalies,
+                                                real_anomalies,
                                                 args.save,
                                             )
 
             except Exception:
                 print(traceback.format_exc())
                 pass
-
-

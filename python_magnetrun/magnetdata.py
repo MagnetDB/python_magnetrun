@@ -15,7 +15,6 @@ matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 
 
-
 class MagnetData:
     """
     Magnet Data
@@ -69,11 +68,11 @@ class MagnetData:
             for group in rawData.groups():
                 # print(f'group: {group.name}', flush=True)
                 Groups[group.name] = {}
-                if group.name != 'Infos':
+                if group.name != "Infos":
                     Data[group.name] = {}
                     for channel in group.channels():
                         # print(f'channel: {channel.name}', flush=True)
-                        Keys.append(f'{group.name}/{channel.name}')
+                        Keys.append(f"{group.name}/{channel.name}")
                         Groups[group.name][channel.name] = channel.properties
 
                     # arrow_dtypes=False, when pandas 2.xx
@@ -84,26 +83,36 @@ class MagnetData:
                     )
 
                     t0 = Data[group.name].index[0]
-                    Groups[group.name]['t0'] = t0
+                    Groups[group.name]["t0"] = t0
                     # print(f"t0: {t0}")
                     Data[group.name]["t"] = Data[group.name].apply(
                         lambda row: (row.name - t0).total_seconds(),
                         axis=1,
                     )
                 else:
-                    Groups[group.name]['Infos'] = group
+                    Groups[group.name]["Infos"] = group
             # print(f"keys: {Keys}")
 
         # Add refrence for GR1, GR2
-        print(f'Data: {Data.keys()}', flush=True)
-        if 'Référence_A1' in Data["Courants_Alimentations"]:
-            Data['Courants_Alimentations']['Référence_GR1'] = Data['Courants_Alimentations']['Référence_A1'] + Data['Courants_Alimentations']['Référence_A2']
-            Keys.append('Courants_Alimentations/Référence_GR1')
-            Groups['Courants_Alimentations']['Référence_GR1'] = Groups['Courants_Alimentations']['Référence_A1'] # "Added Référence_A1+Référence_A2"
-        if 'Référence_A3' in Data["Courants_Alimentations"]:
-            Data['Courants_Alimentations']['Référence_GR2'] = Data['Courants_Alimentations']['Référence_A3'] + Data['Courants_Alimentations']['Référence_A4']
-            Keys.append('Courants_Alimentations/Référence_GR2')
-            Groups['Courants_Alimentations']['Référence_GR2'] = Groups['Courants_Alimentations']['Référence_A3'] # "Added Référence_A3+Référence_A4"
+        print(f"Data: {Data.keys()}", flush=True)
+        if "Référence_A1" in Data["Courants_Alimentations"]:
+            Data["Courants_Alimentations"]["Référence_GR1"] = (
+                Data["Courants_Alimentations"]["Référence_A1"]
+                + Data["Courants_Alimentations"]["Référence_A2"]
+            )
+            Keys.append("Courants_Alimentations/Référence_GR1")
+            Groups["Courants_Alimentations"]["Référence_GR1"] = Groups[
+                "Courants_Alimentations"
+            ]["Référence_A1"]  # "Added Référence_A1+Référence_A2"
+        if "Référence_A3" in Data["Courants_Alimentations"]:
+            Data["Courants_Alimentations"]["Référence_GR2"] = (
+                Data["Courants_Alimentations"]["Référence_A3"]
+                + Data["Courants_Alimentations"]["Référence_A4"]
+            )
+            Keys.append("Courants_Alimentations/Référence_GR2")
+            Groups["Courants_Alimentations"]["Référence_GR2"] = Groups[
+                "Courants_Alimentations"
+            ]["Référence_A3"]  # "Added Référence_A3+Référence_A4"
 
         # print(f"magnetdata/fromtdms: Groups={Groups}", flush=True)
         return cls(name, Groups, Keys, 1, Data)
@@ -350,12 +359,13 @@ class MagnetData:
         if key not in self.Keys:
             if key == "t":
                 from pint import UnitRegistry
+
                 ureg = UnitRegistry()
                 return ("t", ureg.second)
             else:
                 raise RuntimeError(
-                f"{key} not defined in data - availabe keys are {self.Keys}"
-            )
+                    f"{key} not defined in data - availabe keys are {self.Keys}"
+                )
 
         if self.Type == 0:
             return self.units[key]
@@ -408,18 +418,15 @@ class MagnetData:
 
             # drop duplicates
             def getDuplicateColumns(df):
-
                 # Create an empty set
                 duplicateColumnNames = set()
 
                 # Iterate through all the columns of dataframe
                 for x in range(df.shape[1]):
-
                     # Take column at xth index.
                     col = df.iloc[:, x]
 
                     for y in range(x + 1, df.shape[1]):
-
                         # Take column at yth index.
                         otherCol = df.iloc[:, y]
 
@@ -708,10 +715,11 @@ class MagnetData:
                 print("magnetdata.getDuration: no timestamp key")
                 print(f"available keys are: {self.Keys}")
         elif self.Type == 1:
-            start_time = self.Data[group]["timestamp"].iloc[0]
-            end_time = self.Data[group]["timestamp"].iloc[-1]
+            group = "Tensions_Aimant"
+            start_time = self.Data[group]["t"].iloc[0]
+            end_time = self.Data[group]["t"].iloc[-1]
             dt = end_time - start_time
-            duration = dt.seconds
+            duration = dt
         return duration
 
     def addTime(self):
@@ -720,7 +728,7 @@ class MagnetData:
 
         if self.Type == 0:  # isinstance(self.Data, pd.DataFrame):
             if "Date" in self.Keys and "Time" in self.Keys:
-               #  tformat = "%Y.%m.%d %H:%M:%S"
+                #  tformat = "%Y.%m.%d %H:%M:%S"
 
                 try:
                     self.Data["Date"] = pd.to_datetime(
@@ -884,7 +892,13 @@ class MagnetData:
                     df = self.Data.copy()
                     ymax = abs(df[y].max())
                     df[y] /= ymax
-                    df.plot(x=x, y=y, ax=ax, label=f'{y} (norm with {ymax:.3e} {yunit:~P})',grid=True)
+                    df.plot(
+                        x=x,
+                        y=y,
+                        ax=ax,
+                        label=f"{y} (norm with {ymax:.3e} {yunit:~P})",
+                        grid=True,
+                    )
                     del df
                 else:
                     self.Data.plot(x=x, y=y, ax=ax, grid=True)
@@ -901,7 +915,13 @@ class MagnetData:
                         df = self.Data[xgroup].copy()
                         ymax = abs(df[ychannel].max())
                         df[ychannel] /= ymax
-                        df.plot(x=xchannel, y=ychannel, ax=ax, label=f'{ychannel} (norm with {ymax:.3e} {yunit:~P})', grid=True)
+                        df.plot(
+                            x=xchannel,
+                            y=ychannel,
+                            ax=ax,
+                            label=f"{ychannel} (norm with {ymax:.3e} {yunit:~P})",
+                            grid=True,
+                        )
                         del df
                     else:
                         self.Data[xgroup].plot(x=xchannel, y=ychannel, ax=ax, grid=True)
@@ -1000,14 +1020,17 @@ class MagnetData:
         # TODO for tdms display Infos group
         if self.Type == 1:
             from collections import OrderedDict
+
             for group, values in self.Groups.items():
-                print(f'group={group}')
+                print(f"group={group}")
                 for item in values:
-                    if isinstance(values[item], dict) or isinstance(values[item], OrderedDict):
+                    if isinstance(values[item], dict) or isinstance(
+                        values[item], OrderedDict
+                    ):
                         for sitem in values[item]:
-                            print(f'  {sitem}: {values[item][sitem]} **')
+                            print(f"  {sitem}: {values[item][sitem]} **")
                     else:
-                        print(f'  {item}: {values[item]}')
+                        print(f"  {item}: {values[item]}")
 
         # print("stats:")
         # self.stats()

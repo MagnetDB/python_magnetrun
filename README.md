@@ -79,6 +79,51 @@ Example is functional, but the results are good. The method does not work correc
 ```bash
 python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms  stats --show --keys Courants_Alimentations/Référence_GR1 --detect_bkpts --sav
 ```
+- check field factor
+
+```bash
+python -m python_magnetrun.test-fieldfactor /home/LNCMI-G/christophe.trophime/M9_2024.05.13---16_30_51.txt
+```
+
+The code returns:
+
+```
+                            OLS Regression Results
+==============================================================================
+Dep. Variable:                      Z   R-squared:                       1.000
+Model:                            OLS   Adj. R-squared:                  1.000
+Method:                 Least Squares   F-statistic:                 1.656e+13
+Date:                Wed, 19 Jun 2024   Prob (F-statistic):               0.00
+Time:                        14:38:41   Log-Likelihood:                 5472.3
+No. Observations:                 556   AIC:                        -1.094e+04
+Df Residuals:                     553   BIC:                        -1.093e+04
+Df Model:                           2
+Covariance Type:            nonrobust
+==============================================================================
+                 coef    std err          t      P>|t|      [0.025      0.975]
+------------------------------------------------------------------------------
+const        1.62e-06   7.81e-07      2.073      0.039    8.52e-08    3.15e-06
+X              0.0009   1.34e-08   6.63e+04      0.000       0.001       0.001
+Y              0.0004   4.04e-08   9314.560      0.000       0.000       0.000
+==============================================================================
+Omnibus:                        3.831   Durbin-Watson:                   0.358
+Prob(Omnibus):                  0.147   Jarque-Bera (JB):                3.642
+Skew:                          -0.190   Prob(JB):                        0.162
+Kurtosis:                       3.110   Cond. No.                     5.84e+03
+==============================================================================
+
+Notes:
+[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
+[2] The condition number is large, 5.84e+03. This might indicate that there are
+strong multicollinearity or other numerical problems.
+Intercept: 1.6196286010253166e-06, A: 0.0008915003451151302, B: 0.0003765980765178872
+```
+
+from [MagnetInfo](https://labs.core-cloud.net/ou/UPR3228/MagnetInfo/SitePages/Field-maps.aspx?web=1), we get the field factors
+in the table for M9: fh=8.915 unit? , fB=3.766 unit?
+
+- parameters identification
+
 
 # INSTALL
 

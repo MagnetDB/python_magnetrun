@@ -23,7 +23,7 @@ import statsmodels.api as sm
 from ..MagnetRun import MagnetRun
 
 
-def savgol(y: np.array, window: float, polyorder: int = 3, deriv=0) -> np.array:
+def savgol(y: np.array, window: int, polyorder: int = 3, deriv=0) -> np.array:
     """smooth signal using Savitzky-Golay algorithm for derivative of given order
 
     :param y: signal to be smoothed
