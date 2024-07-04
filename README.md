@@ -39,7 +39,7 @@ _ To view the magnetic field during an experiment:
 
 
 ```bash
-python3 -m python_magnetrun.utils.txt2csv data/M9_2019.02.14-23_00_38.txt --plot_vs_time "Field" --show
+python3 -m python_magnetrun.python_magnetrun data/M9_2019.02.14-23_00_38.txt plot --vs_time "Field" --show
 ```
 
 <!--
