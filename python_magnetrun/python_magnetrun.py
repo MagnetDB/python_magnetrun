@@ -361,9 +361,9 @@ if __name__ == "__main__":
             if not args.save:
                 plt.show()
             else:
-                imagefile = "image"
-                print(f"saveto: {imagefile}_key_vs_key.png", flush=True)
-            plt.savefig(f"{imagefile}_key_vs_key.png", dpi=300)
+                imagefilename = "image"
+                print(f"saveto: {imagefilename}_key_vs_key.png", flush=True)
+                plt.savefig(f"{imagefilename}_key_vs_key.png", dpi=300)
             plt.close()
 
     if args.command == "select":

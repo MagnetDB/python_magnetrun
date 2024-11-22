@@ -32,7 +32,7 @@ class MagnetData:
         Groups: dict,
         Keys: list[str],
         Type: int = 0,
-        Data: pd.DataFrame | dict = None,
+        Data: pd.DataFrame | dict = None
     ) -> None:
         """default constructor"""
         self.FileName = filename
@@ -301,18 +301,25 @@ class MagnetData:
         """
         from pint import UnitRegistry
 
+        print(f'magnetdata: Units, Filename:{self.FileName}')
+
         ureg = UnitRegistry()
         ureg.define("percent = 1 / 100 = %")
         ureg.define("ppm = 1e-6 = ppm")
         ureg.define("var = 1")
 
         if self.Type == 1:
+            print('self.Data=', type(self.Data))
             for entry in self.Data:
+                print('entry=', entry, type(entry))
                 if entry == "t":
                     self.units["t"] = ("t", ureg.second)
                 else:
-                    (group, channel) = entry.split("/")
+                    group = entry
+                    if "/" in entry:
+                        (group, channel) = entry.split("/")
                     self.units[entry] = self.PigBrotherUnits(group)
+
             pass
 
         elif self.Type > 1:
@@ -364,7 +371,7 @@ class MagnetData:
                 return ("t", ureg.second)
             else:
                 raise RuntimeError(
-                    f"{key} not defined in data - availabe keys are {self.Keys}"
+                    f"{key} not defined in data - available keys are {self.Keys}"
                 )
 
         if self.Type == 0:

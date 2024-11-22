@@ -93,6 +93,7 @@ class MagnetRun:
         # print(f"MagnetRun:fromtdms: {filename}", flush=True)
         # with open(filename, "r") as f:
         data = MagnetData.fromtdms(filename)
+        data.Units()
 
         # print("magnetrun.fromtxt: data=", data)
         return cls(site, insert, data)
@@ -105,6 +106,7 @@ class MagnetRun:
         # insert = f.readline().split()[-1]
         data = MagnetData.fromtxt(filename)
         prepareData(data, housing, debug=debug)
+        data.Units()
 
         # print("magnetrun.fromtxt: data=", data)
         return cls(housing, site, data)
@@ -141,6 +143,8 @@ class MagnetRun:
                 fo.write(name)
             print(f'cannot load data for {housing}, {insert} insert, {site} site"')
             # raise RuntimeError(f'cannot load data for {housing}, {insert} insert, {site} site"')
+        
+        data.Units()
         return cls(housing, site, data)
 
     def __repr__(self):
