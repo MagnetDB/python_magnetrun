@@ -24,6 +24,7 @@ ht
 # clawpack
 
 # for data processing
+piecewise-regression
 ruptures
 # dtw # for Dynamic Time Warping
 
