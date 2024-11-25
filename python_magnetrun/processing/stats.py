@@ -3,6 +3,13 @@
 import pandas as pd
 import numpy as np
 
+numpy_version = np.__version__.split('.')
+if numpy_version[0] == 1:
+    numpy_NaN = np.NaN
+else:
+    numpy_NaN = np.nan
+    
+print(f'numpy: {numpy_version}', flush=True)
 
 from ..magnetdata import MagnetData
 from ..utils.sequence import list_sequence, list_duplicates_of
@@ -32,12 +39,12 @@ def stats(Data: MagnetData, fields: list[str] | None = None, debug: bool = False
         for f in selected_fields:
             table = [
                 f"{f}[N/A]",
-                np.NaN,
-                np.NaN,
-                np.NaN,
-                np.NaN,
-                np.NaN,
-                np.NaN,
+                numpy_NaN,
+                numpy_NaN,
+                numpy_NaN,
+                numpy_NaN,
+                numpy_NaN,
+                numpy_NaN,
             ]
             if f in Data.getKeys():
                 fname, unit = Data.getUnitKey(f)
@@ -50,9 +57,9 @@ def stats(Data: MagnetData, fields: list[str] | None = None, debug: bool = False
                 v_mean = float(df.mean())
                 v_std = float(df.std())
                 v_median = float(df.median())
-                v_mode = np.NaN  # Most frequent value in a data set
+                v_mode = numpy_NaN  # Most frequent value in a data set
                 try:
-                    v_mode = float(df.mode())
+                    v_mode = float(df.mode().iloc[0])
                 except:
                     # print(f"{f}: failed to compute df.mode()")
                     pass

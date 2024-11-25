@@ -513,10 +513,11 @@ if __name__ == "__main__":
             mrun: MagnetRun = inputs[file]["data"]
             mdata = mrun.getMData()
 
-            if not args.plateau and not args.detect_bkpts:
-                stats.stats(mdata)
+            # if not args.plateau and not args.detect_bkpts:
+            stats.stats(mdata)
 
             try:
+                # print(f'args.keys: {args.keys}')
                 if args.keys:
                     for key in args.keys:
                         if mdata.Type == 0:
@@ -535,6 +536,7 @@ if __name__ == "__main__":
                             num_points_threshold = int(args.dthreshold / period)
 
                         if args.plateau:
+                            print(f"display plateaus for {key}")
                             pdata = nplateaus(
                                 mdata,
                                 xField=("t", "t", "s"),
@@ -545,22 +547,27 @@ if __name__ == "__main__":
                                 show=args.show,
                                 verbose=False,
                             )
-                            print(f"display plateaus for {key}")
+
                             df_plateaux = pd.DataFrame()
                             for entry in ["start", "end", "value"]:
                                 df_plateaux[entry] = [
                                     plateau[entry] for plateau in pdata
                                 ]
-
+                            df_plateaux["duration"] = df_plateaux['end'] - df_plateaux['start']
+                            
                             # rename column value using symbol and unit
-                            print(
-                                tabulate(
-                                    df_plateaux,
-                                    headers="keys",
-                                    tablefmt="psql",
-                                    showindex=False,
+                            # print only if plateaux
+                            (nrows, ncols) = df_plateaux.shape
+                            print(f'df_plateaux: {df_plateaux.shape}')
+                            if nrows != 0:
+                                print(
+                                    tabulate(
+                                        df_plateaux,
+                                        headers="keys",
+                                        tablefmt="psql",
+                                        showindex=False,
+                                    )
                                 )
-                            )
 
                         if args.detect_bkpts:
                             ts = None

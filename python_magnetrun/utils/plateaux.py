@@ -116,7 +116,7 @@ def nplateaus(
         )
 
     plt.legend()
-    plt.grid(b=True)
+    plt.grid(True)
 
     lname = Data.FileName.replace("_", "-")
     lname = lname.replace(".txt", "")
