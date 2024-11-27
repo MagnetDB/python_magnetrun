@@ -301,7 +301,7 @@ class MagnetData:
         """
         from pint import UnitRegistry
 
-        print(f'magnetdata: Units, Filename:{self.FileName}')
+        # print(f'magnetdata: Units, Filename:{self.FileName}')
 
         ureg = UnitRegistry()
         ureg.define("percent = 1 / 100 = %")
@@ -327,14 +327,19 @@ class MagnetData:
             pass
 
         for key in self.Keys:
-            if key.startswith("I"):
+            if key == "timestamp":
+                # TODO define a specific 'var' unit for this field
+                self.units[key] = ("time", None)
+            elif key == "t":
+                self.units[key] = ("t", ureg.second)
+            elif key == "Field":
+                self.units[key] = ("B", ureg.tesla)
+            elif key.startswith("I"):
                 self.units[key] = ("I", ureg.ampere)
             elif key.startswith("U"):
                 self.units[key] = ("U", ureg.volt)
-            elif key.startswith("T") or key.startswith("teb") or key.startswith("tsb"):
+            elif key.startswith("T") or key == "teb" or "tsb":
                 self.units[key] = ("T", ureg.degC)
-            elif key == "t":
-                self.units[key] = ("t", ureg.second)
             elif key.startswith("Rpm"):
                 self.units[key] = ("Rpm", ureg.rpm)
             elif key.startswith("DR"):
@@ -343,8 +348,6 @@ class MagnetData:
                 self.units[key] = ("Q", ureg.liter / ureg.second)
             elif key.startswith("debit"):
                 self.units[key] = ("Q", ureg.meter**3 / ureg.second)
-            elif key.startswith("Fie"):
-                self.units[key] = ("B", ureg.tesla)
             elif key.startswith("HP") or key.startswith("BP"):
                 self.units[key] = ("P", ureg.bar)
             elif key == "Pmagnet" or key == "Ptot":
@@ -940,7 +943,8 @@ class MagnetData:
             # add xlabel, ylabel from units
             plt.ylabel(f"{ysymbol} [{yunit:~P}]")
             (xsymbol, xunit) = self.getUnitKey(x)
-            plt.xlabel(f"{xsymbol} [{xunit:~P}]")
+            if not xunit is None:
+                plt.xlabel(f"{xsymbol} [{xunit:~P}]")
 
         else:
             raise Exception(

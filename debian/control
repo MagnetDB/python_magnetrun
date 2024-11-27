@@ -9,10 +9,18 @@ Build-Depends: debhelper-compat (= 12),
  python3-nptdms,
  python3-pandas,
  python3-ht,
- python3-freesteam,
+ python3-iapws | python3-freesteam,
  python3-tabulate,
  python3-matplotlib,
- python3-requests
+ python3-requests,
+ python3-natsort,
+ python3-statsmodels,
+ python3-seaborn,
+ python3-rich,
+ python3-pint,
+ python3-typing-extensions,
+ python3-lxml (>= 4.9.2),
+ python3-nlopt
 Standards-Version: 4.5.1
 Homepage: https://github.com/Trophime/python_magnetrun
 #Vcs-Browser: https://salsa.debian.org/debian/python-magnetrun

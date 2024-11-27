@@ -25,6 +25,7 @@ ht
 
 # for data processing
 piecewise-regression
+pwlf
 ruptures
 # dtw # for Dynamic Time Warping
 

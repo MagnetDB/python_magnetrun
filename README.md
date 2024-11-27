@@ -56,13 +56,24 @@ python3 -m python_magnetrun.python_magnetrun srvdata/M9_2019.02.14---23\:00\:38.
 
 ```bash
 python -m python_magnetrun.examples.get-record 'srvdata/M8*.txt' select --duration 60 --field 18.
-python -m python_magnetrun.examples.get-record 'srvdata/M8*.txt' plot --xfield timestamp --fields teb --show
+```
+
+- View Teb vs timestamp for all M8 records (may crash due to high memory usage):
+
+```bash
+python -m python_magnetrun.examples.get-record srvdata/M8*.txt plot --xfield timestamp --fields teb --show
+```
+
+- Aggregata Teb data
+
+```bash
+python -m python_magnetrun.examples.get-record srvdata/M8*.txt aggregate --fields teb --show
 ```
 
 - For all `pupitre` files, perform plateaux detections:
 
 ```bash
-python -m python_magnetrun.python_magnetrun ~/M9_Overview_240430*.tdms  stats --show --keys Courants_Alimentations/Référence_A1 --threshold 1
+python -m python_magnetrun.python_magnetrun  srvdata/M8*.txt  stats --show --keys Field --threshold 1
 ```
 
 - Plot `pigbrother` and `pupitre` current for Helices insert:
@@ -79,7 +90,7 @@ Example is functional, but the results are good. The method does not work correc
 ```bash
 python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms  stats --show --keys Courants_Alimentations/Référence_GR1 --detect_bkpts --sav
 ```
-- check field factor
+- check field factor (not working properly since Ih and Ib are "piecewise" dependant)
 
 ```bash
 python -m python_magnetrun.test-fieldfactor /home/LNCMI-G/christophe.trophime/M9_2024.05.13---16_30_51.txt
@@ -121,6 +132,25 @@ Intercept: 1.6196286010253166e-06, A: 0.0008915003451151302, B: 0.00037659807651
 
 from [MagnetInfo](https://labs.core-cloud.net/ou/UPR3228/MagnetInfo/SitePages/Field-maps.aspx?web=1), we get the field factors
 in the table for M9: fh=8.915 unit? , fB=3.766 unit?
+
+- perform piecewise linear regression
+
+ - piecewise_regression for Ih and Ib
+```bash
+python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey IH --ykey IH --algo piecewise_regression --breakpoints 2
+```
+
+ - piecewise linear regression for Ih(t)
+
+```bash
+python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey t --ykey Field --algo piecewise_regression --breakpoints 8
+python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey t --ykey Field --algo pwlf --breakpoints 11
+```
+
+ - ruptures is not working properly ??
+```bash
+python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey t --ykey Field --algo ruptures --breakpoints 11
+```
 
 - parameters identification
 

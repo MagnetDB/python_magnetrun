@@ -106,8 +106,11 @@ def main():
         default="60",
     )
     parser_select.add_argument(
+        "--fields", help="select fields to plot", type=str, nargs="+"
+    )
+    parser_select.add_argument(
         "--field",
-        help="select record with a duration more than",
+        help="select field with a value more than",
         type=float,
         default="18.",
     )
@@ -166,12 +169,22 @@ def main():
         print(f"sort by time: {files}")
 
     selected_keys = []
-    if args.command == "plot" and args.xfield:
-        selected_keys += [args.xfield]
-    if args.fields:
-        selected_keys += args.fields
+    if args.command == "plot":
+        if args.xfield:
+            selected_keys += [args.xfield]
+        if args.fields:
+            print(f'args.fields={args.fields}')
+            selected_keys += args.fields
     else:
         selected_keys += ["Field"]
+    print(f'selected_keys={selected_keys}', flush=True)
+
+    min_duration = 60
+    if args.command == "select":
+        min_duration = args.duration
+    elif args.command == "stats":
+        print(f'!!! OverWrite min duration for stats: {min_duration} -> 1000 !!!')
+        min_duration = 1000
 
     if "timestamp" not in selected_keys:
         selected_keys.append("timestamp")
@@ -197,39 +210,46 @@ def main():
     ax = plt.gca()
 
     if args.command == "aggregate":
+        print(f'aggregate: fields={args.fields}')
         df_ = []
 
         for file in files:
             try:
-                data = load_record(file, args)
                 print(
-                    f"record: {data.FileName}, duration: {data.getDuration()} s",
+                    f"record: {file}",
                     end=" ",
                     flush=True,
                 )
-                if data.getDuration() >= 60:
+                data = load_record(file, args)
+                print(
+                    f", duration: {data.getDuration()} s",
+                    end=" ",
+                    flush=True,
+                )
+                if data.getDuration() >= min_duration:
                     if args.fields:
                         try:
-                            df_.append(data.Data[selected_keys])
-                            print(f"- extract {selected_keys}")
+                            df_.append(data.Data[args.fields])
+                            print(f"- extract {args.fields}", flush=True)
                         except:
                             print(
-                                f"- ignored dataset: {args.keys} not all in {data.getKeys()}"
+                                f"- ignored dataset: {args.fields} not all in {data.getKeys()}"
                             )
                             pass
                 else:
-                    print("- skipped")
+                    print(f"- skipped", flush=True)
 
             except:
-                print("- fail to load")
+                print(f"- fail to load", flush=True)
                 pass
 
         print(f"plot over time with seaborn: {len(df_)} dataframes", flush=True)
 
         df = pd.concat(df_, axis=0)
-        df.to_csv("teb.csv")
+        output = f"aggregate-{'-'.join(args.keys)}.csv"
+        df.to_csv(output)
         print(f"concat dataframe: {df.head()}", flush=True)
-        print(f"{df.columns.values.tolist()} to {os.getcwd()}/teb.csv", flush=True)
+        print(f"{df.columns.values.tolist()} to {os.getcwd()}/{output}", flush=True)
 
         # pd.DatetimeIndex(df['InsertedDate']).month
 
@@ -267,10 +287,16 @@ def main():
     legends = {}
 
     for file in files:
+        # print(f'file={file}', flush=True)
         try:
+            print(
+                f"record: {file}",
+                end=" ",
+                flush=True,
+            )
             data = load_record(file, args)
             print(
-                f"record: {data.FileName}, duration: {data.getDuration()} s",
+                f", duration: {data.getDuration()} s",
                 end=" ",
                 flush=True,
             )
@@ -290,9 +316,9 @@ def main():
                     )
 
             elif args.command == "stats":
-                if args.pearson and data.getDuration() >= 1000:
+                if args.pearson and data.getDuration() >= min_duration: # previous limit 1000:
                     pearson(data, args.fields, args.save, args.show, args.debug)
-                elif args.pairplot and data.getDuration() >= 1000:
+                elif args.pairplot and data.getDuration() >= min_duration: # previous limit 1000:
                     import seaborn as sns
                     import re
                     from natsort import natsorted
@@ -342,11 +368,10 @@ def main():
                     stats(data, args.fields, args.debug)
 
             elif args.command == "plot":
-
                 if args.xfield not in data.Keys:
-                    print(f"- missing xfield={args.xfield} - ignored dataset")
+                    print(f"- missing xfield={args.xfield} in {data.Keys}- ignored dataset")
                 else:
-                    if data.getDuration() >= 60:
+                    if data.getDuration() >= min_duration:
                         if args.fields:
                             for key in args.fields:
                                 if key not in data.Keys:
@@ -371,7 +396,7 @@ def main():
                                         ]
 
                     else:
-                        print(f"- ignored dataset")
+                        print(f"duration < {min_duration} - ignored dataset")
 
     if args.command == "plot":
         print(f"plot: {len(legends)} subplots", flush=True)
