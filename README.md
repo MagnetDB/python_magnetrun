@@ -149,16 +149,45 @@ To quit the virtual env, run `deactivate`.
 
 # To-do
 
-- Rewrite txt2csv to use methods in `utils` and `plots`
+- Rewrite txt2csv to use methods in `utils` and `plots` ?done?
 - For `tdms` to pandas see
     <https://nptdms.readthedocs.io/en/stable/apireference.html>
-- Check `addData` complex formula (involving `freesteam` for ex) with help of python `pyparsing`??
-- How to add columns coming from `freesteam`, for instance like rho, cp, \.\.??
+- Check `addData` complex formula (involving `freesteam` or `iapws` for ex) with help of python `pyparsing`??
+- How to add columns coming from `freesteam` or from ?iapws?, for instance like rho, cp, \.\.??
 - Export Data to `prettytables`, `tabular` or `cvs2md`?
 - How to pass option to `matplotlib` within `plotData()`: `*args PARAMETER` TO MAKE OPTIONAL ARGUMENTS?
 - Add support for origin files (for B experimental profile) - use `labplot`?? `liborigin`?? Python bindings??
 - Get `MagnetRun` files from control/monitoring system??
-- For `MagnetRun` add missing fields [U1, Pe1, Tout1, U2 \...\], `--missing, \--nhelices` - see `txt2csv.py`
+
+- For `MagnetRun` add missing fields [U1, Pe1, Tout1, U2 \...\], `--missing, \--nhelices` - see `txt2csv.py` - link with magnetdb (aka depends on msite configs)
+
+- Move test-*.py into tests
+- Test piecewise linear regression or polynomial
+- Split argparse optins into separate python files
+- Cross lag correlations (see chatgpg discussions)
+- add a note to mount pigbrother data
+- add note to mount pupitre data if applicable
+- magnetrun actually performs "ETL", can I store processed pupitre data into specific file format??
+
+- for plot with multiple keys, improve legend, save df with only selected fields??
+- for select, add multiple criteria - actually only one field value or threshold
+- docs for aggregate
+
+- systematic check of TinH and TinB?
+- view teb data on daily, monthly, yearly
+- teb forecast from previous data??
+- check independant variables (Ih, Teb, ?Qbrut?) on "plateau" exp - as Ib=f(Ih) with f piece wise 1order polynomial 
+- store stats, plateaus into a db?? links with magnetdb
+- extract data from magnet confile?
+
+- link with magnet user db - see xdds.csv
+- classification of Field profile
+- data from supra??
+- link with magnettools/hifimagnet for R(i) and L(i)
+- extract R(i), L(i) from U,I timeseries - see chatgpt 
+- estimation of heat exhchanger params - see NTU and cooling directory
+- Talim: calorimetric balance to get/estimate disspated power in AC/DC converters
+
 
 # Credits
 

@@ -26,6 +26,27 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file", help="enter input file")
+    parser.add_argument(
+        "--xkey",
+        type=str,
+        help="select xkey",
+        default="IH",
+    )
+    parser.add_argument(
+        "--ykey",
+        type=str,
+        help="select ykey",
+        default="IB",
+    )
+    parser.add_argument(
+        "--breakpoints",
+        type=int,
+        help="set number of breakpoints",
+        default=2,
+    )
+    parser.add_argument(
+        "--save", help="save graphs (png format)", action="store_true"
+    )
     args = parser.parse_args()
     print(f"args: {args}", flush=True)
 
@@ -61,13 +82,12 @@ if __name__ == "__main__":
                 f"so far file with extension in {supported_formats} are implemented"
             )
 
-    Ib = mrun.getData('IB')
-    x = Ib.to_numpy().reshape(-1)
-    y = mrun.getData('IH').to_numpy().reshape(-1)
+    x = mrun.getData(args.xkey).to_numpy().reshape(-1)
+    y = mrun.getData(args.ykey).to_numpy().reshape(-1)
     # print('Ib:', x, type(x), x.shape)
 
     import piecewise_regression
-    pw_fit = piecewise_regression.Fit(x, y, n_breakpoints=2)
+    pw_fit = piecewise_regression.Fit(x, y, n_breakpoints=args.breakpoints)
     pw_fit.summary()
     
     # Plot the data, fit, breakpoints and confidence intervals
@@ -76,8 +96,22 @@ if __name__ == "__main__":
     pw_fit.plot_fit(color="red", linewidth=4)
     pw_fit.plot_breakpoints()
     pw_fit.plot_breakpoint_confidence_intervals()
-    plt.xlabel(r'$I_B$ [A]')
-    plt.ylabel(r'$I_H$ [A]')
+    
+    mdata = mrun.getMData()
+    (symbol, unit) = mdata.getUnitKey(args.xkey)
+    plt.xlabel(f"{symbol} [{unit:~P}]")
+    
+    (symbol, unit) = mdata.getUnitKey(args.ykey)
+    plt.ylabel(f"{symbol} [{unit:~P}]")
+
+    plt.title(f"{file}: {args.ykey} vs {args.xkey}")
     plt.grid()
-    plt.show()
+    
+    if not args.save:
+        plt.show()
+    else:
+        imagefilename = "image"
+        print(f"saveto: {imagefilename}_{args.ykey}_vs_{args.xkey}.png", flush=True)
+        plt.savefig(f"{imagefilename}_{args.ykey}_vs_{args.xkey}.png", dpi=300)
+
     plt.close()
