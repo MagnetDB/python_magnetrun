@@ -31,7 +31,7 @@ python3 -m  python_magnetrun.requests.cli --user email --datadir datadir [--save
 _ To list fields recorded during an experiment:
 
 ```bash
-python3 -m python_magnetrun.utils.txt2csv data/M9_2019.02.14-23_00_38.txt --list
+python3 -m python_magnetrun.utils.txt2csv srvdata/M9_2019.02.14---23\:00\:38.txt --list
 ```
 
 
@@ -39,7 +39,7 @@ _ To view the magnetic field during an experiment:
 
 
 ```bash
-python3 -m python_magnetrun.python_magnetrun data/M9_2019.02.14-23_00_38.txt plot --vs_time "Field" --show
+python3 -m python_magnetrun.python_magnetrun srvdata/M9_2019.02.14---23\:00\:38.txt plot --vs_time "Field"
 ```
 
 <!--
@@ -55,8 +55,8 @@ python3 -m python_magnetrun.python_magnetrun data/M9_2019.02.14-23_00_38.txt plo
 - List records that last at least 60 s and with a magnetic filed above 18:
 
 ```bash
-python -m python_magnetrun.examples.get-record 'python_magnetrun/txt/M8*.txt' select --duration 60 --field 18.
-python -m python_magnetrun.examples.get-record 'python_magnetrun/txt/M*.txt' plot --xfield timestamp --fields teb --show
+python -m python_magnetrun.examples.get-record 'srvdata/M8*.txt' select --duration 60 --field 18.
+python -m python_magnetrun.examples.get-record 'srvdata/M8*.txt' plot --xfield timestamp --fields teb --show
 ```
 
 - For all `pupitre` files, perform plateaux detections:
