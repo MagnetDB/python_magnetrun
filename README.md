@@ -67,14 +67,24 @@ python -m python_magnetrun.examples.get-record srvdata/M8*.txt plot --xfield tim
 - Aggregata Teb data
 
 ```bash
-python -m python_magnetrun.examples.get-record srvdata/M8*.txt aggregate --fields teb --show
+python -m python_magnetrun.examples.get-record srvdata/M*---*.txt aggregate --fields teb --show
 ```
+
+- For stats:
+
+```bash
+python -m python_magnetrun.python_magnetrun  srvdata/M8*.txt  stats
+```
+
+not working:`--show --keys Field --threshold 1`
 
 - For all `pupitre` files, perform plateaux detections:
 
+
 ```bash
-python -m python_magnetrun.python_magnetrun  srvdata/M8*.txt  stats --show --keys Field --threshold 1
+python -m python_magnetrun.python_magnetrun  srvdata/M8*.txt  stats --plateau
 ```
+
 
 - Plot `pigbrother` and `pupitre` current for Helices insert:
 
