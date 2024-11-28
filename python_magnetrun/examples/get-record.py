@@ -75,12 +75,17 @@ def getTimestamp(file: str, debug: bool = False) -> datetime:
     if debug:
         print(f"getTime({file})={res}", flush=True)
 
-    (site, date_string) = res
-    date_string = date_string.replace(".txt", "")
-    tformat = "%Y.%m.%d---%H:%M:%S"
-    timestamp = datetime.strptime(date_string, tformat)
-    if debug:
-        print(f"{site}: timestamp={timestamp}")
+    try:
+        (site, date_string) = res
+        date_string = date_string.replace(".txt", "")
+        tformat = "%Y.%m.%d---%H:%M:%S"
+        timestamp = datetime.strptime(date_string, tformat)
+        if debug:
+            print(f"{site}: timestamp={timestamp}")
+    except:
+        print(f'getTimestamp: {file} failed -unexpected filename')
+        exit(1)
+
     return timestamp
 
 
@@ -175,6 +180,8 @@ def main():
         if args.fields:
             print(f'args.fields={args.fields}')
             selected_keys += args.fields
+    elif args.command == "aggregate":
+        selected_keys += args.fields
     else:
         selected_keys += ["Field"]
     print(f'selected_keys={selected_keys}', flush=True)
@@ -210,7 +217,8 @@ def main():
     ax = plt.gca()
 
     if args.command == "aggregate":
-        print(f'aggregate: fields={args.fields}')
+        print(f'aggregate: fields={selected_keys}')
+
         df_ = []
 
         for file in files:
@@ -227,15 +235,14 @@ def main():
                     flush=True,
                 )
                 if data.getDuration() >= min_duration:
-                    if args.fields:
-                        try:
-                            df_.append(data.Data[args.fields])
-                            print(f"- extract {args.fields}", flush=True)
-                        except:
-                            print(
-                                f"- ignored dataset: {args.fields} not all in {data.getKeys()}"
-                            )
-                            pass
+                    try:
+                        df_.append(data.Data[selected_keys])
+                        print(f"- extract {selected_keys}", flush=True)
+                    except:
+                        print(
+                            f"- ignored dataset: {selected_keys} not all in {data.getKeys()}"
+                        )
+                        pass
                 else:
                     print(f"- skipped", flush=True)
 
@@ -246,7 +253,7 @@ def main():
         print(f"plot over time with seaborn: {len(df_)} dataframes", flush=True)
 
         df = pd.concat(df_, axis=0)
-        output = f"aggregate-{'-'.join(args.keys)}.csv"
+        output = f"aggregate-{'-'.join(args.fields)}.csv"
         df.to_csv(output)
         print(f"concat dataframe: {df.head()}", flush=True)
         print(f"{df.columns.values.tolist()} to {os.getcwd()}/{output}", flush=True)
@@ -264,6 +271,10 @@ def main():
             for key in args.fields:
                 print(f"seaborn plot for {key} per months over years", flush=True)
                 ax = sns.lineplot(x="month", y=key, hue="year", data=df)
+
+                (symbol, unit) = data.getUnitKey(key)
+                ax.set_ylabel(f"{symbol} [{unit:~P}]")
+                ax.set_title(f"{file}: {key}")
                 """
                 # filtered over 1995 to make the plot less cluttered
                 sns.lineplot(

@@ -260,22 +260,26 @@ if __name__ == "__main__":
             try:
                 index = filename.index("_")
                 site = filename[0:index]
-                print(f"site detected: {site}")
-            except Exception:
-                print("no site detected - use args.site argument instead")
-                pass
+                # print(f"site detected: {site}")
+            except Exception as error:
+                print(f"{file}: no site detected - use args.site argument instead")
+                continue
 
-        match f_extension:
-            case ".txt":
-                mrun = MagnetRun.fromtxt(site, insert, file)
-            case ".tdms":
-                mrun = MagnetRun.fromtdms(site, insert, file)
-            case ".csv":
-                mrun = MagnetRun.fromcsv(site, insert, file)
-            case _:
-                raise RuntimeError(
-                    f"so far file with extension in {supported_formats} are implemented"
-                )
+        try:
+            match f_extension:
+                case ".txt":
+                    mrun = MagnetRun.fromtxt(site, insert, file)
+                case ".tdms":
+                    mrun = MagnetRun.fromtdms(site, insert, file)
+                case ".csv":
+                    mrun = MagnetRun.fromcsv(site, insert, file)
+                case _:
+                    raise RuntimeError(
+                        f"so far file with extension in {supported_formats} are implemented"
+                    )
+        except Exception as error:
+            print(f"{file}: an error occurred when loading:", error)
+            continue
 
         inputs[file] = {"data": mrun}
 

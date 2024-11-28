@@ -511,14 +511,18 @@ class MagnetData:
 
             # Filter out one element lists
             Uprobes = list(filter(lambda x: len(x) > 1, all_groups))
-            # print(f"Uprobes: {Uprobes}")
+            print(f"{self.FileName} Uprobes: {Uprobes}")
+            if not Uprobes:
+                raise RuntimeError(f'{self.FileName}: CleanUpData no Uprobes found')
             UH = [f"Ucoil{i}" for i in Uprobes[0]]
-            UB = [f"Ucoil{i}" for i in Uprobes[1]]
+            _df["UH"] = _df[UH].sum(axis=1)
             if debug:
                 print(f"UH: {UH}")
-                print(f"UB: {UB}")
-            _df["UH"] = _df[UH].sum(axis=1)
-            _df["UB"] = _df[UB].sum(axis=1)
+            if len(Uprobes) > 1:
+                UB = [f"Ucoil{i}" for i in Uprobes[1]]
+                _df["UB"] = _df[UB].sum(axis=1)
+                if debug:
+                    print(f"UB: {UB}")
 
             # Always add latest Ikeys if not already in _df
             Ikeys = natsorted(
@@ -567,16 +571,18 @@ class MagnetData:
                             flush=True,
                         )
                     ikeys = self.Data[Ikeys]
+                    print(f'{self.FileName}: ikeys={ikeys.keys()}, Ikeys={Ikeys}', flush=True)
                     remove_Ikeys = []
                     for i in range(len(Ikeys)):
                         for j in range(i + 1, len(Ikeys)):
-                            ikeys[f"diff{i}_{j}"] = ikeys[Ikeys[i]] - ikeys[Ikeys[j]]
-                            error = ikeys[f"diff{i}_{j}"].mean()
-                            stderror = ikeys[f"diff{i}_{j}"].std()
+                            diff = ikeys[Ikeys[i]] - ikeys[Ikeys[j]]
+                            error = diff.mean()
+                            stderror = diff.std()
                             if debug:
                                 print(f"diff{i}_{j}: mean={error}, std={stderror}")
                             if abs(error) <= 1.0e-4:
                                 remove_Ikeys.append(Ikeys[j])
+                                print(f'remove_Ikeys({Ikeys[j]})')
 
                     if debug:
                         print(f"remove_Ikeys: {remove_Ikeys}")
