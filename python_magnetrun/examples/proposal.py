@@ -13,7 +13,8 @@ import sys
 
 from ..MagnetRun import MagnetRun
 from ..magnetdata import MagnetData
-from ..processing.stats import stats, plateaus, nplateaus
+from ..processing.stats import stats
+from ..utils.plateaux import plateaus, nplateaus
 
 import matplotlib
 import matplotlib.pyplot as plt

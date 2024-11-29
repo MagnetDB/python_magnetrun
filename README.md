@@ -11,6 +11,26 @@ Python `MagnetRun` contains utilities to view and analyze Magnet runs
 -   Free software: MIT license
 -   Documentation: <https://python-magnetrun.readthedocs.io>.
 
+# Installation
+
+# Using Python virtual env
+
+For Linux/Mac Os X:
+
+```bash
+$ python3 -m venv [--system-site-packages] magnetrun-env
+$ source ./magnetrun-env/bin/activate
+$ python3 -m pip install -r requirements.txt
+```
+
+For windows
+
+```bash
+c:\>C:\Python35\python -m venv c:\path\to\magnetrun-env
+C:\> C:\path\to\magnetrun-env\Scripts\activate.bat
+c:\>C:\Python35\python -m pip install -r requirements.txt
+```
+
 # Features
 
 -   Extract data from control/monitoring system
@@ -31,11 +51,11 @@ python3 -m  python_magnetrun.requests.cli --user email --datadir datadir [--save
 _ To list fields recorded during an experiment:
 
 ```bash
-python3 -m python_magnetrun.utils.txt2csv srvdata/M9_2019.02.14---23\:00\:38.txt --list
+python3 -m python_magnetrun.python_magnetrun srvdata/M9_2019.02.14---23\:00\:38.txt info --list
 ```
 
 
-_ To view the magnetic field during an experiment:
+- To view the magnetic field during an experiment:
 
 
 ```bash
@@ -76,8 +96,6 @@ python -m python_magnetrun.examples.get-record srvdata/M*---*.txt aggregate --fi
 python -m python_magnetrun.python_magnetrun  srvdata/M8*.txt  stats
 ```
 
-not working:`--show --keys Field --threshold 1`
-
 - For all `pupitre` files, perform plateaux detections:
 
 
@@ -101,6 +119,10 @@ Example is functional, but the results are good. The method does not work correc
 python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms  stats --show --keys Courants_Alimentations/Référence_GR1 --detect_bkpts --sav
 ```
 - check field factor (not working properly since Ih and Ib are "piecewise" dependant)
+
+better way to do this - see python_magnetrun/corr_Ih_Ib.py with algo=piecewise-regression or pwlf
+once the number of breakpoints are known.
+
 
 ```bash
 python -m python_magnetrun.test-fieldfactor /home/LNCMI-G/christophe.trophime/M9_2024.05.13---16_30_51.txt
@@ -143,11 +165,13 @@ Intercept: 1.6196286010253166e-06, A: 0.0008915003451151302, B: 0.00037659807651
 from [MagnetInfo](https://labs.core-cloud.net/ou/UPR3228/MagnetInfo/SitePages/Field-maps.aspx?web=1), we get the field factors
 in the table for M9: fh=8.915 unit? , fB=3.766 unit?
 
+Pb here is that Ih and Ib are actually colinear - at least in piecewise manner
+
 - perform piecewise linear regression
 
  - piecewise_regression for Ih and Ib
 ```bash
-python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey IH --ykey IH --algo piecewise_regression --breakpoints 2
+python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey IH --ykey IB --algo piecewise_regression --breakpoints 2
 ```
 
  - piecewise linear regression for Ih(t)
@@ -170,7 +194,7 @@ python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --x
 To install in a python virtual env on Linux
 
 ```bash
-python -m venv --system-site-packages magnetrun-env
+python -m venv [--system-site-packages] magnetrun-env
 source ./magnetrun-env/bin/activate
 pip install -r requirements.txt
 ```
@@ -178,7 +202,7 @@ pip install -r requirements.txt
 On Windows:
 
 ```cmd
-python -m venv --system-site-packages c:\path\to\magnetrun-env
+python -m venv [--system-site-packages] c:\path\to\magnetrun-env
 c:\path\to\magnetrun-env\Scripts\activate.bat
 pip install -r requirements.txt
 ```
@@ -189,44 +213,53 @@ To quit the virtual env, run `deactivate`.
 
 # To-do
 
-- Rewrite txt2csv to use methods in `utils` and `plots` ?done?
-- For `tdms` to pandas see
+Refactor:
+- [ ] Split argparse options into separate python files
+- [ ] add an example / a test for each subcommand in python_magnetrun
+- [ ] store stats (which? + plateaus?) data (+ duration) in a dataframe, csv file or a db
+
+Docs:
+- [X] docs for aggregate
+- [ ] add a note to mount pigbrother data
+- [ ] add note to mount pupitre data if applicable
+
+Features:
+- [ ] magnetrun actually performs "ETL", can I store processed pupitre data into specific file format??
+
+- [ ] Rewrite txt2csv to use methods in `utils` and `plots` ?done?
+- [X] For `tdms` to pandas see
     <https://nptdms.readthedocs.io/en/stable/apireference.html>
-- Check `addData` complex formula (involving `freesteam` or `iapws` for ex) with help of python `pyparsing`??
-- How to add columns coming from `freesteam` or from ?iapws?, for instance like rho, cp, \.\.??
-- Export Data to `prettytables`, `tabular` or `cvs2md`?
-- How to pass option to `matplotlib` within `plotData()`: `*args PARAMETER` TO MAKE OPTIONAL ARGUMENTS?
-- Add support for origin files (for B experimental profile) - use `labplot`?? `liborigin`?? Python bindings??
-- Get `MagnetRun` files from control/monitoring system??
+- [ ] Check `addData` complex formula (involving `freesteam` or `iapws` for ex) with help of python `pyparsing`??
+- [ ] How to add columns coming from `freesteam` or from ?iapws?, for instance like rho, cp, \.\.??
+- [ ] Export Data to `prettytables`, `tabular` or `cvs2md`?
+- [ ] How to pass option to `matplotlib` within `plotData()`: `*args PARAMETER` TO MAKE OPTIONAL ARGUMENTS?
+- [ ] Add support for origin files (for B experimental profile) - use `labplot`?? `liborigin`?? Python bindings??
 
-- For `MagnetRun` add missing fields [U1, Pe1, Tout1, U2 \...\], `--missing, \--nhelices` - see `txt2csv.py` - link with magnetdb (aka depends on msite configs)
+- [ ] Data from M1, M3, M5 and M7 for complete stats ???
+- [ ] Get `MagnetRun` files directly from control/monitoring system??
+- [ ] For `MagnetRun` add missing fields [U1, Pe1, Tout1, U2 \...\], `--missing, \--nhelices` - see `txt2csv.py` - link with magnetdb (aka depends on msite configs)
 
-- Move test-*.py into tests
-- Test piecewise linear regression or polynomial
-- Split argparse optins into separate python files
-- Cross lag correlations (see chatgpg discussions)
-- add a note to mount pigbrother data
-- add note to mount pupitre data if applicable
-- magnetrun actually performs "ETL", can I store processed pupitre data into specific file format??
+- [ ] for plot with multiple keys, improve legend, save df with only selected fields??
+- [ ] for select, add multiple criteria - actually only one field value or threshold
 
-- for plot with multiple keys, improve legend, save df with only selected fields??
-- for select, add multiple criteria - actually only one field value or threshold
-- docs for aggregate
+- [ ] Test piecewise linear regression or polynomial
+- [ ] Cross lag correlations (see chatgpg discussions)
 
-- systematic check of TinH and TinB?
-- view teb data on daily, monthly, yearly
-- teb forecast from previous data??
-- check independant variables (Ih, Teb, ?Qbrut?) on "plateau" exp - as Ib=f(Ih) with f piece wise 1order polynomial 
-- store stats, plateaus into a db?? links with magnetdb
-- extract data from magnet confile?
+Usage:
+- [ ] systematic check of TinH and TinB?
+- [ ] view teb data on daily, monthly, yearly
+- [ ] teb forecast from previous data??
+- [ ] check independant variables (Ih, Teb, ?Qbrut?) on "plateau" exp - as Ib=f(Ih) with f piece wise 1order polynomial 
+- [ ] extract data from magnet confile?
 
-- link with magnet user db - see xdds.csv
-- classification of Field profile
-- data from supra??
-- link with magnettools/hifimagnet for R(i) and L(i)
-- extract R(i), L(i) from U,I timeseries - see chatgpt 
-- estimation of heat exhchanger params - see NTU and cooling directory
-- Talim: calorimetric balance to get/estimate disspated power in AC/DC converters
+- [ ] link with magnet user db - see xdds.csv
+- [ ] classification of Field profile
+- [ ] data from supra??
+- [ ] link with magnettools/hifimagnet for R(i) and L(i)
+- [ ] extract R(i), L(i) from U,I timeseries - see chatgpt 
+- [ ] estimation of heat exhchanger params - see NTU and cooling directory
+- [ ] Talim: calorimetric balance to get/estimate disspated power in AC/DC converters
+
 
 
 # Credits
