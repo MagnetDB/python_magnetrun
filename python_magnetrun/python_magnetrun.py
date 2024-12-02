@@ -3,6 +3,8 @@
 import os
 import traceback
 
+from matplotlib.cbook import flatten
+
 from .MagnetRun import MagnetRun
 from .processing.smoothers import savgol
 from scipy.signal import find_peaks
@@ -313,20 +315,33 @@ if __name__ == "__main__":
             my_ax = plt.gca()
 
             items = args.vs_time
-            # print(f"items={items}", flush=True)
-            title = ""
+            print(f"items={items}", flush=True)
+            title = os.path.basename(args.input_file[0])
+            if len(args.input_file) > 1:
+                klabels = flatten(items)
+                title = f"{'-'.join(klabels)}"
+
+            legends = []
             for file in args.input_file:
-                title = os.path.basename(file)
+                legends.append(os.path.basename(file))
                 f_extension = os.path.splitext(file)[-1]
                 plot_args = items[extensions[f_extension][0]]
                 mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
                 for key in plot_args:
                     # print(f"plot key={key}, type={type(key)}", flush=True)
+                    (symbol, unit) = mdata.getUnitKey(key)
                     mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
 
-                if args.normalize:
-                    plt.ylabel("")
+            plt.ylabel(f"{symbol} [{unit:~P}]")
+            if args.normalize:
+                plt.ylabel("{symbol} normalized")
+
+            if len(legends) > 1:
+                my_ax.legend(labels=legends)
+
+            (symbol, unit) = mdata.getUnitKey("t")
+            plt.xlabel(f"{symbol} [{unit:~P}]")
 
             plt.title(title)
             if not args.save:

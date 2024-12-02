@@ -32,7 +32,7 @@ class MagnetData:
         Groups: dict,
         Keys: list[str],
         Type: int = 0,
-        Data: pd.DataFrame | dict = None
+        Data: pd.DataFrame | dict = None,
     ) -> None:
         """default constructor"""
         self.FileName = filename
@@ -309,9 +309,9 @@ class MagnetData:
         ureg.define("var = 1")
 
         if self.Type == 1:
-            print('self.Data=', type(self.Data))
+            print("self.Data=", type(self.Data))
             for entry in self.Data:
-                print('entry=', entry, type(entry))
+                print("entry=", entry, type(entry))
                 if entry == "t":
                     self.units["t"] = ("t", ureg.second)
                 else:
@@ -513,7 +513,7 @@ class MagnetData:
             Uprobes = list(filter(lambda x: len(x) > 1, all_groups))
             print(f"{self.FileName} Uprobes: {Uprobes}")
             if not Uprobes:
-                raise RuntimeError(f'{self.FileName}: CleanUpData no Uprobes found')
+                raise RuntimeError(f"{self.FileName}: CleanUpData no Uprobes found")
             UH = [f"Ucoil{i}" for i in Uprobes[0]]
             _df["UH"] = _df[UH].sum(axis=1)
             if debug:
@@ -571,7 +571,10 @@ class MagnetData:
                             flush=True,
                         )
                     ikeys = self.Data[Ikeys]
-                    print(f'{self.FileName}: ikeys={ikeys.keys()}, Ikeys={Ikeys}', flush=True)
+                    print(
+                        f"{self.FileName}: ikeys={ikeys.keys()}, Ikeys={Ikeys}",
+                        flush=True,
+                    )
                     remove_Ikeys = []
                     for i in range(len(Ikeys)):
                         for j in range(i + 1, len(Ikeys)):
@@ -582,7 +585,7 @@ class MagnetData:
                                 print(f"diff{i}_{j}: mean={error}, std={stderror}")
                             if abs(error) <= 1.0e-4:
                                 remove_Ikeys.append(Ikeys[j])
-                                print(f'remove_Ikeys({Ikeys[j]})')
+                                print(f"remove_Ikeys({Ikeys[j]})")
 
                     if debug:
                         print(f"remove_Ikeys: {remove_Ikeys}")
@@ -949,7 +952,7 @@ class MagnetData:
             # add xlabel, ylabel from units
             plt.ylabel(f"{ysymbol} [{yunit:~P}]")
             (xsymbol, xunit) = self.getUnitKey(x)
-            if not xunit is None:
+            if xunit is not None:
                 plt.xlabel(f"{xsymbol} [{xunit:~P}]")
 
         else:
