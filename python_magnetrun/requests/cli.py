@@ -142,7 +142,7 @@ def main():
 
         _data = {}
         _counter = {}
-        print("load site history from M9_M10-history.csv")
+        print("load site history from M9_M10-history.csv", flush=True)
         with open("M9_M10-history.csv") as f:
             _raw = csv.reader(f)
 
@@ -227,293 +227,6 @@ def main():
         for item, values in db_Sites.items():
             print(f"site={item}: {values}")
         # TODO rename site with housing
-
-        """
-        stopped_at = datetime.datetime.now()
-        for item in _data:
-            print(f"data[{item}]: {_data[item]}")
-            housing = _data[item][2]
-            magnet = re.sub("_\\d+", "", item)
-            status = _data[item][1]  # TODO change status to match magnetdb status
-            tformat = "%Y-%m-%d"
-            timestamp = datetime.datetime.strptime(_data[item][0], tformat)
-
-            created_at = None
-            stopped_at = None
-            if status.lower() == "en service":
-                created_at = timestamp
-                stopped_at = datetime.datetime.strptime("2100-01-01", tformat)
-            else:
-                stopped_at = timestamp
-
-            if item in db_Sites:
-                db_Sites[item]["status"] = status
-                db_Sites[item]["commissioned_at"] = created_at
-                db_Sites[item]["decommissioned_at"] = stopped_at
-            else:
-                db_Sites[item] = {
-                    "name": item,
-                    "description": "",
-                    "status": status,
-                    "magnets": [magnet],
-                    "records": [],
-                    "commissioned_at": created_at,
-                    "decommissioned_at": stopped_at,
-                }
-            print(f"db_Sites[{item}]: {db_Sites[item]}")
-
-        print("set [de]commisionned_at dates for site")
-        for item in _data:
-            res = item.split("_")
-            name = res[0]
-            if len(res) == 2:
-                num = int(res[-1])
-                cfg = f"{name}_{num+1}"
-            else:
-                cfg = f"{name}_1"
-
-            if cfg in _data:
-                db_Sites[item]["decommissioned_at"] = db_Sites[cfg]["commissioned_at"]
-
-            print(f"db_Sites[{item}]: {db_Sites[item]}")
-
-        site_names = {}
-        for item in _data:
-            match_expr = re.compile(f"{item}_\\d+")
-            same_cfgs = [key for key in _data if match_expr.match(key) and key != item]
-            if same_cfgs:
-                site_names[item] = same_cfgs
-            if not "_" in item and not same_cfgs:
-                site_names[item] = []
-        if args.debug:
-            print("\nSite names:")
-            for name in site_names:
-                print(f"site_name[{name}]={site_names[name]}")
-
-        # Get records per site
-        print("Load records per Site")
-        for ID in db_Sites:  # Mids:
-            getSiteRecord(s, url_files, ID, db_Sites, url_downloads, debug=args.debug)
-
-        # drop site if len(records)==0
-        remove_site = []
-        for site in db_Sites:
-            if len(db_Sites[site]["records"]) == 0:
-                remove_site.append(site)
-        if args.debug:
-            print(f"\ndb_Sites to be removed (empty list of records): {remove_site}")
-
-        cleanup(remove_site, "empty record list", site_names, db_Sites)
-        if debug:
-            for name in site_names:
-                print(f"site_name[{name}]={site_names[name]}")
-
-        # Correct status:
-        # for site: 'in_study', 'in_operation', 'decommisioned'
-        # for magnet: 'in_study', 'in_operation', 'in_stock', 'defunct'
-        # for parts: 'in_study', 'in_operation', 'in_stock', 'defunct'
-        # En Service -> in_operation
-        # En Stock: check latest record time to set status
-        # Autre
-        for site, values in db_Sites.items():
-            if values["decommissioned_at"] != stopped_at:
-                values["status"] = "decommisioned"
-            else:
-                if values["status"].lower() == "en service":
-                    values["status"] = "in_operation"
-
-                if values["status"].lower() == "en stock":
-                    latest_record = values["records"][-1]
-                    latest_time = (
-                        latest_record.getTimestamp()
-                    )  # not really a timestamp but a datetime.datetime
-                    today = (
-                        datetime.datetime.now()
-                    )  # use today.timestamp() to get timestamp
-                    dt = today - latest_time
-                    # print(f'{site}: latest record is {dt.days} daysfrom now')
-                    if dt.days >= 4:
-                        values["status"] = "decommisioned"
-                        values["decommissioned_at"] = latest_time
-
-        if args.debug:
-            print(f"\ndb_Sites({len(db_Sites)}): orderer by names")
-            for site in site_names:
-                housing = db_Sites[site]["records"][0].getHousing()
-                print(
-                    f"{db_Sites[site]['name']}: status={db_Sites[site]['status']}, housing={housing}, commissioned_at={db_Sites[site]['commissioned_at']}, decommissioned_at={db_Sites[site]['decommissioned_at']}, records={len(db_Sites[site]['records'])}"
-                )
-                for item in site_names[site]:
-                    housing = db_Sites[item]["records"][0].getHousing()
-                    print(
-                        f"{db_Sites[item]['name']}: status={db_Sites[item]['status']}, housing={housing}, commissioned_at={db_Sites[item]['commissioned_at']}, decommissioned_at={db_Sites[item]['decommissioned_at']}, records={len(db_Sites[item]['records'])}"
-                    )
-        """
-        """
-        # if db_Sites[site]['decommissioned_at'] - db_Sites[site]['commissioned_at'] < 0 day:
-        # transfert record to other site - aka magnet_[n-1] - from name site - aka magnet_n
-        # get latest_record from magnet_[n]
-        # add update db_Sites[site]['decommissioned_at'] to latest_time record
-        # remove site - aka magnet_[n]
-        print("\nCheck db_Sites:")
-        remove_site = []
-        for site, values in db_Sites.items():
-            dt = values["decommissioned_at"] - values["commissioned_at"]
-            if dt.days <= 0:
-                print(f"{site}: latest record is {dt.days} days from now")
-                res = site.split("_")
-                if len(res) != 1:
-                    name = res[0]
-                    num = int(res[1])
-                    previous_site = name
-                    if num > 1:
-                        previous_site = f"{name}_{num-1}"
-                    print(f"{site}: tranfert records to {previous_site}")
-                    latest_record = values["records"][-1]
-                    latest_time = (
-                        latest_record.getTimestamp()
-                    )  # not really a timestamp but a datetime.datetime
-                    db_Sites[previous_site]["decommissioned_at"] = latest_time
-                    for record in values["records"]:
-                        db_Sites[previous_site]["records"].append(record)
-                        record.setSite(previous_site)
-                remove_site.append(site)
-
-        cleanup(remove_site, "less than one day", site_names, db_Sites)
-        if debug:
-            for name in site_names:
-                print(f"site_name[{name}]={site_names[name]}")
-
-        print("\nCheck db_Sites with same base name:")
-        merge_site = {}
-        for item in site_names:
-            # print(f'site[{item}]: {site_names[item]}')
-            num = len(site_names[item])
-            merge_site[item] = []
-            if num >= 2:
-                for i in range(num - 1):
-                    if i == 0:
-                        dt = (
-                            db_Sites[item]["decommissioned_at"]
-                            - db_Sites[site_names[item][i]]["commissioned_at"]
-                        )
-                        if dt.days <= 0:
-                            merge_site[item].append(item)
-                            merge_site[item].append(site_names[item][i])
-                    else:
-                        dt = (
-                            db_Sites[site_names[item][i]]["decommissioned_at"]
-                            - db_Sites[site_names[item][i + 1]]["commissioned_at"]
-                        )
-                        if dt.days <= 0:
-                            # print(f'{site_names[item][i]} == {site_names[item][i+1]}')
-                            merge_site[item].append(site_names[item][i])
-                            merge_site[item].append(site_names[item][i + 1])
-            # remove duplicate in list
-            merge_site[item] = list(dict.fromkeys(merge_site[item]))
-        # drop empty key
-        merge_site = {i: j for i, j in merge_site.items() if j != []}
-        if debug:
-            for item in merge_site:
-                print(f"{item}: {merge_site[item]}")
-
-        remove_site = []
-        for item in merge_site:
-            num = len(merge_site[item])
-            db_Sites[merge_site[item][0]]["decommissioned_at"] = db_Sites[
-                merge_site[item][-1]
-            ]["decommissioned_at"]
-            db_Sites[merge_site[item][0]]["status"] = db_Sites[merge_site[item][-1]][
-                "status"
-            ]
-            for i in range(num):
-                # transfert record list to db_Sites[item][0]
-                if i > 0:
-                    for record in db_Sites[merge_site[item][i]]["records"]:
-                        db_Sites[merge_site[item][0]]["records"].append(record)
-                        record.setSite(merge_site[item][0])
-                    remove_site.append(merge_site[item][i])
-
-        cleanup(remove_site, "merged", site_names, db_Sites)
-        if debug:
-            for name in site_names:
-                print(f"site_name[{name}]={site_names[name]}")
-
-        # verify if for site in_operation
-        # if latest_time - today >= 10 days
-        # change status to decommisionning and set decommisionned_at to latest_time
-        installation_stop = "12/23/22 00:00:00"
-        datetime_stop = datetime.datetime.strptime(
-            installation_stop, "%m/%d/%y %H:%M:%S"
-        )
-
-        print("\nCheck db_Sites in in_operation:")
-        for site, values in db_Sites.items():
-            if values["status"] == "in_operation":
-                latest_record = values["records"][-1]
-                # print(f'latest_record: {latest_record.housing}')
-                latest_time = (
-                    latest_record.getTimestamp()
-                )  # not really a timestamp but a datetime.datetime
-                today = (
-                    datetime.datetime.now()
-                )  # use today.timestamp() to get timestamp
-                dt = today - latest_time
-                dt_stop = datetime_stop - latest_time
-                if dt.days >= 10:
-                    print(
-                        f"{site}: latest record {latest_time} on {latest_record.housing} is {dt.days} days from now, {dt_stop.days} days from installation stop {datetime_stop}"
-                    )
-                    if dt_stop.days >= 7:
-                        values["status"] = "decommisioned"
-                        values["decommissioned_at"] = latest_time
-
-        # check records are not shared between db_Sites:
-        lst_records = []
-        print("\nCheck db_Sites for common records:")
-        for site in db_Sites:
-            lst_records.append(
-                (set([record.link for record in db_Sites[site]["records"]]), site)
-            )
-
-        for i in range(len(db_Sites)):
-            a_set = lst_records[i][0]
-            for j in range(i + 1, len(db_Sites)):
-                b_set = lst_records[j][0]
-                if len(a_set.intersection(b_set)) != 0:
-                    print(
-                        f"records common between {lst_records[i][1]} and {lst_records[j][1]}: {len(a_set.intersection(b_set))}"
-                    )
-        """
-
-        """
-        # Create list of Magnets from db_Sites
-        # NB use entries sorted by commisionned date
-        # TODO replace Magnets by a dict that is similar to magnetdb magnet
-        print(f"\ndb_Sites({len(db_Sites)}):")
-        for site in site_names:
-            values = db_Sites[site]
-            housing = values["records"][0].getHousing()
-            print(
-                f"{values['name']}: status={values['status']}, housing={housing}, commissioned_at={values['commissioned_at']}, decommissioned_at={values['decommissioned_at']}, records={len(values['records'])}"
-            )
-            for item in site_names[site]:
-                svalues = db_Sites[item]
-                housing = svalues["records"][0].getHousing()
-                print(
-                    f"{svalues['name']}: status={svalues['status']}, housing={housing}, commissioned_at={svalues['commissioned_at']}, decommissioned_at={svalues['decommissioned_at']}, records={len(svalues['records'])}"
-                )
-
-        # print(f"\nMagnets: create and set magnet status")
-        for site in site_names:  # sorted(db_Sites, key=operator.itemgetter(5)):
-            magnetID = re.sub("_\\d+", "", site)
-            status = db_Sites[site]["status"]
-            if site_names[site]:
-                status = db_Sites[site_names[site][-1]]["status"]
-            if status.lower() == "en stock":
-                status = "in_stock"
-            Magnets[magnetID] = HMagnet.HMagnet(magnetID, "", status, parts=[])
-        """
 
         for site, values in db_Sites.items():
             status = values["status"]
@@ -705,11 +418,13 @@ def main():
 
         for name in housing_names:
             url_housing = base_url + "/" + name
+            print(f'records: {url_housing}', flush=True)
             page = s.get(url=url_housing, verify=True)
             doc = lh.document_fromstring(page.content)
             tr_elements = doc.xpath("//a")  # [@href='example']")
             for i, t in enumerate(tr_elements):
                 link = t.get("href")
+                # print(f'link={link}', end=": ", flush=True)
                 if link.endswith(".txt") and "dmesg" not in link:
                     nlink = ""
                     if link.startswith("./"):
@@ -728,12 +443,9 @@ def main():
                             datetime.datetime.strptime(timestamp, tformat)
                         )
                     except:
-                        print(f"trouble with record={link} -record ignored")
+                        print(f"trouble with record={link}, name={name}, nlink={nlink}, timestamp={timestamp} -record ignored")
 
-                    # fixed by Cedric
-                    # if not nlink.startswith(".."):
-                    #    print(f"{name}[{i}]: link={link}, nlink={nlink}")
-                    # # break
+                    #print(f'nlink={nlink}', flush=True)
 
         # Assign records to site from timestamps
         # Create a panda datafram with ['link','timestamp']
@@ -793,7 +505,7 @@ def main():
         # Get orphan records
         # How to get all records even those attached to experiments with Bitters only ??
         """
-        print("\nOrphaned records:")
+        print("\nOrphaned records:", flush=True)
         record_sites = [db_Sites[site]["records"] for site in db_Sites]
         # print(f"record_names: {record_names[-1]}")
         record_name_sites = [record.getLink() for record in flatten(record_sites)]
@@ -807,15 +519,16 @@ def main():
         )
                     
             
-        for housing in ["M8", "M9", "M10"]:
+        for housing in ["M1", "M3", "M5", "M7", "M8", "M9", "M10"]:
             record_sites = [
                 db_Sites[site]["records"]
                 for site in db_Sites
                 if housing == db_Sites[site]["housing"]
             ]
             record_name_sites = [record.getLink() for record in flatten(record_sites)]
+            search_housing = f'/{housing}/'
             record_names_housing = [
-                record for record in record_names if housing in record
+                record for record in record_names if search_housing in record
             ]
             orphan_records = list(
                 set(record_names_housing).symmetric_difference(
@@ -827,13 +540,22 @@ def main():
                 f"{housing}: orphan_records={len(orphan_records)} / {len(record_name_sites)} registered / {len(record_names_housing)} records"
             )
 
-            print(f'{housing}: Saved Orphaned records')
+            print(f'{housing}: Saved Orphaned records {len(orphan_records)}', flush=True)
             for orphan in orphan_records:
-                print(orphan)
-                data = record.getData(s, url_downloads)
+                # print(f'{orphan} ({type(orphan)})', end="")
+                site = "unknown"
+                link = orphan 
+                timestamp = (
+                            link.split("/")[-1].replace("%20", "").replace(".txt", "")
+                        )
+                orecord = MRecord.MRecord(timestamp, housing, site, link)
+                print(orecord, end="")
+                data = orecord.getData(s, url_downloads)
                 iodata = StringIO(data)
                 if args.save:
-                    record.saveData(data, args.datadir)
+                    orecord.saveData(data, args.datadir)
+                    print('saved', end="")
+                print(flush=True)
 
         # Display site history per site for M9 and M10 only
 
@@ -857,6 +579,7 @@ def main():
             hdata["commissioned_at"].append(data["commissioned_at"])
             hdata["decommissioned_at"].append(data["decommissioned_at"])
 
+        # for housing in ["M1", "M3", "M5", "M7", "M8", "M9", "M10"]:
         for housing in ["M9", "M10"]:
             hdata = history[housing]
             df = pd.DataFrame(hdata)
