@@ -83,30 +83,23 @@ ENV LANG=en_US.UTF-8 \
 
 
 # add motd see https://gist.github.com/ashgillman/a6aa7a5afc9e146a65fb
-RUN apt install tini \
-    && echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/issue && cat /etc/motd' \
+RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/issue && cat /etc/motd' \
     >> /etc/bash.bashrc \
     ; echo "\
-===================================================================\n\
-= Gmsh Docker container                                        =\n\
-===================================================================\n\
-\n\
-* To start the virtual env and run Gmsh:\n\
-source $HOME/${USERNAME}/gmsh-env/bin/activate\n\
-gmsh\n\
-\n\
-* To quit the virtual env:\n\
-deactivate\n"\
+    ===================================================================\n\
+    = Python MagnetRun Docker container                               =\n\
+    ===================================================================\n\
+    \n\
+    * To create the virtual env:\n\
+    python -m venv ./magnetrun\n\
+    * To start the virtual env:\n\
+    source ./magnetrun-env/bin/activate\n\
+    \n\
+    * To quit the virtual env:\n\
+    deactivate\n"\
     > /etc/motd
 
 # Switch to USERNAME
 USER ${USERNAME}
-RUN pwd && \
-    ls -lrth
-
-COPY start-venv.sh /home/${USERNAME}
-RUN /home/${USERNAME}/start-venv.sh
-
 WORKDIR /home/${USERNAME}
-ENTRYPOINT ["tini", "--"]
 CMD ["bash"]

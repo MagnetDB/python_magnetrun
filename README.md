@@ -13,7 +13,11 @@ Python `MagnetRun` contains utilities to view and analyze Magnet runs
 
 # Installation
 
+# Devcontainer
+
 # Using Python virtual env
+
+To install in a python virtual env on Linux
 
 For Linux/Mac Os X:
 
@@ -31,6 +35,34 @@ C:\> C:\path\to\magnetrun-env\Scripts\activate.bat
 c:\>C:\Python35\python -m pip install -r requirements.txt
 ```
 
+
+To quit the virtual env, run `deactivate`.
+
+# Data
+
+## `Pupitre`
+
+You can:
+
+* get data from `Pupitre`using `python_magnetrun.requests.cli` as described in the next section.
+* or, mount `Pupitre`data directory ??
+
+## `PigBrother`
+
+To mount `pigbrother` data, you have to:
+
+* create a `pigbrotherdata` directory
+* mount data from `pigbrother` server as `pigbrotherdata`:
+
+```bash
+sudo mount -v -t cifs //pigbrother_server_ip/d $pwd/pigbrotherdata -o user=pbsurv,password=passwd
+```
+
+[NOTE]
+====
+Adapt the script with the proper variables
+====
+
 # Features
 
 -   Extract data from control/monitoring system
@@ -42,13 +74,13 @@ c:\>C:\Python35\python -m pip install -r requirements.txt
 
 # Examples
 
-- To retrieve data from control/monitoring system
+- To retrieve `pupitre` data from control/monitoring system
 
 ```bash
 python3 -m  python_magnetrun.requests.cli --user email --datadir datadir [--save]
 ```
 
-_ To list fields recorded during an experiment:
+- To list fields recorded during an experiment:
 
 ```bash
 python3 -m python_magnetrun.python_magnetrun srvdata/M9_2019.02.14---23\:00\:38.txt info --list
@@ -75,7 +107,7 @@ python3 -m python_magnetrun.python_magnetrun srvdata/M9_2019.02.14---23\:00\:38.
 - List records that last at least 60 s and with a magnetic filed above 18:
 
 ```bash
-python -m python_magnetrun.examples.get-record 'srvdata/M8*.txt' select --duration 60 --field 18.
+python -m python_magnetrun.examples.get-record srvdata/M8*.txt select --duration 60 --field 18.
 ```
 
 - View Teb vs timestamp for all M8 records (may crash due to high memory usage):
@@ -189,25 +221,6 @@ python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --x
 - parameters identification
 
 
-# INSTALL
-
-To install in a python virtual env on Linux
-
-```bash
-python -m venv [--system-site-packages] magnetrun-env
-source ./magnetrun-env/bin/activate
-pip install -r requirements.txt
-```
-
-On Windows:
-
-```cmd
-python -m venv [--system-site-packages] c:\path\to\magnetrun-env
-c:\path\to\magnetrun-env\Scripts\activate.bat
-pip install -r requirements.txt
-```
-
-To quit the virtual env, run `deactivate`.
 
 
 
@@ -249,14 +262,14 @@ Usage:
 - [ ] systematic check of TinH and TinB?
 - [ ] view teb data on daily, monthly, yearly
 - [ ] teb forecast from previous data??
-- [ ] check independant variables (Ih, Teb, ?Qbrut?) on "plateau" exp - as Ib=f(Ih) with f piece wise 1order polynomial 
+- [ ] check independant variables (Ih, Teb, ?Qbrut?) on "plateau" exp - as Ib=f(Ih) with f piece wise 1order polynomial
 - [ ] extract data from magnet confile?
 
 - [ ] link with magnet user db - see xdds.csv
 - [ ] classification of Field profile
 - [ ] data from supra??
 - [ ] link with magnettools/hifimagnet for R(i) and L(i)
-- [ ] extract R(i), L(i) from U,I timeseries - see chatgpt 
+- [ ] extract R(i), L(i) from U,I timeseries - see chatgpt
 - [ ] estimation of heat exhchanger params - see NTU and cooling directory
 - [ ] Talim: calorimetric balance to get/estimate disspated power in AC/DC converters
 
