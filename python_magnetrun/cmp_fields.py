@@ -1,4 +1,4 @@
-"""Main module."""
+"""Compare 2 timeseries."""
 
 import os
 from platform import mac_ver
@@ -65,7 +65,18 @@ if __name__ == "__main__":
     print(f"Compare: {args.xkey} and {args.ykey}")
     print("File Euclidean MAE Pearson")
     tables = []
-    headers = ["Name", "Euclidean", "MAE", "Pearson", "Image"]
+    headers = [
+        "Name",
+        "duration [s]",
+        "Euclidean",
+        "MAE",
+        "Pearson",
+        "Image",
+        f"<{args.ykey} - {args.ykey}>",
+        f"min({args.ykey} - {args.ykey})",
+        f"max({args.ykey} - {args.ykey})",
+        f"var({args.ykey} - {args.ykey})",
+    ]
 
     supported_formats = [".txt"]
     for file in args.input_file:
@@ -99,7 +110,7 @@ if __name__ == "__main__":
         y = mrun.getData(args.ykey).to_numpy().reshape(-1)
         # print('Ib:', x, type(x), x.shape)
         scipy_stats = stats.describe(y - x)
-        print(scipy_stats.minmax) # minmax: tuple, mean, variance
+        # print(scipy_stats.minmax) # minmax: tuple, mean, variance
 
         my_ax = plt.gca()
         mrun.getMData().plotData(x="t", y=args.xkey, ax=my_ax)
@@ -108,10 +119,15 @@ if __name__ == "__main__":
         imagefile = f"{os.path.splitext(file)[0]}-{args.xkey}-{args.ykey}"
         table = [
             file,
+            mrun.getMData().getDuration(),
             calc_euclidean(x, y),
             calc_mape(x, y),
             calc_correlation(x, y),
             f"{imagefile}_vs_time.png",
+            scipy_stats.mean,
+            scipy_stats.minmax[0],
+            scipy_stats.minmax[1],
+            scipy_stats.variance,
         ]
         tables.append(table)
 
