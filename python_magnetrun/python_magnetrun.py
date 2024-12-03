@@ -527,18 +527,38 @@ if __name__ == "__main__":
             from .utils.plateaux import nplateaus
 
         print("Stats:")
+
+        # to display stats
+        multiindex = [[], []]
+        columns = []
+        data = []
+        df_data = []
+
         for file in inputs:
             print(file)
             extension = os.path.splitext(file)[-1]
             mrun: MagnetRun = inputs[file]["data"]
             mdata = mrun.getMData()
 
-            # if not args.plateau and not args.detect_bkpts:
-            stats.stats(mdata)
+            multiindex[0].append(os.path.basename(file).replace(extension, ""))
+
+            if not args.plateau and not args.detect_bkpts:
+                result = stats.stats(mdata, display=False)
+                print("headers: ", result[1])
+                # print("data: ", result[0])
+
+                if not multiindex[1]:
+                    multiindex[1] = [table[0] for table in result[0]]
+                    columns = result[1][1:]
+
+                for table in result[0]:
+                    data.append(table[1:])
 
             try:
-                # print(f'args.keys: {args.keys}')
+                print(f"args.keys: {args.keys}")
+
                 if args.keys:
+                    multiindex[1] = args.keys
                     for key in args.keys:
                         if mdata.Type == 0:
                             print(f"pupitre: stats for {key}", flush=True)
@@ -573,13 +593,21 @@ if __name__ == "__main__":
                                 df_plateaux[entry] = [
                                     plateau[entry] for plateau in pdata
                                 ]
-                            df_plateaux["duration"] = df_plateaux['end'] - df_plateaux['start']
-                            
+                            df_plateaux["duration"] = (
+                                df_plateaux["end"] - df_plateaux["start"]
+                            )
+
                             # rename column value using symbol and unit
                             # print only if plateaux
                             (nrows, ncols) = df_plateaux.shape
-                            print(f'df_plateaux: {df_plateaux.shape}')
+                            print(f"df_plateaux: {df_plateaux.shape}")
                             if nrows != 0:
+                                data.append(
+                                    df_plateaux.loc[df_plateaux["duration"].idxmax()]
+                                    .to_numpy()
+                                    .tolist()
+                                )
+                                columns = list(df_plateaux.keys())
                                 print(
                                     tabulate(
                                         df_plateaux,
@@ -588,6 +616,17 @@ if __name__ == "__main__":
                                         showindex=False,
                                     )
                                 )
+                            else:
+                                data.append(
+                                    [
+                                        stats.numpy_NaN,
+                                        stats.numpy_NaN,
+                                        stats.numpy_NaN,
+                                        stats.numpy_NaN,
+                                    ]
+                                )
+                            print(f"data: {len(data)}")
+                            print(f"data: {data[-1]}")
 
                         if args.detect_bkpts:
                             ts = None
@@ -816,3 +855,21 @@ if __name__ == "__main__":
             except Exception:
                 print(traceback.format_exc())
                 pass
+
+        """
+        print(
+            "concat tabs:",
+            f"multi_index={len(multiindex[0]), len(multiindex[1])}",
+            f"columns={len(columns)}",
+            f"data={len(data)}",
+        )
+        print(f"multiindex: {multiindex}")
+        print(f"columns: {columns}")
+        """
+
+        df = pd.DataFrame(
+            data,
+            pd.MultiIndex.from_product(multiindex),
+            columns=columns,
+        )
+        print(df.to_markdown(tablefmt="simple"))

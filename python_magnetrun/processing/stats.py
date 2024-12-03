@@ -3,19 +3,27 @@
 import pandas as pd
 import numpy as np
 
-numpy_version = np.__version__.split('.')
+numpy_version = np.__version__.split(".")
 if numpy_version[0] == 1:
     numpy_NaN = np.NaN
 else:
     numpy_NaN = np.nan
-    
-print(f'numpy: {numpy_version}', flush=True)
+
+print(f"numpy: {numpy_version}", flush=True)
 
 from ..magnetdata import MagnetData
 from ..utils.sequence import list_sequence, list_duplicates_of
 
+from tabulate import tabulate
 
-def stats(Data: MagnetData, fields: list[str] | None = None, debug: bool = False):
+
+def stats(
+    Data: MagnetData,
+    fields: list[str] | None = None,
+    fmt: str = "simple",
+    display: bool = True,
+    debug: bool = False,
+) -> tuple:
     """compute stats from the actual run"""
 
     # TODO:
@@ -23,12 +31,10 @@ def stats(Data: MagnetData, fields: list[str] | None = None, debug: bool = False
     # add duration
     # add duration per Field above certain values
     # add \int Power over time
-
-    from tabulate import tabulate
+    # fmt: "plain", "simple", "psql"
 
     # see https://github.com/astanin/python-tabulate for tablefmt
     if isinstance(Data.Data, pd.DataFrame):
-        print("Statistics:\n")
         # print(f"data keys: {Data.getKeys()}", flush=True)
         tables = []
         headers = ["Name", "Mean", "Max", "Min", "Std", "Median", "Mode"]
@@ -60,8 +66,9 @@ def stats(Data: MagnetData, fields: list[str] | None = None, debug: bool = False
                 v_mode = numpy_NaN  # Most frequent value in a data set
                 try:
                     v_mode = float(df.mode().iloc[0])
-                except:
-                    # print(f"{f}: failed to compute df.mode()")
+                except Exception as e:
+                    if debug:
+                        print(f"{f}: failed to compute df.mode() - {e}")
                     pass
                 table = [
                     f"{f}[{unit:~P}]",
@@ -75,10 +82,14 @@ def stats(Data: MagnetData, fields: list[str] | None = None, debug: bool = False
 
             tables.append(table)
 
-        print(tabulate(tables, headers, tablefmt="simple"), "\n")
     else:
         for group, df in Data.Data.items():
             print(f"stats for {group}: ", flush=True)
-            print(tabulate(df.describe(), headers="keys", tablefmt="psql"), "\n")
+            tables = df.describe()
+            headers = "keys"
 
-    return 0
+    if display:
+        print("Statistics:\n")
+        print(tabulate(tables, headers, tablefmt=fmt), "\n")
+
+    return (tables, headers)
