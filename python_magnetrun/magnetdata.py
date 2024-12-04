@@ -309,15 +309,17 @@ class MagnetData:
         ureg.define("var = 1")
 
         if self.Type == 1:
-            print("self.Data=", type(self.Data))
+            # print("self.Data=", type(self.Data))
             for entry in self.Data:
-                print("entry=", entry, type(entry))
+                # print("entry=", entry, type(entry))
                 if entry == "t":
                     self.units["t"] = ("t", ureg.second)
                 else:
                     group = entry
                     if "/" in entry:
                         (group, channel) = entry.split("/")
+                        if channel == "t":
+                            self.units[entry] = ("t", ureg.second)
                     self.units[entry] = self.PigBrotherUnits(group)
 
             pass
@@ -1033,24 +1035,43 @@ class MagnetData:
         """magnetdata info"""
 
         print(f"magnetdata: {self.FileName}, Type={self.Type}")
-        print("keys:")
-        for key in self.Keys:
-            print(f"\t{key}")
+        if self.Type == 0:
+            print("keys:")
+            for key in self.Keys:
+                print(f"\t{key}")
 
         # TODO for tdms display Infos group
         if self.Type == 1:
+            from tabulate import tabulate
             from collections import OrderedDict
 
+            headers = ["Group", "Channel", "Samples", "Increment", "start_time"]
+            tables = []
+
             for group, values in self.Groups.items():
-                print(f"group={group}")
+                # print(f"group={group}")
                 for item in values:
                     if isinstance(values[item], dict) or isinstance(
                         values[item], OrderedDict
                     ):
+                        table = [
+                            group,
+                            item,
+                            values[item]["wf_samples"],
+                            values[item]["wf_increment"],
+                            values[item]["wf_start_time"],
+                        ]
+                        tables.append(table)
+                        """
                         for sitem in values[item]:
                             print(f"  {sitem}: {values[item][sitem]} **")
+                        """
+                    """
                     else:
                         print(f"  {item}: {values[item]}")
+                    """
+
+            print(tabulate(tables, headers, tablefmt="simple"))
 
         # print("stats:")
         # self.stats()
