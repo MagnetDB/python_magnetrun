@@ -12,6 +12,7 @@ from scipy.signal import find_peaks
 from tabulate import tabulate
 
 # import logging
+from natsort import natsorted
 
 import numpy as np
 import pandas as pd
@@ -248,7 +249,8 @@ if __name__ == "__main__":
             extensions[f_extension].append(i)
     # print(f"extensions: {extensions}")
 
-    for file in args.input_file:
+    input_files = natsorted(args.input_file)
+    for file in input_files:
         f_extension = os.path.splitext(file)[-1]
         if f_extension not in supported_formats:
             raise RuntimeError(
@@ -316,13 +318,13 @@ if __name__ == "__main__":
 
             items = args.vs_time
             print(f"items={items}", flush=True)
-            title = os.path.basename(args.input_file[0])
-            if len(args.input_file) > 1:
+            title = os.path.basename(input_files[0])
+            if len(input_files) > 1:
                 klabels = flatten(items)
                 title = f"{'-'.join(klabels)}"
 
             legends = []
-            for file in args.input_file:
+            for file in input_files:
                 legends.append(os.path.basename(file))
                 f_extension = os.path.splitext(file)[-1]
                 plot_args = items[extensions[f_extension][0]]
@@ -359,17 +361,25 @@ if __name__ == "__main__":
 
             my_ax = plt.gca()
 
+            items = args.key_vs_key
+            title = os.path.basename(input_files[0])
+            if len(input_files) > 1:
+                klabels = flatten(items)
+                title = f"{'-'.join(klabels)}"
+
+            legends = []
             # split pairs in key1, key2
-            print(f"key_vs_key={args.key_vs_key}")
+            # print(f"key_vs_key={args.key_vs_key}")
             pairs = args.key_vs_key
-            for file in args.input_file:
+            for file in input_files:
+                legends.append(os.path.basename(file).replace(f_extension, ""))
                 f_extension = os.path.splitext(file)[-1]
                 plot_args = pairs[extensions[f_extension][0]]
                 mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
 
                 for pair in plot_args:
-                    print(f"pair={pair}")
+                    # print(f"pair={pair}")
                     # print("pair=", pair, " type=", type(pair))
                     items = pair.split("-")
                     if len(items) != 2:
@@ -377,6 +387,10 @@ if __name__ == "__main__":
                     key1 = items[0]
                     key2 = items[1]
                     mdata.plotData(x=key1, y=key2, ax=my_ax)
+
+            if len(legends) > 1:
+                plt.legend(labels=legends)
+            plt.title(title)
 
             if not args.save:
                 plt.show()
@@ -516,7 +530,7 @@ if __name__ == "__main__":
                 mdata = mrun.getMData()
 
                 extension = os.path.splitext(file)[-1]
-                file_name = args.input_file.replace(extension, ".csv")
+                file_name = file.replace(extension, ".csv")
                 if mdata.Type == 0:
                     mdata.to_csv(file_name, sep=str("\t"), index=False, header=True)
 
