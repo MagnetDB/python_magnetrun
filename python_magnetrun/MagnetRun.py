@@ -143,7 +143,7 @@ class MagnetRun:
                 fo.write(name)
             print(f'cannot load data for {housing}, {insert} insert, {site} site"')
             # raise RuntimeError(f'cannot load data for {housing}, {insert} insert, {site} site"')
-        
+
         data.Units()
         return cls(housing, site, data)
 
@@ -185,6 +185,13 @@ class MagnetRun:
         """return Data"""
         if self.MagnetData is not None:
             return self.MagnetData.getData(key)
+        else:
+            raise RuntimeError("MagnetRun.getData: no MagnetData associated")
+
+    def getUnit(self, key: str = ""):
+        """return Unit"""
+        if self.MagnetData is not None:
+            return self.MagnetData.getUnitKey(key)
         else:
             raise RuntimeError("MagnetRun.getData: no MagnetData associated")
 
