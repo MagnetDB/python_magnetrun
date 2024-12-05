@@ -340,7 +340,7 @@ class MagnetData:
                 self.units[key] = ("I", ureg.ampere)
             elif key.startswith("U"):
                 self.units[key] = ("U", ureg.volt)
-            elif key.startswith("T") or key == "teb" or "tsb":
+            elif key.startswith("T") or key == "teb" or key == "tsb":
                 self.units[key] = ("T", ureg.degC)
             elif key.startswith("Rpm"):
                 self.units[key] = ("Rpm", ureg.rpm)
@@ -348,8 +348,8 @@ class MagnetData:
                 self.units[key] = ("%", ureg.percent)
             elif key.startswith("Flo"):
                 self.units[key] = ("Q", ureg.liter / ureg.second)
-            elif key.startswith("debit"):
-                self.units[key] = ("Q", ureg.meter**3 / ureg.second)
+            elif key == "debitbrut":
+                self.units[key] = ("Q", ureg.meter**3 / ureg.hour)
             elif key.startswith("HP") or key.startswith("BP"):
                 self.units[key] = ("P", ureg.bar)
             elif key == "Pmagnet" or key == "Ptot":
@@ -925,11 +925,7 @@ class MagnetData:
                     self.Data.plot(x=x, y=y, ax=ax, grid=True)
             elif self.Type == 1:
                 (ygroup, ychannel) = y.split("/")
-                if x != "t":
-                    (xgroup, xchannel) = x.split("/")
-                else:
-                    xgroup = ygroup
-                    xchannel = "t"
+                (xgroup, xchannel) = x.split("/")
 
                 if xgroup == ygroup:
                     if normalize:
@@ -953,9 +949,9 @@ class MagnetData:
 
             # add xlabel, ylabel from units
             plt.ylabel(f"{ysymbol} [{yunit:~P}]")
+
             (xsymbol, xunit) = self.getUnitKey(x)
-            if xunit is not None:
-                plt.xlabel(f"{xsymbol} [{xunit:~P}]")
+            plt.xlabel(f"{xsymbol} [{xunit:~P}]")
 
         else:
             raise Exception(
