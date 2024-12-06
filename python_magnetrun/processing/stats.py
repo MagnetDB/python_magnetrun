@@ -38,7 +38,17 @@ def stats(
         # print(f"data keys: {Data.getKeys()}", flush=True)
         tables = []
         headers = ["Name", "Mean", "Max", "Min", "Std", "Median", "Mode"]
-        selected_fields = ["Field", "Pmagnet", "Ptot", "teb", "tsb", "debitbrut"]
+        selected_fields = [
+            "Field",
+            "IH",
+            "IB",
+            "Pmagnet",
+            "Ptot",
+            "TAlimout",
+            "teb",
+            "tsb",
+            "debitbrut",
+        ]
         if fields is not None:
             selected_fields = fields
 

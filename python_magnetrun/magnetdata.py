@@ -924,8 +924,14 @@ class MagnetData:
                 else:
                     self.Data.plot(x=x, y=y, ax=ax, grid=True)
             elif self.Type == 1:
+                # print(x, y)
+
                 (ygroup, ychannel) = y.split("/")
-                (xgroup, xchannel) = x.split("/")
+                if "/" in x:
+                    (xgroup, xchannel) = x.split("/")
+                else:
+                    xgroup = ygroup
+                    xchannel = x
 
                 if xgroup == ygroup:
                     if normalize:
@@ -948,10 +954,12 @@ class MagnetData:
                     )
 
             # add xlabel, ylabel from units
-            plt.ylabel(f"{ysymbol} [{yunit:~P}]")
+            if yunit is not None:
+                plt.ylabel(f"{ysymbol} [{yunit:~P}]")
 
             (xsymbol, xunit) = self.getUnitKey(x)
-            plt.xlabel(f"{xsymbol} [{xunit:~P}]")
+            if xunit is not None:
+                plt.xlabel(f"{xsymbol} [{xunit:~P}]")
 
         else:
             raise Exception(

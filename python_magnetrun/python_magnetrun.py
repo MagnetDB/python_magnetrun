@@ -333,7 +333,17 @@ if __name__ == "__main__":
                 for key in plot_args:
                     # print(f"plot key={key}, type={type(key)}", flush=True)
                     (symbol, unit) = mdata.getUnitKey(key)
+
                     mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
+                    """
+                    if mdata.Type == 0:
+                        mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
+                    elif mdata.Type == 1:
+                        (group, channel) = key.split("/")
+                        mdata.plotData(
+                            x=f"{group}/t", y=key, ax=my_ax, normalize=args.normalize
+                        )
+                    """
 
             plt.ylabel(f"{symbol} [{unit:~P}]")
             if args.normalize:
@@ -483,7 +493,7 @@ if __name__ == "__main__":
                     keys = item.split(";")
                     keys.insert(0, "Time")
 
-                    file_name = file.replace(".txt", "")
+                    file_name = file.replace(f_extension, "")
                     for key in keys:
                         if key != "Time":
                             file_name = file_name + "_" + key
@@ -519,7 +529,9 @@ if __name__ == "__main__":
                                 newdf = newdf[newdf[key1] != 0]
                                 newdf = newdf[newdf[key2] != 0]
 
-                                file_name = str(pair) + ".csv"
+                                file_name = (
+                                    f"{file.replace(f_extension,'')}-{str(pair)}.csv"
+                                )
                                 newdf.to_csv(
                                     file_name, sep=str("\t"), index=False, header=False
                                 )
