@@ -9,7 +9,6 @@ if numpy_version[0] == 1:
 else:
     numpy_NaN = np.nan
 
-print(f"numpy: {numpy_version}", flush=True)
 
 from ..magnetdata import MagnetData
 from ..utils.sequence import list_sequence, list_duplicates_of
