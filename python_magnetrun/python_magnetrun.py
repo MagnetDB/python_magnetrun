@@ -141,6 +141,7 @@ if __name__ == "__main__":
         title="commands", dest="command", help="sub-command help"
     )
     parser_info = subparsers.add_parser("info", help="info help")
+    parser_add = subparsers.add_parser("add", help="add help")
     parser_select = subparsers.add_parser("select", help="select help")
     parser_stats = subparsers.add_parser("stats", help="stats help")
     parser_plot = subparsers.add_parser("plot", help="select help")
@@ -148,6 +149,13 @@ if __name__ == "__main__":
     # add info subcommand
     parser_info.add_argument("--list", help="list key in csv", action="store_true")
     parser_info.add_argument("--convert", help="save to csv", action="store_true")
+
+    # add add subcommand
+    parser_add.add_argument(
+        "--formula", help="add new column with associated formula", type=str, default=""
+    )
+    parser_add.add_argument("--plot", help="plot ", action="store_true")
+    parser_add.add_argument("--save", help="save ", action="store_true")
 
     # add plot subcommand
     parser_plot.add_argument(
@@ -198,6 +206,7 @@ if __name__ == "__main__":
     parser_stats.add_argument(
         "--detect_bkpts", help="find breaking points", action="store_true"
     )
+    parser_stats.add_argument("--localmax", help="find local max", action="store_true")
     parser_stats.add_argument("--plateau", help="find plateau", action="store_true")
     parser_stats.add_argument(
         "--save", help="save graphs (png format)", action="store_true"
@@ -288,6 +297,33 @@ if __name__ == "__main__":
 
         inputs[file] = {"data": mrun}
 
+        if args.command == "add":
+            mdata = mrun.getMData()
+            print(mdata.getKeys())
+            if args.formula:
+                print(f"add {args.formula}, plot={args.plot}")
+
+                my_ax = plt.gca()
+
+                nkey = args.formula.split(" = ")[0]
+                from pint import UnitRegistry
+
+                ureg = UnitRegistry()
+
+                nunit = ("U", ureg.volt)
+                # self.units[key] = ("U", ureg.volt)
+                print(f"try to add nkey={nkey}")
+                mdata.addData(key=nkey, formula=args.formula, unit=nunit)
+                print(mdata.getKeys())
+                mdata.plotData(x="t", y=nkey, ax=my_ax, normalize=False)
+                if not args.save:
+                    plt.show()
+                else:
+                    imagefile = nkey
+                    print(f"saveto: {imagefile}_vs_time.png", flush=True)
+                    plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
+                plt.close()
+
         if args.command == "info":
             mdata = mrun.getMData()
             mdata.info()
@@ -325,14 +361,20 @@ if __name__ == "__main__":
 
             legends = []
             for file in input_files:
-                legends.append(os.path.basename(file))
                 f_extension = os.path.splitext(file)[-1]
                 plot_args = items[extensions[f_extension][0]]
                 mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
                 for key in plot_args:
+                    legends.append(
+                        f'{os.path.basename(file).replace(f_extension,"")}: {key}'
+                    )
                     # print(f"plot key={key}, type={type(key)}", flush=True)
                     (symbol, unit) = mdata.getUnitKey(key)
+                    if args.normalize:
+                        legends[-1] += (
+                            f" max={float(mdata.getData([key]).max().iloc[0]):.3f} [{unit:~P}]"
+                        )
 
                     mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
                     """
@@ -552,16 +594,29 @@ if __name__ == "__main__":
         if args.plateau:
             from .utils.plateaux import nplateaus
 
-        print("Stats:")
+        print("Stats:", flush=True)
 
         # to display stats
         multiindex = [[], []]
         columns = []
         data = []
         df_data = []
+        output = "stats"
+        if args.plateau:
+            if not args.keys:
+                args.keys = ["Field"]
+            output += "-plateau"
+        if args.localmax:
+            if not args.keys:
+                args.keys = ["Field"]
+            output += "-localmax"
+        if args.detect_bkpts:
+            if not args.keys:
+                args.keys = ["Field"]
+            output += "-bkpts"
 
         for file in inputs:
-            print(file)
+            # print(file)
             extension = os.path.splitext(file)[-1]
             mrun: MagnetRun = inputs[file]["data"]
             mdata = mrun.getMData()
@@ -570,7 +625,7 @@ if __name__ == "__main__":
 
             if not args.plateau and not args.detect_bkpts:
                 result = stats.stats(mdata, display=False)
-                print("headers: ", result[1])
+                # print("headers: ", result[1])
                 # print("data: ", result[0])
 
                 if not multiindex[1]:
@@ -581,7 +636,7 @@ if __name__ == "__main__":
                     data.append(table[1:])
 
             try:
-                print(f"args.keys: {args.keys}")
+                # print(f"args.keys: {args.keys}")
 
                 if args.keys:
                     multiindex[1] = args.keys
@@ -592,6 +647,8 @@ if __name__ == "__main__":
 
                             period = 1
                             num_points_threshold = int(args.dthreshold / period)
+                            tkey = "t"
+                            channel = key
                         elif mdata.Type == 1:
                             print(f"pigbrother: stats for {key}", flush=True)
                             (symbol, unit) = mdata.getUnitKey(key)
@@ -600,6 +657,40 @@ if __name__ == "__main__":
                             (group, channel) = key.split("/")
                             period = mdata.Groups[group][channel]["wf_increment"]
                             num_points_threshold = int(args.dthreshold / period)
+
+                            tkey = f"{group}/t"
+
+                        print(f"num_points_threshold: {num_points_threshold}")
+
+                        if args.localmax:
+                            # find local maximum
+                            from scipy.signal import argrelextrema
+
+                            # create a sample series
+                            Field = mdata.getData([tkey, key])
+                            # print(Field.keys())
+
+                            # use shift() function
+                            local_max_indices = argrelextrema(
+                                Field[channel].values, np.greater, mode="clip"
+                            )
+                            # print the results
+                            # print(f"local_max_indices: {local_max_indices}")
+                            """
+                            for local in local_max_indices[0]:
+                                print(local, end=": ", flush=True)
+                                local_max = s["Field"].iat[int(local)]
+                                print(local_max)
+                            """
+
+                            my_ax = plt.gca()
+                            mdata.plotData(x="t", y=key, ax=my_ax)
+
+                            local_max = Field.iloc[local_max_indices[0]]
+                            # print(local_max, "type=", type(local_max))
+                            local_max.plot(x="t", y=channel, ax=my_ax, marker="*")
+                            plt.grid()
+                            plt.show()
 
                         if args.plateau:
                             print(f"display plateaus for {key}")
@@ -615,7 +706,7 @@ if __name__ == "__main__":
                             )
 
                             df_plateaux = pd.DataFrame()
-                            for entry in ["start", "end", "value"]:
+                            for entry in ["start", "end", f"value"]:
                                 df_plateaux[entry] = [
                                     plateau[entry] for plateau in pdata
                                 ]
@@ -623,7 +714,6 @@ if __name__ == "__main__":
                                 df_plateaux["end"] - df_plateaux["start"]
                             )
 
-                            # rename column value using symbol and unit
                             # print only if plateaux
                             (nrows, ncols) = df_plateaux.shape
                             print(f"df_plateaux: {df_plateaux.shape}")
@@ -632,6 +722,16 @@ if __name__ == "__main__":
                                     df_plateaux.loc[df_plateaux["duration"].idxmax()]
                                     .to_numpy()
                                     .tolist()
+                                )
+                                # rename column value using symbol and unit
+                                df_plateaux.rename(
+                                    columns={
+                                        "start": "start [s]",
+                                        "end": "end [s]",
+                                        "duration": "duration [s]",
+                                        "value": f"value [{unit:~P}]",
+                                    },
+                                    inplace=True,
                                 )
                                 columns = list(df_plateaux.keys())
                                 print(
@@ -642,6 +742,8 @@ if __name__ == "__main__":
                                         showindex=False,
                                     )
                                 )
+
+                                # create a signature of the B profile
                             else:
                                 data.append(
                                     [
@@ -651,8 +753,11 @@ if __name__ == "__main__":
                                         stats.numpy_NaN,
                                     ]
                                 )
-                            print(f"data: {len(data)}")
-                            print(f"data: {data[-1]}")
+                                print(
+                                    f'{file.replace(f_extension,"")}: no peaks detected - duration={mdata.getDuration()}, {mdata.getData(key).describe()}'
+                                )
+                            # print(f"data: {len(data)}")
+                            # print(f"data: {data[-1]}")
 
                         if args.detect_bkpts:
                             ts = None
@@ -899,3 +1004,7 @@ if __name__ == "__main__":
             columns=columns,
         )
         print(df.to_markdown(tablefmt="simple"))
+
+        # save df to csv
+        print("head:", df.head())
+        df.to_csv(f"{output}.csv")

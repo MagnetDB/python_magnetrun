@@ -513,7 +513,7 @@ class MagnetData:
 
             # Filter out one element lists
             Uprobes = list(filter(lambda x: len(x) > 1, all_groups))
-            print(f"{self.FileName} Uprobes: {Uprobes}")
+            # print(f"{self.FileName} Uprobes: {Uprobes}")
             if not Uprobes:
                 raise RuntimeError(f"{self.FileName}: CleanUpData no Uprobes found")
             UH = [f"Ucoil{i}" for i in Uprobes[0]]
@@ -573,10 +573,13 @@ class MagnetData:
                             flush=True,
                         )
                     ikeys = self.Data[Ikeys]
+                    """
                     print(
                         f"{self.FileName}: ikeys={ikeys.keys()}, Ikeys={Ikeys}",
                         flush=True,
                     )
+                    """
+
                     remove_Ikeys = []
                     for i in range(len(Ikeys)):
                         for j in range(i + 1, len(Ikeys)):
@@ -584,14 +587,23 @@ class MagnetData:
                             error = diff.mean()
                             stderror = diff.std()
                             if debug:
-                                print(f"diff{i}_{j}: mean={error}, std={stderror}")
-                            if abs(error) <= 1.0e-4:
+                                print(
+                                    f"diff[{Ikeys[i]}_{Ikeys[j]}: mean={error}, std={stderror}"
+                                )
+                            if abs(error) <= 1.0e-2:
                                 remove_Ikeys.append(Ikeys[j])
-                                print(f"remove_Ikeys({Ikeys[j]})")
+                                # print(f"remove_Ikeys({Ikeys[j]})")
 
                     if debug:
                         print(f"remove_Ikeys: {remove_Ikeys}")
                     if remove_Ikeys:
+                        """
+                        print(
+                            f"{self.FileName}: ikeys={ikeys.keys()}, Ikeys={Ikeys}",
+                            flush=True,
+                        )
+                        print(f"remove_Ikeys: {remove_Ikeys}")
+                        """
                         _df.drop(remove_Ikeys, axis=1, inplace=True)
 
                     Ikeys = natsorted(
@@ -674,7 +686,7 @@ class MagnetData:
             self.Data.rename(columns=columns, inplace=True)
             self.Keys = self.Data.columns.values.tolist()
 
-    def addData(self, key, formula):
+    def addData(self, key, formula, unit: str = None, debug: bool = False):
         """
         add a new column to Data from  a formula
 
@@ -691,6 +703,10 @@ class MagnetData:
                 # check formula using pyparsing
                 self.Data.eval(formula, inplace=True)
                 self.Keys = self.Data.columns.values.tolist()
+                if unit:
+                    self.units[key] = unit
+                else:
+                    self.Units(debug)
         elif self.Type == 1:
             raise RuntimeError("addData: not implemented for pigbrother file")
         return 0
