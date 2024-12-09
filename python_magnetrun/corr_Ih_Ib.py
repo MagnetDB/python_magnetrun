@@ -86,7 +86,7 @@ if __name__ == "__main__":
             try:
                 index = filename.index("_")
                 site = filename[0:index]
-                print(f"site detected: {site}")
+                # print(f"site detected: {site}")
             except Exception:
                 print("no site detected - use args.site argument instead")
                 pass
@@ -138,7 +138,6 @@ if __name__ == "__main__":
                     x /= abs(xmax)
                     xlabel = f"{xmax} [{xunit:~P}]"
 
-        print(f"{ykey}:", type(y), y.shape)
         # y as f(x)
         if args.debug:
             plt.figure()
@@ -162,7 +161,7 @@ if __name__ == "__main__":
             # X = rng.randn(n_samples, n_timestamps)
             # X = mrun.getData(ykey)
             X = np.array([y])
-            print(X.shape)
+            print(f"X: {X.shape}")
 
             # PAA transformation
             window_size = 4
@@ -170,17 +169,18 @@ if __name__ == "__main__":
                 window_size=window_size, overlapping=False
             )
             X_paa = paa.transform(X)
+            print(f"X_paa: {X_paa[0].shape}")
 
             # Show the results for the first time series
             plt.figure(figsize=(6, 4))
-            plt.plot(X[0], "o--", ms=4, label="Original")
+            plt.plot(X[0], "o--", ms=2, label="Original")
             plt.plot(
                 np.arange(
                     window_size // 2, n_timestamps + window_size // 2, window_size
                 ),
                 X_paa[0],
                 "o--",
-                ms=4,
+                ms=2,
                 label="PAA",
             )
             """
@@ -245,10 +245,10 @@ if __name__ == "__main__":
             # SAX transformation
             n_bins = 3
             # strategy in ['uniform', 'quantile', 'normal']
-            sax = SymbolicAggregateApproximation(n_bins=n_bins, strategy="normal")
+            sax = SymbolicAggregateApproximation(n_bins=n_bins, strategy="quantile")
             X_sax = sax.fit_transform(X)
 
-            # Compute gaussian bins
+            # Compute gaussian bins (for strategy==normal)
             print(stats.describe(X[0]))
             print(np.linspace(0, 1, n_bins + 1)[1:-1])
             bins = norm.ppf(np.linspace(0, 1, n_bins + 1)[1:-1])
@@ -281,7 +281,6 @@ if __name__ == "__main__":
             plt.ylabel(ylabel, fontsize=12)
             plt.title("Symbolic Aggregate approXimation", fontsize=16)
             plt.show()
-            exit(1)
 
         # perform fit while pw_fit.summary['converged'] == True
         if args.algo == "piecewise_regression":
