@@ -175,7 +175,6 @@ def getOHTC(
 
 
 if __name__ == "__main__":
-
     import math
     import os
     import sys
@@ -192,7 +191,8 @@ if __name__ == "__main__":
 
     import pandas as pd
     import tabulate
-    from python_magnetrun.processing import filters as datatools
+    from ..MagnetRun import MagnetRun
+    from ..processing import smoothers as datatools
 
     command_line = None
 
@@ -232,7 +232,7 @@ if __name__ == "__main__":
             print("no site detected - use args.site argument instead")
             # pass
 
-    mrun = python_magnetrun.MagnetRun.fromtxt(args.site, args.input_file)
+    mrun = MagnetRun.fromtxt(args.site, args.input_file)
     if not args.site:
         args.site = mrun.getSite()
 
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     duration = mrun.getDuration()
     if duration <= 10 * tau:
         tau = min(duration // 10, 10)
-        print("Modified smoothing param: %g over %g s run", tau, duration)
+        print(f"Modified smoothing param: {tau} over {duration} s run")
         # args.markevery = 2 * tau
 
     # print("type(mrun):", type(mrun))
@@ -249,11 +249,11 @@ if __name__ == "__main__":
     start_timestamp = mrun.getMData().getStartDate()
 
     keys = mrun.getKeys()
-    if not "Flow" in keys:
+    if "HP" not in keys:
         mrun.getMData().addData("HP", "HP = HP1 + HP2")
-    if not "Flow" in keys:
+    if "Flow" not in keys:
         mrun.getMData().addData("Flow", "Flow = Flow1 + Flow2")
-    if not "Tin" in keys:
+    if "Tin" not in keys:
         mrun.getMData().addData("Tin", "Tin = (Tin1 + Tin2)/2.")
 
     # smooth data if needed
