@@ -155,6 +155,18 @@ if __name__ == "__main__":
         "--formula", help="add new column with associated formula", type=str, default=""
     )
     parser_add.add_argument("--plot", help="plot ", action="store_true")
+    parser_add.add_argument(
+        "--vs_time",
+        help='select key(s) to plot (ex. "Field [Ucoil1]")',
+        nargs="+",
+        action="append",
+    )
+    parser_add.add_argument(
+        "--key_vs_key",
+        help='select pair(s) of keys to plot (ex. "Field-Icoil1")',
+        nargs="+",
+        action="append",
+    )
     parser_add.add_argument("--save", help="save ", action="store_true")
 
     # add plot subcommand
@@ -256,7 +268,7 @@ if __name__ == "__main__":
             extensions[f_extension] = [i]
         else:
             extensions[f_extension].append(i)
-    # print(f"extensions: {extensions}")
+    print(f"extensions: {extensions}")
 
     input_files = natsorted(args.input_file)
     for file in input_files:
@@ -303,26 +315,37 @@ if __name__ == "__main__":
             if args.formula:
                 print(f"add {args.formula}, plot={args.plot}")
 
-                my_ax = plt.gca()
-
                 nkey = args.formula.split(" = ")[0]
+                nunit = None
+                """
                 from pint import UnitRegistry
 
                 ureg = UnitRegistry()
 
                 nunit = ("U", ureg.volt)
+                """
+
                 # self.units[key] = ("U", ureg.volt)
                 print(f"try to add nkey={nkey}")
                 mdata.addData(key=nkey, formula=args.formula, unit=nunit)
                 print(mdata.getKeys())
-                mdata.plotData(x="t", y=nkey, ax=my_ax, normalize=False)
-                if not args.save:
-                    plt.show()
-                else:
-                    imagefile = nkey
-                    print(f"saveto: {imagefile}_vs_time.png", flush=True)
-                    plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
-                plt.close()
+                if args.plot:
+                    my_ax = plt.gca()
+                    mdata.plotData(x="t", y=nkey, ax=my_ax, normalize=False)
+
+                    print(f"args.vs_time: {args.vs_time}")
+                    if args.vs_time:
+                        for key in args.vs_time[0]:
+                            print(key)
+                            mdata.plotData(x="t", y=key, ax=my_ax, normalize=False)
+
+                    if not args.save:
+                        plt.show()
+                    else:
+                        imagefile = nkey
+                        print(f"saveto: {imagefile}_vs_time.png", flush=True)
+                        plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
+                    plt.close()
 
         if args.command == "info":
             mdata = mrun.getMData()
@@ -345,6 +368,7 @@ if __name__ == "__main__":
 
     # perform operations defined by options
     if args.command == "plot":
+        print("subcommands: plot")
         if args.vs_time:
             assert (
                 len(args.vs_time) == len(extensions)
@@ -361,8 +385,12 @@ if __name__ == "__main__":
 
             legends = []
             for file in input_files:
+                print(f"file={file}")
                 f_extension = os.path.splitext(file)[-1]
                 plot_args = items[extensions[f_extension][0]]
+                print(
+                    f"plot_args: {plot_args}, f_extension:{f_extension}, {extensions[f_extension]}"
+                )
                 mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
                 for key in plot_args:

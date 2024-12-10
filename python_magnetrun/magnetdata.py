@@ -279,12 +279,13 @@ class MagnetData:
     def PigBrotherUnits(self, key: str, debug: bool = False) -> tuple:
         from pint import UnitRegistry
 
+        # print(f"PigBrotherUnits: key={key}")
         ureg = UnitRegistry()
 
         PigBrotherUnits = {
             "Courant": ("I", ureg.ampere),
             "Tension": ("U", ureg.volt),
-            "Puissance": ("Power", ureg.megawatt),
+            "Puissance": ("Power", ureg.watt),
         }
 
         for entry in PigBrotherUnits:
@@ -708,7 +709,15 @@ class MagnetData:
                 else:
                     self.Units(debug)
         elif self.Type == 1:
-            raise RuntimeError("addData: not implemented for pigbrother file")
+            (group, channel) = key.split("/")
+            print(f"add: key={key} - group={group}, channel={channel}")
+
+            nformula = formula.replace(f"{group}/", "")
+            print(f"formula: {nformula}")
+            self.Data[group].eval(nformula, inplace=True)
+            self.Keys.append(key)
+            # self.Groups[group][channel] = self.Groups[group]
+            # raise RuntimeError("addData: not implemented for pigbrother file")
         return 0
 
     def getStartDate(self, group: str = None) -> tuple:
