@@ -720,6 +720,46 @@ class MagnetData:
             # raise RuntimeError("addData: not implemented for pigbrother file")
         return 0
 
+    def computeData(
+        self,
+        method,
+        key: str,
+        kparams: list,
+        unit: tuple = None,
+        debug: bool = False,
+    ):
+        """
+        compute new column
+        """
+        if debug:
+            print(f"computeData: Key={key}", end=" ")
+
+        if key in self.Keys:
+            print(f"Key {key} already exists in DataFrame")
+            return 0
+
+        if self.Type == 0:
+            data = []
+            for values in self.Data[kparams].values.tolist():
+                data.append(method(*values))
+
+            # print(data)
+            self.Data[key] = data
+
+            self.Keys = self.Data.columns.values.tolist()
+            if unit:
+                self.units[key] = unit
+            else:
+                self.Units(debug)
+
+            if debug:
+                print("done")
+
+        elif self.Type == 1:
+            raise RuntimeError(
+                f"computeData: key={key} not implemented for pigbrother file"
+            )
+
     def getStartDate(self, group: str = None) -> tuple:
         """get start timestamps"""
         res = ()

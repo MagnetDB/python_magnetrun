@@ -154,6 +154,7 @@ if __name__ == "__main__":
     parser_add.add_argument(
         "--formula", help="add new column with associated formula", type=str, default=""
     )
+    parser_add.add_argument("--compute", help="compute", action="store_true")
     parser_add.add_argument("--plot", help="plot ", action="store_true")
     parser_add.add_argument(
         "--vs_time",
@@ -166,6 +167,9 @@ if __name__ == "__main__":
         help='select pair(s) of keys to plot (ex. "Field-Icoil1")',
         nargs="+",
         action="append",
+    )
+    parser_add.add_argument(
+        "--normalize", help="normalize data before plot", action="store_true"
     )
     parser_add.add_argument("--save", help="save ", action="store_true")
 
@@ -312,18 +316,42 @@ if __name__ == "__main__":
         if args.command == "add":
             mdata = mrun.getMData()
             print(mdata.getKeys())
+
+            if args.compute:
+                from .cooling import water
+                from pint import UnitRegistry
+
+                ureg = UnitRegistry()
+                nkey = "rho"
+                nkey_unit = ("rho", ureg.kilogram / ureg.meter**3)
+                nkey_params = ["HPH", "TinH"]
+                nkey_method = water.getRho
+
+                mdata.computeData(nkey_method, nkey, nkey_params, nkey_unit)
+                print(mdata.getKeys())
+                print(mdata.getData("rho").describe())
+
+                if args.plot:
+                    my_ax = plt.gca()
+                    mdata.plotData(x="t", y=nkey, ax=my_ax, normalize=args.normalize)
+                    for param in nkey_params:
+                        mdata.plotData(
+                            x="t", y=param, ax=my_ax, normalize=args.normalize
+                        )
+
+                    if not args.save:
+                        plt.show()
+                    else:
+                        imagefile = nkey
+                        print(f"saveto: {imagefile}_vs_time.png", flush=True)
+                        plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
+                    plt.close()
+
             if args.formula:
                 print(f"add {args.formula}, plot={args.plot}")
 
                 nkey = args.formula.split(" = ")[0]
                 nunit = None
-                """
-                from pint import UnitRegistry
-
-                ureg = UnitRegistry()
-
-                nunit = ("U", ureg.volt)
-                """
 
                 # self.units[key] = ("U", ureg.volt)
                 print(f"try to add nkey={nkey}")
@@ -331,13 +359,15 @@ if __name__ == "__main__":
                 print(mdata.getKeys())
                 if args.plot:
                     my_ax = plt.gca()
-                    mdata.plotData(x="t", y=nkey, ax=my_ax, normalize=False)
+                    mdata.plotData(x="t", y=nkey, ax=my_ax, normalize=args.normalize)
 
                     print(f"args.vs_time: {args.vs_time}")
                     if args.vs_time:
                         for key in args.vs_time[0]:
                             print(key)
-                            mdata.plotData(x="t", y=key, ax=my_ax, normalize=False)
+                            mdata.plotData(
+                                x="t", y=key, ax=my_ax, normalize=args.normalize
+                            )
 
                     if not args.save:
                         plt.show()
