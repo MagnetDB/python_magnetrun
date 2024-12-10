@@ -3,7 +3,6 @@ import sys
 import argparse
 import datetime
 import pandas as pd
-import freesteam as st
 import numpy as np
 import matplotlib
 
@@ -17,6 +16,8 @@ import matplotlib.colors as colors
 from .files import concat_files
 from .plots import plot_vs_time
 from .plots import plot_key_vs_key
+
+from ..cooling import water
 
 
 def main():
@@ -81,24 +82,24 @@ def main():
     missing_probes = []
     for i in range(1, max_tap + 1):
         ukey = "Ucoil%d" % i
-        if not ukey in keys:
+        if ukey not in keys:
             # print ("Ukey=%s" % ukey, (ukey in keys) )
             df[ukey] = 0
             missing_probes.append(i)
             # Add an empty column
 
     if args.missing:
-        print(missing_probes)
+        print(f"missing_probes: {missing_probes}")
 
     # Get Name of columns
     keys = df.columns.values.tolist()
     if args.list:
-        print("keys=", keys)
+        print(f"keys={keys}")
         sys.exit(0)
 
     # Add some more columns
     # Helix Magnet
-    if not "Uh" in keys:
+    if "Uh" not in keys:
         # print("Create extra columns [ie: U1,U2,...]")
         df["Uh"] = 0
         for i in range(15):
@@ -110,12 +111,8 @@ def main():
         df["DP1"] = df["HP1"] - df["BP"]
 
         # Get Water property
-        df["rho1"] = df.apply(
-            lambda row: st.steam_pT(row.BP * 1e5, row.Tin1 + 273.0).rho / 1.0, axis=1
-        )
-        df["cp1"] = df.apply(
-            lambda row: st.steam_pT(row.BP * 1e5, row.Tin1 + 273.0).cp / 1.0, axis=1
-        )
+        df["rho1"] = df.apply(lambda row: water.getRho(row.BP, row.Tin1), axis=1)
+        df["cp1"] = df.apply(lambda row: water.getCp(row.BP, row.Tin1), axis=1)
 
         for i in range(1, 6):
             df["DT1"] = df.apply(
@@ -129,17 +126,15 @@ def main():
 
             # Water Property at BP bar, Tin+DT1
             df["rho1"] = df.apply(
-                lambda row: st.steam_pT(
-                    (row.BP + row.DP1 / 2.0) * 1e5, (row.Tin1 + row.DT1 / 2.0) + 273.0
-                ).rho
-                / 1.0,
+                lambda row: water.getRho(
+                    (row.BP + row.DP1 / 2.0), (row.Tin1 + row.DT1 / 2.0)
+                ),
                 axis=1,
             )
             df["cp1"] = df.apply(
-                lambda row: st.steam_pT(
-                    (row.BP + row.DP1 / 2.0) * 1e5, (row.Tin1 + row.DT1 / 2.0) + 273.0
-                ).cp
-                / 1.0,
+                lambda row: water.getCp(
+                    (row.BP + row.DP1 / 2.0), (row.Tin1 + row.DT1 / 2.0)
+                ),
                 axis=1,
             )
 
@@ -148,20 +143,15 @@ def main():
         df["P1"] = df.apply(lambda row: (row.HP1 + row.BP) / 2.0, axis=1)
 
     # Helix Magnet
-    if not "Ub" in keys:
+    if "Ub" not in keys:
         # Bitter
         if "Ucoil15" in keys:
             df["Ub"] = df["Ucoil15"] + df["Ucoil16"]
             df["Pe2"] = df.apply(lambda row: row.Ub * row.Icoil15 / 1.0e6, axis=1)
 
             # Water Property at BP bar, Tin+DT1/2.
-            df["rho2"] = df.apply(
-                lambda row: st.steam_pT(row.BP * 1e5, row.Tin2 + 273.0).rho / 1.0,
-                axis=1,
-            )
-            df["cp2"] = df.apply(
-                lambda row: st.steam_pT(row.BP * 1e5, row.Tin2 + 273.0).cp / 1.0, axis=1
-            )
+            df["rho2"] = df.apply(lambda row: water.getRho(row.BP, row.Tin2), axis=1)
+            df["cp2"] = df.apply(lambda row: water.getCp(row.BP, row.Tin2), axis=1)
 
             df["DP2"] = df["HP2"] - df["BP"]
             for i in range(1, 6):
@@ -174,19 +164,17 @@ def main():
                     axis=1,
                 )
                 df["rho2"] = df.apply(
-                    lambda row: st.steam_pT(
-                        (row.BP + row.DP2 / 2.0) * 1e5,
-                        (row.Tin2 + row.DT2 / 2.0) + 273.0,
-                    ).rho
-                    / 1.0,
+                    lambda row: water.getRho(
+                        (row.BP + row.DP2 / 2.0),
+                        (row.Tin2 + row.DT2 / 2.0),
+                    ),
                     axis=1,
                 )
                 df["cp2"] = df.apply(
-                    lambda row: st.steam_pT(
-                        (row.BP + row.DP2 / 2.0) * 1e5,
-                        (row.Tin2 + row.DT2 / 2.0) + 273.0,
-                    ).cp
-                    / 1.0,
+                    lambda row: water.getCp(
+                        (row.BP + row.DP2 / 2.0),
+                        (row.Tin2 + row.DT2 / 2.0),
+                    ),
                     axis=1,
                 )
 
@@ -212,12 +200,8 @@ def main():
 
     df["Power"] = df["Pe1"] + df["Pe2"]
 
-    df["rho"] = df.apply(
-        lambda row: st.steam_pT(row.BP * 1e5, row.Tout + 273.0).rho / 1.0, axis=1
-    )
-    df["cp"] = df.apply(
-        lambda row: st.steam_pT(row.BP * 1e5, row.Tout + 273.0).cp / 1.0, axis=1
-    )
+    df["rho"] = df.apply(lambda row: water.getRho(row.BP, row.Tout), axis=1)
+    df["cp"] = df.apply(lambda row: water.getCp(row.BP, row.Tout), axis=1)
     df["DT"] = df.apply(
         lambda row: (
             row.Pmagnet * 1.0e6 / (row.rho * row.cp * (row.Flow1 + row.Flow2) * 1.0e-3)
