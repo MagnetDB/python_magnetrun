@@ -155,6 +155,15 @@ class MagnetRun:
             self.MagnetData,
         )
 
+    def getInsert(self):
+        """returns Insert"""
+        import os
+
+        filename = self.MagnetData.FileName
+        f_extension = os.path.splitext(filename)[-1]
+
+        return filename.replace(f_extension, "")
+
     def getSite(self):
         """returns Site"""
         return self.Site
