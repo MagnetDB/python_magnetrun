@@ -222,6 +222,9 @@ if __name__ == "__main__":
     parser_stats.add_argument(
         "--detect_bkpts", help="find breaking points", action="store_true"
     )
+    parser_stats.add_argument(
+        "--mad", help="median absolute deviation", action="store_true"
+    )
     parser_stats.add_argument("--localmax", help="find local max", action="store_true")
     parser_stats.add_argument("--plateau", help="find plateau", action="store_true")
     parser_stats.add_argument(
@@ -817,6 +820,54 @@ if __name__ == "__main__":
                             # print(f"data: {len(data)}")
                             # print(f"data: {data[-1]}")
 
+                        if args.mad:
+                            ts = None
+                            if mdata.Type == 0:
+                                ts = mdata.Data[key]
+                                freq = 1
+                                print(f"{key}: freq={freq} Hz", flush=True)
+                            elif mdata.Type == 1:
+                                ts = mdata.Data[group][channel]
+                                freq = 1 / mdata.Groups[group][channel]["wf_increment"]
+                                print(f"{group}/{channel}: freq={freq} Hz", flush=True)
+
+                            # try MADS
+                            print(type(mdata.Data), type(ts))
+                            print(ts.head())
+
+                            ts_median = ts.rolling(window=args.window).median()
+
+                            def mad(x):
+                                return np.fabs(x - x.mean()).mean()
+
+                            ts_mad = ts.rolling(window=args.window).apply(mad, raw=True)
+
+                            # find outliers
+                            selector = ts - ts_median / ts_mad
+                            outliers = ts[selector > 3]
+
+                            # plot
+                            fig = plt.figure(figsize=(16, 12))
+
+                            ax0 = plt.subplot(211)
+                            ts.plot(ax=ax0)
+                            outliers.plot(ax=ax0, marker="x", linestyle="none")
+                            ax0.grid()
+                            ax0.set_title(key)
+                            ax0.set_ylabel(f"{symbol} [{unit:~P}]")
+                            ax0.set_xlabel("t [s]")
+
+                            ax1 = plt.subplot(212, sharex=ax0)
+                            ts_mad.plot(ax=ax1)
+                            ts_mad[outliers.index].plot(
+                                ax=ax1, marker="x", linestyle="none"
+                            )
+                            ax1.grid()
+                            ax1.set_title(f"MAD - windows={args.window}")
+                            # ax1.set_ylabel(f"{symbol} [{unit:~P}]")
+                            ax1.set_xlabel("t [s]")
+                            plt.show()
+
                         if args.detect_bkpts:
                             ts = None
                             if mdata.Type == 0:
@@ -828,6 +879,7 @@ if __name__ == "__main__":
                                 freq = 1 / mdata.Groups[group][channel]["wf_increment"]
                                 print(f"{group}/{channel}: freq={freq} Hz", flush=True)
 
+                            #
                             smoothed = savgol(
                                 y=ts.to_numpy(),
                                 window=args.window,
