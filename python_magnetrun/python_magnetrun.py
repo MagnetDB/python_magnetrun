@@ -81,14 +81,14 @@ def plot_bkpts(
     ax0.set_ylabel(f"{symbol} [{unit:~P}]")
     ax0.set_title(f"{file}: {key}")
 
-    ax1 = plt.subplot(gs[1])
+    ax1 = plt.subplot(gs[1], sharex=ax0)
     ax1.plot(smoothed_der2, label=key, color="red")
     ax1.legend()
     ax1.grid()
     # ax1.set_xlabel('t [s]')
     ax1.set_title(f"Savgo filter [2nd order der]: ({level}\%: {quantiles_der:.3e})")
 
-    ax2 = plt.subplot(gs[2])
+    ax2 = plt.subplot(gs[2], sharex=ax0)
     std_ts = ts.rolling(window=args.window).std()
     ax2.plot(std_ts.to_numpy(), label="rolling std", color="blue")
     ax2.legend()
@@ -839,19 +839,62 @@ if __name__ == "__main__":
                                 print(f"{group}/{channel}: freq={freq} Hz", flush=True)
 
                             # try MADS
-                            print(type(mdata.Data), type(ts))
-                            print(ts.head())
+                            # print(type(mdata.Data), type(ts))
+                            # print(ts.head())
+
+                            """
+                            # calculate IQR for column Height
+                            Q1 = ts.rolling(window=args.window).quantile(0.25)
+                            Q3 = ts.rolling(window=args.window).quantile(0.75)
+                            IQR = Q3 - Q1
+
+                            # identify outliers
+                            threshold = 6
+                            iqroutliers = ts[
+                                (ts < Q1 - threshold * IQR)
+                                | (ts > Q3 + threshold * IQR)
+                            ]
+                            ts.plot()
+                            iqroutliers.plot(marker="x", linestyle="none")
+                            plt.show()
+                            plt.close()
+                            """
 
                             ts_median = ts.rolling(window=args.window).median()
+                            ts_mean = ts.rolling(window=args.window).mean()
+                            ts_std = ts.rolling(window=args.window).std()
 
-                            def mad(x):
+                            def mean_mad(x):
                                 return np.fabs(x - x.mean()).mean()
 
-                            ts_mad = ts.rolling(window=args.window).apply(mad, raw=True)
+                            def mad(x):
+                                # return np.fabs(x - x.mean()).mean()
+                                return np.median(np.fabs(x - np.median(x)))  # .median()
 
-                            # find outliers
+                            ts_mad = ts.rolling(window=args.window).apply(mad, raw=True)
+                            ts_mean_mad = ts.rolling(window=args.window).apply(
+                                mean_mad, raw=True
+                            )
+
+                            """
+                            # find outliers: zscore: z = (x - mean) / std
+                            # selector = ((ts - ts_mean) / ts_std).abs()
+                            selector = (ts - ts_mean).abs() / ts_std
+                            selector.plot()
+                            plt.show()
+                            plt.close()
+                            zoutliers = ts[selector > 3]
+                            ts.plot()
+                            zoutliers.plot(marker="x", linestyle="none")
+                            plt.show()
+                            plt.close()
+                            """
+
+                            # find outliers MAD and mean MAD
                             selector = ts - ts_median / ts_mad
-                            outliers = ts[selector > 3]
+                            outliers = ts[selector > args.threshold]
+                            selector = ts - ts_mean / ts_mean_mad
+                            meanoutliers = ts[selector > args.threshold]
 
                             # plot
                             fig = plt.figure(figsize=(16, 12))
@@ -859,20 +902,34 @@ if __name__ == "__main__":
                             ax0 = plt.subplot(211)
                             ts.plot(ax=ax0)
                             outliers.plot(ax=ax0, marker="x", linestyle="none")
+                            # zoutliers.plot(ax=ax0, marker="o", linestyle="none")
+                            # iqroutliers.plot(ax=ax0, marker="+", linestyle="none")
                             ax0.grid()
                             ax0.set_title(key)
                             ax0.set_ylabel(f"{symbol} [{unit:~P}]")
                             ax0.set_xlabel("t [s]")
+                            ax0.legend([key, "Median MAD"])
 
                             ax1 = plt.subplot(212, sharex=ax0)
-                            ts_mad.plot(ax=ax1)
+                            # ts_mad.plot(ax=ax1)
+                            ts_mean_mad.plot(ax=ax1)
                             ts_mad[outliers.index].plot(
                                 ax=ax1, marker="x", linestyle="none"
                             )
+                            ts_mean_mad[outliers.index].plot(
+                                ax=ax1, marker=".", linestyle="none"
+                            )
+                            # ts_mad[zoutliers.index].plot(
+                            #     ax=ax1, marker="o", linestyle="none"
+                            # )
+                            # ts_mad[iqroutliers.index].plot(
+                            #     ax=ax1, marker="+", linestyle="none"
+                            # )
                             ax1.grid()
                             ax1.set_title(f"MAD - windows={args.window}")
                             # ax1.set_ylabel(f"{symbol} [{unit:~P}]")
                             ax1.set_xlabel("t [s]")
+                            ax1.legend(["Estimator Mean AD", "Median AD", "Mean AD"])
                             plt.show()
 
                         if args.detect_bkpts:
