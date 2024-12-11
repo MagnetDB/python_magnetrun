@@ -671,6 +671,8 @@ if __name__ == "__main__":
             if not args.keys:
                 args.keys = ["Field"]
             output += "-localmax"
+        if args.mad:
+            output += "-mad"
         if args.detect_bkpts:
             if not args.keys:
                 args.keys = ["Field"]
@@ -684,7 +686,12 @@ if __name__ == "__main__":
 
             multiindex[0].append(os.path.basename(file).replace(extension, ""))
 
-            if not args.plateau and not args.detect_bkpts:
+            if (
+                not args.plateau
+                and not args.detect_bkpts
+                and not args.mad
+                and not args.localmax
+            ):
                 result = stats.stats(mdata, display=False)
                 # print("headers: ", result[1])
                 # print("data: ", result[0])
@@ -1097,7 +1104,6 @@ if __name__ == "__main__":
                 print(traceback.format_exc())
                 pass
 
-        """
         print(
             "concat tabs:",
             f"multi_index={len(multiindex[0]), len(multiindex[1])}",
@@ -1106,7 +1112,7 @@ if __name__ == "__main__":
         )
         print(f"multiindex: {multiindex}")
         print(f"columns: {columns}")
-        """
+        print(f"data: {data}")
 
         df = pd.DataFrame(
             data,
