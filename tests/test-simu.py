@@ -9,7 +9,7 @@ import statsmodels.api as sm
 
 import matplotlib.pyplot as plt
 
-from .MagnetRun import MagnetRun
+from python_magnetrun.MagnetRun import MagnetRun
 # from .processing.smoothers import savgol
 
 import argparse
@@ -42,20 +42,12 @@ print(f"keys: {mdata.getKeys()}")
 
 
 if f_extension == ".txt":
-    Vh = (
-        mdata.Data["Ucoil1"]
-        + mdata.Data["Ucoil2"]
-        + mdata.Data["Ucoil3"]
-        + mdata.Data["Ucoil4"]
-        + mdata.Data["Ucoil5"]
-        + mdata.Data["Ucoil6"]
-        + mdata.Data["Ucoil7"]
-    )
+    Vh = mdata.Data["UH"]
     print(f"Vh: {Vh.info(verbose=True)}, {Vh.head()}, {Vh.describe()}", flush=True)
 
     Ih = mdata.Data["IH"]
 
-    Vb = mdata.Data["Ucoil15"] + mdata.Data["Ucoil16"]
+    Vb = mdata.Data["UB"]
     Ib = mdata.Data["IB"]
     timestep = 1  # for txt
 

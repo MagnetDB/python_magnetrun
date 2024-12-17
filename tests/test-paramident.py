@@ -5,8 +5,8 @@ idea from chatgpt
 import os
 import pandas as pd
 
-from .MagnetRun import MagnetRun
-from .processing.smoothers import savgol
+from python_magnetrun..MagnetRun import MagnetRun
+from python_magnetrun..processing.smoothers import savgol
 
 import numpy as np
 import matplotlib.pyplot as plt

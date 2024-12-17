@@ -6,8 +6,8 @@ import os
 import pandas as pd
 import statsmodels.api as sm
 
-from .MagnetRun import MagnetRun
-from .processing.smoothers import savgol
+from python_magnetrun.MagnetRun import MagnetRun
+from python_magnetrun.processing.smoothers import savgol
 
 import argparse
 

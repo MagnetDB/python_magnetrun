@@ -12,7 +12,7 @@ import numpy as np
 from scipy.fft import fft, fftshift, fftfreq
 import matplotlib.pyplot as plt
 
-from .MagnetRun import MagnetRun
+from python_magnetrun.MagnetRun import MagnetRun
 # from .processing.smoothers import savgol
 
 import argparse
@@ -210,12 +210,13 @@ df = pd.DataFrame(
         "U": fft_data["Z"].imag,
         "iIh": fft_data["X"].imag,
         "rIh": fft_data["X"].real,
-        "rIb": fft_data["Y"].real,
+        # "rIb": fft_data["Y"].real,
     }
 )
 
 # Define the independent variables (X and Y)
-X = df[["iIh", "rIh", "rIb"]]
+# X = df[["iIh", "rIh", "rIb"]]
+X = df[["iIh", "rIh"]]
 
 # Add a constant to the model (the intercept)
 X = sm.add_constant(X)
@@ -230,5 +231,5 @@ model = sm.OLS(Y, X).fit()
 print(model.summary())
 
 # Extract the coefficients
-intercept, A, B, C = model.params
-print(f"Intercept: {intercept}, A: {A}, B: {B}, C: {C}")
+intercept, A, B = model.params
+print(f"Intercept: {intercept}, A: {A}, B: {B}")
