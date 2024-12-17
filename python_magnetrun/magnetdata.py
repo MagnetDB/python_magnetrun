@@ -5,14 +5,8 @@ from datetime import datetime
 
 import os
 import sys
-import matplotlib.pyplot as plt
-from nptdms import TdmsFile
-import pandas as pd
-import matplotlib
 
-# print("matplotlib=", matplotlib.rcParams.keys())
-matplotlib.rcParams["text.usetex"] = True
-# matplotlib.rcParams['text.latex.unicode'] = True key not available
+import pandas as pd
 
 
 class MagnetData:
@@ -53,6 +47,8 @@ class MagnetData:
         :return: magnetdata object
         :rtype: magnetdata
         """
+        from nptdms import TdmsFile
+
         Keys = []
         Groups = {}
         Data = {}
@@ -66,28 +62,22 @@ class MagnetData:
             rawData = TdmsFile.open(name)
             # print(f"rawData: {rawData.properties}", flush=True)
             for group in rawData.groups():
-                # print(f'group: {group.name}', flush=True)
+                # print(f"group: {group.name}", flush=True)
                 Groups[group.name] = {}
                 if group.name != "Infos":
                     Data[group.name] = {}
+
+                    # print(group.channels, type(group.channels))
                     for channel in group.channels():
-                        # print(f'channel: {channel.name}', flush=True)
+                        # print(f"channel: {channel.name}", flush=True)
                         Keys.append(f"{group.name}/{channel.name}")
                         Groups[group.name][channel.name] = channel.properties
+                        # print(f"properties: {channel.properties}", flush=True)
 
-                    # arrow_dtypes=False, when pandas 2.xx
                     Data[group.name] = group.as_dataframe(
-                        time_index=True,
-                        absolute_time=True,
+                        time_index=False,
+                        absolute_time=False,
                         scaled_data=True,
-                    )
-
-                    t0 = Data[group.name].index[0]
-                    Groups[group.name]["t0"] = t0
-                    # print(f"t0: {t0}")
-                    Data[group.name]["t"] = Data[group.name].apply(
-                        lambda row: (row.name - t0).total_seconds(),
-                        axis=1,
                     )
                 else:
                     Groups[group.name]["Infos"] = group
@@ -228,6 +218,7 @@ class MagnetData:
         if channel is None:
             return self.Data[group]
         else:
+            # print(f"getTdms: group={group}, channel={channel}")
             if isinstance(channel, list):
                 return self.Data[group][channel]
             else:
@@ -286,6 +277,7 @@ class MagnetData:
             "Courant": ("I", ureg.ampere),
             "Tension": ("U", ureg.volt),
             "Puissance": ("Power", ureg.watt),
+            "Champ_magn": ("B", ureg.gauss),
         }
 
         for entry in PigBrotherUnits:
@@ -321,6 +313,8 @@ class MagnetData:
                         (group, channel) = entry.split("/")
                         if channel == "t":
                             self.units[entry] = ("t", ureg.second)
+                        # if channel == "timestamps":
+                        #    self.units[entry] = ("t", ureg.second)
                     self.units[entry] = self.PigBrotherUnits(group)
 
             pass
@@ -370,11 +364,13 @@ class MagnetData:
 
     def getUnitKey(self, key: str) -> tuple:
         if key not in self.Keys:
-            if key == "t":
-                from pint import UnitRegistry
+            from pint import UnitRegistry
 
-                ureg = UnitRegistry()
+            ureg = UnitRegistry()
+            if key == "t":
                 return ("t", ureg.second)
+            elif key == "timestamps":
+                return ("time", None)
             else:
                 raise RuntimeError(
                     f"{key} not defined in data - available keys are {self.Keys}"
@@ -963,8 +959,15 @@ class MagnetData:
         :raises Exception: _description_
         """
 
+        import datetime
+        import numpy as np
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        matplotlib.rcParams["text.usetex"] = True
+
         # print("plotData Type:", self.Type, f"x={x}, y={y}" )
-        if x != "t" and x not in self.Keys:
+        if x != "t" and x != "timestamps" and x not in self.Keys:
             raise RuntimeError(
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no x={x} key (valid keys= {self.Keys})"
             )
@@ -978,6 +981,7 @@ class MagnetData:
                     df = self.Data.copy()
                     ymax = abs(df[y].max())
                     df[y] /= ymax
+                    label = f"{y} (norm with {ymax:.3e} {yunit:~P})"
                     df.plot(
                         x=x,
                         y=y,
@@ -999,8 +1003,20 @@ class MagnetData:
                     xchannel = x
 
                 if xgroup == ygroup:
+                    df = self.Data[xgroup].copy()
+                    dt = self.Groups[ygroup][ychannel]["wf_increment"]
+                    # print(f"dt={dt}, type={type(dt)}")
+                    if xchannel == "t":
+                        df[xchannel] = df.index * dt
+                    elif xchannel == "timestamps":
+                        t0 = self.Groups[ygroup][ychannel]["wf_start_time"]
+                        df[xchannel] = [
+                            np.datetime64(t0).astype(datetime.datetime)
+                            + datetime.timedelta(0, i * dt)
+                            for i in df.index.to_list()
+                        ]
+
                     if normalize:
-                        df = self.Data[xgroup].copy()
                         ymax = abs(df[ychannel].max())
                         df[ychannel] /= ymax
                         df.plot(
@@ -1012,7 +1028,7 @@ class MagnetData:
                         )
                         del df
                     else:
-                        self.Data[xgroup].plot(x=xchannel, y=ychannel, ax=ax, grid=True)
+                        df.plot(x=xchannel, y=ychannel, ax=ax, grid=True)
                 else:
                     raise RuntimeError(
                         f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: xgroup={xgroup} != {ygroup}"
@@ -1114,7 +1130,14 @@ class MagnetData:
             from tabulate import tabulate
             from collections import OrderedDict
 
-            headers = ["Group", "Channel", "Samples", "Increment", "start_time"]
+            headers = [
+                "Group",
+                "Channel",
+                "Samples",
+                "Increment",
+                "start_time",
+                "start_offset",
+            ]
             tables = []
 
             for group, values in self.Groups.items():
@@ -1129,6 +1152,7 @@ class MagnetData:
                             values[item]["wf_samples"],
                             values[item]["wf_increment"],
                             values[item]["wf_start_time"],
+                            values[item]["wf_start_offset"],
                         ]
                         tables.append(table)
                         """

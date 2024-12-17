@@ -101,7 +101,6 @@ if __name__ == "__main__":
                 (group, channel) = ykey.split("/")
                 if "/" not in xkey:
                     xkey = f"{group}/{xkey}"
-
             case _:
                 raise RuntimeError(
                     f"so far file with extension in {supported_formats} are implemented"

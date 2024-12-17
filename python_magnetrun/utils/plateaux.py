@@ -41,7 +41,10 @@ def nplateaus(
     if not isinstance(Data.Data, pd.DataFrame):
         if xField[0] == "t":
             (group, channel) = yField[0].split("/")
-            df = Data.getData([f"{group}/t", yField[0]])
+
+            dt = Data.Groups[group][channel]["wf_increment"]
+            df = Data.getData(yField[0])
+            df["t"] = df.index * dt
             ykey = channel
 
     else:

@@ -222,9 +222,6 @@ if __name__ == "__main__":
     parser_stats.add_argument(
         "--detect_bkpts", help="find breaking points", action="store_true"
     )
-    parser_stats.add_argument(
-        "--mad", help="median absolute deviation", action="store_true"
-    )
     parser_stats.add_argument("--localmax", help="find local max", action="store_true")
     parser_stats.add_argument("--plateau", help="find plateau", action="store_true")
     parser_stats.add_argument(
@@ -671,8 +668,6 @@ if __name__ == "__main__":
             if not args.keys:
                 args.keys = ["Field"]
             output += "-localmax"
-        if args.mad:
-            output += "-mad"
         if args.detect_bkpts:
             if not args.keys:
                 args.keys = ["Field"]
@@ -686,12 +681,7 @@ if __name__ == "__main__":
 
             multiindex[0].append(os.path.basename(file).replace(extension, ""))
 
-            if (
-                not args.plateau
-                and not args.detect_bkpts
-                and not args.mad
-                and not args.localmax
-            ):
+            if not args.plateau and not args.detect_bkpts and not args.localmax:
                 result = stats.stats(mdata, display=False)
                 # print("headers: ", result[1])
                 # print("data: ", result[0])
@@ -826,111 +816,6 @@ if __name__ == "__main__":
                                 )
                             # print(f"data: {len(data)}")
                             # print(f"data: {data[-1]}")
-
-                        if args.mad:
-                            ts = None
-                            if mdata.Type == 0:
-                                ts = mdata.Data[key]
-                                freq = 1
-                                print(f"{key}: freq={freq} Hz", flush=True)
-                            elif mdata.Type == 1:
-                                ts = mdata.Data[group][channel]
-                                freq = 1 / mdata.Groups[group][channel]["wf_increment"]
-                                print(f"{group}/{channel}: freq={freq} Hz", flush=True)
-
-                            # try MADS
-                            # print(type(mdata.Data), type(ts))
-                            # print(ts.head())
-
-                            """
-                            # calculate IQR for column Height
-                            Q1 = ts.rolling(window=args.window).quantile(0.25)
-                            Q3 = ts.rolling(window=args.window).quantile(0.75)
-                            IQR = Q3 - Q1
-
-                            # identify outliers
-                            threshold = 6
-                            iqroutliers = ts[
-                                (ts < Q1 - threshold * IQR)
-                                | (ts > Q3 + threshold * IQR)
-                            ]
-                            ts.plot()
-                            iqroutliers.plot(marker="x", linestyle="none")
-                            plt.show()
-                            plt.close()
-                            """
-
-                            ts_median = ts.rolling(window=args.window).median()
-                            ts_mean = ts.rolling(window=args.window).mean()
-                            ts_std = ts.rolling(window=args.window).std()
-
-                            def mean_mad(x):
-                                return np.fabs(x - x.mean()).mean()
-
-                            def mad(x):
-                                # return np.fabs(x - x.mean()).mean()
-                                return np.median(np.fabs(x - np.median(x)))  # .median()
-
-                            ts_mad = ts.rolling(window=args.window).apply(mad, raw=True)
-                            ts_mean_mad = ts.rolling(window=args.window).apply(
-                                mean_mad, raw=True
-                            )
-
-                            """
-                            # find outliers: zscore: z = (x - mean) / std
-                            # selector = ((ts - ts_mean) / ts_std).abs()
-                            selector = (ts - ts_mean).abs() / ts_std
-                            selector.plot()
-                            plt.show()
-                            plt.close()
-                            zoutliers = ts[selector > 3]
-                            ts.plot()
-                            zoutliers.plot(marker="x", linestyle="none")
-                            plt.show()
-                            plt.close()
-                            """
-
-                            # find outliers MAD and mean MAD
-                            selector = ts - ts_median / ts_mad
-                            outliers = ts[selector > args.threshold]
-                            selector = ts - ts_mean / ts_mean_mad
-                            meanoutliers = ts[selector > args.threshold]
-
-                            # plot
-                            fig = plt.figure(figsize=(16, 12))
-
-                            ax0 = plt.subplot(211)
-                            ts.plot(ax=ax0)
-                            outliers.plot(ax=ax0, marker="x", linestyle="none")
-                            # zoutliers.plot(ax=ax0, marker="o", linestyle="none")
-                            # iqroutliers.plot(ax=ax0, marker="+", linestyle="none")
-                            ax0.grid()
-                            ax0.set_title(key)
-                            ax0.set_ylabel(f"{symbol} [{unit:~P}]")
-                            ax0.set_xlabel("t [s]")
-                            ax0.legend([key, "Median MAD"])
-
-                            ax1 = plt.subplot(212, sharex=ax0)
-                            # ts_mad.plot(ax=ax1)
-                            ts_mean_mad.plot(ax=ax1)
-                            ts_mad[outliers.index].plot(
-                                ax=ax1, marker="x", linestyle="none"
-                            )
-                            ts_mean_mad[outliers.index].plot(
-                                ax=ax1, marker=".", linestyle="none"
-                            )
-                            # ts_mad[zoutliers.index].plot(
-                            #     ax=ax1, marker="o", linestyle="none"
-                            # )
-                            # ts_mad[iqroutliers.index].plot(
-                            #     ax=ax1, marker="+", linestyle="none"
-                            # )
-                            ax1.grid()
-                            ax1.set_title(f"MAD - windows={args.window}")
-                            # ax1.set_ylabel(f"{symbol} [{unit:~P}]")
-                            ax1.set_xlabel("t [s]")
-                            ax1.legend(["Estimator Mean AD", "Median AD", "Mean AD"])
-                            plt.show()
 
                         if args.detect_bkpts:
                             ts = None
