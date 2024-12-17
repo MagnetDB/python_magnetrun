@@ -84,7 +84,7 @@ if __name__ == "__main__":
         threshold=args.threshold,
         num_points_threshold=num_points_threshold,
         save=args.save,
-        show=(not args.save),
+        show=args.show,
         verbose=False,
     )
 
@@ -139,9 +139,9 @@ if __name__ == "__main__":
         selected_b = b[(b["t"] > t_start) & (b["t"] < t_end)]
 
         # NB: Champ_magn in gauss (1.e-4 tesla)
-        selected_b["Champ_magn"].plot()
-        (symbol, unit) = mdata.PigBrotherUnits("Champ_magn")
         if args.show:
+            selected_b["Champ_magn"].plot()
+            (symbol, unit) = mdata.PigBrotherUnits("Champ_magn")
             plt.ylabel(f"{symbol} [{unit:~P}]")
             plt.grid()
             plt.show()
@@ -219,14 +219,18 @@ if __name__ == "__main__":
 
         # print(df_archive.head())
         # print(df_archive.tail())
-        df_archive.plot(x="t", y=channel)
-        plt.grid()
-        plt.show()
-        plt.close()
+        if args.show:
+            df_archive.plot(x="t", y=channel)
+            plt.grid()
+            plt.show()
+            plt.close()
         df_dict[channel] = df_archive
 
     # extract plateau data and perform stats on plateau
     print(f"Stats per plateaux - group={group}")
+    tables = []
+    headers = ["field", "count", "mean", "std", "min", "25%", "50%", "75%", "max"]
+
     for index, row in df_plateaux.iterrows():
         if row["duration [s]"] >= 60:
             t_start = row["start [s]"]
@@ -242,14 +246,25 @@ if __name__ == "__main__":
                 ["Référence_A2", "Courant_A2"],
             ]:
                 for item in channel:
-                    df = df_archive[channel]
+                    df = df_dict[item]
                     selected_df = df[(df["t"] > t_start) & (df["t"] < t_end)]
-                    print(selected_df.head())
+                    tables.append([item] + selected_df[iem].describe().to_list())
+                    # print(selected_df.head())
 
-                    selected_df[channel].plot.hist(bins=20, alpha=0.5, ax=my_ax)
+                    selected_df[item].plot.hist(bins=20, alpha=0.5, ax=my_ax)
 
                 plt.title(
                     f"{filename}: {channel} - plateau: from {t_start} to {t_end} s"
                 )
                 plt.grid()
                 plt.show()
+
+    print("\nCourants stats over plateau [A]")
+    print(
+        tabulate(
+            tables,
+            headers=headers,
+            tablefmt="psql",
+            showindex=False,
+        ),
+    )
