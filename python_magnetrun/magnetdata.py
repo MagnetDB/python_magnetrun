@@ -84,7 +84,6 @@ class MagnetData:
             # print(f"keys: {Keys}")
 
         # Add refrence for GR1, GR2
-        print(f"Data: {Data.keys()}", flush=True)
         if "Référence_A1" in Data["Courants_Alimentations"]:
             Data["Courants_Alimentations"]["Référence_GR1"] = (
                 Data["Courants_Alimentations"]["Référence_A1"]
@@ -246,15 +245,15 @@ class MagnetData:
             elif isinstance(key, list):
                 channels = []
 
-                print(f"magnetda.getData: key={key}", flush=True)
+                # print(f"magnetda.getData: key={key}", flush=True)
                 for item in key:
                     (group, channel) = item.split("/")
-                    print(f"group{group}, channel={channel}", flush=True)
+                    # print(f"group{group}, channel={channel}", flush=True)
                     channels.append(channel)
                     if group not in groups:
                         groups.append(group)
-                print(f"groups={groups}")
-                print(f"channels={channels}")
+                # print(f"groups={groups}")
+                # print(f"channels={channels}")
 
             if len(groups) > 1 or len(groups) == 0:
                 raise RuntimeError(

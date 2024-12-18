@@ -70,6 +70,7 @@ if __name__ == "__main__":
     mrun = MagnetRun.fromtdms(site, insert, file)
     mdata = mrun.getMData()
 
+    # "Courants_Alimentations/Référence_GR2": ["Référence_A3", "Courant_A3", "Référence_A4", "Courant_A4"]
     key = "Courants_Alimentations/Référence_GR1"
     (symbol, unit) = mdata.getUnitKey(key)
     (group, channel) = key.split("/")
@@ -219,11 +220,13 @@ if __name__ == "__main__":
 
         # print(df_archive.head())
         # print(df_archive.tail())
+        df_archive.plot(x="t", y=channel)
+        plt.grid()
         if args.show:
-            df_archive.plot(x="t", y=channel)
-            plt.grid()
             plt.show()
-            plt.close()
+        if args.save:
+            plt.savefig(f"{filename}-{channel}-concat.png", dpi=300)
+        plt.close()
         df_dict[channel] = df_archive
 
     # extract plateau data and perform stats on plateau
@@ -248,7 +251,7 @@ if __name__ == "__main__":
                 for item in channel:
                     df = df_dict[item]
                     selected_df = df[(df["t"] > t_start) & (df["t"] < t_end)]
-                    tables.append([item] + selected_df[iem].describe().to_list())
+                    tables.append([item] + selected_df[item].describe().to_list())
                     # print(selected_df.head())
 
                     selected_df[item].plot.hist(bins=20, alpha=0.5, ax=my_ax)
@@ -257,7 +260,11 @@ if __name__ == "__main__":
                     f"{filename}: {channel} - plateau: from {t_start} to {t_end} s"
                 )
                 plt.grid()
-                plt.show()
+                if args.show:
+                    plt.show()
+                if args.save:
+                    plt.savefig(f"{filename}-{'-'.join(channel)}-histo.png", dpi=300)
+                plt.close()
 
     print("\nCourants stats over plateau [A]")
     print(
