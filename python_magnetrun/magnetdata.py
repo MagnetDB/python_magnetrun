@@ -61,26 +61,31 @@ class MagnetData:
 
             rawData = TdmsFile.open(name)
             # print(f"rawData: {rawData.properties}", flush=True)
+            print(rawData.groups())
             for group in rawData.groups():
-                # print(f"group: {group.name}", flush=True)
-                Groups[group.name] = {}
-                if group.name != "Infos":
-                    Data[group.name] = {}
+                gname = group.name.replace(" ", "_")
+                print(f"group: {gname}", flush=True)
+                gname = gname.replace("_et_Ref.", "")
+                print(f"group: {gname}", flush=True)
+                Groups[gname] = {}
+                if gname != "Infos":
+                    Data[gname] = {}
 
                     # print(group.channels, type(group.channels))
                     for channel in group.channels():
-                        # print(f"channel: {channel.name}", flush=True)
-                        Keys.append(f"{group.name}/{channel.name}")
-                        Groups[group.name][channel.name] = channel.properties
+                        cname = channel.name.replace(" ", "_")
+                        print(f"channel: {cname}", flush=True)
+                        Keys.append(f"{gname}/{cname}")
+                        Groups[gname][cname] = channel.properties
                         # print(f"properties: {channel.properties}", flush=True)
 
-                    Data[group.name] = group.as_dataframe(
+                    Data[gname] = group.as_dataframe(
                         time_index=False,
                         absolute_time=False,
                         scaled_data=True,
                     )
                 else:
-                    Groups[group.name]["Infos"] = group
+                    Groups[gname]["Infos"] = group
             # print(f"keys: {Keys}")
 
         # Add refrence for GR1, GR2
