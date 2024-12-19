@@ -61,12 +61,9 @@ class MagnetData:
 
             rawData = TdmsFile.open(name)
             # print(f"rawData: {rawData.properties}", flush=True)
-            print(rawData.groups())
             for group in rawData.groups():
                 gname = group.name.replace(" ", "_")
-                print(f"group: {gname}", flush=True)
                 gname = gname.replace("_et_Ref.", "")
-                print(f"group: {gname}", flush=True)
                 Groups[gname] = {}
                 if gname != "Infos":
                     Data[gname] = {}
@@ -74,7 +71,6 @@ class MagnetData:
                     # print(group.channels, type(group.channels))
                     for channel in group.channels():
                         cname = channel.name.replace(" ", "_")
-                        print(f"channel: {cname}", flush=True)
                         Keys.append(f"{gname}/{cname}")
                         Groups[gname][cname] = channel.properties
                         # print(f"properties: {channel.properties}", flush=True)
@@ -227,6 +223,7 @@ class MagnetData:
                 return self.Data[group][channel]
             else:
                 return self.Data[group][channel]
+
 
     def getData(self, key: list[str] | str = None) -> pd.DataFrame:
         """_summary_
