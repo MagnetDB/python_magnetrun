@@ -13,7 +13,24 @@ from scipy.fft import fft, fftshift, fftfreq
 import matplotlib.pyplot as plt
 
 from python_magnetrun.MagnetRun import MagnetRun
+from python_magnetrun.magnetdata import MagnetData
 # from .processing.smoothers import savgol
+
+
+def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:
+    import datetime
+
+    print("addtime")
+
+    df = pd.DataFrame(mdata.Data[group][channel])
+    t0 = mdata.Groups[group][channel]["wf_start_time"]
+    dt = mdata.Groups[group][channel]["wf_increment"]
+    df["t"] = [i * dt for i in df.index.to_list()]
+
+    df = df.set_index("t")
+    print(df.head())
+    return df
+
 
 import argparse
 
@@ -41,7 +58,7 @@ else:
     raise RuntimeError(f"{file}: unsupported format")
 
 mdata = mrun.getMData()
-print(f"keys: {mdata.getKeys()}")
+# print(f"keys: {mdata.getKeys()}")
 
 
 if f_extension == ".txt":
@@ -65,51 +82,22 @@ if f_extension == ".txt":
 if f_extension == ".tdms":
     # Uh = mdata.Data["Tensions_Aimant"]["ALL_internes"]
     if "ALL_internes" in mdata.Data["Tensions_Aimant"]:
-        Vh = mdata.Data["Tensions_Aimant"][["ALL_internes", "t"]]
-        Vh = Vh.set_index("t")
-        print(f"Vh: {Vh.info(verbose=True)}, {Vh.head()}, {Vh.describe()}", flush=True)
+        Vh = addtime(mdata, "Tensions_Aimant", "ALL_internes")
         timestep = mdata.Groups["Tensions_Aimant"]["ALL_internes"]["wf_increment"]
-    else:
-        Vh = mdata.Data["Tensions_Aimant"][["ALL internes", "t"]]
-        Vh = Vh.set_index("t")
-        Vh.rename(columns={"ALL internes": "ALL_internes"}, inplace=True)
-        timestep = mdata.Groups["Tensions_Aimant"]["ALL internes"]["wf_increment"]
 
     # print(f"Uh({t})=", end="", flush=True)
     if "Courant_GR1" in mdata.Data["Courants_Alimentations"]:
-        Ih = mdata.Data["Courants_Alimentations"][["Courant_GR1", "t"]]
-        Ih = Ih.set_index("t")
-    else:
-        Ih = mdata.Data["Courants_Alimentations"][["Courant GR1", "t"]]
-        Ih = Ih.set_index("t")
-        Ih.rename(columns={"Courant GR1": "Courant_GR1"}, inplace=True)
+        Ih = addtime(mdata, "Courants_Alimentations", "Courant_GR1")
+        timestep = mdata.Groups["Courants_Alimentations"]["Courant_GR1"]["wf_increment"]
 
     if "ALL_externes" in mdata.Data["Tensions_Aimant"]:
-        Vb = mdata.Data["Tensions_Aimant"][["ALL_externes", "t"]]
-        Vb = Vb.set_index("t")
+        Vb = addtime(mdata, "Tensions_Aimant", "ALL_externes")
         timestep = mdata.Groups["Tensions_Aimant"]["ALL_externes"]["wf_increment"]
-    else:
-        Vb = mdata.Data["Tensions_Aimant"][["ALL externes", "t"]]
-        Vb = Vb.set_index("t", "ALL externes")
-        Vb.rename(columns={"ALL externes": "ALL_externes"}, inplace=True)
-        timestep = mdata.Groups["Tensions_Aimant"]["ALL externes"]["wf_increment"]
 
-    if "Courant_GR1" in mdata.Data["Courants_Alimentations"]:
-        Ib = mdata.Data["Courants_Alimentations"][["Courant_GR2", "t"]]
-        Ib = Ib.set_index("t")
-    else:
-        Ib = mdata.Data["Courants_Alimentations"][["Courant GR2", "t"]]
-        Ib = Ib.set_index("t")
-        Ib.rename(columns={"Courant GR2": "Courant_GR2"}, inplace=True)
+    if "Courant_GR2" in mdata.Data["Courants_Alimentations"]:
+        Ib = addtime(mdata, "Courants_Alimentations", "Courant_GR2")
+        timestep = mdata.Groups["Courants_Alimentations"]["Courant_GR2"]["wf_increment"]
 
-    # print(f"Uh({t})=", end="", flush=True)
-    if "Courant_GR1" in mdata.Data["Courants_Alimentations"]:
-        Ih = mdata.Data["Courants_Alimentations"][["Courant_GR1", "t"]]
-        Ih = Ih.set_index("t")
-    else:
-        Ih = mdata.Data["Courants_Alimentations"][["Courant GR1", "t"]]
-        Ih = Ih.set_index("t")
-        Ih.rename(columns={"Courant GR1": "Courant_GR1"}, inplace=True)
 
 # Example data
 n = Ih.to_numpy().size
@@ -153,7 +141,12 @@ plt.show()
 Rh = 0.0136
 plt.plot(freq, fft_data["Z"].real, label="FFT Ucoil real")
 plt.plot(
-    freq, Rh * fft_data["X"].real, marker=".", linestyle="None", label="FFT R*Ih real"
+    freq,
+    Rh * fft_data["X"].real,
+    marker=".",
+    linestyle="None",
+    label="FFT R*Ih real",
+    markevery=200,
 )
 plt.xlim(0.001, nyquist_freq)  # Only plot up to the Nyquist frequency
 plt.legend()
@@ -175,6 +168,7 @@ plt.plot(
     marker=".",
     linestyle="None",
     label="FFT w*(L*Ih + M*Ib) imag",
+    markevery=200,
 )
 plt.xlim(0.001, nyquist_freq)  # Only plot up to the Nyquist frequency
 plt.legend()
