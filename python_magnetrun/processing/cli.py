@@ -6,6 +6,7 @@ https://xavierbourretsicotte.github.io/loess.html
 """
 
 import os
+from ssl import CHANNEL_BINDING_TYPES
 import sys
 
 from math import ceil
@@ -24,19 +25,30 @@ from .filters import filterpikes
 from .correlations import lagged_correlation
 from .smoothers import lowess_ag, lowess_sm, lowess_bell_shape_kern, kernel_function
 from ..MagnetRun import MagnetRun
+from ..magnetdata import MagnetData
 
-if __name__ == "__main__":
+
+def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:
+    import datetime
+
+    print("addtime")
+
+    df = pd.DataFrame(mdata.Data[group][channel])
+    t0 = mdata.Groups[group][channel]["wf_start_time"]
+    dt = mdata.Groups[group][channel]["wf_increment"]
+    df["t"] = [i * dt for i in df.index.to_list()]
+
+    df = df.set_index("t")
+    print(df.head())
+    return df
+
+
+def main():
     import argparse
     from .. import python_magnetrun
 
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file")
-    parser.add_argument(
-        "--keys",
-        nargs="+",
-        help="specify keys to select (eg: Tin1;Tin2)",
-        default="Tin1",
-    )
     parser.add_argument(
         "--show",
         help="display graphs (requires X11 server active)",
@@ -51,8 +63,6 @@ if __name__ == "__main__":
 
     # parser_plot = subparsers.add_parser('plot', help='plot help')
     parser_filter = subparsers.add_parser("filter", help="filter help")
-    parser_smooth = subparsers.add_parser("smooth", help="smooth help")
-    parser_lag = subparsers.add_parser("lag", help="lag help")
 
     parser_filter.add_argument(
         "--threshold", help="specify a threshold for filter", type=float, default=0.5
@@ -60,7 +70,21 @@ if __name__ == "__main__":
     parser_filter.add_argument(
         "--twindows", help="specify a window length", type=int, default=10
     )
+    parser_filter.add_argument(
+        "--keys",
+        nargs="+",
+        help="specify keys to select (eg: Tin1;Tin2)",
+        default="Tin1",
+    )
 
+    # smoother
+    parser_smooth = subparsers.add_parser("smooth", help="smooth help")
+    parser_smooth.add_argument(
+        "--keys",
+        nargs="+",
+        help="specify keys to select (eg: Tin1;Tin2)",
+        default="Tin1",
+    )
     parser_smooth.add_argument(
         "--method",
         help="select a smoother for data",
@@ -70,14 +94,21 @@ if __name__ == "__main__":
     )
     parser_smooth.add_argument(
         "--smooth_params",
-        help='pass param for smoother method (eg "f;iter")',
-        type=str,
+        help='pass param for smoother method (eg "tau")',
+        nargs="?",
         default="400",
     )
     # parser.add_argument("--smoothing_f", help="specify smoothing f param", type=float, default=0.25)
     # parser.add_argument("--smoothing_tau", help="specify smoothing tau param", type=float, default=0.005)
     # parser.add_argument("--smoothing_iter", help="specify smoothing iter param", type=int, default=5)
 
+    parser_lag = subparsers.add_parser("lag", help="lag help")
+    parser_lag.add_argument(
+        "--keys",
+        nargs="+",
+        help="specify keys to select (eg: Tin1;Tin2)",
+        default="Tin1",
+    )
     parser_lag.add_argument(
         "--target", help="specify a target field", type=str, default="tsb"
     )
@@ -111,28 +142,36 @@ if __name__ == "__main__":
             smoothing_f = float(params[1])
             smoothing_iter = int(params[2])
 
+    supported_formats = [".txt", ".tdms"]
     f_extension = os.path.splitext(args.input_file)[-1]
-    if f_extension not in [".txt", ".tdms"]:
+    if f_extension not in supported_formats:
         print("so far only txt file support is implemented")
         sys.exit(0)
 
-    housing = args.site
+    insert = "tutut"  # shall be an id from magnetdb
+    housing = None
     filename = os.path.basename(args.input_file)
     result = filename.startswith("M")
     if result:
         try:
             index = filename.index("_")
-            args.site = filename[0:index]
-            print("site detected: %s" % args.site)
+            housing = filename[0:index]
+            print(f"site detected: {housing}")
         except:
             print("no site detected - use args.site argument instead")
             pass
 
-    mrun = MagnetRun.fromtxt(housing, args.site, filename)
-    mdata = mrun.getMData()
-    if f_extension == ".txt":
-        mdata.addTime()
+    match f_extension:
+        case ".txt":
+            mrun = MagnetRun.fromtxt(housing, insert, args.input_file)
+        case ".tdms":
+            mrun = MagnetRun.fromtdms(housing, insert, args.input_file)
+        case _:
+            raise RuntimeError(
+                f"so far file with extension in {supported_formats} are implemented"
+            )
 
+    mdata = mrun.getMData()
     start_timestamp = mdata.getStartDate()
     dkeys = mrun.getKeys()
 
@@ -152,9 +191,18 @@ if __name__ == "__main__":
             )
 
     if args.command == "smooth":
+        print(f"smooth: {skeys}")
         for key in skeys:
-            selected_df = mrun.getMData().extractData(["t", key])
+            # TODO fix for tdms
+            if mdata.Type == 0:
+                selected_df = mrun.getMData().extractData(["t", key])
+            else:
+                (group, channel) = key.split("/")
+                selected_df = addtime(mdata, group, channel)
+
+            print(selected_df.head())
             Meanval = selected_df[key].mean()
+            print(Meanval)
 
             # Initializing noisy non linear data
             x = selected_df["t"].to_numpy()  # np.linspace(0,1,100)
@@ -165,9 +213,10 @@ if __name__ == "__main__":
             plt.scatter(x, y, facecolors="none", edgecolor="darkblue", label=key)
 
             #
-            print("compute Locally Weighted Linear Regression %s" % args.method)
+            print(f"compute Locally Weighted Linear Regression {args.method}")
             if args.method == "ag":
                 try:
+                    print(f"f={smoothing_f}, iter={smoothing_iter}")
                     yest = lowess_ag(x, y, f=smoothing_f, iter=smoothing_iter)
                     plt.plot(x, yest, color="orange", label="Loess: A. Gramfort")
                 except:
@@ -175,25 +224,26 @@ if __name__ == "__main__":
 
             if args.method == "bell_kernel":
                 try:
+                    print(f"tau={smoothing_tau}")
                     yest_bell = lowess_bell_shape_kern(x, y, smoothing_tau)
                     if args.debug:
                         x0 = (x[0] + x[40]) / 2.0
                         plt.fill(
                             x[:40],
-                            Meanval * kernel_function(x[:40], x0, args.smoothing_tau),
+                            Meanval * kernel_function(x[:40], x0, smoothing_tau),
                             color="lime",
                             alpha=0.5,
                             label="Bell shape kernel",
                         )
-                        plt.plot(
-                            x, yest_bell, color="red", label="Loess: bell shape kernel"
-                        )
+                    plt.plot(
+                        x, yest_bell, color="red", label="Loess: bell shape kernel"
+                    )
                 except:
                     print("Failed to build bell")
 
             if args.method == "statsmodel_sm":
                 try:
-                    # f = 0.7 # between 0 and 1, by default: 2./3.
+                    print(f"f={smoothing_f}, iter={smoothing_iter}")
                     yest_sm = lowess_sm(x, y, f=smoothing_f, iter=smoothing_iter)
                     plt.plot(
                         x, yest_sm, color="magenta", label="Loess: statsmodel"
@@ -201,12 +251,13 @@ if __name__ == "__main__":
                 except:
                     print("Failed to build sm")
 
+            plt.grid()
             plt.legend()
-            plt.title("Loess regression comparisons")
+            plt.title(f"Loess regression comparisons {args.method}")
             if args.show:
                 plt.show()
             else:
-                imagefile = mrun.getSite()
+                imagefile = filename + "-" + "-".join(args.keys)
                 start_date = ""
                 start_time = ""
                 if "Date" in dkeys and "Time" in dkeys:
@@ -226,3 +277,7 @@ if __name__ == "__main__":
             df = mrun.getData()
             for t in range(args.trange):
                 lagged_correlation(df, args.target, key, t)
+
+
+if __name__ == "__main__":
+    sys.exit(main())  # pragma: no cover

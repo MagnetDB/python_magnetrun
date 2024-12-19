@@ -224,7 +224,6 @@ class MagnetData:
             else:
                 return self.Data[group][channel]
 
-
     def getData(self, key: list[str] | str = None) -> pd.DataFrame:
         """_summary_
 
@@ -463,6 +462,7 @@ class MagnetData:
             )
             # print(f"empty cols: {natsorted(empty_cols)}")
             # print(f"empty Ikeys: {empty_Ikeys}")
+            _df = self.Data
             if empty_cols:
                 _df = self.Data.drop(empty_cols, axis=1)
                 # print(f'uniq Keys wo empty cols = {_df.columns.values.tolist()}')
@@ -514,6 +514,8 @@ class MagnetData:
             # print(f"{self.FileName} Uprobes: {Uprobes}")
             if not Uprobes:
                 raise RuntimeError(f"{self.FileName}: CleanUpData no Uprobes found")
+                # (keys={self.Data.keys()}, non_empty_keys={_df.keys()})"
+
             UH = [f"Ucoil{i}" for i in Uprobes[0]]
             _df["UH"] = _df[UH].sum(axis=1)
             if debug:

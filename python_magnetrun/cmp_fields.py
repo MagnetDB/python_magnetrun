@@ -5,7 +5,7 @@ from platform import mac_ver
 import traceback
 
 from .MagnetRun import MagnetRun
-from .processing.smoothers import savgol
+from .processing.smoothers import lowess_bell_shape_kern, lowess_ag, savgol
 from scipy.signal import find_peaks
 from scipy import stats
 
@@ -60,9 +60,13 @@ if __name__ == "__main__":
         default="IB",
     )
     parser.add_argument(
-        "--lagcorrelation", help="save graphs (png format)", action="store_true"
+        "--lagcorrelation", help="estimate lagcorrelation", action="store_true"
     )
-    parser.add_argument("--dtw", help="save graphs (png format)", action="store_true")
+    parser.add_argument(
+        "--range", help="select data from (index value)", type=int, nargs=2
+    )
+    parser.add_argument("--to", help="select data to (index value)", type=int)
+    parser.add_argument("--dtw", help="use dtw", action="store_true")
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
     parser.add_argument("--outputdir", type=str, help="enter output directory")
     args = parser.parse_args()
@@ -133,12 +137,6 @@ if __name__ == "__main__":
                     f"so far file with extension in {supported_formats} are implemented"
                 )
 
-        x = mrun.getData(xkey).to_numpy().reshape(-1)
-        y = mrun.getData(ykey).to_numpy().reshape(-1)
-        # print('Ib:', x, type(x), x.shape)
-        scipy_stats = stats.describe(y - x)
-        # print(scipy_stats.minmax) # minmax: tuple, mean, variance
-
         my_ax = plt.gca()
         mrun.getMData().plotData(x="t", y=xkey, ax=my_ax)
         mrun.getMData().plotData(x="t", y=ykey, ax=my_ax)
@@ -150,6 +148,45 @@ if __name__ == "__main__":
             print(f"replace {dirname} by {args.outputdir}, ", end="")
             imagefile = imagefile.replace(dirname, args.outputdir)
             print(f"-> {imagefile}")
+
+        plt.title(f"{filename.replace(f_extension, '')}: {labels[0]}, {labels[1]}")
+        if args.save:
+            print(f"saveto: {imagefile}_vs_time.png", flush=True)
+            plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
+        else:
+            plt.show()
+        plt.close()
+
+        xdata = mrun.getData(xkey)
+        ydata = mrun.getData(ykey)
+
+        print(f"xdata={xkey}: keys={xdata.keys()}")
+        if args.range:
+            (start, end) = args.range
+            print(f"range=[start={start}, end={end}]")
+            if f_extension == ".txt":
+                xdata = xdata[start:end]
+                ydata = ydata[start:end]
+
+                timesteps = np.arange(start, end, 1)
+                print(type(timesteps), type(ydata))
+                ysmoothed = lowess_bell_shape_kern(x, ydata.to_numpy().reshape(-1))
+
+                plt.plot(xdata / xdata.max(), "-")
+                plt.plot(ysmoothed / ysmoothed.max(), "o")
+                plt.plot(ydata / ydata.max(), "+")
+                plt.grid()
+                plt.show()
+                plt.close()
+
+            else:
+                raise RuntimeError("range features: not impemented for tdms data")
+
+        x = xdata.to_numpy().reshape(-1)
+        y = ydata.to_numpy().reshape(-1)
+        # print('Ib:', x, type(x), x.shape)
+        scipy_stats = stats.describe(y - x)
+        # print(scipy_stats.minmax) # minmax: tuple, mean, variance
 
         table = [
             filename.replace(f_extension, ""),
@@ -164,14 +201,6 @@ if __name__ == "__main__":
             scipy_stats.variance,
         ]
         tables.append(table)
-
-        plt.title(f"{filename.replace(f_extension, '')}: {labels[0]}, {labels[1]}")
-        if args.save:
-            print(f"saveto: {imagefile}_vs_time.png", flush=True)
-            plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
-        else:
-            plt.show()
-        plt.close()
 
         if args.lagcorrelation:
             (ysymbol, yunit) = mrun.getUnit(ykey)
@@ -200,15 +229,19 @@ if __name__ == "__main__":
             correlation = signal.correlate(x - np.mean(x), y - np.mean(y), mode="full")
             lags = signal.correlation_lags(len(x), len(y), mode="full")
             lag = lags[np.argmax(abs(correlation))]
+            print(
+                f"cross-correlation lag={lag}",
+                flush=True,
+            )
 
             plt.figure()
-            plt.plot(x - np.mean(x), "-")
-            plt.plot(y - np.mean(y), "-")
+            plt.plot(x, "-")
+            plt.plot(np.roll(y, lag), "-")
             plt.legend([xlabel, ylabel])
             plt.xlabel("t [s]")
             plt.grid()
             plt.title(
-                f"{os.path.basename(file)}: {labels[0]}, {labels[1]} - cross-correlation"
+                f"{os.path.basename(file)}: {labels[0]}, {labels[1]} - cross-correlation lag={lag}"
             )
             if args.save:
                 print(f"saveto: {imagefile}_vs_lagcorrelation.png", flush=True)

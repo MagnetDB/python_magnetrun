@@ -26,6 +26,7 @@ def load_record(file: str, args, show: bool = False) -> MagnetData:
     data = mrun.MagnetData
     if not isinstance(data, MagnetData):
         raise RuntimeError(f"{file}: cannot load data as MagnetData")
+
     return data
 
 
@@ -83,8 +84,7 @@ def getTimestamp(file: str, debug: bool = False) -> datetime:
         if debug:
             print(f"{site}: timestamp={timestamp}")
     except:
-        print(f'getTimestamp: {file} failed -unexpected filename')
-        exit(1)
+        raise RuntimeError(f"getTimestamp: {file} failed -unexpected filename")
 
     return timestamp
 
@@ -178,19 +178,19 @@ def main():
         if args.xfield:
             selected_keys += [args.xfield]
         if args.fields:
-            print(f'args.fields={args.fields}')
+            print(f"args.fields={args.fields}")
             selected_keys += args.fields
     elif args.command == "aggregate":
         selected_keys += args.fields
     else:
         selected_keys += ["Field"]
-    print(f'selected_keys={selected_keys}', flush=True)
+    print(f"selected_keys={selected_keys}", flush=True)
 
     min_duration = 60
     if args.command == "select":
         min_duration = args.duration
     elif args.command == "stats":
-        print(f'!!! OverWrite min duration for stats: {min_duration} -> 1000 !!!')
+        print(f"!!! OverWrite min duration for stats: {min_duration} -> 1000 !!!")
         min_duration = 1000
 
     if "timestamp" not in selected_keys:
@@ -217,7 +217,7 @@ def main():
     ax = plt.gca()
 
     if args.command == "aggregate":
-        print(f'aggregate: fields={selected_keys}')
+        print(f"aggregate: fields={selected_keys}")
 
         df_ = []
 
@@ -238,16 +238,16 @@ def main():
                     try:
                         df_.append(data.Data[selected_keys])
                         print(f"- extract {selected_keys}", flush=True)
-                    except:
+                    except Exception as error:
                         print(
-                            f"- ignored dataset: {selected_keys} not all in {data.getKeys()}"
+                            f"- ignored dataset: {selected_keys} not all in {data.getKeys()} (error={error})"
                         )
                         pass
                 else:
                     print(f"- skipped", flush=True)
 
-            except:
-                print(f"- fail to load", flush=True)
+            except Exception as error:
+                print(f"- fail to load (error={error})", flush=True)
                 pass
 
         print(f"plot over time with seaborn: {len(df_)} dataframes", flush=True)
@@ -327,9 +327,13 @@ def main():
                     )
 
             elif args.command == "stats":
-                if args.pearson and data.getDuration() >= min_duration: # previous limit 1000:
+                if (
+                    args.pearson and data.getDuration() >= min_duration
+                ):  # previous limit 1000:
                     pearson(data, args.fields, args.save, args.show, args.debug)
-                elif args.pairplot and data.getDuration() >= min_duration: # previous limit 1000:
+                elif (
+                    args.pairplot and data.getDuration() >= min_duration
+                ):  # previous limit 1000:
                     import seaborn as sns
                     import re
                     from natsort import natsorted
@@ -380,7 +384,9 @@ def main():
 
             elif args.command == "plot":
                 if args.xfield not in data.Keys:
-                    print(f"- missing xfield={args.xfield} in {data.Keys}- ignored dataset")
+                    print(
+                        f"- missing xfield={args.xfield} in {data.Keys}- ignored dataset"
+                    )
                 else:
                     if data.getDuration() >= min_duration:
                         if args.fields:
