@@ -30,6 +30,13 @@ if __name__ == "__main__":
         type=str,
         default="srvdata",
     )
+    parser.add_argument(
+        "--key",
+        help="choose key",
+        choices=["Référence_GR1", "Référence_GR2"],
+        type=str,
+        default="Référence_GR1",
+    )
     parser.add_argument("--debug", help="acticate debug", action="store_true")
 
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
@@ -70,8 +77,32 @@ if __name__ == "__main__":
     mrun = MagnetRun.fromtdms(site, insert, file)
     mdata = mrun.getMData()
 
-    # "Courants_Alimentations/Référence_GR2": ["Référence_A3", "Courant_A3", "Référence_A4", "Courant_A4"]
-    key = "Courants_Alimentations/Référence_GR1"
+    # Channels
+    channels_dict = {
+        "Référence_GR1": [
+            ["Référence_A1", "Courant_A1"],
+            ["Référence_A2", "Courant_A2"],
+        ],
+        "Référence_GR2": [
+            ["Référence_A3", "Courant_A3"],
+            ["Référence_A4", "Courant_A4"],
+        ],
+    }
+
+    # check ECO mode: "Référence_GR1" != "Référence_GR2"
+    GR = mdata.getData(
+        ["Courants_Alimentations/Référence_GR1", "Courants_Alimentations/Référence_GR2"]
+    )
+    GR["diff"] = GR["Référence_GR2"] - GR["Référence_GR1"]
+
+    if GR["diff"].abs().max() > 5 and not (
+        GR["Référence_GR2"].abs().max() <= 1 or GR["Référence_GR1"].abs().max() <= 1
+    ):
+        print(f"{filename}: ECOmode")
+    del GR
+
+    # perform for selected key
+    key = f"Courants_Alimentations/{args.key}"
     (symbol, unit) = mdata.getUnitKey(key)
     (group, channel) = key.split("/")
     period = mdata.Groups[group][channel]["wf_increment"]
@@ -129,7 +160,7 @@ if __name__ == "__main__":
     t0 = 0
     signature = str()
     tables = []
-    headers = ["count", "mean", "std", "min", "25%", "50%", "75%", "max"]
+    headers = ["plateau", "count", "mean", "std", "min", "25%", "50%", "75%", "max"]
     for index, row in df_plateaux.iterrows():
         t_start = row["start [s]"]
         t_end = row["end [s]"]
@@ -147,7 +178,7 @@ if __name__ == "__main__":
             plt.grid()
             plt.show()
 
-        tables.append(selected_b["Champ_magn"].describe().to_list())
+        tables.append([index] + selected_b["Champ_magn"].describe().to_list())
 
     print("\nMagnetic Field [Gauss]")
     print(
@@ -187,10 +218,11 @@ if __name__ == "__main__":
 
     # merge Archive data
     from natsort import natsorted
+    from matplotlib.cbook import flatten
 
     print("\nMerge Archive files")
     df_dict = {}
-    for channel in ["Référence_A1", "Courant_A1", "Référence_A2", "Courant_A2"]:
+    for channel in flatten(channels_dict[args.key]):
         print(channel)
         df_ = []
         for i, file in enumerate(natsorted(archive_files)):
@@ -232,26 +264,33 @@ if __name__ == "__main__":
     # extract plateau data and perform stats on plateau
     print(f"Stats per plateaux - group={group}")
     tables = []
-    headers = ["field", "count", "mean", "std", "min", "25%", "50%", "75%", "max"]
+    headers = [
+        "plateau",
+        "field",
+        "count",
+        "mean",
+        "std",
+        "min",
+        "25%",
+        "50%",
+        "75%",
+        "max",
+    ]
 
     for index, row in df_plateaux.iterrows():
         if row["duration [s]"] >= 60:
             t_start = row["start [s]"]
             t_end = row["end [s]"]
-            print(
-                f"extract data from {t_start} to {t_end} s:", type(t_start), flush=True
-            )
 
             my_ax = plt.gca()
 
-            for channel in [
-                ["Référence_A1", "Courant_A1"],
-                ["Référence_A2", "Courant_A2"],
-            ]:
+            for channel in channels_dict[args.key]:
                 for item in channel:
                     df = df_dict[item]
                     selected_df = df[(df["t"] > t_start) & (df["t"] < t_end)]
-                    tables.append([item] + selected_df[item].describe().to_list())
+                    tables.append(
+                        [index, item] + selected_df[item].describe().to_list()
+                    )
                     # print(selected_df.head())
 
                     selected_df[item].plot.hist(bins=20, alpha=0.5, ax=my_ax)
