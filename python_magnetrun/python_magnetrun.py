@@ -294,6 +294,7 @@ if __name__ == "__main__":
             except Exception as error:
                 print(f"{file}: no site detected - use args.site argument instead")
                 continue
+            print(f"site={site}")
 
         try:
             match f_extension:
@@ -354,7 +355,7 @@ if __name__ == "__main__":
                 nunit = None
 
                 # self.units[key] = ("U", ureg.volt)
-                print(f"try to add nkey={nkey}")
+                print(f"try to add nkey={nkey} (formula={args.formula[1:]})")
                 mdata.addData(key=nkey, formula=args.formula, unit=nunit)
                 print(mdata.getKeys())
                 if args.plot:
