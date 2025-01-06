@@ -272,7 +272,7 @@ if __name__ == "__main__":
             extensions[f_extension] = [i]
         else:
             extensions[f_extension].append(i)
-    print(f"extensions: {extensions}")
+    # print(f"extensions: {extensions}")
 
     input_files = natsorted(args.input_file)
     for file in input_files:

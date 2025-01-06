@@ -80,6 +80,16 @@ class MagnetData:
                         absolute_time=False,
                         scaled_data=True,
                     )
+
+                    # rename columns to avoid space in columns name
+                    Data[gname].rename(
+                        columns={
+                            col: col.replace(" ", "_") for col in Data[gname].columns
+                        },
+                        inplace=True,
+                    )
+
+                    # print(f"Data[{gname}]\n{Data[gname].head()}")
                 else:
                     Groups[gname]["Infos"] = group
             # print(f"keys: {Keys}")
