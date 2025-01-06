@@ -359,6 +359,8 @@ class MagnetData:
                 self.units[key] = ("P", ureg.bar)
             elif key == "Pmagnet" or key == "Ptot":
                 self.units[key] = ("Power", ureg.megawatt)
+            elif key.startswith("Power"):
+                self.units[key] = ("Power", ureg.megawatt)
             elif key == "Q":
                 # TODO define a specific 'var' unit for this field
                 self.units[key] = ("Preac", ureg.megavar)
@@ -722,9 +724,34 @@ class MagnetData:
             print(f"add: key={key} - group={group}, channel={channel}")
 
             nformula = formula.replace(f"{group}/", "")
+            # print(f"formula: {nformula}")
+
+            # looking for group/ in nformula
+            import re
+
+            match = re.findall(r"(\w+)/(\w+)", nformula)
+            if match:
+                for matched in match:
+                    print(f"matched={matched[0]}/{matched[1]}")
+                    self.Data[group][matched[1]] = self.Data[matched[0]][matched[1]]
+                    nformula = nformula.replace(f"{matched[0]}/", "")
             print(f"formula: {nformula}")
-            self.Data[group].eval(nformula, inplace=True)
-            self.Keys.append(key)
+
+            try:
+                self.Data[group].eval(nformula, inplace=True)
+                self.Keys.append(key)
+
+                # Get wf_increment from tdms group data except if matched wf_increment is different
+                first_key = list(self.Groups[group].keys())[0]
+                self.Groups[group][channel] = {
+                    "wf_increment": self.Groups[group][first_key]["wf_increment"]
+                }
+
+            except pd.errors.UndefinedVariableError as error:
+                raise RuntimeError(
+                    f"addData: {key}: {nformula} - failed for tdms {group} data - error={error}"
+                )
+
             # self.Groups[group][channel] = self.Groups[group]
             # raise RuntimeError("addData: not implemented for pigbrother file")
         return 0
