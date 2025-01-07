@@ -18,11 +18,12 @@ matplotlib.rcParams["text.usetex"] = True
 import matplotlib.pyplot as plt
 
 import pandas as pd
-import water as w
+from . import water as w
 
 import ht
 import tabulate
-from ..processing import filters as datatools
+from ..processing import smoothers as smoothtools
+from ..processing import filters as filtertools
 
 tables = []
 
@@ -1009,7 +1010,6 @@ def findQ(
 
 
 if __name__ == "__main__":
-
     command_line = None
 
     import argparse
@@ -1227,26 +1227,25 @@ if __name__ == "__main__":
         args.site = mrun.getSite()
 
     # Adapt filtering and smoothing params to run duration
-    duration = mrun.getDuration()
+    duration = mrun.MagnetData.getDuration()
     if duration <= 10 * tau:
         tau = min(duration // 10, 10)
         print("Modified smoothing param: %g over %g s run" % (tau, duration))
         args.markevery = 8 * tau
 
     # print("type(mrun):", type(mrun))
-    mrun.getMData().addTime()
     start_timestamp = mrun.getMData().getStartDate()
 
-    if not "Flow" in mrun.getKeys():
-        mrun.getMData().addData("Flow", "Flow = Flow1 + Flow2")
-    if not "Tin" in mrun.getKeys():
-        mrun.getMData().addData("Tin", "Tin = (Tin1 + Tin2)/2.")
-    if not "HP" in mrun.getKeys():
-        mrun.getMData().addData("HP", "HP = (HP1 + HP2)/2.")
-    if not "Talim" in mrun.getKeys():
+    if "Flow" not in mrun.getKeys():
+        mrun.getMData().addData("Flow", "Flow = FlowH + FlowB")
+    if "Tin" not in mrun.getKeys():
+        mrun.getMData().addData("Tin", "Tin = (TinH + TinB)/2.")
+    if "HP" not in mrun.getKeys():
+        mrun.getMData().addData("HP", "HP = (HPH + HPB)/2.")
+    if "TAlimout" not in mrun.getKeys():
         # Talim not defined, try to estimate it
-        print("Talim key not present - set Talim=0")
-        mrun.getMData().addData("Talim", "Talim = 0")
+        print("TAlimout key not present - set TAlimout=0")
+        mrun.getMData().addData("Talim", "TAlimout = 0")
 
     # extract data
     keys = [
@@ -1261,7 +1260,7 @@ if __name__ == "__main__":
         "HP",
         "Pmagnet",
     ]
-    units = ["s", "C", "C", "m\u00B3/h", "C", "C", "l/s", "bar", "MW"]
+    units = ["s", "C", "C", "m\u00b3/h", "C", "C", "l/s", "bar", "MW"]
     # df = mrun.getMData().extractData(keys)
 
     if args.debug:
@@ -1283,7 +1282,7 @@ if __name__ == "__main__":
     missing_probes = []
     for i in range(1, max_tap + 1):
         ukey = "Ucoil%d" % i
-        if not ukey in mrun.getKeys():
+        if ukey not in mrun.getKeys():
             # Add an empty column
             # print ("Ukey=%s" % ukey, (ukey in keys) )
             mrun.getMData().addData(ukey, "%s = 0" % ukey)
@@ -1301,28 +1300,28 @@ if __name__ == "__main__":
                 formula += " + "
             formula += ukey
     # print("UH", formula)
-    if not "UH" in mrun.getKeys():
+    if "UH" not in mrun.getKeys():
         mrun.getMData().addData("UH", formula)
 
     formula = "UB = Ucoil15 + Ucoil16"
     # print("UB", formula)
-    if not "UB" in mrun.getKeys():
+    if "UB" not in mrun.getKeys():
         mrun.getMData().addData("UB", formula)
 
-    if not "PH" in mrun.getKeys():
+    if "PH" not in mrun.getKeys():
         mrun.getMData().addData("PH", "PH = UH * IH")
-    if not "PB" in mrun.getKeys():
+    if "PB" not in mrun.getKeys():
         mrun.getMData().addData("PB", "PB = UB * IB")
-    if not "Pt" in mrun.getKeys():
+    if "Pt" not in mrun.getKeys():
         mrun.getMData().addData("Pt", "Pt = (PH + PB)/1.e+6")
 
-    # estimate dTH: PH / (rho * Cp * Flow1)
-    mrun.getMData().addData("dTh", "dTh = PH / (1000 * 4180 * Flow1*1.e-3)")
+    # estimate dTH: PH / (rho * Cp * FlowH)
+    mrun.getMData().addData("dTh", "dTh = PH / (1000 * 4180 * FlowH*1.e-3)")
     # estimate dTB: PB / (rho * Cp * Flow2)
-    mrun.getMData().addData("dTb", "dTb = PB / (1000 * 4180 * Flow2*1.e-3)")
+    mrun.getMData().addData("dTb", "dTb = PB / (1000 * 4180 * FlowB*1.e-3)")
     # estimate Tout: ( (Tin1+dTh)*Flow1 + (Tin2+dTb)*Flow2 ) / (Flow1+Flow2)
     mrun.getMData().addData(
-        "cTout", "( (Tin1+dTh)*Flow1 + (Tin2+dTb)*Flow2 ) / (Flow1+Flow2)"
+        "cTout", "cTout = ( (TinH+dTh)*FlowH + (TinB+dTb)*FlowB ) / (FlowH+FlowB)"
     )
 
     # Geom specs from HX Datasheet
@@ -1333,7 +1332,7 @@ if __name__ == "__main__":
     coolingparams = [0.07, 0.8, 0.4]
 
     # Compute OHTC
-    df = mrun.getData()
+    df = mrun.getMData().getPandasData(key=None)
     df["MeanU_h"] = df.apply(
         lambda row: ((row.Flow) * 1.0e-3 + args.debit_alim / 3600.0) / (Ac * Nc), axis=1
     )
@@ -1360,10 +1359,10 @@ if __name__ == "__main__":
         marker="o",
         alpha=0.5,
         markevery=args.markevery,
+        grid=True,
     )
     plt.xlabel(r"t [s]")
     plt.ylabel(r"$W/m^2/K$")
-    plt.grid(b=True)
     plt.title(mrun.getInsert().replace(r"_", r"\_") + ": Heat Exchange Coefficient")
     if args.show:
         plt.show()
@@ -1383,7 +1382,7 @@ if __name__ == "__main__":
     # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
     if args.pre == "filtered":
         for key in pretreatment_keys:
-            mrun = datatools.filterpikes(
+            mrun = filtertools.filterpikes(
                 mrun,
                 key,
                 inplace=True,
@@ -1399,7 +1398,7 @@ if __name__ == "__main__":
     # see: https://xavierbourretsicotte.github.io/loess.html(
     if args.pre == "smoothed":
         for key in pretreatment_keys:
-            mrun = datatools.smooth(
+            mrun = smoothtools.smooth(
                 mrun,
                 key,
                 inplace=True,
@@ -1438,12 +1437,12 @@ if __name__ == "__main__":
         # Compute Tin, Tsb
         df = mrun.getData()
 
-        if not "FlowH" in df:
+        if "FlowH" not in df:
             df["FlowH"] = df.apply(
                 lambda row: ((row.Flow) * 1.0e-3 + (2 * args.debit_alim) / 3600.0),
                 axis=1,
             )
-        if not "Thi" in df:
+        if "Thi" not in df:
             df["Thi"] = df.apply(
                 lambda row: mixingTemp(
                     row.Flow * 1.0e-3,
@@ -1513,12 +1512,12 @@ if __name__ == "__main__":
         # Compute Q
         df = mrun.getData()
 
-        if not "FlowH" in df:
+        if "FlowH" not in df:
             df["FlowH"] = df.apply(
                 lambda row: ((row.Flow) * 1.0e-3 + (2 * args.debit_alim) / 3600.0),
                 axis=1,
             )
-        if not "Thi" in df:
+        if "Thi" not in df:
             df["Thi"] = df.apply(
                 lambda row: mixingTemp(
                     row.Flow * 1.0e-3,
