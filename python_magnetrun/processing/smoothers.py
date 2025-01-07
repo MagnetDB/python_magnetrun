@@ -202,7 +202,7 @@ def smooth(
     """
 
     filteredkey = f"filtered{key}"
-    df = mrun.getData()
+    df = mrun.getMData().getPandasData(key=None)
     Meanval = df[key].mean()
 
     # Initializing noisy non linear data
