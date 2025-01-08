@@ -53,29 +53,31 @@ def display_Q(
     plot Heat profiles
     """
 
-    df = mrun.getData()
+    df = mrun.getMData().getPandasData(key=None)
     # print("type(mrun.getData()):", type(mrun.getData()))
     # print("type(df):", type(df), type(df['Tin']))
 
-    df["FlowH"] = df.apply(
-        lambda row: ((row.Flow) * 1.0e-3 + (2 * debit_alim) / 3600.0), axis=1
-    )
-    df["Thi"] = df.apply(
-        lambda row: mixingTemp(
-            row.Flow * 1.0e-3,
-            row.BP,
-            row.Tout + dT,
-            2 * debit_alim / 3600.0,
-            row.BP,
-            row.TAlimout,
-        ),
-        axis=1,
-    )
+    if "Flowhot" not in df:
+        df["Flowhot"] = df.apply(
+            lambda row: ((row.Flow) * 1.0e-3 + (2 * debit_alim) / 3600.0), axis=1
+        )
+    if "Thi" not in df:
+        df["Thi"] = df.apply(
+            lambda row: mixingTemp(
+                row.Flow * 1.0e-3,
+                row.BP,
+                row.Tout + dT,
+                2 * debit_alim / 3600.0,
+                row.BP,
+                row.TAlimout,
+            ),
+            axis=1,
+        )
 
     if ohtc != "None":
         df["QNTU"] = df.apply(
             lambda row: heatexchange(
-                ohtc, row.teb, row.Thi, row.debitbrut / 3600.0, row.FlowH, 10, row.BP
+                ohtc, row.teb, row.Thi, row.debitbrut / 3600.0, row.Flowhot, 10, row.BP
             )[2]
             / 1.0e6,
             axis=1,
@@ -87,7 +89,7 @@ def display_Q(
                 row.teb,
                 row.Thi,
                 row.debitbrut / 3600.0,
-                row.FlowH,
+                row.Flowhot,
                 10,
                 row.BP,
             )[2]
@@ -105,8 +107,8 @@ def display_Q(
         axis=1,
     )
 
-    df["Qhot1"] = df.apply(
-        lambda row: (row.FlowH)
+    df["QhotHx"] = df.apply(
+        lambda row: (row.Flowhot)
         * (
             w.getRho(row.BP, row.Thi) * w.getCp(row.BP, row.Thi) * (row.Thi)
             - w.getRho(row.HP, row.Tin) * w.getCp(row.HP, row.Tin) * row.Tin
@@ -114,6 +116,7 @@ def display_Q(
         / 1.0e6,
         axis=1,
     )
+
     df["Qcold"] = df.apply(
         lambda row: row.debitbrut
         / 3600.0
@@ -128,12 +131,11 @@ def display_Q(
 
     # heat Balance on Magnet side
     ax = plt.gca()
-    df.plot(x="t", y="Qhot", ax=ax, color="red")
+    df.plot(x="t", y="Qhot", ax=ax)
     df.plot(
         x="t",
         y="Pt",
         ax=ax,
-        color="yellow",
         marker="o",
         alpha=0.5,
         markevery=args.markevery,
@@ -141,21 +143,18 @@ def display_Q(
     df.plot(x="t", y="Pmagnet", ax=ax, color="yellow")
     plt.ylabel(r"Q[MW]")
     plt.xlabel(r"t [s]")
-    plt.grid(b=True)
+    plt.grid(True)
 
+    experiment = mrun.getInsert().replace(r"_", r"\_")
     if ohtc != "None":
         if isinstance(ohtc, (float, int, str)):
             plt.title(
-                "HeatBalance Magnet side:"
-                + mrun.getInsert().replace(r"_", r"\_")
-                + ": h=%g $W/m^2/K$, dT=%g" % (ohtc, dT)
+                f"HeatBalance Magnet side:{experiment}: h={ohtc} $W/m^2/K$, dT={dT}"
             )
     else:
         # if isinstance(ohtc, type(df['Tin'])):
         plt.title(
-            "HeatBalance Magnet side:"
-            + mrun.getInsert().replace(r"_", r"\_")
-            + ": h=%s $W/m^2/K$, dT=%g" % ("formula", dT)
+            f"HeatBalance Magnet side: {experiment}: h=formula $W/m^2/K$, dT={dT}"
         )
 
     if show:
@@ -163,7 +162,7 @@ def display_Q(
     else:
         extension = "-Q_magnetside.png"
         imagefile = inputfile.replace(f_extension, extension)
-        print("save to %s" % imagefile)
+        print("fsave to {imagefile}")
         plt.savefig(imagefile, dpi=300)
         plt.close()
 
@@ -171,39 +170,30 @@ def display_Q(
     ax = plt.gca()
     df.plot(
         x="t",
-        y="Qhot1",
+        y="QhotHx",
         ax=ax,
-        color="red",
         marker="o",
         alpha=0.5,
         markevery=args.markevery,
     )
-    df.plot(x="t", y="Qcold", ax=ax, color="blue")
+    df.plot(x="t", y="Qcold", ax=ax)
     plt.ylabel(r"Q[MW]")
     plt.xlabel(r"t [s]")
-    plt.grid(b=True)
+    plt.grid(True)
 
     if ohtc != "None":
         if isinstance(ohtc, (float, int, str)):
-            plt.title(
-                "HeatBalance HX side:"
-                + mrun.getInsert().replace(r"_", r"\_")
-                + ": h=%g $W/m^2/K$, dT=%g" % (ohtc, dT)
-            )
+            plt.title(f"HeatBalance HX side: {experiment}: h={ohtc} $W/m^2/K$, dT={dT}")
     else:
         # if isinstance(ohtc, type(df['Tin'])):
-        plt.title(
-            "HeatBalance HX side:"
-            + mrun.getInsert().replace(r"_", r"\_")
-            + ": h=%s $W/m^2/K$, dT=%g" % ("formula", dT)
-        )
+        plt.title(f"HeatBalance HX side: {experiment}: h=formula $W/m^2/K$, dT={dT}")
 
     if show:
         plt.show()
     else:
         extension = "-Q_hxside.png"
         imagefile = inputfile.replace(f_extension, extension)
-        print("save to %s" % imagefile)
+        print(f"save to {imagefile}")
         plt.savefig(imagefile, dpi=300)
         plt.close()
 
@@ -226,9 +216,11 @@ def display_T(
     """
 
     print("othc=", ohtc)
-    df = mrun.getData()
+    print("debit_alim=", debit_alim)
+    df = mrun.getMData().getPandasData(key=None)
+    print(df.head())
 
-    df["FlowH"] = df.apply(
+    df["Flowhot"] = df.apply(
         lambda row: ((row.Flow) * 1.0e-3 + (2 * debit_alim) / 3600.0), axis=1
     )
     df["Thi"] = df.apply(
@@ -246,13 +238,25 @@ def display_T(
     if ohtc != "None":
         df[tin_key] = df.apply(
             lambda row: heatexchange(
-                ohtc, row.teb, row.Thi, row.debitbrut / 3600.0, row.FlowH, 10, row.BP
+                ohtc,
+                row.teb,
+                row.Thi,
+                row.debitbrut / 3600.0,
+                row.Flowhot,
+                10,
+                row.BP,
             )[1],
             axis=1,
         )
         df[tsb_key] = df.apply(
             lambda row: heatexchange(
-                ohtc, row.teb, row.Thi, row.debitbrut / 3600.0, row.FlowH, 10, row.BP
+                ohtc,
+                row.teb,
+                row.Thi,
+                row.debitbrut / 3600.0,
+                row.Flowhot,
+                10,
+                row.BP,
             )[0],
             axis=1,
         )
@@ -263,7 +267,7 @@ def display_T(
                 row.teb,
                 row.Thi,
                 row.debitbrut / 3600.0,
-                row.FlowH,
+                row.Flowhot,
                 10,
                 row.BP,
             )[1],
@@ -275,7 +279,7 @@ def display_T(
                 row.teb,
                 row.Thi,
                 row.debitbrut / 3600.0,
-                row.FlowH,
+                row.Flowhot,
                 10,
                 row.BP,
             )[0],
@@ -293,7 +297,7 @@ def display_T(
         markevery=args.markevery,
     )
     df.plot(x="t", y="tsb", ax=ax, color="blue")
-    df.plot(x="t", y="teb", ax=ax, color="blue", linestyle="--")
+    df.plot(x="t", y="teb", ax=ax, color="orange", linestyle="--")
     df.plot(
         x="t",
         y=tin_key,
@@ -304,7 +308,7 @@ def display_T(
         markevery=args.markevery,
     )
     df.plot(x="t", y="Tin", ax=ax, color="red")
-    df.plot(x="t", y="Tout", ax=ax, color="red", linestyle="--")
+    df.plot(x="t", y="Tout", ax=ax, color="yellow", linestyle="--")
     df.plot(
         x="t",
         y="Thi",
@@ -313,27 +317,25 @@ def display_T(
         marker="o",
         alpha=0.5,
         markevery=args.markevery,
+        grid=True,
     )
+    plt.ylabel(r"T[C]")
     plt.xlabel(r"t [s]")
-    plt.grid(b=True)
+    plt.grid(True)
+
+    experiment = mrun.getInsert().replace(r"_", r"\_")
 
     if ohtc != "None":
         if isinstance(ohtc, (float, int, str)):
-            plt.title(
-                mrun.getInsert().replace(r"_", r"\_")
-                + ": h=%g $W/m^2/K$, dT=%g" % (ohtc, dT)
-            )
+            plt.title(f"{experiment}: h={ohtc} $W/m^2/K$, dT={dT}")
     else:
-        plt.title(
-            mrun.getInsert().replace(r"_", r"\_")
-            + ": h=%s $W/m^2/K$, dT=%g" % ("computed", dT)
-        )
+        plt.title(f"{experiment}: h=computed $W/m^2/K$, dT={dT}")
 
     if show:
         plt.show()
     else:
         imagefile = inputfile.replace(f_extension, extension)
-        print("save to %s" % imagefile)
+        print(f"save to {imagefile}")
         plt.savefig(imagefile, dpi=300)
     plt.close()
 
@@ -485,7 +487,7 @@ def find(
 
     import nlopt
 
-    print("find %d params:" % len(unknows), unknows)
+    print(f"find {len(unknows)} params: {unknows}")
 
     opt = nlopt.opt()
     if algo == "Direct":
@@ -680,7 +682,7 @@ def find(
 
         if debug:
             print(
-                "error_Tin(%s)" % x,
+                f"error_Tin({x})",
                 error_Tin,
                 error_tsb,
                 error_T,
@@ -724,7 +726,7 @@ def find(
                 tmp += int(line[i] == x[i])
             if tmp == len(unknows):
                 for i, item in enumerate(line):
-                    line[i] = "\033[1;32m%s\033[0m" % item
+                    line[i] = f"\033[1;32m{item}\033[0m"
         print("\n", tabulate.tabulate(tables, headers, tablefmt="simple"), "\n")
 
     optval = {}
@@ -760,7 +762,7 @@ def findQ(
 
     import nlopt
 
-    print("findQ %d params:" % len(unknows), unknows)
+    print(f"findQ {len(unknows)} params: {unknows}")
 
     opt = nlopt.opt()
     if algo == "Direct":
@@ -957,13 +959,12 @@ def findQ(
 
         if debug:
             print(
-                "error_Tin(%s)" % x,
+                f"error_Tin({x})",
                 error_Tin,
                 error_tsb,
                 error_T,
                 df["cdQ"].mean(),
                 select,
-                ohtc,
                 Q,
             )
 
@@ -1000,7 +1001,7 @@ def findQ(
                 tmp += int(line[i] == x[i])
             if tmp == len(unknows):
                 for i, item in enumerate(line):
-                    line[i] = "\033[1;32m%s\033[0m" % item
+                    line[i] = "\033[1;32m{item}\033[0m"
         print("\n", tabulate.tabulate(tables, headers, tablefmt="simple"), "\n")
 
     optval = {}
@@ -1217,7 +1218,7 @@ if __name__ == "__main__":
             index = filename.index("_")
             args.site = filename[0:index]
             housing = args.site
-            print("site detected: %s" % args.site)
+            print(f"site detected: {args.site}")
         except:
             print("no site detected - use args.site argument instead")
             pass
@@ -1227,10 +1228,10 @@ if __name__ == "__main__":
         args.site = mrun.getSite()
 
     # Adapt filtering and smoothing params to run duration
-    duration = mrun.MagnetData.getDuration()
+    duration = mrun.getMData().getDuration()
     if duration <= 10 * tau:
         tau = min(duration // 10, 10)
-        print("Modified smoothing param: %g over %g s run" % (tau, duration))
+        print(f"Modified smoothing param: {tau} over {duration} s run")
         args.markevery = 8 * tau
 
     # print("type(mrun):", type(mrun))
@@ -1270,7 +1271,7 @@ if __name__ == "__main__":
     # TODO: move to magnetdata
     max_tap = 0
     for i in range(1, args.nhelices + 1):
-        ukey = "Ucoil%d" % i
+        ukey = f"Ucoil{i}"
         # print ("Ukey=%s" % ukey, (ukey in keys) )
         if ukey in mrun.getKeys():
             max_tap = i
@@ -1281,11 +1282,11 @@ if __name__ == "__main__":
 
     missing_probes = []
     for i in range(1, max_tap + 1):
-        ukey = "Ucoil%d" % i
+        ukey = f"Ucoil{i}"
         if ukey not in mrun.getKeys():
             # Add an empty column
             # print ("Ukey=%s" % ukey, (ukey in keys) )
-            mrun.getMData().addData(ukey, "%s = 0" % ukey)
+            mrun.getMData().addData(ukey, f"{ukey} = 0")
             missing_probes.append(i)
 
     if missing_probes:
@@ -1294,7 +1295,7 @@ if __name__ == "__main__":
     # TODO verify if Ucoil starts at 1 if nhelices < 14
     formula = "UH = "
     for i in range(args.nhelices + 1):
-        ukey = "Ucoil%d" % i
+        ukey = f"Ucoil{i}"
         if ukey in mrun.getKeys():
             if i != 1:
                 formula += " + "
@@ -1323,6 +1324,18 @@ if __name__ == "__main__":
     mrun.getMData().addData(
         "cTout", "cTout = ( (TinH+dTh)*FlowH + (TinB+dTb)*FlowB ) / (FlowH+FlowB)"
     )
+    df = mrun.getMData().getPandasData(key=None)
+    experiment = mrun.getInsert().replace(r"_", r"\_")
+
+    ax = plt.gca()
+    df.plot(x="t", y="Tout", ax=ax, color="blue", marker="o", alpha=0.5, markevery=800)
+    df.plot(x="t", y="cTout", ax=ax, color="blue", linestyle="--")
+    plt.xlabel(r"t [s]")
+    plt.ylabel(r"T [C]")
+    plt.title(f"{experiment}: Tout")
+    plt.grid(True)
+    plt.show()
+    plt.close()
 
     # Geom specs from HX Datasheet
     Nc = int((553 - 1) / 2.0)  # (Number of plates -1)/2
@@ -1332,9 +1345,9 @@ if __name__ == "__main__":
     coolingparams = [0.07, 0.8, 0.4]
 
     # Compute OHTC
-    df = mrun.getMData().getPandasData(key=None)
     df["MeanU_h"] = df.apply(
-        lambda row: ((row.Flow) * 1.0e-3 + args.debit_alim / 3600.0) / (Ac * Nc), axis=1
+        lambda row: ((row.Flow) * 1.0e-3 + 2 * args.debit_alim / 3600.0) / (Ac * Nc),
+        axis=1,
     )
     df["MeanU_c"] = df.apply(lambda row: (row.debitbrut / 3600.0) / (Ac * Nc), axis=1)
     df["Ohtc"] = df.apply(
@@ -1363,14 +1376,14 @@ if __name__ == "__main__":
     )
     plt.xlabel(r"t [s]")
     plt.ylabel(r"$W/m^2/K$")
-    plt.title(mrun.getInsert().replace(r"_", r"\_") + ": Heat Exchange Coefficient")
+    plt.title(f"{experiment}: Heat Exchange Coefficient")
     if args.show:
         plt.show()
     else:
         imagefile = args.input_file.replace(".txt", "-ohtc.png")
         plt.savefig(imagefile, dpi=300)
-        print("save to %s" % imagefile)
-        plt.close()
+        print(f"save to {imagefile}")
+    plt.close()
 
     pretreatment_keys = ["debitbrut", "Flow", "teb", "Tout", "PH", "PB", "Pt"]
     if "TAlimout" in mrun.getKeys():
@@ -1408,6 +1421,7 @@ if __name__ == "__main__":
                 input_file=args.input_file,
             )
         print("smooth data done")
+    print(mrun.getKeys())
 
     display_T(
         args.input_file,
@@ -1435,7 +1449,7 @@ if __name__ == "__main__":
 
     if args.command == "find":
         # Compute Tin, Tsb
-        df = mrun.getData()
+        df = mrun.getMData().getPandasData(key=None)
 
         if "FlowH" not in df:
             df["FlowH"] = df.apply(
@@ -1473,7 +1487,7 @@ if __name__ == "__main__":
         )
 
         if status < 0:
-            print("Optimization %s failed with %d error: ", (args.algo, status))
+            print(f"Optimization {args.algo} failed with error={status}")
             sys.exit(1)
 
         dT = args.dT
@@ -1547,7 +1561,7 @@ if __name__ == "__main__":
         )
 
         if status < 0:
-            print("Optimization %s failed with %d error: ", (args.algo, status))
+            print(f"Optimization {args.algo} failed with error={status}")
             sys.exit(1)
 
         Q = args.Q

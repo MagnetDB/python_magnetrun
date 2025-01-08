@@ -26,7 +26,7 @@ except:
     use_freesteam = False
 
 
-def getRho(pbar, celsius):
+def getRho(pbar, celsius) -> float:
     """
     compute water volumic mass as a function
     of pressure and temperature
@@ -175,13 +175,9 @@ def getOHTC(
 
 
 if __name__ == "__main__":
-    import math
     import os
     import sys
-    import datetime
-    import python_magnetrun
 
-    import numpy as np
     import matplotlib
 
     # print("matplotlib=", matplotlib.rcParams.keys())
@@ -189,8 +185,6 @@ if __name__ == "__main__":
     # matplotlib.rcParams['text.latex.unicode'] = True key not available
     import matplotlib.pyplot as plt
 
-    import pandas as pd
-    import tabulate
     from ..MagnetRun import MagnetRun
     from ..processing import smoothers as datatools
 
