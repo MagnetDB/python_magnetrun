@@ -117,7 +117,7 @@ def display_Q(
         axis=1,
     )
 
-    df["Qcold"] = df.apply(
+    df["QcoldHx"] = df.apply(
         lambda row: row.debitbrut
         / 3600.0
         * (
@@ -128,6 +128,27 @@ def display_Q(
         axis=1,
     )
     # print("df.keys:", df.columns.values.tolist(), "mrun.keys=", mrun.getKeys())
+
+    # estimate Pinstall
+    ax = plt.gca()
+    df["Pinstall"] = df.apply(
+        lambda row: (2 * debit_alim)
+        / 3600.0
+        * (
+            w.getRho(row.BP, row.TAlimout)
+            * w.getCp(row.BP, row.TAlimout)
+            * row.TAlimout
+            - w.getRho(row.HP, row.Tin) * w.getCp(row.HP, row.Tin) * row.Tin
+        )
+        / 1.0e6,
+        axis=1,
+    )
+    df.plot(x="t", y="Pinstall", ax=ax, color="yellow")
+    plt.ylabel(r"Q[MW]")
+    plt.xlabel(r"t [s]")
+    plt.grid(True)
+    plt.show()
+    plt.close()
 
     # heat Balance on Magnet side
     ax = plt.gca()
@@ -164,7 +185,7 @@ def display_Q(
         imagefile = inputfile.replace(f_extension, extension)
         print("fsave to {imagefile}")
         plt.savefig(imagefile, dpi=300)
-        plt.close()
+    plt.close()
 
     # heat Balance on HX side
     ax = plt.gca()
@@ -176,7 +197,7 @@ def display_Q(
         alpha=0.5,
         markevery=args.markevery,
     )
-    df.plot(x="t", y="Qcold", ax=ax)
+    df.plot(x="t", y="QcoldHx", ax=ax)
     plt.ylabel(r"Q[MW]")
     plt.xlabel(r"t [s]")
     plt.grid(True)
@@ -195,7 +216,7 @@ def display_Q(
         imagefile = inputfile.replace(f_extension, extension)
         print(f"save to {imagefile}")
         plt.savefig(imagefile, dpi=300)
-        plt.close()
+    plt.close()
 
 
 def display_T(
@@ -1341,8 +1362,9 @@ if __name__ == "__main__":
     Nc = int((553 - 1) / 2.0)  # (Number of plates -1)/2
     Ac = 3.0e-3 * 1.174  # Plate spacing * Plate width [m^2]
     de = 2 * 3.0e-3  # 2*Plate spacing [m]
-    # coolingparams = [0.207979, 0.640259, 0.397994]
-    coolingparams = [0.07, 0.8, 0.4]
+    # coolingparams = [0.207979, 0.640259, 0.397994]  # from nominal values
+    coolingparams = [0.1249, 0.65453, 0.40152]  # from student param fits
+    # coolingparams = [0.07, 0.8, 0.4]
 
     # Compute OHTC
     df["MeanU_h"] = df.apply(
