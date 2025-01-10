@@ -263,7 +263,7 @@ def display_T(
         alpha=0.5,
     )
     df.plot(x="t", y="Tin", ax=ax, color="red")
-    df.plot(x="t", y="Tout", ax=ax, color="yellow", linestyle="--")
+    df.plot(x="t", y="Tout", ax=ax, color="green", linestyle="--")
     df.plot(
         x="t",
         y="cTout",
@@ -277,7 +277,7 @@ def display_T(
         x="t",
         y="Thi",
         ax=ax,
-        color="yellow",
+        color="brown",
         marker="x",
         markevery=800,
         alpha=0.5,
@@ -597,6 +597,44 @@ if __name__ == "__main__":
         print("TAlimout key not present - set TAlimout=0")
         mrun.getMData().addData("Talim", "TAlimout = 0")
 
+    pretreatment_keys = ["debitbrut", "Flow", "teb", "Tout", "Pmagnet", "Ptot"]
+    if "TAlimout" in mrun.getKeys():
+        pretreatment_keys.append("TAlimout")
+    else:
+        mrun.getMData().addData("TAlimout", "TAlimout = TinH")
+
+    # filter spikes
+    # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
+    if args.pre == "filtered":
+        for key in pretreatment_keys:
+            mrun = filtertools.filterpikes(
+                mrun,
+                key,
+                inplace=True,
+                threshold=threshold,
+                twindows=twindows,
+                debug=args.debug,
+                show=args.show,
+                input_file=args.input_file,
+            )
+        print("Filtered pikes done")
+
+    # smooth data Locally Weighted Linear Regression (Loess)
+    # see: https://xavierbourretsicotte.github.io/loess.html(
+    if args.pre == "smoothed":
+        for key in pretreatment_keys:
+            mrun = smoothtools.smooth(
+                mrun,
+                key,
+                inplace=True,
+                tau=tau,
+                debug=args.debug,
+                show=args.show,
+                input_file=args.input_file,
+            )
+        print("smooth data done")
+    print(mrun.getKeys())
+
     # extract data
     keys = [
         "t",
@@ -663,44 +701,6 @@ if __name__ == "__main__":
     plt.grid(True)
     plt.show()
     plt.close()
-
-    pretreatment_keys = ["debitbrut", "Flow", "teb", "Tout", "PH", "PB", "Pt"]
-    if "TAlimout" in mrun.getKeys():
-        pretreatment_keys.append("TAlimout")
-    else:
-        mrun.getMData().addData("TAlimout", "TAlimout = 0")
-
-    # filter spikes
-    # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
-    if args.pre == "filtered":
-        for key in pretreatment_keys:
-            mrun = filtertools.filterpikes(
-                mrun,
-                key,
-                inplace=True,
-                threshold=threshold,
-                twindows=twindows,
-                debug=args.debug,
-                show=args.show,
-                input_file=args.input_file,
-            )
-        print("Filtered pikes done")
-
-    # smooth data Locally Weighted Linear Regression (Loess)
-    # see: https://xavierbourretsicotte.github.io/loess.html(
-    if args.pre == "smoothed":
-        for key in pretreatment_keys:
-            mrun = smoothtools.smooth(
-                mrun,
-                key,
-                inplace=True,
-                tau=tau,
-                debug=args.debug,
-                show=args.show,
-                input_file=args.input_file,
-            )
-        print("smooth data done")
-    print(mrun.getKeys())
 
     # Geom specs from HX Datasheet
     Nc = int((553 - 1) / 2.0)  # (Number of plates -1)/2
