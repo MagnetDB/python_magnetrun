@@ -10,13 +10,11 @@ import pandas as pd
 
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib import gridspec
 from matplotlib.cbook import flatten
 
 matplotlib.rcParams["text.usetex"] = True
 
 from .MagnetRun import MagnetRun
-from .processing import stats
 from .utils.plateaux import nplateaus
 
 if __name__ == "__main__":
@@ -121,7 +119,7 @@ if __name__ == "__main__":
     )
 
     df_plateaux = pd.DataFrame()
-    for entry in ["start", "end", f"value"]:
+    for entry in ["start", "end", "value"]:
         df_plateaux[entry] = [plateau[entry] for plateau in pdata]
     df_plateaux["duration"] = df_plateaux["end"] - df_plateaux["start"]
 

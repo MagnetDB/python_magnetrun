@@ -207,7 +207,7 @@ class MagnetData:
             for item in selected_keys:
                 if item not in self.Keys:
                     raise Exception(
-                        f"MagnetData/Data({key}): {self.FileName}: cannot get data for key {item}: no such key"
+                        f"MagnetData/Data({key}): {self.FileName}: cannot get data for key={item}: no such key"
                     )
 
         # print(f"selected_keys={selected_keys}", flush=True)

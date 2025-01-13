@@ -244,7 +244,7 @@ def main():
                         )
                         pass
                 else:
-                    print(f"- skipped", flush=True)
+                    print("- skipped", flush=True)
 
             except Exception as error:
                 print(f"- fail to load (error={error})", flush=True)
@@ -265,7 +265,6 @@ def main():
         print(f"concat df: {df.head()}")
 
         if args.fields:
-            import statsmodels.api as sm
             import seaborn as sns
 
             for key in args.fields:
@@ -312,7 +311,7 @@ def main():
                 flush=True,
             )
         except:
-            print(f"- fail to load")
+            print("- fail to load")
             # is it possible to curate txt files
             # reading csv line by line with import csv??
 
@@ -335,8 +334,6 @@ def main():
                     args.pairplot and data.getDuration() >= min_duration
                 ):  # previous limit 1000:
                     import seaborn as sns
-                    import re
-                    from natsort import natsorted
 
                     selected_keys = [
                         "Field",

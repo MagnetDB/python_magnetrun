@@ -65,7 +65,8 @@ pupitre_files = glob.glob(pupitre_filter)
 pupitre_file_path = pupitre_files[0]
 pupitre_data = MagnetRun.fromtxt(site, insert, pupitre_file_path).getMData()
 
-# Add data to pigbrother
+# Add data for HT tension to pigbrother
+# watch out HT tension data are derived from sinusoidal signals
 tdms_data.addData(
     key="Puissances/HT1",
     formula="Puissances/HT1 = HT_Courant/HT1_RC * Haute_Tension/HT1_R + HT_Courant/HT1_SC * Haute_Tension/HT1_S + HT_Courant/HT1_TC * Haute_Tension/HT1_T",
