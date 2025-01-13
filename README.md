@@ -143,6 +143,27 @@ python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms ~/M9_
     plot --vs_time Courants_Alimentations/Courant_GR1 --vs_time IH
 ```
 
+- Compute and plot Power dissipated in Helices
+
+```bash
+python -m python_magnetrun.python_magnetrun pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_201003-0956.tdms \
+    add --formula "Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2  / 1.e+6" --plot
+```
+
+```bash
+python -m python_magnetrun.python_magnetrun srvdata/M10_2020.10.03---09\:56\:20.txt add --formula "PowerH = IH * UH  / 1.e+6" --plot
+```
+
+- Compute and plot Power dissipated in A2 busbar
+
+```bash
+python -m python_magnetrun.python_magnetrun pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_201003-0956.tdms \
+   add --formula "Tensions_Alimentations/Busbar_A2 = (Tensions_Alimentations/Tension_A2 - Tensions_Aimant/ALL_internes) * Courants_Alimentations/Courant_A2 / 1.e+6"
+    --plot
+```
+
+TODO: change symbol and unit for Busbar_A2
+
 - Detect Breaking points and anomalies:
 
 Example is functional, but the results are good. The method does not work correctly for other examples
@@ -150,6 +171,7 @@ Example is functional, but the results are good. The method does not work correc
 ```bash
 python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms  stats --show --keys Courants_Alimentations/Référence_GR1 --detect_bkpts --sav
 ```
+
 - check field factor (not working properly since Ih and Ib are "piecewise" dependant)
 
 better way to do this - see python_magnetrun/corr_Ih_Ib.py with algo=piecewise-regression or pwlf
