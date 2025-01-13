@@ -59,7 +59,6 @@ import numpy as np
 from clawpack import riemann
 
 import tabulate
-import pandas as pd
 from . import heatexchanger_primary
 from . import water as w
 
@@ -181,7 +180,7 @@ def step_Euler_radial(solver, state, dt):
     Pci = 10
     Phi = 10
 
-    Hx = heatexchanger_primary.heatexchange(4041, Tci, Thi, Debitc, Debith, Pci, Phi)
+    Q = heatexchanger_primary.heatexchange(4041, Tci, Thi, Debitc, Debith, Pci, Phi)
     Tco = Q[0]
     Tho = Q[1]
     if state.t == i0:
@@ -221,8 +220,8 @@ def dq_Euler_radial(solver, state, dt):
     u = compute_u(Debith, SectionP)
 
     # Helices
-    rho = heatexchanger_primary.rho(df["HP"][i0], df["Tin"][i0])
-    cp = heatexchanger_primary.cp(df["HP"][i0], df["Tin"][i0])
+    rho = w.getRho(df["HP"][i0], df["Tin"][i0])
+    cp = w.getCp(df["HP"][i0], df["Tin"][i0])
     Power1 = abs(df["PH"][i0])
     Q = Power1 / (Section * (2 * L)) / (rho * cp)
     DebitH = df["FlowH"][i0]
@@ -230,7 +229,7 @@ def dq_Euler_radial(solver, state, dt):
 
     # Bitter
     Power2 = abs(df["PB"][i0])
-    QB = Power2 / (Section2 * (2 * L)) / (rho * cp)
+    QB = Power2 / (SectionB * (2 * L)) / (rho * cp)
     DebitB = df["Flow2"][i0]
     u = compute_u(DebitB, SectionB)
 
@@ -272,36 +271,37 @@ def auxinit(state):
     # xc is a tuple when only 1 domain
     # a np array otherwise
     xc = state.grid.p_centers
-    print("xc:", type(xc))
+    print("xc:", type(xc), len(xc))
 
     L = state.problem_data["L"]
+    print(f"L: {L}", type(L))
+
     Section = state.problem_data["Section"]
     SectionB = state.problem_data["SectionB"]
     SectionP = state.problem_data["SectionP"]
 
-    # for idx, x in np.ndenumerate(xc[0]):
-    #     print(idx, x, type(idx), type(x))
-
-    # for x in xc[0]:
-    #    if abs(x) <= L:
-    #    else
-    #
-
     # Helices
-    DebitH = df["Flow1"][0]
-    u = compute_u(DebitH, Section)
+    DebitH = df["FlowH"][0]
+    uH = compute_u(DebitH, Section)
+    print(f"uH: {uH}", type(uH))
 
     # Bitters
-    DebitB = df["Flow2"][0]
+    DebitB = df["FlowB"][0]
     uB = compute_u(DebitB, SectionB)
+    print(f"uB: {uB}")
 
     # Pipe
     DebitP = df["Flow"][0]
     uP = compute_u(DebitP, SectionP)
+    print(f"uP: {uP}")
 
     state.aux[0, :] = uP
-    state.aux[0, :] = [uH if abs(xi) <= L else 0 for xi in xc]
-    print("u[%g]: " % state.t, state.aux[0, :])
+    print("state_aux: ", type(state.aux), state.aux.shape)
+    for i, xi in enumerate(xc):
+        if abs(xi) <= L:
+            state.aux[i] = uH
+    # state.aux[0, :] = [uH if abs(xi) <= L else uP for xi in xc]
+    print(f"u[{state.t}]: {state.aux[0, :]}")
 
 
 def setup(

@@ -20,15 +20,17 @@ nlopt
 
 # for cooling directory
 ht
-# clawpack
+clawpack >= 5.11.0
 
 # for data processing
 piecewise-regression
 pwlf
 ruptures
 # dtw # for Dynamic Time Warping
-# pyts
-# dtaidistance
+pyts
+dtaidistance
+
+# darts
 
 # view csv
 visidata
