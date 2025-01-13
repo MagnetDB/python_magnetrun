@@ -31,7 +31,8 @@ RUN apt update \
     && apt-get -y install git git-lfs iproute2 procps lsb-release \
     #\
     # Install dev tools\
-    && apt-get -y install build-essential python3-minimal swig \
+    && apt-get -y install build-essential gfortran \
+    && apt-get -y install python3-minimal swig \
     && apt-get -y install python-is-python3 python3-pip python3-jinja2 python3-venv python3-virtualenv \
     && apt-get -y install python3-autopep8 black yapf3 python3-bandit flake8 pydocstyle pylint python3-pytest mypy \
     && apt-get -y install texlive-latex-base texlive-latex-extra dvipng cm-super-minimal
