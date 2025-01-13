@@ -86,7 +86,7 @@ def plot_bkpts(
     ax1.legend()
     ax1.grid()
     # ax1.set_xlabel('t [s]')
-    ax1.set_title(f"Savgo filter [2nd order der]: ({level}\%: {quantiles_der:.3e})")
+    ax1.set_title(f"Savgo filter [2nd order der]: ({level}%: {quantiles_der:.3e})")
 
     ax2 = plt.subplot(gs[2], sharex=ax0)
     std_ts = ts.rolling(window=args.window).std()
@@ -294,7 +294,8 @@ if __name__ == "__main__":
             except Exception as error:
                 print(f"{file}: no site detected - use args.site argument instead")
                 continue
-            print(f"site={site}")
+            if args.debug:
+                print(f"site={site}")
 
         try:
             match f_extension:
@@ -416,35 +417,31 @@ if __name__ == "__main__":
 
             legends = []
             for file in input_files:
-                print(f"file={file}")
+                # print(f"file={file}")
                 f_extension = os.path.splitext(file)[-1]
                 plot_args = items[extensions[f_extension][0]]
-                print(
-                    f"plot_args: {plot_args}, f_extension:{f_extension}, {extensions[f_extension]}"
-                )
+                if args.debug:
+                    print(
+                        f"plot_args: {plot_args}, f_extension:{f_extension}, {extensions[f_extension]}"
+                    )
                 mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
                 for key in plot_args:
-                    legends.append(
-                        f'{os.path.basename(file).replace(f_extension,"")}: {key}'
-                    )
-                    # print(f"plot key={key}, type={type(key)}", flush=True)
-                    (symbol, unit) = mdata.getUnitKey(key)
-                    if args.normalize:
-                        legends[-1] += (
-                            f" max={float(mdata.getData([key]).max().iloc[0]):.3f} [{unit:~P}]"
-                        )
+                    try:
+                        # print(f"plot key={key}, type={type(key)}", flush=True)
+                        (symbol, unit) = mdata.getUnitKey(key)
+                        if args.normalize:
+                            legends[-1] += (
+                                f" max={float(mdata.getData([key]).max().iloc[0]):.3f} [{unit:~P}]"
+                            )
 
-                    mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
-                    """
-                    if mdata.Type == 0:
                         mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
-                    elif mdata.Type == 1:
-                        (group, channel) = key.split("/")
-                        mdata.plotData(
-                            x=f"{group}/t", y=key, ax=my_ax, normalize=args.normalize
+                        legends.append(
+                            f'{os.path.basename(file).replace(f_extension,"")}: {key}'
                         )
-                    """
+                    except RuntimeError:
+                        print(f"key: {key} not found in {file}")
+                        continue
 
             plt.ylabel(f"{symbol} [{unit:~P}]")
             if args.normalize:
@@ -460,7 +457,7 @@ if __name__ == "__main__":
             if not args.save:
                 plt.show()
             else:
-                imagefile = "image"
+                imagefile = f"{file.replace(f_extension,'')}-{key}"
                 print(f"saveto: {imagefile}_vs_time.png", flush=True)
                 plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
             plt.close()
@@ -506,9 +503,9 @@ if __name__ == "__main__":
             if not args.save:
                 plt.show()
             else:
-                imagefilename = "image"
-                print(f"saveto: {imagefilename}_key_vs_key.png", flush=True)
-                plt.savefig(f"{imagefilename}_key_vs_key.png", dpi=300)
+                imagefilename = f"{file.replace(f_extension,'')}-{'_'.join(items)}"
+                print(f"saveto: {imagefilename}.png", flush=True)
+                plt.savefig(f"{imagefilename}.png", dpi=300)
             plt.close()
 
     if args.command == "select":
@@ -765,7 +762,7 @@ if __name__ == "__main__":
                             )
 
                             df_plateaux = pd.DataFrame()
-                            for entry in ["start", "end", f"value"]:
+                            for entry in ["start", "end", "value"]:
                                 df_plateaux[entry] = [
                                     plateau[entry] for plateau in pdata
                                 ]

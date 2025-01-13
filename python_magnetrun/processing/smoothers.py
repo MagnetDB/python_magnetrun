@@ -202,6 +202,7 @@ def smooth(
     """
 
     filteredkey = f"filtered{key}"
+    print(f"smooth: key={key}, filteredkey={filteredkey}", flush=True)
     df = mrun.getMData().getPandasData(key=None)
     Meanval = df[key].mean()
 
