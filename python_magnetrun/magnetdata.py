@@ -1,5 +1,6 @@
 """MagnetData"""
 
+from logging import raiseExceptions
 from natsort import natsorted
 from datetime import datetime
 
@@ -196,6 +197,8 @@ class MagnetData:
         # print(f"MagnetData/Data({key}): {self.FileName}", flush=True)
 
         if key is None:
+            if not isinstance(self.Data, pd.DataFrame):
+                raise Exception(f"MagnetData/Data: {self.FileName} - expect Data to be a pandas dataframe")
             return self.Data
         else:
             selected_keys = []
@@ -225,6 +228,9 @@ class MagnetData:
         :type channel: str
         """
 
+        if not isinstance(self.Data, dict):
+            raise Exception(f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict")
+        
         if channel is None:
             return self.Data[group]
         else:

@@ -430,15 +430,15 @@ if __name__ == "__main__":
                     try:
                         # print(f"plot key={key}, type={type(key)}", flush=True)
                         (symbol, unit) = mdata.getUnitKey(key)
-                        if args.normalize:
-                            legends[-1] += (
-                                f" max={float(mdata.getData([key]).max().iloc[0]):.3f} [{unit:~P}]"
-                            )
 
                         mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
                         legends.append(
                             f'{os.path.basename(file).replace(f_extension,"")}: {key}'
                         )
+                        if args.normalize:
+                            legends[-1] += (
+                                f" max={float(mdata.getData([key]).max().iloc[0]):.3f} [{unit:~P}]"
+                            )
                     except RuntimeError:
                         print(f"key: {key} not found in {file}")
                         continue
