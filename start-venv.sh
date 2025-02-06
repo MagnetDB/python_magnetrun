@@ -8,7 +8,7 @@ VENVDIR=./magnetrun-env
 USE_SYSTEM_PACKAGES=1
 
 if [ ! -d $VENVDIR ]; then
-   echo "create Python Virtualenv: VENVDIR={VENVDIR}"
+   echo "create Python Virtualenv: VENVDIR=${VENVDIR}"
    if [ "$USE_SYSTEM_PACKAGES" == "1" ]; then
       python -m venv --system-site-packages $VENVDIR
    else
