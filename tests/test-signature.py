@@ -3,6 +3,9 @@ import argparse
 import pandas as pd
 import matplotlib.pyplot as plt
 from tabulate import tabulate
+import numpy as np
+from scipy.signal import correlate
+
 
 from python_magnetrun.MagnetRun import MagnetRun
 
@@ -84,14 +87,16 @@ mrun = MagnetRun.fromtxt(site, insert, file)
 mdata = mrun.getMData()
 
 key = "Field"
-df = mdata.getData(key)
+df = mdata.getData(['t', key])
 stats = df[key].describe()
 print(f'stats for {key}:')
 describe_list = stats.reset_index().to_dict(orient='records')
 print(tabulate(describe_list, headers='keys', tablefmt='psql'))
 
+# Perform piecewise linear approximation
+# !! use index and not 't' column !!
 from statsmodels.tsa.seasonal import seasonal_decompose
-result = seasonal_decompose(df[key], model='additive', period=args.window)
+result = seasonal_decompose(df[key], model='additive',period=args.window)
 fig = result.plot()
 # Add grid to all subplots
 fig.suptitle(f"Seasonal Decomposition of {file}")
@@ -108,8 +113,11 @@ else:
 plt.close()
 
 
-# Perform piecewise linear approximation
-signature = piecewise_linear_approximation(result.trend, args.threshold)
+# Get signature in terms of Up, Plateau, Down
+trend_component = result.trend
+# Drop NaN values from trend slice
+trend_component = trend_component[~np.isnan(trend_component)]
+signature = piecewise_linear_approximation(trend_component, args.threshold)
 
 # get index of changes in signature
 changes = [0]
@@ -117,19 +125,17 @@ for i in range(1, len(signature)):
     if signature[i] != signature[i-1]:
         changes.append(i)
 print(f"Signature: {[signature[i] for i in changes]}")
-print(f"t: {[df.index[i] for i in changes]}")
+print(f"t: {[float(df['t'].iloc[i]) for i in changes]}")
 
-# plot
+# Plot piecewise linear approximation
 my_ax = plt.gca()
 legends = [key]
 mdata.plotData(x="t", y=key, ax=my_ax, normalize=False)
-
-legends.append('Trend')
-result.trend.plot(ax=my_ax)
-for x in [df.index[i] for i in changes]:
+for x in [df['t'].iloc[i] for i in changes]:
     plt.axvline(x=x, color="red")
 my_ax.legend(labels=legends)
-plt.grid()
+my_ax.grid(True)
+plt.title(f"Piecewise Linear Approximation of {file}: {key}")
 
 if args.save:
     f_extension = os.path.splitext(file)[-1]
@@ -139,6 +145,50 @@ if args.save:
 else:
     plt.show()
 plt.close()
+
+#lag correlation between trend and field
+# Compute cross-correlation
+
+trend_component = result.trend
+series = df[key].squeeze()
+
+"""
+# Select a slice of the time series
+start_index = 2000
+end_index = 2500
+time_series_slice = series[start_index:end_index]
+trend_slice = trend_component[start_index:end_index]
+
+# Drop NaN values from trend slice
+trend_slice = trend_slice[~np.isnan(trend_slice)]
+time_series_slice = time_series_slice[-len(trend_slice):]
+
+# Compute cross-correlation
+correlation = correlate(time_series_slice - np.mean(time_series_slice), trend_slice - np.mean(trend_slice))
+lags = np.arange(-len(correlation)//2 + 1, len(correlation)//2 + 1)
+
+# Find the lag with maximum correlation
+lag = lags[np.argmax(correlation)]
+
+# Plot the results
+plt.figure(figsize=(12, 6))
+plt.subplot(2, 1, 1)
+plt.plot(time_series_slice, label='Time Series Slice')
+plt.plot(trend_slice, label='Trend Slice', color='red')
+plt.title('Time Series Slice and Trend Slice')
+plt.legend()
+
+plt.subplot(2, 1, 2)
+plt.plot(lags, correlation, label='Cross-Correlation')
+plt.axvline(lag, color='red', linestyle='--', label=f'Lag = {lag}')
+plt.title('Cross-Correlation between Time Series Slice and Trend Slice')
+plt.xlabel('Lag')
+plt.ylabel('Cross-Correlation')
+plt.legend()
+plt.show()
+
+print(f"Estimated lag: {lag} for {start_index} to {end_index}")
+"""
 
 """
 # to get multiple figure
