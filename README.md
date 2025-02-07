@@ -161,8 +161,19 @@ python -m python_magnetrun.python_magnetrun pigbrotherdata/Fichiers_Data/M10/Ove
    add --formula "Tensions_Alimentations/Busbar_A2 = (Tensions_Alimentations/Tension_A2 - Tensions_Aimant/ALL_internes) * Courants_Alimentations/Courant_A2 / 1.e+6"
     --plot
 ```
-
 TODO: change symbol and unit for Busbar_A2
+
+- Detect Breaking points and Compute Signature (UPD) of record
+
+We use the following convention for assigning a signature to a record:
+  - U: up
+  - P: Plateau
+  - D: Down
+
+```bash
+python -m tests.test-signature srvdata/M10_2025.01.27---15:39:29.txt --window=10 --threshold 1.e-2
+```
+
 
 - Detect Breaking points and anomalies:
 
