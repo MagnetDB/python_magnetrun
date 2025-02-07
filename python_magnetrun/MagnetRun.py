@@ -64,7 +64,8 @@ def prepareData(data: MagnetData, housing: str, debug: bool = False):
     data.renameData(columns={f"{Ikey[0]}": "IH"})
     data.renameData(columns={f"{Ikey[-1]}": "IB"})
 
-    print(f"MagnetRun.prepareData: data.keys={data.getKeys()}")
+    if debug:
+        print(f"MagnetRun.prepareData: data.keys={data.getKeys()}")
 
 
 class MagnetRun:
