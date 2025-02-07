@@ -133,7 +133,7 @@ print(f"site detected: {site}")
 
 insert = "tututu"
 
-from .MagnetRun import MagnetRun
+from python_magnetrun.MagnetRun import MagnetRun
 mrun = MagnetRun.fromtxt(site, insert, file)
 
 data = mrun.getData('Field').to_numpy().reshape(-1)
