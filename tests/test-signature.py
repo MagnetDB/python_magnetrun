@@ -66,11 +66,11 @@ parser.add_argument(
     "--site", help="specify a site (ex. M8, M9,...)", default="M9"
 )  # use housing instead
 parser.add_argument(
-    "--threshold", help="set a threshold (default 0.5)", type=float, default=1.e-3
-)  # use housing instead
+    "--key", help="set key to consider", type=str, default="Field"
+)
 parser.add_argument(
     "--window", help="set a window", type=int, default=10
-)  # use housing instead
+) 
 parser.add_argument("--save", help="activate plot", action="store_true")
 args = parser.parse_args()
 print(f"args: {args}", flush=True)
@@ -86,7 +86,8 @@ insert = "tututu"
 mrun = MagnetRun.fromtxt(site, insert, file)
 mdata = mrun.getMData()
 
-key = "Field"
+# TODO get key symbol and unit from MagnetRun
+key = args.key
 df = mdata.getData(['t', key])
 stats = df[key].describe()
 print(f'stats for {key}:')
