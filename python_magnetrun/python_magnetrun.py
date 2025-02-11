@@ -272,7 +272,8 @@ if __name__ == "__main__":
             extensions[f_extension] = [i]
         else:
             extensions[f_extension].append(i)
-    # print(f"extensions: {extensions}")
+    # print(f"extensions: {extensions}, entries: {len(extensions.keys())}")
+    # print(f"args.vs_time: {args.vs_time}, entries: {len(args.vs_time)}")
 
     input_files = natsorted(args.input_file)
     for file in input_files:
@@ -403,8 +404,8 @@ if __name__ == "__main__":
         print("subcommands: plot")
         if args.vs_time:
             assert (
-                len(args.vs_time) == len(extensions)
-            ), f"expected {len(extensions)} vs_time arguments - got {len(args.vs_time)} "
+                len(args.vs_time) == len(extensions.keys())
+            ), f"expected {len(extensions.keys())} vs_time arguments - got {len(args.vs_time)} "
 
             my_ax = plt.gca()
 
@@ -419,7 +420,8 @@ if __name__ == "__main__":
             for file in input_files:
                 # print(f"file={file}")
                 f_extension = os.path.splitext(file)[-1]
-                plot_args = items[extensions[f_extension][0]]
+                plot_args = items[list(extensions.keys()).index(f_extension)]
+                print(f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}")
                 if args.debug:
                     print(
                         f"plot_args: {plot_args}, f_extension:{f_extension}, {extensions[f_extension]}"
@@ -430,6 +432,7 @@ if __name__ == "__main__":
                     try:
                         # print(f"plot key={key}, type={type(key)}", flush=True)
                         (symbol, unit) = mdata.getUnitKey(key)
+                        print(f"plot {key} [{symbol} {unit:~P}]")
 
                         mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
                         legends.append(
@@ -439,8 +442,10 @@ if __name__ == "__main__":
                             legends[-1] += (
                                 f" max={float(mdata.getData([key]).max().iloc[0]):.3f} [{unit:~P}]"
                             )
+                            print("normalize")
                     except RuntimeError:
                         print(f"key: {key} not found in {file}")
+                        print(f'available keys: {mdata.getKeys()}')
                         continue
 
             plt.ylabel(f"{symbol} [{unit:~P}]")
@@ -482,7 +487,8 @@ if __name__ == "__main__":
             for file in input_files:
                 legends.append(os.path.basename(file).replace(f_extension, ""))
                 f_extension = os.path.splitext(file)[-1]
-                plot_args = pairs[extensions[f_extension][0]]
+                plot_args = pairs[list(extensions.keys()).index(f_extension)]
+                print(f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}")
                 mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
 
@@ -512,8 +518,8 @@ if __name__ == "__main__":
         # plot_args = items[extensions[f_extension][0]]
         if args.output_time:
             assert (
-                len(args.output_time) == len(extensions)
-            ), f"expected {len(extensions)} output_time arguments - got {len(args.output_time)} "
+                len(args.output_time) == len(extensions.keys())
+            ), f"expected {len(extensions.keys())} output_time arguments - got {len(args.output_time)} "
 
             times = args.output_time.split(";")
             print(f"Select data at {times}")
@@ -543,8 +549,8 @@ if __name__ == "__main__":
 
         if args.output_timerange:
             assert (
-                len(args.output_timerange) == len(extensions)
-            ), f"expected {len(extensions)} output_timerange arguments - got {len(args.output_timerange)} "
+                len(args.output_timerange) == len(extensions.keys())
+            ), f"expected {len(extensions.keys())} output_timerange arguments - got {len(args.output_timerange)} "
 
             timerange = args.output_timerange.split(";")
             for file in inputs:
@@ -579,8 +585,8 @@ if __name__ == "__main__":
 
         if args.output_key:
             assert (
-                len(args.output_key) == len(extensions)
-            ), f"expected {len(extensions)} output_key arguments - got {len(args.output_key)} "
+                len(args.output_key) == len(extensions.keys())
+            ), f"expected {len(extensions.keys())} output_key arguments - got {len(args.output_key)} "
 
             for file in inputs:
                 f_extension = os.path.splitext(file)[-1]
@@ -605,8 +611,8 @@ if __name__ == "__main__":
 
         if args.extract_pairkeys:
             assert (
-                len(args.extract_pairkeys) == len(extensions)
-            ), f"expected {len(extensions)} extract_pairkeys arguments - got {len(args.extract_pairkeys)} "
+                len(args.extract_pairkeys) == len(extensions.keys())
+            ), f"expected {len(extensions.keys())} extract_pairkeys arguments - got {len(args.extract_pairkeys)} "
             for file in inputs:
                 f_extension = os.path.splitext(file)[-1]
                 mrun: MagnetRun = inputs[file]["data"]

@@ -94,6 +94,17 @@ python3 -m python_magnetrun.python_magnetrun srvdata/M9_2019.02.14---23\:00\:38.
 python3 -m python_magnetrun.python_magnetrun srvdata/M9_2019.02.14---23\:00\:38.txt plot --vs_time "Field"
 ```
 
+- To view the current in group1 from pigbrother and pupitre files:
+
+```bash
+python -m python_magnetrun.python_magnetrun srvdata/M10_2025.01.27---*.txt pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms plot --key_vs_key timestamp-IH --key_vs_key timestamp-Courants_Alimentations/Référence_GR1
+```
+
+[NOTE]
+====
+How to account for the lag between pigbrother and pupitre horloges?
+====
+
 <!--
 - To model transient:
 
