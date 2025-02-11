@@ -95,7 +95,7 @@ class MagnetData:
                     Groups[gname]["Infos"] = group
             # print(f"keys: {Keys}")
 
-        # Add refrence for GR1, GR2
+        # Add reference for GR1, GR2
         if "Référence_A1" in Data["Courants_Alimentations"]:
             Data["Courants_Alimentations"]["Référence_GR1"] = (
                 Data["Courants_Alimentations"]["Référence_A1"]
@@ -329,7 +329,7 @@ class MagnetData:
                         (group, channel) = entry.split("/")
                         if channel == "t":
                             self.units[entry] = ("t", ureg.second)
-                        # if channel == "timestamps":
+                        # if channel == "timestamp":
                         #    self.units[entry] = ("t", ureg.second)
                     self.units[entry] = self.PigBrotherUnits(group)
 
@@ -381,13 +381,15 @@ class MagnetData:
                 print(f"{key}: symbol={symbol}, unit={unit:~P}", flush=True)
 
     def getUnitKey(self, key: str) -> tuple:
+        #print(f'getUnitKey: {key}')
         if key not in self.Keys:
             from pint import UnitRegistry
 
+            #print(f"getUnitKey: {key} not in {self.Keys}")
             ureg = UnitRegistry()
             if key == "t":
                 return ("t", ureg.second)
-            elif key == "timestamps":
+            elif key == "timestamp":
                 return ("time", None)
             else:
                 raise RuntimeError(
@@ -401,6 +403,7 @@ class MagnetData:
             # !!! do not use tdms units - they are wrong !!!
             # unit_name = self.Data[group][channel].properties["NI_UnitDescription"]
             # unit_string = self.Data[group][channel].properties["unit_string"]
+            # print(f"getUnitKey: {group}/{channel} -> {self.PigBrotherUnits(group)}")
             return self.PigBrotherUnits(group)
         return ()
 
@@ -803,7 +806,7 @@ class MagnetData:
             )
 
     def getStartDate(self, group: str = None) -> tuple:
-        """get start timestamps"""
+        """get start timestamp"""
         res = ()
         if self.Type == 0:  # isinstance(self.Data, pd.DataFrame):
             # print("keys=", self.Keys)
@@ -843,11 +846,19 @@ class MagnetData:
                 print("magnetdata.getDuration: no timestamp key")
                 print(f"available keys are: {self.Keys}")
         elif self.Type == 1:
-            group = "Tensions_Aimant"
-            start_time = self.Data[group]["t"].iloc[0]
-            end_time = self.Data[group]["t"].iloc[-1]
-            dt = end_time - start_time
-            duration = dt
+            if group is None:
+                group = "Tensions_Aimant"
+            # print(f"self.Groups[{group}]={self.Groups[group]}")
+            channel = list(self.Groups[group].keys())[0]
+            ordered_dict = self.Groups[group][channel]
+            # print(f"self.Groups[{group}][{channel}]={self.Groups[group][channel]}")
+            # print(f"self.Groups[{group}][{channel}]={type(self.Groups[group][channel])}")
+            
+            # start_time = self.Data[group]["t"].iloc[0]
+            # end_time = self.Data[group]["t"].iloc[-1]
+            dt = ordered_dict["wf_increment"]
+            samples = ordered_dict["wf_samples"]
+            duration = dt * samples
         return duration
 
     def addTime(self):
@@ -1013,7 +1024,7 @@ class MagnetData:
         matplotlib.rcParams["text.usetex"] = True
 
         # print("plotData Type:", self.Type, f"x={x}, y={y}" )
-        if x != "t" and x != "timestamps" and x not in self.Keys:
+        if x != "t" and x != "timestamp" and x not in self.Keys:
             raise RuntimeError(
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no x={x} key (valid keys= {self.Keys})"
             )
@@ -1054,8 +1065,9 @@ class MagnetData:
                     # print(f"dt={dt}, type={type(dt)}")
                     if xchannel == "t":
                         df[xchannel] = df.index * dt
-                    elif xchannel == "timestamps":
+                    elif xchannel == "timestamp":
                         t0 = self.Groups[ygroup][ychannel]["wf_start_time"]
+                        # print(f"plotData ({self.FileName}: t0={t0})")
                         df[xchannel] = [
                             np.datetime64(t0).astype(datetime.datetime)
                             + datetime.timedelta(0, i * dt)
