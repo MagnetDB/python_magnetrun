@@ -450,7 +450,7 @@ if __name__ == "__main__":
 
             plt.ylabel(f"{symbol} [{unit:~P}]")
             if args.normalize:
-                plt.ylabel("{symbol} normalized")
+                plt.ylabel("normalized")
 
             if len(legends) > 1:
                 my_ax.legend(labels=legends)
