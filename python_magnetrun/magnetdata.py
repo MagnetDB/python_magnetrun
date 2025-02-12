@@ -998,7 +998,7 @@ class MagnetData:
 
         return 0
 
-    def plotData(self, x: str, y: str, ax, label: str = None, normalize: bool = False):
+    def plotData(self, x: str, y: str, ax, alpha: float = 1, label: str = None, normalize: bool = False):
         """plot x vs y
 
         :param x: _description_
@@ -1043,12 +1043,13 @@ class MagnetData:
                         x=x,
                         y=y,
                         ax=ax,
+                        alpha=alpha,
                         label=f"{y} (norm with {ymax:.3e} {yunit:~P})",
                         grid=True,
                     )
                     del df
                 else:
-                    self.Data.plot(x=x, y=y, ax=ax, grid=True)
+                    self.Data.plot(x=x, y=y, ax=ax, alpha=alpha, grid=True)
             elif self.Type == 1:
                 # print(x, y)
 
@@ -1081,6 +1082,7 @@ class MagnetData:
                             x=xchannel,
                             y=ychannel,
                             ax=ax,
+                            alpha=alpha,
                             label=f"{ychannel} (norm with {ymax:.3e} {yunit:~P})",
                             grid=True,
                         )

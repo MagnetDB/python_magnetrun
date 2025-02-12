@@ -19,6 +19,25 @@ from .MagnetRun import MagnetRun
 # from .utils.plateaux import nplateaus
 from .processing.trends import trends
 
+def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False):
+    dups = pd.Index(df[key].to_numpy()).duplicated()
+    unique, counts = np.unique(dups, return_counts=True)
+    #print(f'duplicated df[t]: {dict(zip(unique, counts))}')
+    dups_dict = dict(zip(unique, counts))
+    # print(f'dups_dict df[t]: {dups_dict}')
+    if np.True_ in dups_dict:
+        dups_index = np.where(dups == np.True_)
+        drop_index = [i.item() for i in dups_index]
+        print(f'duplicated index found in {name} at rows={drop_index}')
+        for i in drop_index:
+            print(f'rows={i}/{i-1}:\n{df.loc[i-1:i].head()}')
+        if strict:
+            raise RuntimeError(f"found duplicates time in {name}")
+        else:
+            print("remove duplicates")
+            df.drop(df.index[drop_index], inplace=True)
+            return df
+
 def convert_to_timestamp(date_str, time_str):
     from datetime import datetime
     # Format the date and time strings
@@ -175,18 +194,23 @@ if __name__ == "__main__":
         }
     }
     
+    title = os.path.basename(args.input_file[0]).replace(".tdms", "")
+    if len(args.input_file) >1:
+        title = title.split('-')[0]
+
     filenames = []
     mdatas = []
+    df_ = []
     for i,file in enumerate(natsorted(args.input_file)):
         f_extension = os.path.splitext(file)[-1]
         if f_extension != ".tdms":
             raise RuntimeError("so far file with tdms extension are implemented")
 
         dirname = os.path.dirname(file)
-        print(f"dirname: {dirname}")
         filename = os.path.basename(file).replace(f_extension, "")
         filenames.append(filename)
-
+        print(f"dirname={dirname}, filename={filename}: ", end="", flush=True)
+        
         result = filename.startswith("M")
         insert = "tututu"
         index = filename.index("_")
@@ -199,7 +223,7 @@ if __name__ == "__main__":
         (psite, pmode, ptimestamp) = filename.split("_") 
         pdate, ptime = ptimestamp.split('-')
         (timestamp, formatted_timestamp) = convert_to_timestamp(pdate, ptime)
-        print(f'timestamp={formatted_timestamp}')
+        print(f'timestamp={formatted_timestamp}, ', end="", flush=True)
         group = "Courants_Alimentations"
         pkey = f"{group}/{args.key}"
         print(f't0 = { mdata.Groups[group][args.key]["wf_start_time"]}')
@@ -208,26 +232,78 @@ if __name__ == "__main__":
         # check ECO mode: "Référence_GR1" != "Référence_GR2"
         GR = mdata.getData(
             ["Courants_Alimentations/Référence_GR1", "Courants_Alimentations/Référence_GR2"]
-        )
-        GR["diff"] = GR["Référence_GR2"] - GR["Référence_GR1"]
+        ).copy()
+        GR.loc[:, "diff"] = GR.loc[:,"Référence_GR2"] - GR.loc[:,"Référence_GR1"]
 
         if GR["diff"].abs().max() > 5 and not (
             GR["Référence_GR2"].abs().max() <= 1 or GR["Référence_GR1"].abs().max() <= 1
         ):
-            print(f"{filename}: ECOmode")
+            print(f"{filename}: mode=ECOmode")
         del GR
 
         # perform for selected key
-        (regimes, times, values, components) = trends(mdata, "t", key=f"{group}/{args.key}", window=1, threshold=0.5, show=False, save=args.save, debug=args.debug)
+        (regimes, times, values, components) = trends(mdata, "t", key=f"{pkey}", window=1, threshold=0.5, show=False, save=args.save, debug=args.debug)
         print(f"{filename} {pkey}: regimes={regimes}")    
+
+        (iregimes, itimes, ivalues, icomponents) = trends(mdata, "t", key=f"{group}/{channels_dict[args.key]}", window=1, threshold=0.5, show=False, save=args.save, debug=args.debug)
+        print(f"{filename} {group}{channels_dict[args.key]}: iregimes={iregimes}")    
 
         # perform for all uchannels    
         ugroup = "Tensions_Aimant"
         for uchannel in uchannels_dict[args.key]:
-            print(f"{filename}: {uchannel}", end="", flush=True)
-            (regimes, times, values, components) = trends(mdata, "t", key=f"{ugroup}/{uchannel}", window=1, threshold=0.05, show=False, save=args.save, debug=args.debug)
-            print(f": regimes={regimes}")
+            print(f"{filename} {ugroup}/{uchannel}: ", end="", flush=True)
+            (uregimes, utimes, uvalues, ucomponents) = trends(mdata, "t", key=f"{ugroup}/{uchannel}", window=1, threshold=1.e-2, show=False, save=args.save, debug=args.debug)
+            print(f"uregimes={uregimes}")
 
+        color_dict = {"U": "red", "P": "green", "D": "blue"}
+        my_ax = plt.gca()
+        mdata.plotData(x="t", y=pkey, ax=my_ax, normalize=True)
+        mdata.plotData(x="t", y=f"{group}/{channels_dict[args.key]}", ax=my_ax, normalize=True)
+        for uchannel in uchannels_dict[args.key]:
+            mdata.plotData(x="t", y=f"{ugroup}/{uchannel}", ax=my_ax, normalize=True)
+
+        t0 = 0
+        for i in range(1, len(regimes)):
+            #print(f'axvspan[{i}]: [{t0},{times[i]}], regime={regimes[i-1]}, color={color_dict[regimes[i-1]]}')
+            my_ax.axvspan(t0, times[i], facecolor=color_dict[regimes[i-1]], alpha=.5)
+            t0 = times[i]
+        t0 = 0
+        for i in range(1, len(iregimes)):
+            #print(f'axvspan[{i}]: [{t0},{itimes[i]}], regime={iregimes[i-1]}, color={color_dict[iregimes[i-1]]}')
+            my_ax.axvspan(t0, itimes[i], facecolor=color_dict[iregimes[i-1]], alpha=.5)
+            t0 = itimes[i]
+        
+        t0 = 0
+        for i in range(1, len(uregimes)):
+            #print(f'axvspan[{i}]: [{t0},{utimes[i]}], regime={uregimes[i-1]}, color={color_dict[uregimes[i-1]]}')
+            my_ax.axvspan(t0, utimes[i], facecolor=color_dict[uregimes[i-1]], alpha=.5)
+            t0 = utimes[i]
+
+        plt.xlabel('Normalized Field')
+        plt.show()
+        plt.close()
+
+        # extract data
+        df = pd.DataFrame(mdata.getTdmsData(group, [args.key, channels_dict[args.key]]))
+        t0 = mdata.Groups[group][args.key]["wf_start_time"]
+        dt = mdata.Groups[group][args.key]["wf_increment"]
+        df["timestamp"] = [
+            np.datetime64(t0).astype(datetime.datetime)
+            + datetime.timedelta(0, i * dt)
+            for i in df.index.to_list()
+        ]
+        print(f't0={t0}, dt={dt}, len={len(df)}')
+        if args.debug:
+            print(df.head())
+            print(df.tail())
+        df_.append(df)
+
+    df_overview = pd.concat(df_)
+    ot0 = df_overview.iloc[0]["timestamp"]
+    df_overview["t"] = df_overview.apply(
+        lambda row: (row.timestamp - ot0).total_seconds(),
+        axis=1,
+    )
     # search for Pupitre / Archive files
     pupitre = filenames[0].replace("_Overview_", "_")
     date = pupitre.split("_")
@@ -257,12 +333,6 @@ if __name__ == "__main__":
         print(f"Archive files: {archive_files}")
         print(f"Default files: {default_files}")
     
-
-    my_ax=plt.gca()
-    legends = []
-    for i, mdata in enumerate(mdatas):
-        legends.append(f"{filenames[i]}: {args.key}")
-        mdata.plotData(x="timestamp", y=pkey, ax=my_ax)
 
     print("\nMerge Archive files")
     df_ = []
@@ -296,9 +366,9 @@ if __name__ == "__main__":
         """
 
     df_archive = pd.concat(df_)
-    t0 = df_archive.iloc[0]["timestamp"]
+    at0 = df_archive.iloc[0]["timestamp"]
     df_archive["t"] = df_archive.apply(
-        lambda row: (row.timestamp - t0).total_seconds(),
+        lambda row: (row.timestamp - at0).total_seconds(),
         axis=1,
     )
     # df_archive.drop(["timestamp"], axis=1, inplace=True)
@@ -306,18 +376,23 @@ if __name__ == "__main__":
     if args.debug:
         print(df_archive.head())
         print(df_archive.tail())
-    df_archive.plot(x="timestamp", y=channel, ax=my_ax)
-    legends.append(f'{channel}')
 
     print("\nMerge Defauts")
+    incidents = []
     for defaultfile in natsorted(default_files):
         dfile = os.path.basename(defaultfile).replace('.tdms', "")
         (dsite, dmode, dtimestamp, dcomment) = dfile.split('_')
         ddate, dtime = dtimestamp.split('-')
         #convert ddate and dtime into a timestamp
         (timestamp, formatted_timestamp) = convert_to_timestamp(ddate, dtime)
-        print(f"{defaultfile} -> {dcomment} at {formatted_timestamp}")
-        # plot()
+        
+        mrun = MagnetRun.fromtdms(site, insert, defaultfile)
+        mdata = mrun.getMData()
+        t0 = mdata.Groups[group][args.key]["wf_start_time"]
+        print(f"{defaultfile} -> {dcomment} at {formatted_timestamp}, t0={t0}")
+        
+        incidents.append(t0)
+
 
     # make sure that site is unique
     site = filenames[0].split("_")[0]
@@ -328,9 +403,12 @@ if __name__ == "__main__":
         mrun = MagnetRun.fromtxt(site, insert, pfile)
         pfilename = os.path.basename(pfile).replace(f_extension, "")
         mdata = mrun.getMData()
+        # print(mdata.Keys)
         print(f'{pfilename} {pupitre_dict[site][args.key]}: ', end="", flush=True)
         df = pd.DataFrame(mdata.getData(["timestamp", pupitre_dict[site][args.key]]))
-        print(f't0={mdata.Data.iloc[0]["timestamp"]}')
+        print(f'{pfilename} t0={mdata.Data.iloc[0]["timestamp"]}, len={df.shape[0]}, duration={mdata.getDuration()} s')
+
+        find_duplicates(df, pfilename, "timestamp")
         if args.debug:
             print(df.head())
             print(df.tail())
@@ -345,40 +423,95 @@ if __name__ == "__main__":
             print(f"{filename} {uchannel}: regimes={regimes}")
         """
 
+    df_pupitre = pd.concat(df_)
+    pt0 = df_pupitre.iloc[0]["timestamp"]
+    df_pupitre["t"] = df_pupitre.apply(
+        lambda row: (row.timestamp - pt0).total_seconds(),
+        axis=1,
+    )
+
     msg = "(nosync)"
-    if df_:
-        pt0 = df_[0].iloc[0]["timestamp"]
-        if len(df_) > 1:
-            df_parchive = pd.concat(df_)
-        else:
-            df_parchive = df_[0]  
+    # synchronize pupitre with pigbrother overview
+    if args.synchronize:
+        print('synchronize pigbrother and pupitre data')
+        print("t0 (pigbrother overview):", ot0)
+        print("t0 (pigbrother archive):", at0)
+        print("t0 (pupitre):", pt0)
 
-        # synchronize pupitre with pigbrother overview
-        if args.synchronize:
-            msg = f'(synchronized on pigbrother {t0})'
-            print("t0 (pigbrother):", t0)
-            print("t0 (pupitre):", pt0)
-            print("diff t0 (pigbrother/pupitre):", t0 - pt0)
-            df_parchive["timestamp"] = df_parchive["timestamp"] + pd.to_timedelta(t0 - pt0)
-
-        npt0 = df_parchive.iloc[0]["timestamp"]
+        print("diff t0 (pigbrother/pupitre):", pt0 - ot0)
+        df_pupitre["timestamp"] = df_pupitre["timestamp"] + pd.to_timedelta(ot0 - pt0)
+        msg = f'(sync with pigbrother {(ot0 - pt0).totalseconds} s)'
         
-        df_parchive["t"] = df_parchive.apply(
-            lambda row: (row.timestamp - npt0).total_seconds(),
+        pt0 = df_pupitre.iloc[0]["timestamp"]
+        df_pupitre.drop(["t"], axis=1, inplace=True)
+        df_pupitre["t"] = df_pupitre.apply(
+           lambda row: (row.timestamp - pt0).total_seconds(),
             axis=1,
         )
-        # df_parchive.drop(["timestamp"], axis=1, inplace=True)
 
-        # plots
-        if args.debug:
-            print(df_parchive.head())
-            print(df_parchive.tail())
-        df_parchive.plot(x="timestamp", y=pupitre_dict[site][args.key], ax=my_ax)
-        legends.append(f'pupitre {pupitre_dict[site][args.key]}')
-        plt.legend(labels=legends)
+    # compute lag correlation
+    print('\nLag correlation: pupitre/pigbrother overview')
+    print("t0 (overview):", df_overview["timestamp"].iloc[0])
+    print("t0 (pupitre):", df_pupitre["timestamp"].iloc[0])
+    
+    # re-sample to make sure that the two dataframes have the same time index  
+    # get index min and max from timeseries
+    # create a new index from min(index min) and max(index max) with min() and max() retunrs an int 
+    # try to reindex
+    # take the series with the greatest number of rows as a reference
+    from math import floor, ceil
+    tmin = 0
+    tmax = 0
+    for df_ in [df_overview, df_pupitre]:
+        tmin = min(df_['t'].min(), tmin)
+        tmax = max(df_['t'].max(), tmax)
+        
+    new_index = [i for i in range(floor(tmin),ceil(tmax)+1)]
+    print(f"new_index: from {new_index[0]} to {new_index[-1]}")
 
+    ts_overview = df_overview.loc[:,["t", channels_dict[args.key]]]
+    ts_pupitre = df_pupitre.loc[:,["t", pupitre_dict[site][args.key]]]
+    ts_pupitre.set_index('t', inplace=True)
+    ts_overview.set_index('t', inplace=True)
+    ts_pupitre = ts_pupitre.iloc[:,0]
+    ts_overview = ts_overview.iloc[:,0]
+    
+    # reindex to make sure that timeseries share the same index 
+    ts_pupitre.reindex(new_index, method='ffill')
+    ts_overview.reindex(new_index, method='ffill')
+    if args.debug:
+        print('pupitre:', ts_pupitre.size, type(ts_pupitre))
+        print(ts_pupitre.head())
+        print(ts_pupitre.tail())
+        print('overview:', ts_overview.size, type(ts_overview))
+        print(ts_overview.head())
+        print(ts_overview.tail())
+        my_ax=plt.gca()
+        ts_pupitre.plot(style='.', ax=my_ax)
+        ts_overview.plot(style='o', ax=my_ax)
+        plt.grid()
+        plt.show()
 
-    plt.title(f'{filename}: {channel} {msg}')
+    lag = lag_correlation(ts_pupitre, ts_overview, start_index=0, end_index=None, show=args.show, save=args.save)
+
+    # plots
+
+    my_ax=plt.gca()
+    legends = [f"{args.key}"]
+    df_overview.plot(x="timestamp", y=args.key, ax=my_ax)
+
+    df_archive.plot(x="timestamp", y=channels_dict[args.key], ax=my_ax)
+    legends.append(f'{channels_dict[args.key]}')
+
+    df_pupitre.plot(x="timestamp", y=pupitre_dict[site][args.key], ax=my_ax)
+    legends.append(f'pupitre {pupitre_dict[site][args.key]}')
+    plt.legend(labels=legends)
+
+    # plot incidents
+    for incident in incidents:
+        plt.axvline(incident, color="red", alpha=.2, label="Incident")
+
+    plt.title(f'{title}: {args.key} {msg}')
     plt.grid()
     if args.show:
         plt.show()
@@ -386,24 +519,3 @@ if __name__ == "__main__":
         plt.savefig(f"{filename}-{channel}-concat.png", dpi=300)
     plt.close()
 
-    if df_:
-        # compute lag correlation
-        print("t0 (pigbrother):", df_archive["timestamp"].iloc[0])
-        print("t0 (pupitre):", df_parchive["timestamp"].iloc[0])
-        t0_diff =  df_archive["timestamp"].iloc[0] - df_parchive["timestamp"].iloc[0]
-        print("diff t0 (pigbrother-pupiptre):", t0_diff.seconds, "s")
-        df_parchive.drop(["timestamp"], axis=1, inplace=True)
-        df_archive.drop(["timestamp"], axis=1, inplace=True)
-        print(f"pigbrother data: {df_archive.keys()}")
-        print(f"pupitre data: {df_parchive.keys()}")
-        df_parchive.set_index('t', inplace=True)
-        df_archive.set_index('t', inplace=True)
-        if args.debug:
-            print("pupitre:", df_parchive[pupitre_dict[site][args.key]])
-            print("pigbrother:", df_archive[channels_dict[args.key]])
-        
-        # pseries = 
-        # series = 
-        lag = lag_correlation(df_parchive[pupitre_dict[site][args.key]], df_archive[channels_dict[args.key]], start_index=0, end_index=None, show=args.show, save=args.save)
-        print("lag:", df_archive.index[lag], "s")
-        print("lag: diff t0", df_archive.index[lag] - df_parchive.index[0])
