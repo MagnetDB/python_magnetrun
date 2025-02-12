@@ -440,7 +440,7 @@ if __name__ == "__main__":
 
         print("diff t0 (pigbrother/pupitre):", pt0 - ot0)
         df_pupitre["timestamp"] = df_pupitre["timestamp"] + pd.to_timedelta(ot0 - pt0)
-        msg = f'(sync with pigbrother {(ot0 - pt0).totalseconds} s)'
+        msg = f'(sync with pigbrother {(ot0 - pt0).total_seconds()} s)'
         
         pt0 = df_pupitre.iloc[0]["timestamp"]
         df_pupitre.drop(["t"], axis=1, inplace=True)
