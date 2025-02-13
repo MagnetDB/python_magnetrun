@@ -19,7 +19,7 @@ Python `MagnetRun` contains utilities to view and analyze Magnet runs
 
 To install in a python virtual env on Linux
 
-For Linux/Mac Os X:
+For Linux/Mac OS X:
 
 ```bash
 $ python3 -m venv [--system-site-packages] magnetrun-env
@@ -44,8 +44,8 @@ To quit the virtual env, run `deactivate`.
 
 You can:
 
-* get data from `Pupitre`using `python_magnetrun.requests.cli` as described in the next section.
-* or, mount `Pupitre`data directory ??
+* Get data from `Pupitre`using `python_magnetrun.requests.cli` as described in the next section.
+* Or, mount `Pupitre`data directory ??
 
 ## `PigBrother`
 
@@ -196,7 +196,7 @@ python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms  stat
 
 - check field factor (not working properly since Ih and Ib are "piecewise" dependant)
 
-better way to do this - see python_magnetrun/corr_Ih_Ib.py with algo=piecewise-regression or pwlf
+Better way to do this - see python_magnetrun/corr_Ih_Ib.py with algo=piecewise-regression or pwlf
 once the number of breakpoints are known.
 
 
@@ -238,12 +238,11 @@ strong multicollinearity or other numerical problems.
 Intercept: 1.6196286010253166e-06, A: 0.0008915003451151302, B: 0.0003765980765178872
 ```
 
-from [MagnetInfo](https://labs.core-cloud.net/ou/UPR3228/MagnetInfo/SitePages/Field-maps.aspx?web=1), we get the field factors
-in the table for M9: fh=8.915 unit? , fB=3.766 unit?
+From [MagnetInfo](https://labs.core-cloud.net/ou/UPR3228/MagnetInfo/SitePages/Field-maps.aspx?web=1), we get the field factors in the table for M9: fh=8.915, fB=3.766 unit?
 
-Pb here is that Ih and Ib are actually colinear - at least in piecewise manner
+Pb here is that Ih and Ib are actually colinear - at least in piecewise manner.
 
-- perform piecewise linear regression
+- Perform piecewise linear regression
 
  - piecewise_regression for Ih and Ib
 ```bash
@@ -257,12 +256,13 @@ python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --x
 python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey t --ykey Field --algo pwlf --breakpoints 11
 ```
 
- - ruptures is not working properly ??
+ - `ruptures` is not working properly ??
+ -
 ```bash
 python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey t --ykey Field --algo ruptures --breakpoints 11
 ```
 
-- parameters identification
+- Parameters identification
 
 
 
@@ -272,16 +272,16 @@ python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --x
 
 Refactor:
 - [ ] Split argparse options into separate python files
-- [ ] add an example / a test for each subcommand in python_magnetrun
-- [ ] store stats (which? + plateaus?) data (+ duration) in a dataframe, csv file or a db
+- [ ] Add an example / a test for each subcommand in python_magnetrun
+- [ ] Store stats (which? + plateaus?) data (+ duration) in a dataframe, csv file or a db
 
 Docs:
-- [X] docs for aggregate
-- [ ] add a note to mount pigbrother data
-- [ ] add note to mount pupitre data if applicable
+- [X] Docs for aggregate
+- [X] Add a note to mount pigbrother data
+- [ ] Add note to mount pupitre data if applicable
 
 Features:
-- [ ] magnetrun actually performs "ETL", can I store processed pupitre data into specific file format??
+- [ ] Magnetrun actually performs "ETL", can I store processed pupitre data into specific file format??
 
 - [ ] Rewrite txt2csv to use methods in `utils` and `plots` ?done?
 - [X] For `tdms` to pandas see
@@ -296,24 +296,24 @@ Features:
 - [ ] Get `MagnetRun` files directly from control/monitoring system??
 - [ ] For `MagnetRun` add missing fields [U1, Pe1, Tout1, U2 \...\], `--missing, \--nhelices` - see `txt2csv.py` - link with magnetdb (aka depends on msite configs)
 
-- [ ] for plot with multiple keys, improve legend, save df with only selected fields??
-- [ ] for select, add multiple criteria - actually only one field value or threshold
+- [ ] For plot with multiple keys, improve legend, save df with only selected fields??
+- [ ] For select, add multiple criteria - actually only one field value or threshold
 
 - [ ] Test piecewise linear regression or polynomial
 - [ ] Cross lag correlations (see chatgpg discussions)
 
 Usage:
 - [ ] systematic check of TinH and TinB?
-- [ ] view teb data on daily, monthly, yearly
+- [ ] View teb data on daily, monthly, yearly
 - [ ] teb forecast from previous data??
-- [ ] check independant variables (Ih, Teb, ?Qbrut?) on "plateau" exp - as Ib=f(Ih) with f piece wise 1order polynomial
-- [ ] extract data from magnet confile?
+- [ ] Check independant variables (Ih, Teb, Qbrut?) on "plateau" exp - as Ib=f(Ih) with f piece wise 1order polynomial
+- [ ] Extract data from magnet confile?
 
-- [ ] link with magnet user db - see xdds.csv
+- [ ] Link with magnet user db - see xdds.csv
 - [ ] classification of Field profile
-- [ ] data from supra??
-- [ ] link with magnettools/hifimagnet for R(i) and L(i)
-- [ ] extract R(i), L(i) from U,I timeseries - see chatgpt
+- [ ] Data from supra??
+- [ ] Link with magnettools/hifimagnet for R(i) and L(i)
+- [ ] extract R(i), L(i) from U, I timeseries - see chatgpt
 - [ ] estimation of heat exhchanger params - see NTU and cooling directory
 - [ ] Talim: calorimetric balance to get/estimate disspated power in AC/DC converters
 
