@@ -894,6 +894,9 @@ class MagnetData:
                 else:
                     t0 = self.Data.iloc[0]["timestamp"]
 
+                from .utils.duplicates import find_duplicates
+                self.Data = find_duplicates(self.Data, self.FileName, "timestamp")
+
                 self.Data["t"] = self.Data.apply(
                     lambda row: (row.timestamp - t0).total_seconds(),
                     axis=1,
