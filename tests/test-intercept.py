@@ -4,16 +4,12 @@ idea from chatgpt
 
 import os
 import pandas as pd
-import statsmodels.api as sm
 from sklearn.linear_model import LinearRegression
 
 from python_magnetrun.MagnetRun import MagnetRun
-from python_magnetrun..processing.smoothers import savgol
+from python_magnetrun.processing.smoothers import savgol
 
-import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib import gridspec
 
 import argparse
 
