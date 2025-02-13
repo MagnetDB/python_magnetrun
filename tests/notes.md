@@ -1,46 +1,35 @@
-= lag correlation on slice
+= records
 
-```python
-from scipy.signal import correlate
-import matplotlib.pyplot as plt
-
-# Select a slice of the time series
-start_index = 2000
-end_index = 2500
-time_series_slice = series[start_index:end_index]
-trend_slice = trend_component[start_index:end_index]
-
-# Drop NaN values from trend slice
-trend_slice = trend_slice[~np.isnan(trend_slice)]
-time_series_slice = time_series_slice[-len(trend_slice):]
-
-# Compute cross-correlation
-correlation = correlate(time_series_slice - np.mean(time_series_slice), trend_slice - np.mean(trend_slice))
-lags = np.arange(-len(correlation)//2 + 1, len(correlation)//2 + 1)
-
-# Find the lag with maximum correlation
-lag = lags[np.argmax(correlation)]
-
-# Plot the results
-plt.figure(figsize=(12, 6))
-plt.subplot(2, 1, 1)
-plt.plot(time_series_slice, label='Time Series Slice')
-plt.plot(trend_slice, label='Trend Slice', color='red')
-plt.title('Time Series Slice and Trend Slice')
-plt.legend()
-
-plt.subplot(2, 1, 2)
-plt.plot(lags, correlation, label='Cross-Correlation')
-plt.axvline(lag, color='red', linestyle='--', label=f'Lag = {lag}')
-plt.title('Cross-Correlation between Time Series Slice and Trend Slice')
-plt.xlabel('Lag')
-plt.ylabel('Cross-Correlation')
-plt.legend()
-plt.show()
-
-print(f"Estimated lag: {lag} for {start_index} to {end_index}")
+```bash
+python -m python_magnetrun.analysis  pigbrotherdata/Fichiers_Data/M9/Overview/M9_Overview_240509-*.tdms --key Référence_GR1 --show --synchronize
 ```
 
+- `M10_2019.05.30---17:22:17.txt`: missing data for `Flow`
+- `M10_2019.06.26---23:07:35.txt`: strange data for `tsb`
+- `M10_2020.10.23---20.10.41.txt`: example plateau at 30 teslas
+
+- `M9_Overview_240509-1634.tdms`: example anomalies on `Interne6` and `Interne7`
+- `M9_Overview_240716-*.tdms`: example with default `tdms` files
+
+Petit bilan de la dernière semaine de manip RMN sur M9 concernant l'instabilité de la polyhélice,
+
+Jour : durée - nombre de détections*
+mercredi 31/07 : 8:30 - 278
+jeudi : 8:00 - 115
+vendredi : 7:30 - 190
+samedi : 7:00 - 351
+dimanche 04/08 : 4:20 - 936
+*détection = Pic en tension sur un des couples d'hélice (principalement 6-7 dans notre cas), cf. rapport illustratif.
+
+Examples anomalies in `pigbrotherdata/Fichiers_Data/M9/Fichiers_Spike/M9_Spikes_*.tdms`
+
+= lag correlation
+
+Not working properly why???
+
+= Gaussian peaks
+
+see https://github.com/emilyripka/BlogRepo/blob/master/181119_PeakFitting.ipynb
 = multiple plots
 
 ```python
@@ -52,7 +41,7 @@ fig.suptitle('Aligning x-axis using sharex')
 ax1.plot(x, y)
 ax2.plot(x + 1, -y)
 ```
- 
+
 = zscore
 
 ```python
