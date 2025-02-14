@@ -69,7 +69,7 @@ def lag_correlation(data1: dict, data2: dict, show: bool=False, save: bool=False
     end_index1 = data1["range"]["end"]
 
     trend = data2["df"]
-    name_trend = data1["field"]
+    name_trend = data2["field"]
     start_index2 = data2["range"]["start"]
     end_index2 = data2["range"]["end"]
 
@@ -121,7 +121,7 @@ def lag_correlation(data1: dict, data2: dict, show: bool=False, save: bool=False
     plt.subplot(2, 1, 1)
     plt.plot(time_series_slice, label=name_series)
     plt.plot(trend_slice, label=name_trend, color='red')
-    plt.plot(time_trend_slice_lag, label=f'{name_series} with lag {lag}s', color='green')
+    plt.plot(time_trend_slice_lag, label=f'{name_series} with lag {lag}s', color='green', marker="o", linestyle='None', alpha=0.2)
     plt.title(f'{name_series} and {name_trend}')
     plt.legend()
     plt.grid(True)
@@ -550,45 +550,47 @@ if __name__ == "__main__":
     ts_overview.set_index('timestamp', inplace=True)
     ts_pupitre = ts_pupitre.iloc[:,0]
     ts_overview = ts_overview.iloc[:,0]
-    # if args.debug:
-    print('before reindex')
-    print('pupitre:', ts_pupitre.size, type(ts_pupitre))
-    print(ts_pupitre.head())
-    print(ts_pupitre.tail())
-    print('overview:', ts_overview.size, type(ts_overview))
-    print(ts_overview.head())
-    print(ts_overview.tail())
-    my_ax=plt.gca()
-    ts_pupitre.plot(style='.', ax=my_ax)
-    ts_overview.plot(style='o', alpha=0.5, ax=my_ax)
-    plt.title('before reindex')
-    plt.grid()
-    plt.show()
+    if args.debug:
+        print('before reindex')
+        print('pupitre:', ts_pupitre.size, type(ts_pupitre))
+        print(ts_pupitre.head())
+        print(ts_pupitre.tail())
+        print('overview:', ts_overview.size, type(ts_overview))
+        print(ts_overview.head())
+        print(ts_overview.tail())
+        my_ax=plt.gca()
+        ts_pupitre.plot(style='.', ax=my_ax)
+        ts_overview.plot(style='o', alpha=0.5, ax=my_ax)
+        plt.title('before reindex')
+        plt.grid()
+        plt.show()
 
     # reindex to make sure that timeseries share the same index
     ts_pupitre.resample('1s') #.reindex(new_index, method='ffill')
     ts_overview.resample('1s') #.reindex(new_index, method='ffill')
-    # if args.debug:
-    print('after reindex')
-    print('pupitre:', ts_pupitre.size, type(ts_pupitre))
-    print(ts_pupitre.head())
-    print(ts_pupitre.tail())
-    print('overview:', ts_overview.size, type(ts_overview))
-    print(ts_overview.head())
-    print(ts_overview.tail())
-    my_ax=plt.gca()
-    ts_pupitre.plot(style='.', ax=my_ax)
-    ts_overview.plot(style='o', alpha=0.5, ax=my_ax)
-    plt.title('after reindex')
-    plt.grid()
-    plt.show()
+    if args.debug:
+        print('after reindex')
+        print('pupitre:', ts_pupitre.size, type(ts_pupitre))
+        print(ts_pupitre.head())
+        print(ts_pupitre.tail())
+        print('overview:', ts_overview.size, type(ts_overview))
+        print(ts_overview.head())
+        print(ts_overview.tail())
+        my_ax=plt.gca()
+        ts_pupitre.plot(style='.', ax=my_ax)
+        ts_overview.plot(style='o', alpha=0.5, ax=my_ax)
+        plt.title('after reindex')
+        plt.grid()
+        plt.show()
 
+    # return the index of the element whci equals 7 in myseries: Index(myseries).get_loc(7)
+    # get index from its positions?
     ts_pupitre_data = {
         "field": ts_pupitre_field,
         "df": ts_pupitre,
         "range" : {
-            "start": 0,
-            "end": 1000
+            "start":  ts_pupitre_field.index[0],
+            "end": 500
         }
     }
     ts_overview_data = {
@@ -596,7 +598,7 @@ if __name__ == "__main__":
         "df": ts_overview,
         "range" : {
             "start": 1000,
-            "end": 2100
+            "end": 1500
         }
     }
     lag = lag_correlation(ts_pupitre_data, ts_overview_data, show=args.show, save=args.save,)
