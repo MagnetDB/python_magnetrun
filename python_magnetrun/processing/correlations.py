@@ -4,16 +4,105 @@ import matplotlib.pyplot as plt
 
 from ..magnetdata import MagnetData
 
+def lag_correlation(data1: dict, data2: dict, show: bool=False, save: bool=False, debug: bool=False):
+    """_summary_
 
-def lagged_correlation(df, target, key, t):
+    :param data1: _description_
+    :type data1: dict
+    :param data2: _description_
+    :type data2: dict
+    :param show: _description_, defaults to False
+    :type show: bool, optional
+    :param save: _description_, defaults to False
+    :type save: bool, optional
+    :param debug: _description_, defaults to False
+    :type debug: bool, optional
+    :return: _description_
+    :rtype: _type_
     """
-    Compute lag correlation between target and key df column
-    """
 
-    lagged_correlation = df[target].corr(df[key].shift(+t))
-    print("type(lagged_correlation):", type(lagged_correlation))
-    print("lagged_correlation(t=%g):" % t, lagged_correlation)
+    from scipy.signal import correlate, correlation_lags
 
+    series = data1["df"]
+    name_series = data1["field"]
+    start_index1 = data1["range"]["start"]
+    end_index1 = data1["range"]["end"]
+
+    trend = data2["df"]
+    name_trend = data2["field"]
+    start_index2 = data2["range"]["start"]
+    end_index2 = data2["range"]["end"]
+
+    # Select a slice of the time series
+    if start_index1 != 0:
+        if end_index1 is not None:
+            time_series_slice = series[start_index1:end_index1]
+        else:
+            time_series_slice = series[start_index1:]
+    else:
+        if end_index1 is not None:
+            time_series_slice = series[:end_index1]
+        else:
+            time_series_slice = series
+
+    # Select a slice of the trend series
+    if start_index2 != 0:
+        if end_index2 is not None:
+            trend_slice = trend[start_index2:end_index2]
+        else:
+            trend_slice = trend[start_index2:]
+    else:
+        if end_index2 is not None:
+            trend_slice = trend[:end_index2]
+        else:
+            trend_slice = trend
+
+    # Drop NaN values from trend slice
+    # trend_slice = trend_slice[~np.isnan(trend_slice)]
+    # time_series_slice = time_series_slice[-len(trend_slice):]
+
+    # Compute cross-correlation
+    # correlation = correlate(time_series_slice - np.mean(time_series_slice), trend_slice - np.mean(trend_slice))
+    correlation = correlate(time_series_slice -time_series_slice.mean(), trend_slice -trend_slice.mean())
+    lags = correlation_lags(time_series_slice.size, trend_slice.size, mode="full")
+
+    # Find the lag with maximum correlation
+    lag = lags[np.argmax(correlation)]
+
+    time_trend_slice_lag = time_series_slice.copy()
+    
+    time_shift = pd.to_timedelta(f'{lag}s')
+    time_trend_slice_lag.index = time_trend_slice_lag.index+time_shift
+    print("after lag")
+    print(time_trend_slice_lag.head())
+
+    # Plot the results
+    plt.figure(figsize=(12, 6))
+    plt.subplot(2, 1, 1)
+    plt.plot(time_series_slice, label=name_series)
+    plt.plot(trend_slice, label=name_trend, color='red')
+    plt.plot(time_trend_slice_lag, label=f'{name_series} with lag {lag}s', color='green', marker="o", linestyle='None', alpha=0.2)
+    plt.title(f'{name_series} and {name_trend}')
+    plt.legend()
+    plt.grid(True)
+
+    plt.subplot(2, 1, 2)
+    plt.plot(lags, correlation, label='Cross-Correlation')
+    plt.axvline(lag, color='red', linestyle='--', label=f'Lag = {lag}')
+    plt.title(f'Cross-Correlation between {name_series} and {name_trend}')
+    plt.xlabel('Lag')
+    plt.ylabel('Cross-Correlation')
+    plt.legend()
+    plt.grid(True)
+    if save:
+        plt.savefig("lag_correlation.png", dpi=300)
+    if show:
+        plt.show()
+    plt.close()
+
+    return time_shift
+
+# To check
 
 def pearson(
     Data: MagnetData,
@@ -27,6 +116,7 @@ def pearson(
 
     ref: https://www.kaggle.com/code/adepvenugopal/time-series-correlation-pearson-tlcc-dtw
     """
+    from scipy import stats
 
     nFields = len(fields)
     if isinstance(Data, pd.DataFrame):

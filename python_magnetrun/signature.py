@@ -7,11 +7,12 @@ from python_magnetrun.magnetdata import MagnetData
 
 class Signature:
     def __init__(self, name: str, symbol: str, unit: str, t0: datetime,
-                 regimes: List[str], times: List[float], values: List[float]):
+                 changes: List[int], regimes: List[str], times: List[float], values: List[float]):
         self._name = name
         self._symbol = symbol
         self._unit = unit
         self._t0 = t0
+        self._changes = changes
         self._regimes = regimes
         self._times = times
         self._values = values
@@ -52,6 +53,15 @@ class Signature:
     def t0(self, value: datetime):
         self._t0 = value
 
+    # Getter and setter for changes
+    @property
+    def changes(self) -> List[int]:
+        return self._changes
+
+    @changes.setter
+    def changes(self, value: List[int]):
+        self._changes = value
+
     # Getter and setter for regimes
     @property
     def regimes(self) -> List[str]:
@@ -60,7 +70,6 @@ class Signature:
     @regimes.setter
     def regimes(self, value: List[str]):
         self._regimes = value
-
     # Getter and setter for times
     @property
     def times(self) -> List[float]:
@@ -96,6 +105,7 @@ class Signature:
         """
         from .processing.trends import trends
         
+        t0 = datetime.now()
         (symbol, unit) = mdata.getUnitKey(key)
         match mdata.Data:
             case pd.DataFrame():
@@ -104,12 +114,12 @@ class Signature:
                 (group, channel) = key.split("/")
                 t0 = mdata.Groups[group][channel]["wf_start_time"]
             
-        (regimes, times, values, components) = trends(mdata, tkey, key, window=1, threshold=threshold, show=False, save=False, debug=True)
+        (changes, regimes, times, values, components) = trends(mdata, tkey, key, window=1, threshold=threshold, show=False, save=False, debug=True)
 
         return cls(name=key, symbol=symbol, unit=unit, t0=t0,
-                   regimes=regimes, times=times, values=values)
+                   changes=changes, regimes=regimes, times=times, values=values)
     
     def __repr__(self):
         return (f"Signature(name={self.name}, symbol={self.symbol}, unit={self.unit}, "
-                f"t0={self.t0}, regimes={self.regimes}, times={self.times}, values={self.values})")
+                f"t0={self.t0}, changes={self.changes}, regimes={self.regimes}, times={self.times}, values={self.values})")
 
