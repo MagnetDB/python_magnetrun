@@ -10,6 +10,10 @@ python -m python_magnetrun.analysis  pigbrotherdata/Fichiers_Data/M9/Overview/M9
 
 - `M9_Overview_240509-1634.tdms`: example anomalies on `Interne6` and `Interne7`
 - `M9_Overview_240716-*.tdms`: example with default `tdms` files
+- `M9_Overview_240511-1150.tdms`: trou de 10s dans M9_2024.05.11---11:50:20.txt ()
+
+2024.05.11	11:50:40	...	
+2024.05.11	11:50:50	...	
 
 Petit bilan de la dernière semaine de manip RMN sur M9 concernant l'instabilité de la polyhélice,
 
@@ -22,6 +26,7 @@ dimanche 04/08 : 4:20 - 936
 *détection = Pic en tension sur un des couples d'hélice (principalement 6-7 dans notre cas), cf. rapport illustratif.
 
 Examples anomalies in `pigbrotherdata/Fichiers_Data/M9/Fichiers_Spike/M9_Spikes_*.tdms`
+
 
 = lag correlation
 
@@ -41,6 +46,38 @@ fig.suptitle('Aligning x-axis using sharex')
 ax1.plot(x, y)
 ax2.plot(x + 1, -y)
 ```
+
+= plot enveloppe
+
+```python
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Example data
+x = np.linspace(0, 10, 100)
+y = np.sin(x)  # Measured values
+y_err = 0.1 * np.random.rand(100)  # Example uncertainties
+
+# Calculate envelope
+y_upper = y + y_err
+y_lower = y - y_err
+
+# Plot
+plt.figure()
+plt.plot(x, y, label="Measured Field", color="blue")  # Plot the measured values
+plt.fill_between(x, y_lower, y_upper, color="lightblue", alpha=0.5, label="Uncertainty Envelope")  # Plot the envelope
+plt.xlabel("X-axis")
+plt.ylabel("Y-axis")
+plt.title("Measured Field with Uncertainty Envelope")
+plt.legend()
+plt.grid(True)
+plt.show()
+```
+
+= timeseries index
+
+* return the index of the element which equals 7 in myseries: Index(myseries).get_loc(7)
+* get index from its positions?
 
 = zscore
 

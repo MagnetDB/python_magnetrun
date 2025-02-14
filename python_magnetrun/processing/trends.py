@@ -58,6 +58,8 @@ def trends(mdata: MagnetData, tkey: str, key: str, window: int=1, threshold: flo
     import numpy as np
     import os
 
+    df = pd.DataFrame()
+    
     (symbol, unit) = mdata.getUnitKey(key)
     
     match mdata.Data:
@@ -85,7 +87,7 @@ def trends(mdata: MagnetData, tkey: str, key: str, window: int=1, threshold: flo
         print(tabulate(describe_list, headers='keys', tablefmt='psql'))
 
     # Perform piecewise linear approximation
-    # !! use index and not 't' column !!
+    # !! use index and not 'key' column !!
     result = seasonal_decompose(df[key], model='additive',period=window)
 
     filename = mdata.FileName
@@ -146,4 +148,4 @@ def trends(mdata: MagnetData, tkey: str, key: str, window: int=1, threshold: flo
         plt.show()
     plt.close()
 
-    return (regimes, times, values, result)
+    return (changes, regimes, times, values, result)
