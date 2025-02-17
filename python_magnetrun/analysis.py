@@ -17,8 +17,9 @@ matplotlib.rcParams["text.usetex"] = True
 
 from .utils.convert import convert_to_timestamp
 from .processing.correlations import lag_correlation
+from .signature import Signature
 from math import floor, ceil
-        
+
 if __name__ == "__main__":
     import sys
 
@@ -52,7 +53,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--window", help="stopping criteria for nlopt", type=int, default=10
     )
-    parser.add_argument("--synchronize", help="synchronize pigbrother and pupitre data", action="store_true")
+    parser.add_argument("--synchronize", help="rolling window size", action="store_true")
     args = parser.parse_args()
     print(f"args: {args}", flush=True)
 
@@ -95,42 +96,42 @@ if __name__ == "__main__":
     }
     threshold_dict = {
         "Référence_GR1": 0.5,
-        "Courant_GR1": 0.5,
+        "Courant_GR1": 1,
         "ALL_internes": 0.1,
         "Interne1": 1.e-2,
         "Interne2": 1.e-2,
-        "Interne3": 1.e-2, 
-        "Interne4": 1.e-2, 
-        "Interne5": 1.e-2, 
-        "Interne6": 1.e-2, 
+        "Interne3": 1.e-2,
+        "Interne4": 1.e-2,
+        "Interne5": 1.e-2,
+        "Interne6": 1.e-2,
         "Interne7": 1.e-2,
         "Référence_GR2": 0.5,
-        "Courant_GR2": 0.5,
-        "ALL_externes": 0.1, 
-        "Externe1": 1.e-2, 
+        "Courant_GR2": 1,
+        "ALL_externes": 0.1,
+        "Externe1": 1.e-2,
         "Externe2": 1.e-2,
         "IH": 1,
-        "UH": 0.1, 
-        "Ucoil1": 1.e-2, 
+        "UH": 0.1,
+        "Ucoil1": 1.e-2,
         "Ucoil2": 1.e-2,
-        "Ucoil3": 1.e-2, 
+        "Ucoil3": 1.e-2,
         "Ucoil4": 1.e-2,
-        "Ucoil5": 1.e-2, 
+        "Ucoil5": 1.e-2,
         "Ucoil6": 1.e-2,
-        "Ucoil7": 1.e-2, 
-        "Ucoil8": 1.e-2, 
+        "Ucoil7": 1.e-2,
+        "Ucoil8": 1.e-2,
         "Ucoil9": 1.e-2,
-        "Ucoil10": 1.e-2, 
+        "Ucoil10": 1.e-2,
         "Ucoil11": 1.e-2,
-        "Ucoil12": 1.e-2, 
+        "Ucoil12": 1.e-2,
         "Ucoil13": 1.e-2,
-        "Ucoil14": 1.e-2, 
+        "Ucoil14": 1.e-2,
         "IB": 1,
-        "UB": 0.1, 
-        "Ucoil15": 1.e-2, 
-        "Ucoil16": 1.e-2
+        "UB": 0.1,
+        "Ucoil15": 0.1,
+        "Ucoil16": 0.1
     }
-    print(list(threshold_dict.keys()))
+    # print(list(threshold_dict.keys()))
 
     # Set variables to avoid unbound warning
     insert = ""
@@ -140,6 +141,9 @@ if __name__ == "__main__":
     f_extension = ""
 
     input_files = natsorted(args.input_file)
+    pupitre_files_selected = []
+    archive_files_selected = []
+    
     filenames = []
     mdatas = []
     df_ = []
@@ -151,7 +155,7 @@ if __name__ == "__main__":
         dirname = os.path.dirname(file)
         filename = os.path.basename(file).replace(f_extension, "")
         filenames.append(filename)
-        print(f"dirname={dirname}, filename={filename}: ", end="", flush=True)
+        print(f"dirname={dirname}, filename={filename}: ", flush=True)
 
         result = filename.startswith("M")
         insert = "tututu"
@@ -166,7 +170,7 @@ if __name__ == "__main__":
     #pupitre_filter = f"{pupitre_datadir}/{site}_20{time[0][0:2]}.{time[0][2:4]}.{time[0][4:]}---{time[1][0:2]}:{time[1][2:]}:*.txt"
     pupitre_filter = f"{pupitre_datadir}/{site}_20{time[0][0:2]}.{time[0][2:4]}.{time[0][4:]}---*.txt"
     if args.debug:
-        print(f"\npupitre: {pupitre_filter}")
+        print(f"\npupitre_filter: {pupitre_filter}")
 
     pigbrother = filenames[0].replace("Overview", "Archive")
     time = filenames[0].split("-")
@@ -212,11 +216,17 @@ if __name__ == "__main__":
     oivalues = []
     oicomponents = []
 
+    pupitre_files_dict = {}
+    archive_files_dict = {}
+    pkey = f"{group}/{args.key}"
+
+    print(f"\nMerge Overview: {len(input_files)}")
     for i,file in enumerate(input_files):
         f_extension = os.path.splitext(file)[-1]
 
         dirname = os.path.dirname(file)
         filename = os.path.basename(file).replace(f_extension, "")
+        print(f'{filename} {group}/{args.key}: ', end="", flush=True)
 
         result = filename.startswith("M")
         insert = "tututu"
@@ -230,32 +240,69 @@ if __name__ == "__main__":
         (psite, pmode, ptimestamp) = filename.split("_")
         pdate, ptime = ptimestamp.split('-')
         (timestamp, formatted_timestamp) = convert_to_timestamp(pdate, ptime)
-        print(f'timestamp={formatted_timestamp}, ', end="", flush=True)
-        pkey = f"{group}/{args.key}"
+        print(f'time={timestamp}, timestamp={formatted_timestamp}, ', end="", flush=True)
         ot0 = mdata.Groups[group][args.key]["wf_start_time"]
-        print(f'ot0 = {ot0} (type: {type(ot0)})')
+        print(f'ot0 = {ot0}')
 
+        pupitre_files_dict[file] = []
+        for pfile in pupitre_files:
+            pfilename = os.path.basename(pfile).replace('.txt', "")
+            (psite, ptimestamp) = pfilename.split("_")
+            pdate, ptime = ptimestamp.split('---')
+            # remove seconds
+            (ptimestamp, formatted_ptimestamp) = convert_to_timestamp(pdate, ptime[:-3], date_format= "%Y.%m.%d", time_format="%H:%M")
+            # print(f"{pfilename} timestamp={formatted_timestamp}, timestamp={formatted_ptimestamp}", end=" ", flush=True)
+            if formatted_ptimestamp >= formatted_timestamp:
+                pupitre_files_dict[file].append(pfile)
 
+        for value in pupitre_files_dict.values():
+            pupitre_files_selected += value
+        pupitre_files_selected = natsorted(pupitre_files_selected)
+        print(f"\nSelected Pupitre: {pupitre_files_selected}")
+
+        archive_files_dict[file] = []
+        for afile in archive_files:
+            afilename = os.path.basename(afile).replace('.tdms', "")
+            (asite, amode, atimestamp) = afilename.split("_")
+            adate, atime = atimestamp.split('-')
+            # remove seconds
+            (atimestamp, formatted_atimestamp) = convert_to_timestamp(adate, atime)
+            # print(f"{afilename} timestamp={formatted_timestamp}, timestamp={formatted_atimestamp}", end=" ", flush=True)
+            if formatted_atimestamp >= formatted_timestamp:
+                archive_files_dict[file].append(afile)
+
+        archive_files_selected = []
+        for value in archive_files_dict.values():
+            archive_files_selected += value
+        archive_files_selected = natsorted(archive_files_selected)
+        print(f"\nSelected archive: {archive_files_selected}")
 
         # check ECO mode: "Référence_GR1" != "Référence_GR2"
-        GR = mdata.getData(
-            ["Courants_Alimentations/Référence_GR1", "Courants_Alimentations/Référence_GR2"]
-        ).copy()
-        GR.loc[:, "diff"] = GR.loc[:,"Référence_GR2"] - GR.loc[:,"Référence_GR1"]
+        bitter_only = True
+        if "Courants_Alimentations/Référence_GR1" in mdata.getKeys() and "Courants_Alimentations/Référence_GR2" in mdata.getKeys():
+            GR = mdata.getData(
+                ["Courants_Alimentations/Référence_GR1", "Courants_Alimentations/Référence_GR2"]
+            ).copy()
+            GR.loc[:, "diff"] = GR.loc[:,"Référence_GR2"] - GR.loc[:,"Référence_GR1"]
 
-        if GR["diff"].abs().max() > 5 and not (
-            GR["Référence_GR2"].abs().max() <= 1 or GR["Référence_GR1"].abs().max() <= 1
-        ):
-            print(f"{filename}: mode=ECOmode")
-        del GR
+            if GR["diff"].abs().max() > 5 and not (
+                GR["Référence_GR2"].abs().max() <= 1 or GR["Référence_GR1"].abs().max() <= 1
+            ):
+                print(f"{filename}: mode=ECOmode")
+            del GR
 
         # perform for selected key
+        osignature = Signature.from_mdata(mdata, pkey, "t", threshold_dict[args.key])
+        print("osignature:", osignature.regimes)
+        osignature.dump(filename)
+
         (ochange, oregime, otime, ovalue, ocomponent) = trends(mdata, "t", key=f"{pkey}", window=1, threshold=threshold_dict[args.key], show=False, save=args.save, debug=args.debug)
         ochanges.append(ochange)
         oregimes.append(oregime)
         otimes.append(otime)
         ovalues.append(ovalue)
         ocomponents.append(ocomponent)
+        #if args.debug:
         print(f"{filename} {pkey}: regimes={oregime}")
 
         (ichange, iregime, itime, ivalue, icomponent) = trends(mdata, "t", key=f"{group}/{channels_dict[args.key]}", window=1, threshold=threshold_dict[channels_dict[args.key]], show=False, save=args.save, debug=args.debug)
@@ -264,9 +311,10 @@ if __name__ == "__main__":
         oitimes.append(itime)
         oivalues.append(ivalue)
         oicomponents.append(icomponent)
-        print(f"{filename} {group}{channels_dict[args.key]}: ichanges={ichange}")
-        print(f"{filename} {group}{channels_dict[args.key]}: iregimes={iregime}")
-        print(f"{filename} {group}{channels_dict[args.key]}: itimes={itime}")
+        if args.debug:
+            print(f"{filename} {group}{channels_dict[args.key]}: ichanges={ichange}")
+            print(f"{filename} {group}{channels_dict[args.key]}: iregimes={iregime}")
+            print(f"{filename} {group}{channels_dict[args.key]}: itimes={itime}")
 
         # perform for all uchannels
         uchanges = []
@@ -274,23 +322,35 @@ if __name__ == "__main__":
         utimes = []
         uvalues = []
         ucomponents = []
-        for uchannel in uchannels_dict[args.key]:
-            print(f"{filename} {ugroup}/{uchannel}: ", end="", flush=True)
-            (uchange, uregime, utime, uvalue, ucomponent) = trends(mdata, "t", key=f"{ugroup}/{uchannel}", window=1, threshold=threshold_dict[uchannel], show=False, save=args.save, debug=args.debug)
-            uchanges.append(uchange)
-            uregimes.append(uregime)
-            utimes.append(utime)
-            uvalues.append(uvalue)
-            ucomponents.append(ucomponent)
-            print(uregime)
-            # print(f'{uchannel}: utime={utime}')
-            
+
+        # if only one reference, Bitter only exp
+        uprobes = uchannels_dict[args.key]
+        if bitter_only:
+            uprobes = ["ALL_externes", 'Externe1', 'Externe2']
+            print('!!! Selecting only U probes for Bitter !!!')
+        for uchannel in uprobes :
+            print(f'uchannel={uchannel}', end="")
+            if f"{ugroup}/{uchannel}" in mdata.getKeys():
+                if args.debug: print(f"{filename} {ugroup}/{uchannel}: ", end="", flush=True)
+                (uchange, uregime, utime, uvalue, ucomponent) = trends(mdata, "t", key=f"{ugroup}/{uchannel}", window=1, threshold=threshold_dict[uchannel], show=False, save=args.save, debug=args.debug)
+                uchanges.append(uchange)
+                uregimes.append(uregime)
+                utimes.append(utime)
+                uvalues.append(uvalue)
+                ucomponents.append(ucomponent)
+                if args.debug: print(uregime)
+                print(f' regimes: {uregime}', flush=True)
+            else:
+                print(f" - not present in {file}", flush=True)
+        # exit(1)
+
         color_dict = {"U": "red", "P": "green", "D": "blue"}
         my_ax = plt.gca()
         mdata.plotData(x="t", y=pkey, ax=my_ax, normalize=True)
         mdata.plotData(x="t", y=f"{group}/{channels_dict[args.key]}", ax=my_ax, normalize=True)
-        for uchannel in uchannels_dict[args.key]:
-            mdata.plotData(x="t", y=f"{ugroup}/{uchannel}", ax=my_ax, normalize=True)
+        for uchannel in uprobes:
+            if f"{ugroup}/{uchannel}" in mdata.getKeys():
+                mdata.plotData(x="t", y=f"{ugroup}/{uchannel}", ax=my_ax, normalize=True)
 
         t0 = 0
         for i in range(1, len(oregime)):
@@ -341,9 +401,9 @@ if __name__ == "__main__":
         axis=1,
     )
 
-    print("\nMerge Archive")
+    print(f"\nMerge Archive ({len(archive_files)})")
     df_ = []
-    
+
     at0 = datetime.datetime.now()
     df_archive = pd.DataFrame()
 
@@ -355,30 +415,33 @@ if __name__ == "__main__":
 
     channel = channels_dict[args.key]
     for i, afile in enumerate(archive_files):
-        mrun = MagnetRun.fromtdms(site, insert, afile)
         afilename = os.path.basename(afile).replace(f_extension, "")
+        sizeOfFile = os.path.getsize(afile)
+        print(f'{afilename} group={group}, channel={channel}: ', end="", flush=True)
+        mrun = MagnetRun.fromtdms(site, insert, afile)
         mdata = mrun.getMData()
-
+        t0 = mdata.Groups[group][channel]["wf_start_time"]
+        dt = mdata.Groups[group][channel]["wf_increment"]
+        print(f't0={t0}, dt={dt}')
+        
         (ichange, iregime, itime, ivalue, icomponent) = trends(mdata, "t", key=f"{group}/{channels_dict[args.key]}", window=1, threshold=threshold_dict[channels_dict[args.key]], show=False, save=args.save, debug=args.debug)
         achanges.append(ichange)
         aregimes.append(iregime)
         atimes.append(itime)
         avalues.append(ivalue)
         acomponents.append(icomponent)
-        print(f"{filename} {group}{channels_dict[args.key]}: achange={ichange}")
-        print(f"{filename} {group}{channels_dict[args.key]}: aregimes={iregime}")
-        print(f"{filename} {group}{channels_dict[args.key]}: atime={itime}")
-        
-        df = pd.DataFrame(mdata.getTdmsData(group, channel))
-        print(f'{afilename} group={group}, channel={channel}: ', end="", flush=True)
-        t0 = mdata.Groups[group][channel]["wf_start_time"]
-        dt = mdata.Groups[group][channel]["wf_increment"]
+        if args.debug:
+            print(f"{afilename} {group}{channels_dict[args.key]}: achange={ichange}")
+            print(f"{afilename} {group}{channels_dict[args.key]}: aregimes={iregime}")
+            print(f"{afilename} {group}{channels_dict[args.key]}: atime={itime}")
+
+        df = pd.DataFrame(mdata.getTdmsData(group, [channel, args.key]))
         df["timestamp"] = [
             np.datetime64(t0).astype(datetime.datetime)
             + datetime.timedelta(0, i * dt)
             for i in df.index.to_list()
         ]
-        print(f't0={t0}, dt={dt}, len={len(df)}')
+        # print(f't0={t0}, dt={dt}, len={len(df)}')
         if args.debug:
             print(df.head())
             print(df.tail())
@@ -390,19 +453,26 @@ if __name__ == "__main__":
             df_archive = pd.concat(df_)
         else:
             df_archive = df_[0]
-    
+
         at0 = df_archive.iloc[0]["timestamp"]
         df_archive["t"] = df_archive.apply(
             lambda row: (row.timestamp - at0).total_seconds(),
             axis=1,
         )
         # df_archive.drop(["timestamp"], axis=1, inplace=True)
+        my_ax = plt.gca()
+        df_overview.plot(x="t", y=channels_dict[args.key], label="Overview", ax=my_ax)
+        df_archive.plot(x="t", y=channels_dict[args.key], label="Archive", alpha=0.2, ax=my_ax)
+        plt.title(channels_dict[args.key])
+        plt.grid()
+        plt.show()
+        plt.close()
 
         if args.debug:
             print(df_archive.head())
             print(df_archive.tail())
 
-    print("\nMerge Defauts")
+    print(f"\nMerge Defauts ({len(default_files)})")
     incidents = []
     for defaultfile in default_files:
         dfile = os.path.basename(defaultfile).replace('.tdms', "")
@@ -421,23 +491,25 @@ if __name__ == "__main__":
 
     # make sure that site is unique
     site = filenames[0].split("_")[0]
-
-    print("\nMerge Pupitre")
+    
+    print(f"\nMerge Pupitre ({len(pupitre_files_selected)})")
     pchanges = []
     pregimes = []
     ptimes = []
     pvalues = []
     pcomponents = []
-    
+
     df_ = []
-    for i, pfile in enumerate(natsorted(pupitre_files)):
+    for i, pfile in enumerate(natsorted(pupitre_files_selected)):
+        print(pfile)
         mrun = MagnetRun.fromtxt(site, insert, pfile)
         pfilename = os.path.basename(pfile).replace(f_extension, "")
         mdata = mrun.getMData()
+
         # print(mdata.Keys)
         print(f'{pfilename} {pupitre_dict[site][args.key]}: ', end="", flush=True)
         df = pd.DataFrame(mdata.getData(["timestamp", pupitre_dict[site][args.key]]))
-        print(f'{pfilename} t0={mdata.Data.iloc[0]["timestamp"]}, len={df.shape[0]}, duration={mdata.getDuration()} s')
+        print(f't0={mdata.Data.iloc[0]["timestamp"]}, len={df.shape[0]}, duration={mdata.getDuration()} s')
         df_.append(df)
 
         (pchange, pregime, ptime, pvalue, pcomponent) = trends(mdata, "t", key=pupitre_dict[site][args.key], window=1, threshold=threshold_dict[pupitre_dict[site][args.key]], show=False, save=args.save, debug=args.debug)
@@ -446,9 +518,10 @@ if __name__ == "__main__":
         ptimes.append(ptime)
         pvalues.append(pvalue)
         pcomponents.append(pcomponent)
-        print(f"{pfilename} {pupitre_dict[site][args.key]}: pchange={pchange}")
-        print(f"{pfilename} {pupitre_dict[site][args.key]}: pregime={pregime}")
-        print(f"{pfilename} {pupitre_dict[site][args.key]}: ptime={ptime}")
+        if args.debug:
+            print(f"{pfilename} {pupitre_dict[site][args.key]}: pchange={pchange}")
+            print(f"{pfilename} {pupitre_dict[site][args.key]}: pregime={pregime}")
+            print(f"{pfilename} {pupitre_dict[site][args.key]}: ptime={ptime}")
 
     if df_:
         if len(df_) > 1:
@@ -470,11 +543,12 @@ if __name__ == "__main__":
             print("t0 (pigbrother archive):", at0)
             print("t0 (pupitre):", pt0)
 
-            print("diff t0 (pigbrother/pupitre):", pt0 - ot0)
+            print(f"sync (pigbrother/pupitre): {(ot0 - pt0).total_seconds()} s")
             df_pupitre["timestamp"] = df_pupitre["timestamp"] + pd.to_timedelta(ot0 - pt0)
             msg = f'(sync with pigbrother {(ot0 - pt0).total_seconds()} s)'
 
             pt0 = df_pupitre.iloc[0]["timestamp"]
+            print("new t0 (pupitre):", pt0)
             df_pupitre.drop(["t"], axis=1, inplace=True)
             df_pupitre["t"] = df_pupitre.apply(
             lambda row: (row.timestamp - pt0).total_seconds(),
@@ -486,13 +560,21 @@ if __name__ == "__main__":
         # have to focus on a steep change
 
         # make a plot to check algo
-        # use trends result for overview(channels_dict[args.key]) and pupitre(pupitre_dict[site][args.key])    
+        # use trends result for overview(channels_dict[args.key]) and pupitre(pupitre_dict[site][args.key])
         my_ax=plt.gca()
         legends = []
-        legends.append(f'{channels_dict[args.key]}')
-        df_overview.plot(x="t", y=channels_dict[args.key], ax=my_ax, marker="*", linestyle='None')
+        legends.append(f'Overview {args.key}')
+        df_overview.plot(x="t", y=args.key, ax=my_ax, marker=".") # , linestyle='None'
+        legends.append(f'Overview {channels_dict[args.key]}')
+        df_overview.plot(x="t", y=channels_dict[args.key], ax=my_ax, marker="*") # , linestyle='None'
         legends.append(f'pupitre {pupitre_dict[site][args.key]}')
-        df_pupitre.plot(x="t", y=pupitre_dict[site][args.key], ax=my_ax, marker="o", linestyle='None', alpha=0.2)
+        df_pupitre.plot(x="t", y=pupitre_dict[site][args.key], ax=my_ax, marker="o", alpha=0.2)
+        legends.append(f'Archive {channels_dict[args.key]}')
+        df_archive.plot(x="t", y=channels_dict[args.key], alpha=0.2, ax=my_ax)
+        legends.append(f'Archive {args.key}')
+        df_archive.plot(x="t", y=args.key, label="Archive", alpha=0.2, ax=my_ax)
+        plt.title(channels_dict[args.key])
+        plt.title(msg)
         plt.legend(labels=legends)
         plt.grid()
         plt.show()
@@ -509,15 +591,19 @@ if __name__ == "__main__":
         print('ts_overview:', ts_overview.size, type(ts_overview))
         print(ts_overview.head())
         print(ts_overview.tail())
+        print(ts_overview.min())
+        ts_overview = ts_overview - ts_overview.min()
+        print(ts_overview.head())
+        print(ts_overview.tail())
         
         ts_overview_index = ts_overview.index.to_list()
-        ostart = oichanges[0][0] + floor((oichanges[0][1] - oichanges[0][0])/2)
-        oend = oichanges[0][1] + ceil((oichanges[0][2] - oichanges[0][1])/2)
+        ostart = oichanges[0][1] # oichanges[0][0] + floor((oichanges[0][1] - oichanges[0][0])/2)
+        oend = oichanges[0][2] # oichanges[0][2] + ceil((oichanges[0][3] - oichanges[0][2])/2)
         otstart = ts_overview_index[ostart]
         otend = ts_overview_index[oend]
         print(f"ts_overview overview range: [{ostart}, {oend}]-> [{otstart}, {otend}]")
         print(ts_overview[otstart:otend])
-        
+
         ts_pupitre_field = pupitre_dict[site][args.key]
         ts_pupitre = df_pupitre.loc[:,["timestamp",ts_pupitre_field]]
         ts_pupitre.set_index('timestamp', inplace=True)
@@ -527,8 +613,8 @@ if __name__ == "__main__":
         print(ts_pupitre.tail())
 
         ts_pupitre_index = ts_pupitre.index.to_list()
-        pstart = pchanges[0][0] + floor((pchanges[0][1] - pchanges[0][0])/2)
-        pend = pchanges[0][1] + ceil((pchanges[0][2] - pchanges[0][1])/2)
+        pstart = pchanges[0][1] # pchanges[0][0]+ floor((pchanges[0][1] - pchanges[0][0])/2)
+        pend = pchanges[0][2] #pchanges[0][2] + ceil((pchanges[0][3] - pchanges[0][2])/2)
         ptstart = ts_pupitre_index[pstart]
         ptend = ts_pupitre_index[pend]
         print(f"ts_pupitre timestamp range:  [{pstart}, {pend}] -> [{ptstart}, {ptend}]")
@@ -537,7 +623,7 @@ if __name__ == "__main__":
         # resample to make sure that timeseries share the same index
         # why on earth, there are points in ts_pupitre that are not "spaced" by 1s
         print("ts_pupitre_resampled")
-        ts_pupitre_resampled = ts_pupitre.resample('1s', origin=ts_pupitre_index[0]).asfreq() 
+        ts_pupitre_resampled = ts_pupitre.resample('1s', origin=ts_pupitre_index[0]).asfreq()
         print(ts_pupitre_resampled.head())
         # ts_overview.resample('1s').asfreq()
 
@@ -545,7 +631,7 @@ if __name__ == "__main__":
         print("ts_pupitre_resampled")
         ts_pupitre_resampled = ts_pupitre_resampled.interpolate(method='linear')
         print(ts_pupitre_resampled.head())
-        print('recompte ptstart and ptend')
+        print('recompute ptstart and ptend')
         pstart = ts_pupitre_resampled.index.get_indexer([pd.Timestamp(ptstart)], method='nearest')
         pend = ts_pupitre_resampled.index.get_indexer([pd.Timestamp(ptend)], method='nearest')
         print(f'pstart={pstart}, pend={pend}')
@@ -563,7 +649,7 @@ if __name__ == "__main__":
             plt.grid()
             plt.show()
 
-        
+
         # start_index: pchanges[0][0] + (pchanges[0][1] - pchanges[0][0])/2
         # end:_index pchanges[0][1] + (pchanges[0][2] - pchanges[0][1])/2
         ts_pupitre_data = {

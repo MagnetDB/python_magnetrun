@@ -94,4 +94,10 @@ zscore(df[key], args.window).plot()
 ```
 
 
+= pupitre files
 
+Rename after "manual" download:
+
+```bash
+for file in 2025.*.txt; do echo mv \"$file\" M9_$(echo "$file" | tr ' ' '-'| tr '_' ':'); done
+```
