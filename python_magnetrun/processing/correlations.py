@@ -72,15 +72,15 @@ def lag_correlation(data1: dict, data2: dict, show: bool=False, save: bool=False
     time_trend_slice_lag = time_series_slice.copy()
     
     time_shift = pd.to_timedelta(f'{lag}s')
-    time_trend_slice_lag.index = time_trend_slice_lag.index+time_shift
+    time_trend_slice_lag.index = time_trend_slice_lag.index-time_shift
     print("after lag")
     print(time_trend_slice_lag.head())
 
     # Plot the results
     plt.figure(figsize=(12, 6))
     plt.subplot(2, 1, 1)
-    plt.plot(time_series_slice, label=name_series)
-    plt.plot(trend_slice, label=name_trend, color='red')
+    plt.plot(time_series_slice, label=name_series, marker="+")
+    plt.plot(trend_slice, label=name_trend, color='red', marker="*")
     plt.plot(time_trend_slice_lag, label=f'{name_series} with lag {lag}s', color='green', marker="o", linestyle='None', alpha=0.2)
     plt.title(f'{name_series} and {name_trend}')
     plt.legend()
