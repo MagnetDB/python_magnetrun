@@ -62,6 +62,7 @@ def trends(mdata: MagnetData, tkey: str, key: str, window: int=1, threshold: flo
     
     (symbol, unit) = mdata.getUnitKey(key)
     
+    dt = 1
     match mdata.Data:
         case pd.DataFrame():
             df = mdata.getData([tkey, key])
@@ -73,17 +74,23 @@ def trends(mdata: MagnetData, tkey: str, key: str, window: int=1, threshold: flo
             df = mdata.getData(key).copy()
             dt = mdata.Groups[group][channel]["wf_increment"]
             df[tkey] = df.index * dt
+            # print(f"trends {mdata.FileName}: t0={t0}, dt={dt}, type={type(dt)}")
             # rename df key
             if debug:
                 print("tdms data: ", df.head())
                 print(f'rename {channel} to {key}')
             df.rename(columns={channel: key}, inplace=True)
-    # print(df.head())
+    
+    """
+    print(f'{key}: data({df[tkey].shape})')
+    print(df.head())
+    print(df.tail())
+    """
 
     stats = df[key].describe()
-    if debug: print(f'stats for {key}:')
     describe_list = stats.reset_index().to_dict(orient='records')
     if debug: 
+        print(f'stats for {key}:')
         print(tabulate(describe_list, headers='keys', tablefmt='psql'))
 
     # Perform piecewise linear approximation
@@ -130,15 +137,35 @@ def trends(mdata: MagnetData, tkey: str, key: str, window: int=1, threshold: flo
         print(f"{tkey}: {times}")
         print(f"{key}: {values}")
 
+    # make sure that trend and df share the same index tkey
+
+    # TODO for result.trend, result.seasonal and result.resid
+    # print(f"df: {df[tkey].size}")
+    # print(f"trend: {trend_component.size}")
+    # print("trend_index: ", trend_component.index.values)
+    # new_index = [df[tkey].loc[0].iat[i] for i in np.int_(trend_component.index.values)] #df[tkey].to_numpy() # trend_component.index.values * dt
+    nindex = trend_component.index.values.astype(int)
+    new_index = [float(df[tkey].iloc[i]) for i in nindex]
+    # print("new_index: ", new_index, flush=True)
+    trend_values = trend_component.to_numpy()
+    ntrend_component = pd.Series(data=trend_values, index=new_index)
+    """
+    print(ntrend_component.head())
+    print(ntrend_component.tail())
+    """
+    trend_component = ntrend_component.copy()
+
     # Plot piecewise linear approximation
     my_ax = plt.gca()
     legends = [key]
-    mdata.plotData(x=tkey, y=key, ax=my_ax, normalize=False)
+    df.plot(x=tkey, y=key, alpha=0.2, ax=my_ax)
+    legends.append('trend')
+    trend_component.plot(marker='.' , linestyle='None', ax=my_ax)
     for x in times:
         plt.axvline(x=x, color="red")
     my_ax.legend(labels=legends)
     my_ax.grid(True)
-    plt.title(f"Piecewise Linear Approximation of {file}: {key}")
+    plt.title(f"{file}: Decompose {key}")
 
     if save:
         f_extension = os.path.splitext(file)[-1]
@@ -148,4 +175,4 @@ def trends(mdata: MagnetData, tkey: str, key: str, window: int=1, threshold: flo
         plt.show()
     plt.close()
 
-    return (changes, regimes, times, values, result)
+    return (changes, regimes, times, values, trend_component)
