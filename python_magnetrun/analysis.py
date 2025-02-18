@@ -281,7 +281,7 @@ if __name__ == "__main__":
         for value in archive_files_dict.values():
             archive_files_selected += value
         archive_files_selected = natsorted(archive_files_selected)
-        print(f"\nSelected archive: {archive_files_selected}")
+        print(f"Selected archive: {archive_files_selected}")
 
         # check ECO mode: "Référence_GR1" != "Référence_GR2"
         bitter_only = True
@@ -299,7 +299,7 @@ if __name__ == "__main__":
 
         if bitter_only:
             uprobes = ["ALL_externes", 'Externe1', 'Externe2']
-            print('!!! Selecting only U probes for Bitter !!!')
+            print('\n!!! Selecting only U probes for Bitter !!!\n')
 
         # perform for selected key
         osignature = Signature.from_mdata(mdata, pkey, "t", threshold_dict[args.key])
@@ -314,7 +314,7 @@ if __name__ == "__main__":
         ocomponents.append(ocomponent)
         #if args.debug:
         print(f"{filename} {pkey}: regimes={oregime}")
-        print(f"{filename} {pkey}: ochanges={ochange}")
+        # print(f"{filename} {pkey}: ochanges={ochange}")
 
         (ichange, iregime, itime, ivalue, icomponent) = trends(mdata, "t", key=f"{group}/{channels_dict[args.key]}", window=1, threshold=threshold_dict[channels_dict[args.key]], show=False, save=args.save, debug=args.debug)
         oichanges.append(ichange)
@@ -327,7 +327,7 @@ if __name__ == "__main__":
             print(f"{filename} {group}{channels_dict[args.key]}: iregimes={iregime}")
             print(f"{filename} {group}{channels_dict[args.key]}: itimes={itime}")
         print(f"{filename} {pkey}: oiregime={oregime}")
-        print(f"{filename} {pkey}: oichange={ichange}")
+        # print(f"{filename} {pkey}: oichange={ichange}")
 
         # perform for all uchannels
         uchanges = []
@@ -350,7 +350,6 @@ if __name__ == "__main__":
                 print(f' regimes: {uregime}', flush=True)
             else:
                 print(f" - not present in {file}", flush=True)
-        # exit(1)
 
         my_ax = plt.gca()
         mdata.plotData(x="t", y=pkey, ax=my_ax, normalize=True)
@@ -548,7 +547,7 @@ if __name__ == "__main__":
             print(f"{pfilename} {pupitre_dict[site][args.key]}: pregime={pregime}")
             print(f"{pfilename} {pupitre_dict[site][args.key]}: ptime={ptime}")
         print(f"{pfilename} {pupitre_dict[site][args.key]}: pregime={pregime}")
-        print(f"{pfilename} {pupitre_dict[site][args.key]}: pchange={pchange}")
+        # print(f"{pfilename} {pupitre_dict[site][args.key]}: pchange={pchange}")
 
     if df_:
         if len(df_) > 1:
