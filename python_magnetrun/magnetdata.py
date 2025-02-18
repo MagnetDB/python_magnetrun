@@ -1066,7 +1066,7 @@ class MagnetData:
                 if xgroup == ygroup:
                     df = self.Data[xgroup].copy()
                     dt = self.Groups[ygroup][ychannel]["wf_increment"]
-                    # print(f"dt={dt}, type={type(dt)}")
+                    
                     if xchannel == "t":
                         df[xchannel] = df.index * dt
                     elif xchannel == "timestamp":

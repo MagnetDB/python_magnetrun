@@ -57,6 +57,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print(f"args: {args}", flush=True)
 
+    # Colors for signature
+    color_dict = {"U": "red", "P": "green", "D": "blue"}
+    
     # Channels
     channels_dict = {
         "Référence_GR1": "Courant_GR1",
@@ -108,8 +111,8 @@ if __name__ == "__main__":
         "Référence_GR2": 0.5,
         "Courant_GR2": 1,
         "ALL_externes": 0.1,
-        "Externe1": 1.e-2,
-        "Externe2": 1.e-2,
+        "Externe1": 0.1, #1.e-2,
+        "Externe2": 0.1, #1.e-2,
         "IH": 1,
         "UH": 0.1,
         "Ucoil1": 1.e-2,
@@ -220,6 +223,9 @@ if __name__ == "__main__":
     archive_files_dict = {}
     pkey = f"{group}/{args.key}"
 
+    # if only one reference, Bitter only exp
+    uprobes = uchannels_dict[args.key]
+        
     print(f"\nMerge Overview: {len(input_files)}")
     for i,file in enumerate(input_files):
         f_extension = os.path.splitext(file)[-1]
@@ -291,9 +297,13 @@ if __name__ == "__main__":
                 print(f"{filename}: mode=ECOmode")
             del GR
 
+        if bitter_only:
+            uprobes = ["ALL_externes", 'Externe1', 'Externe2']
+            print('!!! Selecting only U probes for Bitter !!!')
+
         # perform for selected key
         osignature = Signature.from_mdata(mdata, pkey, "t", threshold_dict[args.key])
-        print("osignature:", osignature.regimes)
+        # print("osignature:", osignature.regimes)
         osignature.dump(filename)
 
         (ochange, oregime, otime, ovalue, ocomponent) = trends(mdata, "t", key=f"{pkey}", window=1, threshold=threshold_dict[args.key], show=False, save=args.save, debug=args.debug)
@@ -304,6 +314,7 @@ if __name__ == "__main__":
         ocomponents.append(ocomponent)
         #if args.debug:
         print(f"{filename} {pkey}: regimes={oregime}")
+        print(f"{filename} {pkey}: ochanges={ochange}")
 
         (ichange, iregime, itime, ivalue, icomponent) = trends(mdata, "t", key=f"{group}/{channels_dict[args.key]}", window=1, threshold=threshold_dict[channels_dict[args.key]], show=False, save=args.save, debug=args.debug)
         oichanges.append(ichange)
@@ -315,6 +326,8 @@ if __name__ == "__main__":
             print(f"{filename} {group}{channels_dict[args.key]}: ichanges={ichange}")
             print(f"{filename} {group}{channels_dict[args.key]}: iregimes={iregime}")
             print(f"{filename} {group}{channels_dict[args.key]}: itimes={itime}")
+        print(f"{filename} {pkey}: oiregime={oregime}")
+        print(f"{filename} {pkey}: oichange={ichange}")
 
         # perform for all uchannels
         uchanges = []
@@ -323,11 +336,6 @@ if __name__ == "__main__":
         uvalues = []
         ucomponents = []
 
-        # if only one reference, Bitter only exp
-        uprobes = uchannels_dict[args.key]
-        if bitter_only:
-            uprobes = ["ALL_externes", 'Externe1', 'Externe2']
-            print('!!! Selecting only U probes for Bitter !!!')
         for uchannel in uprobes :
             print(f'uchannel={uchannel}', end="")
             if f"{ugroup}/{uchannel}" in mdata.getKeys():
@@ -344,7 +352,6 @@ if __name__ == "__main__":
                 print(f" - not present in {file}", flush=True)
         # exit(1)
 
-        color_dict = {"U": "red", "P": "green", "D": "blue"}
         my_ax = plt.gca()
         mdata.plotData(x="t", y=pkey, ax=my_ax, normalize=True)
         mdata.plotData(x="t", y=f"{group}/{channels_dict[args.key]}", ax=my_ax, normalize=True)
@@ -355,12 +362,12 @@ if __name__ == "__main__":
         t0 = 0
         for i in range(1, len(oregime)):
             #print(f'axvspan[{i}]: [{t0},{otime[i]}], regime={oregime[i-1]}, color={color_dict[oregime[i-1]]}')
-            my_ax.axvspan(t0, otime[i], facecolor=color_dict[oregime[i-1]], alpha=.5)
+            my_ax.axvspan(t0, otime[i], facecolor=color_dict[oregime[i-1]], alpha=.2)
             t0 = otime[i]
         t0 = 0
         for i in range(1, len(iregime)):
             #print(f'axvspan[{i}]: [{t0},{itimes[i]}], regime={iregimes[i-1]}, color={color_dict[iregimes[i-1]]}')
-            my_ax.axvspan(t0, itime[i], facecolor=color_dict[iregime[i-1]], alpha=.5)
+            my_ax.axvspan(t0, itime[i], facecolor=color_dict[iregime[i-1]], alpha=.2)
             t0 = itime[i]
 
         for i,uregime in enumerate(uregimes):
@@ -368,7 +375,7 @@ if __name__ == "__main__":
             utime = utimes[i]
             for j in range(1, len(uregime)):
                 # print(f'axvspan[{i}][{j}]: [{t0},{utime[j]}], regime={uregime[j-1]}, color={color_dict[uregime[j-1]]}')
-                my_ax.axvspan(t0, utime[j], facecolor=color_dict[uregime[j-1]], alpha=.5)
+                my_ax.axvspan(t0, utime[j], facecolor=color_dict[uregime[j-1]], alpha=.2)
                 t0 = utime[j]
 
         plt.ylabel('Normalized Field')
@@ -384,7 +391,7 @@ if __name__ == "__main__":
             + datetime.timedelta(0, i * dt)
             for i in df.index.to_list()
         ]
-        print(f't0={t0}, dt={dt}, len={len(df)}')
+        print(f'{filename} t0={t0}, dt={dt}, len={len(df)}')
         if args.debug:
             print(df.head())
             print(df.tail())
@@ -401,7 +408,7 @@ if __name__ == "__main__":
         axis=1,
     )
 
-    print(f"\nMerge Archive ({len(archive_files)})")
+    print(f"\nMerge Archive ({len(archive_files_selected)})")
     df_ = []
 
     at0 = datetime.datetime.now()
@@ -414,7 +421,7 @@ if __name__ == "__main__":
     acomponents = []
 
     channel = channels_dict[args.key]
-    for i, afile in enumerate(archive_files):
+    for i, afile in enumerate(archive_files_selected):
         afilename = os.path.basename(afile).replace(f_extension, "")
         sizeOfFile = os.path.getsize(afile)
         print(f'{afilename} group={group}, channel={channel}: ', end="", flush=True)
@@ -424,7 +431,7 @@ if __name__ == "__main__":
         dt = mdata.Groups[group][channel]["wf_increment"]
         print(f't0={t0}, dt={dt}')
         
-        (ichange, iregime, itime, ivalue, icomponent) = trends(mdata, "t", key=f"{group}/{channels_dict[args.key]}", window=1, threshold=threshold_dict[channels_dict[args.key]], show=False, save=args.save, debug=args.debug)
+        (ichange, iregime, itime, ivalue, icomponent) = trends(mdata, "t", key=f"{group}/{channels_dict[args.key]}", window=480, threshold=threshold_dict[channels_dict[args.key]], show=False, save=args.save, debug=args.debug)
         achanges.append(ichange)
         aregimes.append(iregime)
         atimes.append(itime)
@@ -447,6 +454,24 @@ if __name__ == "__main__":
             print(df.tail())
         df_.append(df)
 
+        # Plot trends (works only when 1 archive attached to overview)
+        if args.debug:
+            my_ax = plt.gca()
+            legends = [channels_dict[args.key]]
+            mdata.plotData(x="t", y=f"{group}/{channels_dict[args.key]}", ax=my_ax, alpha=0.2)
+            legends.append('trend')
+            icomponent.plot(ax=my_ax)
+            
+            # shall get the overview associated to the archive
+            legends.append('Overview')
+            df_overview.plot(x="t", y=channels_dict[args.key], marker='.', linestyle='None', alpha=0.4, color="r", ax=my_ax)
+            my_ax.legend(labels=legends)
+            plt.title(f"{afilename}:{channels_dict[args.key]}" )
+            # limit to mdata trange
+            plt.grid()
+            plt.show()
+            plt.close()
+        
 
     if df_:
         if len(df_) > 1:
@@ -460,13 +485,14 @@ if __name__ == "__main__":
             axis=1,
         )
         # df_archive.drop(["timestamp"], axis=1, inplace=True)
-        my_ax = plt.gca()
-        df_overview.plot(x="t", y=channels_dict[args.key], label="Overview", ax=my_ax)
-        df_archive.plot(x="t", y=channels_dict[args.key], label="Archive", alpha=0.2, ax=my_ax)
-        plt.title(channels_dict[args.key])
-        plt.grid()
-        plt.show()
-        plt.close()
+        if args.debug:
+            my_ax = plt.gca()
+            df_overview.plot(x="t", y=channels_dict[args.key], label="Overview", color="r", ax=my_ax)
+            df_archive.plot(x="t", y=channels_dict[args.key], label="Archive", color="r", alpha=0.2, ax=my_ax)
+            plt.title(channels_dict[args.key])
+            plt.grid()
+            plt.show()
+            plt.close()
 
         if args.debug:
             print(df_archive.head())
@@ -501,7 +527,6 @@ if __name__ == "__main__":
 
     df_ = []
     for i, pfile in enumerate(natsorted(pupitre_files_selected)):
-        print(pfile)
         mrun = MagnetRun.fromtxt(site, insert, pfile)
         pfilename = os.path.basename(pfile).replace(f_extension, "")
         mdata = mrun.getMData()
@@ -522,6 +547,8 @@ if __name__ == "__main__":
             print(f"{pfilename} {pupitre_dict[site][args.key]}: pchange={pchange}")
             print(f"{pfilename} {pupitre_dict[site][args.key]}: pregime={pregime}")
             print(f"{pfilename} {pupitre_dict[site][args.key]}: ptime={ptime}")
+        print(f"{pfilename} {pupitre_dict[site][args.key]}: pregime={pregime}")
+        print(f"{pfilename} {pupitre_dict[site][args.key]}: pchange={pchange}")
 
     if df_:
         if len(df_) > 1:
@@ -535,6 +562,7 @@ if __name__ == "__main__":
             axis=1,
         )
 
+        timeshift = 0
         msg = "(nosync)"
         # synchronize pupitre with pigbrother overview
         if args.synchronize:
@@ -543,12 +571,12 @@ if __name__ == "__main__":
             print("t0 (pigbrother archive):", at0)
             print("t0 (pupitre):", pt0)
 
-            print(f"sync (pigbrother/pupitre): {(ot0 - pt0).total_seconds()} s")
+            print(f"timeshift (pigbrother/pupitre): {(ot0 - pt0).total_seconds()} s")
             df_pupitre["timestamp"] = df_pupitre["timestamp"] + pd.to_timedelta(ot0 - pt0)
+            timeshift = (ot0 - pt0).total_seconds()
             msg = f'(sync with pigbrother {(ot0 - pt0).total_seconds()} s)'
 
             pt0 = df_pupitre.iloc[0]["timestamp"]
-            print("new t0 (pupitre):", pt0)
             df_pupitre.drop(["t"], axis=1, inplace=True)
             df_pupitre["t"] = df_pupitre.apply(
             lambda row: (row.timestamp - pt0).total_seconds(),
@@ -564,15 +592,15 @@ if __name__ == "__main__":
         my_ax=plt.gca()
         legends = []
         legends.append(f'Overview {args.key}')
-        df_overview.plot(x="t", y=args.key, ax=my_ax, marker=".") # , linestyle='None'
+        df_overview.plot(x="t", y=args.key, ax=my_ax, marker=".", color='r') # , linestyle='None'
         legends.append(f'Overview {channels_dict[args.key]}')
-        df_overview.plot(x="t", y=channels_dict[args.key], ax=my_ax, marker="*") # , linestyle='None'
+        df_overview.plot(x="t", y=channels_dict[args.key], ax=my_ax, marker="*", color='b') # , linestyle='None'
         legends.append(f'pupitre {pupitre_dict[site][args.key]}')
-        df_pupitre.plot(x="t", y=pupitre_dict[site][args.key], ax=my_ax, marker="o", alpha=0.2)
+        df_pupitre.plot(x="t", y=pupitre_dict[site][args.key], ax=my_ax, marker="o", alpha=0.2, color='b')
         legends.append(f'Archive {channels_dict[args.key]}')
-        df_archive.plot(x="t", y=channels_dict[args.key], alpha=0.2, ax=my_ax)
+        df_archive.plot(x="t", y=channels_dict[args.key], alpha=0.2, color='b', ax=my_ax)
         legends.append(f'Archive {args.key}')
-        df_archive.plot(x="t", y=args.key, label="Archive", alpha=0.2, ax=my_ax)
+        df_archive.plot(x="t", y=args.key, label="Archive", alpha=0.2, color='r', ax=my_ax)
         plt.title(channels_dict[args.key])
         plt.title(msg)
         plt.legend(labels=legends)
@@ -588,70 +616,51 @@ if __name__ == "__main__":
         ts_overview = df_overview.loc[:,["timestamp", ts_overview_field]]
         ts_overview.set_index('timestamp', inplace=True)
         ts_overview = ts_overview.iloc[:,0]
-        print('ts_overview:', ts_overview.size, type(ts_overview))
-        print(ts_overview.head())
-        print(ts_overview.tail())
-        print(ts_overview.min())
         ts_overview = ts_overview - ts_overview.min()
-        print(ts_overview.head())
-        print(ts_overview.tail())
         
+        # find the biggest U within the shortest time in 1st Overview ???
+
         ts_overview_index = ts_overview.index.to_list()
-        ostart = oichanges[0][1] # oichanges[0][0] + floor((oichanges[0][1] - oichanges[0][0])/2)
-        oend = oichanges[0][2] # oichanges[0][2] + ceil((oichanges[0][3] - oichanges[0][2])/2)
+        ostart = ochanges[0][1] - 2 
+        oend = ochanges[0][2] + 2
         otstart = ts_overview_index[ostart]
         otend = ts_overview_index[oend]
         print(f"ts_overview overview range: [{ostart}, {oend}]-> [{otstart}, {otend}]")
-        print(ts_overview[otstart:otend])
 
         ts_pupitre_field = pupitre_dict[site][args.key]
         ts_pupitre = df_pupitre.loc[:,["timestamp",ts_pupitre_field]]
         ts_pupitre.set_index('timestamp', inplace=True)
         ts_pupitre = ts_pupitre.iloc[:,0]
-        print('ts_pupitre:', ts_pupitre.size, type(ts_pupitre))
-        print(ts_pupitre.head())
-        print(ts_pupitre.tail())
 
         ts_pupitre_index = ts_pupitre.index.to_list()
-        pstart = pchanges[0][1] # pchanges[0][0]+ floor((pchanges[0][1] - pchanges[0][0])/2)
-        pend = pchanges[0][2] #pchanges[0][2] + ceil((pchanges[0][3] - pchanges[0][2])/2)
-        ptstart = ts_pupitre_index[pstart]
-        ptend = ts_pupitre_index[pend]
+        pstart = ts_pupitre.index.get_indexer([pd.Timestamp(otstart)], method='nearest')
+        pend = ts_pupitre.index.get_indexer([pd.Timestamp(otend)], method='nearest')
+        ptstart = ts_pupitre.index[pstart[0]]
+        ptend = ts_pupitre.index[pend[0]]
         print(f"ts_pupitre timestamp range:  [{pstart}, {pend}] -> [{ptstart}, {ptend}]")
-        print(ts_pupitre[ptstart:ptend])
 
         # resample to make sure that timeseries share the same index
-        # why on earth, there are points in ts_pupitre that are not "spaced" by 1s
-        print("ts_pupitre_resampled")
         ts_pupitre_resampled = ts_pupitre.resample('1s', origin=ts_pupitre_index[0]).asfreq()
-        print(ts_pupitre_resampled.head())
-        # ts_overview.resample('1s').asfreq()
-
+        
         # Interpolate missing values (optional, depending on your use case)
-        print("ts_pupitre_resampled")
         ts_pupitre_resampled = ts_pupitre_resampled.interpolate(method='linear')
-        print(ts_pupitre_resampled.head())
-        print('recompute ptstart and ptend')
-        pstart = ts_pupitre_resampled.index.get_indexer([pd.Timestamp(ptstart)], method='nearest')
-        pend = ts_pupitre_resampled.index.get_indexer([pd.Timestamp(ptend)], method='nearest')
-        print(f'pstart={pstart}, pend={pend}')
+        pstart = ts_pupitre_resampled.index.get_indexer([pd.Timestamp(otstart)], method='nearest')
+        pend = ts_pupitre_resampled.index.get_indexer([pd.Timestamp(otend)], method='nearest')
         ptstart = ts_pupitre_resampled.index[pstart[0]]
         ptend = ts_pupitre_resampled.index[pend[0]]
-        print(f'ptstart={ptstart}, ptend={ptend}')
         if args.debug:
             print('pupitre_resampled:', ts_pupitre_resampled.size, type(ts_pupitre_resampled))
             print(ts_pupitre_resampled.head())
             print(ts_pupitre_resampled.tail())
             my_ax=plt.gca()
-            ts_pupitre_resampled.plot(style='.', ax=my_ax)
-            ts_overview.plot(style='o', alpha=0.5, ax=my_ax)
+            ts_pupitre_resampled.plot(style='.', color='b', ax=my_ax)
+            ts_overview.plot(style='o', alpha=0.5, color='b', ax=my_ax)
             plt.title('after resampling at 1 Hz')
             plt.grid()
             plt.show()
 
 
-        # start_index: pchanges[0][0] + (pchanges[0][1] - pchanges[0][0])/2
-        # end:_index pchanges[0][1] + (pchanges[0][2] - pchanges[0][1])/2
+        # pupitre data
         ts_pupitre_data = {
             "field": ts_pupitre_field,
             "df": ts_pupitre_resampled,
@@ -661,8 +670,7 @@ if __name__ == "__main__":
             }
         }
 
-        # start_index: ochanges[0][0] + (ochanges[0][1] - ochanges[0][0])/2
-        # end:_index ochanges[0][1] + (ochanges[0][2] - ochanges[0][1])/2
+        # overview data
         ts_overview_data = {
             "field": ts_overview_field,
             "df": ts_overview,
@@ -673,9 +681,11 @@ if __name__ == "__main__":
         }
         lag = lag_correlation(ts_pupitre_data, ts_overview_data, show=args.show, save=args.save,)
 
+        df_pupitre["timestamp"] = df_pupitre["timestamp"] - pd.to_timedelta(f"{lag}s")
 
-        """
         # plots
+        msg = f'(sync with pigbrother {timeshift} - {lag.total_seconds()} s)'
+
         my_ax=plt.gca()
         legends = [f"{args.key}"]
         df_overview.plot(x="timestamp", y=args.key, ax=my_ax)
@@ -699,6 +709,7 @@ if __name__ == "__main__":
             plt.savefig(f"{filename}-{channel}-timestamp-concat.png", dpi=300)
         plt.close()
 
+        """
         my_ax=plt.gca()
         legends = [f"{args.key}"]
         df_overview.plot(x="t", y=args.key, ax=my_ax)

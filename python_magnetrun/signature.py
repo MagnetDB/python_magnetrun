@@ -122,13 +122,13 @@ class Signature:
         match mdata.Data:
             case pd.DataFrame():
                 t0 = mdata.Data.iloc[0]["timestamp"]
-                print('txt', type(t0), flush=True)
+                # print('txt', type(t0), flush=True)
             case dict():
                 (group, channel) = key.split("/")
                 t0 = mdata.Groups[group][channel]["wf_start_time"].astype(datetime)
-                print('tdms', type(t0), flush=True)
+                # print('tdms', type(t0), flush=True)
             
-        (changes, regimes, times, values, components) = trends(mdata, tkey, key, window=1, threshold=threshold, show=False, save=False, debug=True)
+        (changes, regimes, times, values, components) = trends(mdata, tkey, key, window=1, threshold=threshold, show=False, save=False, debug=False)
 
         return cls(name=key, symbol=symbol, unit=f"{unit:~P}", t0=t0.strftime("%Y-%m-%d %H:%M:%S.%f"), timeshift=0,
                    changes=changes, regimes=regimes, times=times, values=values)
@@ -154,4 +154,5 @@ class Signature:
         import json
 
         with open(f"{filename}.json", "w") as file:
+            # print('signature.dump:', self.to_dict())
             json.dump(self.to_dict(), file, indent=4)
