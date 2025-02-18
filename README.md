@@ -185,6 +185,12 @@ We use the following convention for assigning a signature to a record:
 python -m tests.test-signature srvdata/M10_2025.01.27---15:39:29.txt --window=10 --threshold 1.e-2
 ```
 
+For overview pigbrother files:
+
+```bash
+python -m python_magnetrun.analysis  pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250211-*.tdms --key Référence_GR1 --show --synchronize 
+```
+
 
 - Detect Breaking points and anomalies:
 
