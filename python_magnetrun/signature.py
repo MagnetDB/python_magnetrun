@@ -5,9 +5,20 @@ import pandas as pd
 
 from python_magnetrun.magnetdata import MagnetData
 
+
 class Signature:
-    def __init__(self, name: str, symbol: str, unit: str, t0: datetime, timeshift: float,
-                 changes: List[int], regimes: List[str], times: List[float], values: List[float]):
+    def __init__(
+        self,
+        name: str,
+        symbol: str,
+        unit: str,
+        t0: datetime,
+        timeshift: float,
+        changes: List[int],
+        regimes: List[str],
+        times: List[float],
+        values: List[float],
+    ):
         self._name = name
         self._symbol = symbol
         self._unit = unit
@@ -80,6 +91,7 @@ class Signature:
     @regimes.setter
     def regimes(self, value: List[str]):
         self._regimes = value
+
     # Getter and setter for times
     @property
     def times(self) -> List[float]:
@@ -99,7 +111,14 @@ class Signature:
         self._values = value
 
     @classmethod
-    def from_mdata(cls, mdata: MagnetData, key: str, tkey:str, threshold: float, timeshift: float=0) -> "Signature":
+    def from_mdata(
+        cls,
+        mdata: MagnetData,
+        key: str,
+        tkey: str,
+        threshold: float,
+        timeshift: float = 0,
+    ) -> "Signature":
         """
         Create a Signature instance from a magnetdata.
 
@@ -116,7 +135,7 @@ class Signature:
         """
         from datetime import datetime
         from .processing.trends import trends
-        
+
         t0 = datetime.now()
         (symbol, unit) = mdata.getUnitKey(key)
         match mdata.Data:
@@ -127,15 +146,35 @@ class Signature:
                 (group, channel) = key.split("/")
                 t0 = mdata.Groups[group][channel]["wf_start_time"].astype(datetime)
                 # print('tdms', type(t0), flush=True)
-            
-        (changes, regimes, times, values, components) = trends(mdata, tkey, key, window=1, threshold=threshold, show=False, save=False, debug=False)
 
-        return cls(name=key, symbol=symbol, unit=f"{unit:~P}", t0=t0.strftime("%Y-%m-%d %H:%M:%S.%f"), timeshift=0,
-                   changes=changes, regimes=regimes, times=times, values=values)
-    
+        (changes, regimes, times, values, components) = trends(
+            mdata,
+            tkey,
+            key,
+            window=1,
+            threshold=threshold,
+            show=False,
+            save=False,
+            debug=False,
+        )
+
+        return cls(
+            name=key,
+            symbol=symbol,
+            unit=f"{unit:~P}",
+            t0=t0.strftime("%Y-%m-%d %H:%M:%S.%f"),
+            timeshift=0,
+            changes=changes,
+            regimes=regimes,
+            times=times,
+            values=values,
+        )
+
     def __repr__(self):
-        return (f"Signature(name={self.name}, symbol={self.symbol}, unit={self.unit}, "
-                f"t0={self.t0}, timeshit={self.timeshift}, changes={self.changes}, regimes={self.regimes}, times={self.times}, values={self.values})")
+        return (
+            f"Signature(name={self.name}, symbol={self.symbol}, unit={self.unit}, "
+            f"t0={self.t0}, timeshit={self.timeshift}, changes={self.changes}, regimes={self.regimes}, times={self.times}, values={self.values})"
+        )
 
     def to_dict(self):
         return {
@@ -145,9 +184,9 @@ class Signature:
             "t0": self._t0,
             "timeshift": self._timeshift,
             "changes": self._changes,
-            "regimes" : self._regimes,
+            "regimes": self._regimes,
             "times": self._times,
-            "values": self._values
+            "values": self._values,
         }
 
     def dump(self, filename: str):
