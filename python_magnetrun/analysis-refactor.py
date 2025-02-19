@@ -11,7 +11,7 @@ from .MagnetRun import MagnetRun
 from .processing.trends import trends
 from .utils.convert import convert_to_timestamp
 
-from .processing.correlations import lag_correlation
+from .processing.correlations import compute_lag
 from .signature import Signature
 
 
@@ -237,19 +237,21 @@ def plot_data(
     args,
 ):
     my_ax = plt.gca()
-    legends = [f"{key}"]
-    df_overview.plot(x=tkey, y=key, ax=my_ax)
-    df_archive.plot(x=tkey, y=channels_dict[key], ax=my_ax)
-    legends.append(f"{channels_dict[key]}")
-    df_pupitre.plot(x=tkey, y=pupitre_dict[site][key], ax=my_ax)
-    legends.append(f"pupitre {pupitre_dict[site][key]}")
+    df_overview.plot(x=tkey, y=key, color="b", ax=my_ax)
+    legends = [f"Overview: {key}"]
+    df_overview.plot(x=tkey, y=channels_dict[key], color="r", ax=my_ax)
+    legends.append(f"Overview: {channels_dict[key]}")
+    df_archive.plot(x=tkey, y=channels_dict[key], alpha=0.5, color="r", ax=my_ax)
+    legends.append(f"Archive: {channels_dict[key]}")
+    df_pupitre.plot(x=tkey, y=pupitre_dict[site][key], color="g", ax=my_ax)
+    legends.append(f"Pupitre: {pupitre_dict[site][key]}")
     plt.legend(labels=legends)
 
     if not df_incidents.empty:
         for incident in df_incidents[tkey].to_list():
             plt.axvline(incident, color="red", alpha=0.2, label="Incident")
 
-    plt.title(f"{title}: {key} {msg}")
+    plt.title(f'{title.replace("_Overview","")}: {key} {msg}')
     plt.grid()
     if args.show:
         plt.show()
@@ -446,75 +448,6 @@ def main():
         print("t0 (overview):", df_overview["timestamp"].iloc[0])
         print("t0 (pupitre):", df_pupitre["timestamp"].iloc[0])
 
-        def compute_lag(
-            df1,
-            key1: str,
-            istart1: int,
-            iend1: int,
-            df2,
-            key2: str,
-            istart2: int = None,
-            iend2: int = None,
-            show: bool = False,
-            save: bool = False,
-        ):
-            ts1 = df1.loc[:, ["timestamp", key1]]
-            ts1.set_index("timestamp", inplace=True)
-            ts1 = ts1.iloc[:, 0]
-            ts1 = ts1 - ts1.min()
-
-            ts1_index = ts1.index.to_list()
-            otstart = ts1_index[istart1]
-            otend = ts1_index[iend1]
-            print(f"ts1 range: [{istart1}, {iend1}]-> [{otstart}, {otend}]")
-
-            ts2 = df2.loc[:, ["timestamp", key2]]
-            ts2.set_index("timestamp", inplace=True)
-            ts2 = ts2.iloc[:, 0]
-
-            pstart = ts2.index.get_indexer([pd.Timestamp(otstart)], method="nearest")
-            pend = ts2.index.get_indexer([pd.Timestamp(otend)], method="nearest")
-            ptstart = ts2.index[pstart[0]]
-            ptend = ts2.index[pend[0]]
-            print(f"ts2 range:  [{pstart[0]}, {pend[0]}] -> [{ptstart}, {ptend}]")
-
-            # resample to make sure that timeseries share the same index
-            ts2_index = ts2.index.to_list()
-            ts2_resampled = ts2.resample("1s", origin=ts2_index[0]).asfreq()
-
-            # Interpolate missing values (optional, depending on your use case)
-            ts2_resampled = ts2_resampled.interpolate(method="linear")
-            pstart = ts2_resampled.index.get_indexer(
-                [pd.Timestamp(otstart)], method="nearest"
-            )
-            pend = ts2_resampled.index.get_indexer(
-                [pd.Timestamp(otend)], method="nearest"
-            )
-            ptstart = ts2_resampled.index[pstart[0]]
-            ptend = ts2_resampled.index[pend[0]]
-
-            # pupitre data
-            ts2_data = {
-                "field": key2,
-                "df": ts2_resampled,
-                "range": {"start": ptstart, "end": ptend},
-            }
-
-            # overview data
-            ts1_data = {
-                "field": key1,
-                "df": ts1,
-                "range": {"start": otstart, "end": otend},
-            }
-            lag = lag_correlation(
-                ts2_data,
-                ts1_data,
-                show=show,
-                save=save,
-            )
-
-            return lag
-
         lag = compute_lag(
             df_overview,
             channels_dict[args.key],
@@ -525,70 +458,6 @@ def main():
             show=args.show,
             save=args.save,
         )
-        """
-        ts_overview_field = channels_dict[args.key]
-        ts_overview = df_overview.loc[:, ["timestamp", ts_overview_field]]
-        ts_overview.set_index("timestamp", inplace=True)
-        ts_overview = ts_overview.iloc[:, 0]
-        ts_overview = ts_overview - ts_overview.min()
-
-        ts_overview_index = ts_overview.index.to_list()
-        ostart = osignature.changes[1] - 2
-        oend = osignature.changes[2] + 2
-        otstart = ts_overview_index[ostart]
-        otend = ts_overview_index[oend]
-        print(f"ts_overview overview range: [{ostart}, {oend}]-> [{otstart}, {otend}]")
-
-        ts_pupitre_field = pupitre_dict[site][args.key]
-        ts_pupitre = df_pupitre.loc[:, ["timestamp", ts_pupitre_field]]
-        ts_pupitre.set_index("timestamp", inplace=True)
-        ts_pupitre = ts_pupitre.iloc[:, 0]
-
-        ts_pupitre_index = ts_pupitre.index.to_list()
-        pstart = ts_pupitre.index.get_indexer([pd.Timestamp(otstart)], method="nearest")
-        pend = ts_pupitre.index.get_indexer([pd.Timestamp(otend)], method="nearest")
-        ptstart = ts_pupitre.index[pstart[0]]
-        ptend = ts_pupitre.index[pend[0]]
-        print(
-            f"ts_pupitre timestamp range:  [{pstart}, {pend}] -> [{ptstart}, {ptend}]"
-        )
-
-        # resample to make sure that timeseries share the same index
-        ts_pupitre_resampled = ts_pupitre.resample(
-            "1s", origin=ts_pupitre_index[0]
-        ).asfreq()
-
-        # Interpolate missing values (optional, depending on your use case)
-        ts_pupitre_resampled = ts_pupitre_resampled.interpolate(method="linear")
-        pstart = ts_pupitre_resampled.index.get_indexer(
-            [pd.Timestamp(otstart)], method="nearest"
-        )
-        pend = ts_pupitre_resampled.index.get_indexer(
-            [pd.Timestamp(otend)], method="nearest"
-        )
-        ptstart = ts_pupitre_resampled.index[pstart[0]]
-        ptend = ts_pupitre_resampled.index[pend[0]]
-
-        # pupitre data
-        ts_pupitre_data = {
-            "field": ts_pupitre_field,
-            "df": ts_pupitre_resampled,
-            "range": {"start": ptstart, "end": ptend},
-        }
-
-        # overview data
-        ts_overview_data = {
-            "field": ts_overview_field,
-            "df": ts_overview,
-            "range": {"start": otstart, "end": otend},
-        }
-        lag = lag_correlation(
-            ts_pupitre_data,
-            ts_overview_data,
-            show=args.show,
-            save=args.save,
-        )
-        """
 
         df_pupitre["timestamp"] = df_pupitre["timestamp"] - pd.to_timedelta(f"{lag}s")
 
@@ -598,7 +467,7 @@ def main():
         df_pupitre["t"] = df_pupitre.apply(
             lambda row: (row.timestamp - ot0).total_seconds(), axis=1
         )
-
+        print(df_pupitre.head())
         # plots
         timeshift -= lag
         msg = f"(sync with pigbrother {timeshift.total_seconds()} s)"
