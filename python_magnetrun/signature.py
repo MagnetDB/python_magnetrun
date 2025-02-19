@@ -70,7 +70,7 @@ class Signature:
     def timeshift(self) -> float:
         return self._timeshift
 
-    @t0.setter
+    @timeshift.setter
     def timeshift(self, value: float):
         self._timeshift = value
 
@@ -162,7 +162,7 @@ class Signature:
             name=key,
             symbol=symbol,
             unit=f"{unit:~P}",
-            t0=t0.strftime("%Y-%m-%d %H:%M:%S.%f"),
+            t0=t0,
             timeshift=0,
             changes=changes,
             regimes=regimes,
