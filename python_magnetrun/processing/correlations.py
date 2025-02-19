@@ -4,7 +4,14 @@ import matplotlib.pyplot as plt
 
 from ..magnetdata import MagnetData
 
-def lag_correlation(data1: dict, data2: dict, show: bool=False, save: bool=False, debug: bool=False):
+
+def lag_correlation(
+    data1: dict,
+    data2: dict,
+    show: bool = False,
+    save: bool = False,
+    debug: bool = False,
+):
     """_summary_
 
     :param data1: _description_
@@ -63,16 +70,18 @@ def lag_correlation(data1: dict, data2: dict, show: bool=False, save: bool=False
 
     # Compute cross-correlation
     # correlation = correlate(time_series_slice - np.mean(time_series_slice), trend_slice - np.mean(trend_slice))
-    correlation = correlate(time_series_slice -time_series_slice.mean(), trend_slice -trend_slice.mean())
+    correlation = correlate(
+        time_series_slice - time_series_slice.mean(), trend_slice - trend_slice.mean()
+    )
     lags = correlation_lags(time_series_slice.size, trend_slice.size, mode="full")
 
     # Find the lag with maximum correlation
     lag = lags[np.argmax(correlation)]
 
     time_trend_slice_lag = time_series_slice.copy()
-    
-    time_shift = pd.to_timedelta(f'{lag}s')
-    time_trend_slice_lag.index = time_trend_slice_lag.index-time_shift
+
+    time_shift = pd.to_timedelta(f"{lag}s")
+    time_trend_slice_lag.index = time_trend_slice_lag.index - time_shift
     # print("after lag")
     # print(time_trend_slice_lag.head())
 
@@ -80,18 +89,25 @@ def lag_correlation(data1: dict, data2: dict, show: bool=False, save: bool=False
     plt.figure(figsize=(12, 6))
     plt.subplot(2, 1, 1)
     plt.plot(time_series_slice, label=name_series, marker="+")
-    plt.plot(trend_slice, label=name_trend, color='red', marker="*")
-    plt.plot(time_trend_slice_lag, label=f'{name_series} with lag {lag}s', color='green', marker="o", linestyle='None', alpha=0.2)
-    plt.title(f'{name_series} and {name_trend}')
+    plt.plot(trend_slice, label=name_trend, color="red", marker="*")
+    plt.plot(
+        time_trend_slice_lag,
+        label=f"{name_series} with lag {lag}s",
+        color="green",
+        marker="o",
+        linestyle="None",
+        alpha=0.2,
+    )
+    plt.title(f"{name_series} and {name_trend}")
     plt.legend()
     plt.grid(True)
 
     plt.subplot(2, 1, 2)
-    plt.plot(lags, correlation, label='Cross-Correlation')
-    plt.axvline(lag, color='red', linestyle='--', label=f'Lag = {lag}')
-    plt.title(f'Cross-Correlation between {name_series} and {name_trend}')
-    plt.xlabel('Lag')
-    plt.ylabel('Cross-Correlation')
+    plt.plot(lags, correlation, label="Cross-Correlation")
+    plt.axvline(lag, color="red", linestyle="--", label=f"Lag = {lag}")
+    plt.title(f"Cross-Correlation between {name_series} and {name_trend}")
+    plt.xlabel("Lag")
+    plt.ylabel("Cross-Correlation")
     plt.legend()
     plt.grid(True)
     if save:
@@ -102,7 +118,75 @@ def lag_correlation(data1: dict, data2: dict, show: bool=False, save: bool=False
 
     return time_shift
 
+
+def compute_lag(
+    df1: pd.DataFrame,
+    key1: str,
+    istart1: int,
+    iend1: int,
+    df2: pd.DataFrame,
+    key2: str,
+    istart2: int = None,
+    iend2: int = None,
+    show: bool = False,
+    save: bool = False,
+):
+    ts1 = df1.loc[:, ["timestamp", key1]]
+    ts1.set_index("timestamp", inplace=True)
+    ts1 = ts1.iloc[:, 0]
+    ts1 = ts1 - ts1.min()
+
+    ts1_index = ts1.index.to_list()
+    otstart = ts1_index[istart1]
+    otend = ts1_index[iend1]
+    print(f"ts1 range: [{istart1}, {iend1}]-> [{otstart}, {otend}]")
+
+    ts2 = df2.loc[:, ["timestamp", key2]]
+    ts2.set_index("timestamp", inplace=True)
+    ts2 = ts2.iloc[:, 0]
+
+    pstart = ts2.index.get_indexer([pd.Timestamp(otstart)], method="nearest")
+    pend = ts2.index.get_indexer([pd.Timestamp(otend)], method="nearest")
+    ptstart = ts2.index[pstart[0]]
+    ptend = ts2.index[pend[0]]
+    print(f"ts2 range:  [{pstart[0]}, {pend[0]}] -> [{ptstart}, {ptend}]")
+
+    # resample to make sure that timeseries share the same index
+    ts2_index = ts2.index.to_list()
+    ts2_resampled = ts2.resample("1s", origin=ts2_index[0]).asfreq()
+
+    # Interpolate missing values (optional, depending on your use case)
+    ts2_resampled = ts2_resampled.interpolate(method="linear")
+    pstart = ts2_resampled.index.get_indexer([pd.Timestamp(otstart)], method="nearest")
+    pend = ts2_resampled.index.get_indexer([pd.Timestamp(otend)], method="nearest")
+    ptstart = ts2_resampled.index[pstart[0]]
+    ptend = ts2_resampled.index[pend[0]]
+
+    # pupitre data
+    ts2_data = {
+        "field": key2,
+        "df": ts2_resampled,
+        "range": {"start": ptstart, "end": ptend},
+    }
+
+    # overview data
+    ts1_data = {
+        "field": key1,
+        "df": ts1,
+        "range": {"start": otstart, "end": otend},
+    }
+    lag = lag_correlation(
+        ts2_data,
+        ts1_data,
+        show=show,
+        save=save,
+    )
+
+    return lag
+
+
 # To check
+
 
 def pearson(
     Data: MagnetData,
