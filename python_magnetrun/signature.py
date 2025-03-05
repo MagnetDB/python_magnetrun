@@ -111,6 +111,60 @@ class Signature:
         self._values = value
 
     @classmethod
+    def from_df(
+        cls,
+        filename: str,
+        t0: datetime,
+        df: pd.DataFrame,
+        key: str,
+        symbol: str,
+        unit: str,
+        tkey: str,
+        threshold: float,
+        timeshift: float = 0,
+    ) -> "Signature":
+        """
+        Create a Signature instance from a magnetdata.
+
+        Parameters:
+        - df: pandas DataFrame containing 'regime', 'time', and 'value' columns.
+        - key: key Field
+        - symbol: Symbol of the signature.
+        - unit: Unit of the signature.
+        - tkey:
+        - threshold: threshold for regime detection.
+        - timeshift: lag in second
+
+        Returns:
+        - A Signature instance.
+        """
+        from .processing.trends import trends_df
+
+        (changes, regimes, times, values, components) = trends_df(
+            df,
+            tkey,
+            key,
+            window=1,
+            threshold=threshold,
+            filename=filename,
+            show=False,
+            save=False,
+            debug=False,
+        )
+
+        return cls(
+            name=key,
+            symbol=symbol,
+            unit=f"{unit:~P}",
+            t0=t0,
+            timeshift=0,
+            changes=changes,
+            regimes=regimes,
+            times=times,
+            values=values,
+        )
+
+    @classmethod
     def from_mdata(
         cls,
         mdata: MagnetData,
@@ -123,12 +177,11 @@ class Signature:
         Create a Signature instance from a magnetdata.
 
         Parameters:
-        - df: pandas DataFrame containing 'regime', 'time', and 'value' columns.
-        - name: Name of the signature.
-        - symbol: Symbol of the signature.
-        - unit: Unit of the signature.
-        - t0: Initial timestamp.
-        - timeshift: lag in second vs pigbrother overview signal
+        - mdata: MagnetData
+        - key: key Field
+        - tkey:
+        - threshold: threshold for regime detection.
+        - timeshift: lag in second
 
         Returns:
         - A Signature instance.

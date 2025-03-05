@@ -37,6 +37,7 @@ def nplateaus(
         flush=True,
     )
 
+    ykey = str()
     df = pd.DataFrame()
     if not isinstance(Data.Data, pd.DataFrame):
         if xField[0] == "t":
