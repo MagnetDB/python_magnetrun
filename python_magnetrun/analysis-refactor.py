@@ -239,9 +239,10 @@ def load_df(file, site, insert, group, keys) -> tuple:
                 return df, t0
             t0 = mdata.Groups[group][keys[0]]["wf_start_time"]
             dt = mdata.Groups[group][keys[0]]["wf_increment"]
+            t_offset = mdata.Groups[group][keys[0]]["start_offset"]
             df = pd.DataFrame(mdata.getTdmsData(group, keys))
             df["timestamp"] = [
-                np.datetime64(t0).astype(datetime) + timedelta(0, i * dt)
+                np.datetime64(t0).astype(datetime) + timedelta(0, i * dt + t_offset)
                 for i in df.index.to_list()
             ]
     return df, t0
