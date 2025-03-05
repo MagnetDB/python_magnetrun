@@ -191,6 +191,11 @@ For overview pigbrother files:
 python -m python_magnetrun.analysis  pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250211-*.tdms --key Référence_GR1 --show --synchronize 
 ```
 
+see also:
+
+```bash
+python -m python_magnetrun.analysis-refactor pigbrotherdata/Fichiers_Data/M9/Overview/M9_Overview_250303-*.tdms  --key Référence_GR1 --show --synchronize
+```
 
 - Detect Breaking points and anomalies:
 

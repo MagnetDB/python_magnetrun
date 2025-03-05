@@ -1,28 +1,26 @@
-claw1test:
+# claw1test
+
 init flow velocity from IH and IB
 update velocity at each timestep
 add gauges to store T(xi, t)
 finalize test
 what to do to tell Cooling H and Cooling B??
 
-heatexchanger:
+# heatexchanger
 make findh a method
 
-HMagnets:
+# HMagnets
 download MAGConfiles?
 dowload a given record
 
-python_magnetrun:
-transform column Date and Time from txt files to a real timestamp
-
-magnetdata:
+# magnetdata
 add method to remove pikes
 add method to smooth data
-method to remove identical columns or at least Icoili de i=2,..,14
+method to remove identical columns or at least Icoili with i=2,..,14
 
-test-request:
+# test-request
 
-DB: Tables
+# DB: Tables
 Magnets
 GObjects
 MagnetID_[rapid]records
@@ -30,6 +28,8 @@ MagnetID_GObjects
 
 
 # Remove ICoil in dataframe
+
+```python
 keys = df.columns.values.tolist()
 max_tap=0
 for i in range(1,args.nhelices+1):
@@ -49,3 +49,12 @@ for i in range(2,max_tap):
 
 if "Icoil16" in keys:
     del df["Icoil16"]
+```
+
+# Set precise starting time for tdms
+
+Because of downsampling applied to store pigbrother data:
+
+* overview: 1/2 s
+* archive: (1/120)/2 s
+* default: 0
