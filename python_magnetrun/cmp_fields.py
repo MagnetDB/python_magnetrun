@@ -118,6 +118,7 @@ if __name__ == "__main__":
         filename = os.path.basename(file)
         result = filename.startswith("M")
         insert = "tututu"
+        site = ""
         if result:
             try:
                 index = filename.index("_")

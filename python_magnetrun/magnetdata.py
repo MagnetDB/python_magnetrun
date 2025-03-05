@@ -8,6 +8,8 @@ import os
 import sys
 
 import pandas as pd
+import numpy as np
+from scipy import stats
 
 
 class MagnetData:
@@ -104,7 +106,9 @@ class MagnetData:
             Keys.append("Courants_Alimentations/Référence_GR1")
             Groups["Courants_Alimentations"]["Référence_GR1"] = Groups[
                 "Courants_Alimentations"
-            ]["Référence_A1"]  # "Added Référence_A1+Référence_A2"
+            ][
+                "Référence_A1"
+            ]  # "Added Référence_A1+Référence_A2"
         if "Référence_A3" in Data["Courants_Alimentations"]:
             Data["Courants_Alimentations"]["Référence_GR2"] = (
                 Data["Courants_Alimentations"]["Référence_A3"]
@@ -113,7 +117,9 @@ class MagnetData:
             Keys.append("Courants_Alimentations/Référence_GR2")
             Groups["Courants_Alimentations"]["Référence_GR2"] = Groups[
                 "Courants_Alimentations"
-            ]["Référence_A3"]  # "Added Référence_A3+Référence_A4"
+            ][
+                "Référence_A3"
+            ]  # "Added Référence_A3+Référence_A4"
 
         # print(f"magnetdata/fromtdms: Groups={Groups}", flush=True)
         return cls(name, Groups, Keys, 1, Data)
@@ -198,7 +204,9 @@ class MagnetData:
 
         if key is None:
             if not isinstance(self.Data, pd.DataFrame):
-                raise Exception(f"MagnetData/Data: {self.FileName} - expect Data to be a pandas dataframe")
+                raise Exception(
+                    f"MagnetData/Data: {self.FileName} - expect Data to be a pandas dataframe"
+                )
             return self.Data
         else:
             selected_keys = []
@@ -229,8 +237,10 @@ class MagnetData:
         """
 
         if not isinstance(self.Data, dict):
-            raise Exception(f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict")
-        
+            raise Exception(
+                f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict"
+            )
+
         if channel is None:
             return self.Data[group]
         else:
@@ -381,11 +391,11 @@ class MagnetData:
                 print(f"{key}: symbol={symbol}, unit={unit:~P}", flush=True)
 
     def getUnitKey(self, key: str) -> tuple:
-        #print(f'getUnitKey: {key}')
+        # print(f'getUnitKey: {key}')
         if key not in self.Keys:
             from pint import UnitRegistry
 
-            #print(f"getUnitKey: {key} not in {self.Keys}")
+            # print(f"getUnitKey: {key} not in {self.Keys}")
             ureg = UnitRegistry()
             if key == "t":
                 return ("t", ureg.second)
@@ -853,7 +863,7 @@ class MagnetData:
             ordered_dict = self.Groups[group][channel]
             # print(f"self.Groups[{group}][{channel}]={self.Groups[group][channel]}")
             # print(f"self.Groups[{group}][{channel}]={type(self.Groups[group][channel])}")
-            
+
             # start_time = self.Data[group]["t"].iloc[0]
             # end_time = self.Data[group]["t"].iloc[-1]
             dt = ordered_dict["wf_increment"]
@@ -895,12 +905,21 @@ class MagnetData:
                     t0 = self.Data.iloc[0]["timestamp"]
 
                 from .utils.duplicates import find_duplicates
+
                 self.Data = find_duplicates(self.Data, self.FileName, "timestamp")
 
                 self.Data["t"] = self.Data.apply(
                     lambda row: (row.timestamp - t0).total_seconds(),
                     axis=1,
                 )
+
+                # check interval in t column
+                times = self.Data["t"].to_numpy()
+                dt = np.diff(times)
+                if dt.min() != dt.max():
+                    print(
+                        f"!!! {self.FileName}: dt from {dt.min()} to {dt.max()} !!!"
+                    )  # stats={stats.describe(dt)}"
 
                 # print("magnetdata.AddTime: add t and timestamp")
                 # remove Date and Time ??
@@ -1001,7 +1020,15 @@ class MagnetData:
 
         return 0
 
-    def plotData(self, x: str, y: str, ax, alpha: float = 1, label: str = None, normalize: bool = False):
+    def plotData(
+        self,
+        x: str,
+        y: str,
+        ax,
+        alpha: float = 1,
+        label: str = None,
+        normalize: bool = False,
+    ):
         """plot x vs y
 
         :param x: _description_
@@ -1066,9 +1093,9 @@ class MagnetData:
                 if xgroup == ygroup:
                     df = self.Data[xgroup].copy()
                     dt = self.Groups[ygroup][ychannel]["wf_increment"]
-                    
+
                     if xchannel == "t":
-                        df[xchannel] = df.index * dt
+                        df[xchannel] = df.index * dt  # + dt/2. ??
                     elif xchannel == "timestamp":
                         t0 = self.Groups[ygroup][ychannel]["wf_start_time"]
                         # print(f"plotData ({self.FileName}: t0={t0})")

@@ -64,6 +64,11 @@ def lag_correlation(
         else:
             trend_slice = trend
 
+    # dump data to csv
+    if debug:
+        time_series_slice.to_csv("time_series_slice.csv")
+        trend_slice.to_csv("trend_slice.csv")
+
     # Drop NaN values from trend slice
     # trend_slice = trend_slice[~np.isnan(trend_slice)]
     # time_series_slice = time_series_slice[-len(trend_slice):]
@@ -120,47 +125,62 @@ def lag_correlation(
 
 
 def compute_lag(
-    df1: pd.DataFrame,
-    key1: str,
-    istart1: int,
-    iend1: int,
-    df2: pd.DataFrame,
-    key2: str,
-    istart2: int = None,
-    iend2: int = None,
+    tkey: str,
+    df1_data: dict,
+    df2_data: dict,
     show: bool = False,
     save: bool = False,
+    debug: bool = False,
 ):
-    ts1 = df1.loc[:, ["timestamp", key1]]
-    ts1.set_index("timestamp", inplace=True)
+    ts1 = df1_data["df"].copy()
+    key1 = df1_data["field"]
+    (istart1, iend1) = df1_data["range"]
+    ts1.set_index(tkey, inplace=True)
     ts1 = ts1.iloc[:, 0]
-    ts1 = ts1 - ts1.min()
+    # ts1 = ts1 - ts1.min() ?? needed
 
     ts1_index = ts1.index.to_list()
     otstart = ts1_index[istart1]
-    otend = ts1_index[iend1]
-    print(f"ts1 range: [{istart1}, {iend1}]-> [{otstart}, {otend}]")
+    otend = ts1_index[-1]
+    if not iend1 is None:
+        otend = ts1_index[iend1]
+    if debug:
+        print(f"ts1 range: [{istart1}, {iend1}]-> [{otstart}, {otend}]")
 
-    ts2 = df2.loc[:, ["timestamp", key2]]
-    ts2.set_index("timestamp", inplace=True)
+    ts2 = df2_data["df"].copy()
+    key2 = df1_data["field"]
+    (istart2, iend2) = df2_data["range"]
+    ts2.set_index(tkey, inplace=True)
     ts2 = ts2.iloc[:, 0]
-
-    pstart = ts2.index.get_indexer([pd.Timestamp(otstart)], method="nearest")
-    pend = ts2.index.get_indexer([pd.Timestamp(otend)], method="nearest")
-    ptstart = ts2.index[pstart[0]]
-    ptend = ts2.index[pend[0]]
-    print(f"ts2 range:  [{pstart[0]}, {pend[0]}] -> [{ptstart}, {ptend}]")
-
     # resample to make sure that timeseries share the same index
     ts2_index = ts2.index.to_list()
     ts2_resampled = ts2.resample("1s", origin=ts2_index[0]).asfreq()
 
+    pstart = ()
+    pend = ()
+
     # Interpolate missing values (optional, depending on your use case)
     ts2_resampled = ts2_resampled.interpolate(method="linear")
-    pstart = ts2_resampled.index.get_indexer([pd.Timestamp(otstart)], method="nearest")
-    pend = ts2_resampled.index.get_indexer([pd.Timestamp(otend)], method="nearest")
+    if istart2 is None and iend2 is None:
+        pstart = ts2_resampled.index.get_indexer(
+            [pd.Timestamp(otstart)], method="nearest"
+        )
+        pend = ts2_resampled.index.get_indexer([pd.Timestamp(otend)], method="nearest")
+    else:
+        ts2_index = ts2.index.to_list()
+        ptstart = ts2_index[istart2]
+        ptend = ts2_index[-1]
+        if not iend2 is None:
+            ptend = ts2_index[iend2]
+        pstart = ts2_resampled.index.get_indexer(
+            [pd.Timestamp(ptstart)], method="nearest"
+        )
+        pend = ts2_resampled.index.get_indexer([pd.Timestamp(ptend)], method="nearest")
+
     ptstart = ts2_resampled.index[pstart[0]]
     ptend = ts2_resampled.index[pend[0]]
+    if debug:
+        print(f"ts2 range: [{istart2}, {iend2}]-> [{ptstart}, {ptend}]")
 
     # pupitre data
     ts2_data = {
@@ -180,6 +200,7 @@ def compute_lag(
         ts1_data,
         show=show,
         save=save,
+        debug=debug,
     )
 
     return lag
