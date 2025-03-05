@@ -62,6 +62,13 @@ class MagnetData:
             if f_extension != ".tdms":
                 raise RuntimeError(f"fromtdms: expect a tdms filename - got {name}")
 
+            # add t_offset to account for tdms downsampled data
+            t_offset = 0
+            if "Overview" in name:
+                t_offset = (1)/2.
+            elif "Archive" in name:
+                t_offset = (1/120.)/2.
+
             rawData = TdmsFile.open(name)
             # print(f"rawData: {rawData.properties}", flush=True)
             for group in rawData.groups():
@@ -77,6 +84,10 @@ class MagnetData:
                         Keys.append(f"{gname}/{cname}")
                         Groups[gname][cname] = channel.properties
                         # print(f"properties: {channel.properties}", flush=True)
+                        # update wf_start_offset to account for downsampled data
+                        if "wf_start_offset" in Groups[gname][cname]:
+                            Groups[gname][cname]["wf_start_offset"] = t_offset
+                        # print(f"* properties: {channel.properties}", flush=True)
 
                     Data[gname] = group.as_dataframe(
                         time_index=False,
@@ -1093,9 +1104,10 @@ class MagnetData:
                 if xgroup == ygroup:
                     df = self.Data[xgroup].copy()
                     dt = self.Groups[ygroup][ychannel]["wf_increment"]
+                    t_offset = self.Groups[ygroup][ychannel]["wf_start_offset"]
 
                     if xchannel == "t":
-                        df[xchannel] = df.index * dt  # + dt/2. ??
+                        df[xchannel] = df.index * dt  + t_offset
                     elif xchannel == "timestamp":
                         t0 = self.Groups[ygroup][ychannel]["wf_start_time"]
                         # print(f"plotData ({self.FileName}: t0={t0})")
