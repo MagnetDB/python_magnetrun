@@ -240,6 +240,7 @@ def load_df(file, site, insert, group, keys) -> tuple:
             t0 = mdata.Groups[group][keys[0]]["wf_start_time"]
             dt = mdata.Groups[group][keys[0]]["wf_increment"]
             t_offset = mdata.Groups[group][keys[0]]["wf_start_offset"]
+            print(f"{file}: t0: {t0}, dt: {dt}, t_offset: {t_offset}")
             df = pd.DataFrame(mdata.getTdmsData(group, keys))
             df["timestamp"] = [
                 np.datetime64(t0).astype(datetime) + timedelta(0, i * dt + t_offset)
@@ -497,8 +498,9 @@ def main():
         )
         df_archive = merge_data(df_archive_list)
         at0 = df_archive.iloc[0]["timestamp"]
+        t_offset = (1 / 120.0) / 2.0
         df_archive["t"] = df_archive.apply(
-            lambda row: (row.timestamp - at0).total_seconds(), axis=1
+            lambda row: (row.timestamp - at0).total_seconds() + t_offset, axis=1
         )
         overview_dict[ofile]["data"]["archive"] = df_archive
 
@@ -558,8 +560,11 @@ def main():
         # get pandas dataframe
         df_overview = overview_dict[ofile]["data"]["overview"]  # df_overview_list[i]
         ot0 = df_overview["timestamp"].iloc[0]
+
+        # for overview files
+        t_offset = 1 / 2.0
         df_overview["t"] = df_overview.apply(
-            lambda row: (row.timestamp - ot0).total_seconds(), axis=1
+            lambda row: (row.timestamp - ot0).total_seconds() + t_offset, axis=1
         )
         df_archive = overview_dict[ofile]["data"]["archive"]
         df_incidents = overview_dict[ofile]["data"]["default"]
@@ -683,6 +688,111 @@ def main():
                     end = signature.times[i + 1]
                 print(f"regime P: {signature.times[i]} -> {end}")
         """
+        # plot sync data vs t or timestamp
+        msg = "vs timestamp"
+        plot_data(
+            df_overview,
+            df_archive,
+            df_pupitre,
+            df_incidents,
+            channels_dict,
+            pupitre_dict,
+            site,
+            "timestamp",
+            args.key,
+            filename,
+            msg,
+            args,
+        )
+        msg = "vs t"
+        plot_data(
+            df_overview,
+            df_archive,
+            df_pupitre,
+            df_incidents,
+            channels_dict,
+            pupitre_dict,
+            site,
+            "t",
+            args.key,
+            filename,
+            msg,
+            args,
+        )
+
+        # find the latest big change in signature for overview and pupitre
+        def compute_regime_score(
+            regime: str,
+            value: tuple,
+            time: tuple,
+            reference_regime: str,
+            reference_value: tuple,
+            reference_time: tuple,
+        ):
+            score = float("inf")
+            lags = (float("inf"), float("inf"))
+            if reference_regime == regime:
+                start_diff = abs(value[0] - reference_value[0])
+                end_diff = abs(value[1] - reference_value[1])
+                score = start_diff + end_diff
+
+                start_lag = time[0] - reference_time[0]
+                end_lag = time[1] - reference_time[1]
+                lags = (start_lag, end_lag)
+
+            return (score, lags)
+
+        def find_best_matching_regime(signature, reference_signature):
+            best_matches = []
+            for i, regime in enumerate(signature.regimes):
+                best_score = float("inf")
+                best_lags = (float("inf"), float("inf"))
+                best_index = (0, 0)
+                best_match = None
+
+                if regime in ["U", "D"] and i < len(signature.times) - 2:
+                    values = (signature.values[i], signature.values[i + 1])
+                    times = (signature.times[i], signature.times[i + 1])
+                    for j, ref_regime in enumerate(reference_signature.regimes):
+                        # get value and time range
+                        if (
+                            ref_regime in ["U", "D"]
+                            and j < len(reference_signature.times) - 2
+                        ):
+                            ref_values = (
+                                reference_signature.values[j],
+                                reference_signature.values[j + 1],
+                            )
+                            ref_times = (
+                                reference_signature.times[j],
+                                reference_signature.times[j + 1],
+                            )
+
+                            score, lags = compute_regime_score(
+                                regime,
+                                values,
+                                times,
+                                ref_regime,
+                                ref_values,
+                                ref_times,
+                            )
+
+                            if score < best_score:
+                                best_score = score
+                                best_match = ref_regime
+                                best_lags = lags
+                                best_index = (i, j)
+                    best_matches.append(
+                        (regime, best_match, best_score, best_lags, best_index)
+                    )
+            return best_matches
+
+        best_matches = find_best_matching_regime(osignature, psignature)
+
+        for regime, best_match, score, lags, best_index in best_matches:
+            print(
+                f"Best match for regime {regime} [{best_index[0]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}] in pupitre"
+            )
 
         # get lag from 1st U sequence
         print("1st lag")
@@ -720,6 +830,12 @@ def main():
         # update times for psignature
         for j in range(len(psignature.times)):
             psignature.times[j] = psignature.times[j] - lag.total_seconds()
+        best_matches = find_best_matching_regime(osignature, psignature)
+
+        for regime, best_match, score, lags, best_index in best_matches:
+            print(
+                f"1st lag: Best match for regime {regime} [{best_index[0]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}] in pupitre"
+            )
 
         # plots
         msg = f"(sync, 1st lag with pigbrother {lag.total_seconds()} s)"
@@ -742,105 +858,6 @@ def main():
 
         # get lag from last D
         print("last lag: ", flush=True)
-
-        # find the latest big change in signature for overview and pupitre
-        def compute_regime_score(regime, signature, reference_signature):
-            score = 0
-            lags = (float('inf'), float('inf'))
-            for i, ref_regime in enumerate(reference_signature.regimes):
-                if ref_regime == regime:
-                    start_diff = abs(reference_signature.values[i] - signature.values[i])
-                    end_diff = 0
-                    schange_diff = abs(reference_signature.times[i] - signature.times[i])
-                    echange_diff = 0
-                    if i <= len(reference_signature.regimes) - 1:
-                        end_diff = abs(reference_signature.values[i + 1] - signature.values[i + 1])
-                        echange_diff = abs(reference_signature.times[i+1] - signature.times[i+1])
-                    score += start_diff + end_diff 
-                    lags = (schange_diff, echange_diff)
-            return (score, lags)
-
-        def find_best_matching_regime(signature, reference_signature):
-            best_matches = []
-            for regime in signature.regimes:
-                best_score = float('inf')
-                best_match = None
-                for ref_regime in reference_signature.regimes:
-                    score, lags = compute_regime_score(regime, signature, reference_signature)
-                    if score < best_score:
-                        best_score = score
-                        best_match = ref_regime
-                best_matches.append((regime, best_match, best_score))
-            return best_matches
-
-        best_matches_overview = find_best_matching_regime(signature, osignature)
-        best_matches_pupitre = find_best_matching_regime(signature, psignature)
-
-        for regime, best_match, score, lags in best_matches_overview:
-            print(f"Best match for regime {regime} in overview: {best_match} with score {score} and lags {lags}")
-
-        for regime, best_match, score, lags in best_matches_pupitre:
-            print(f"Best match for regime {regime} in pupitre: {best_match} with score {score} and lags {lags}")
-
-        # Calculate lag between overview and pupitre based on best matching regimes
-        overview_lag = []
-        pupitre_lag = []
-        for regime, best_match, score in best_matches_overview:
-            if best_match in psignature.regimes:
-                overview_index = osignature.regimes.index(best_match)
-                pupitre_index = psignature.regimes.index(best_match)
-                overview_lag.append(osignature.times[overview_index])
-                pupitre_lag.append(psignature.times[pupitre_index])
-
-        if overview_lag and pupitre_lag:
-            avg_lag = np.mean(np.array(pupitre_lag) - np.array(overview_lag))
-            print(f"Average lag between overview and pupitre: {avg_lag} seconds")
-        else:
-            print("No matching regimes found to calculate lag")
-
-        for marker in ["U", "D"]:
-            print(f"{marker}: {args.key}")
-            for i, regime in enumerate(signature.regimes):
-                start = signature.times[i]
-                vstart = signature.values[i]
-                end = df_overview["t"].iloc[-1]
-                vend = df_overview[args.key].iloc[-1]
-                if i < len(signature.times) - 2:
-                    end = signature.times[i + 1]
-                    vend = signature.values[i + 1]
-
-                if regime == marker:
-                    print(
-                        f"regime {marker} [{i}]: {start}->{end} s , {vstart}->{vend} A"
-                    )
-            print(f"{marker}: {channels_dict[args.key]}")
-            for i, regime in enumerate(osignature.regimes):
-                start = osignature.times[i]
-                vstart = osignature.values[i]
-                end = df_overview["t"].iloc[-1]
-                vend = df_overview[channels_dict[args.key]].iloc[-1]
-                if i < len(osignature.times) - 2:
-                    end = osignature.times[i + 1]
-                    vend = osignature.values[i + 1]
-
-                if regime == marker:
-                    print(
-                        f"oregime {marker} [{i}]: {start}->{end} s , {vstart}->{vend} A"
-                    )
-            print(f"{marker}: {pupitre_dict[site][args.key]}")
-            for i, regime in enumerate(psignature.regimes):
-                start = psignature.times[i]
-                vstart = psignature.values[i]
-                end = df_pupitre["t"].iloc[-1]
-                vend = df_pupitre[pupitre_dict[site][args.key]].iloc[-1]
-                if i < len(psignature.times) - 2:
-                    end = psignature.times[i + 1]
-                    vend = psignature.values[i + 1]
-
-                if regime == marker:
-                    print(
-                        f"pregime {marker} [{i}]: {start}->{end} s, {vstart}->{vend} A"
-                    )
 
         """
         print(
