@@ -78,18 +78,36 @@ def setup():
             "Référence_GR2": "IB",
             "Référence_GR1_Q": "FlowH",
             "Référence_GR2_Q": "FlowB",
+            "Référence_GR1_Rpm": "RpmH",
+            "Référence_GR2_Rpm": "RpmB",
+            "Référence_GR1_Pin": "HPH",
+            "Référence_GR2_Pin": "HPB",
+            "Référence_GR1_Pout": "BP",
+            "Référence_GR2_Pout": "BP",
         },
         "M8": {
             "Référence_GR1": "IB",
             "Référence_GR2": "IH",
             "Référence_GR1_Q": "FlowB",
             "Référence_GR2_Q": "FlowH",
+            "Référence_GR1_Rpm": "RpmB",
+            "Référence_GR2_Rpm": "RpmH",
+            "Référence_GR1_Pin": "HPB",
+            "Référence_GR2_Pin": "HPH",
+            "Référence_GR1_Pout": "BP",
+            "Référence_GR2_Pout": "BP",
         },
         "M10": {
             "Référence_GR1": "IB",
             "Référence_GR2": "IH",
             "Référence_GR1_Q": "FlowB",
             "Référence_GR2_Q": "FlowH",
+            "Référence_GR1_Rpm": "RpmB",
+            "Référence_GR2_Rpm": "RpmH",
+            "Référence_GR1_Pin": "HPB",
+            "Référence_GR2_Pin": "HPH",
+            "Référence_GR1_Pout": "BP",
+            "Référence_GR2_Pout": "BP",
         },
     }
     upupitre_dict = {
@@ -276,17 +294,17 @@ def synchronize_data(df: pd.DataFrame, t0: datetime) -> tuple:
 
 
 def plot_data(
-    df_overview,
-    df_archive,
-    df_pupitre,
-    df_incidents,
-    channels_dict,
-    pupitre_dict,
-    site,
-    tkey,
-    key,
-    title,
-    msg,
+    df_overview: pd.DataFrame,
+    df_archive: pd.DataFrame,
+    df_pupitre: pd.DataFrame,
+    df_incidents: pd.DataFrame,
+    channels_dict: dict,
+    pupitre_dict: dict,
+    site: str,
+    tkey: str,
+    key: str,
+    title: str,
+    msg: str,
     args,
 ):
     my_ax = plt.gca()
@@ -418,27 +436,28 @@ def main():
                 ):
                     print(f"{filename}: mode=ECOmode")
 
-                    # compute current factor (corr_Ih_Ib.py)
-                    import piecewise_regression
+                    GR = GR.query("`Référence_GR1` >= 300 and `Référence_GR2` >= 300")
 
                     x = GR["Référence_GR1"].to_numpy()
                     y = GR["Référence_GR2"].to_numpy()
-                    """
-                    my_ax = plt.gca()
-                    my_ax.plot(x, y, "o")
-                    plt.xlabel("Référence_GR1 [A]")
-                    plt.ylabel("Référence_GR2 [A]")
-                    plt.grid()
-                    plt.show()
-                    plt.close()
-                    """
 
-                    pw_fit = piecewise_regression.Fit(x, y, n_breakpoints=1)
+                    """
+                    # compute current factor (corr_Ih_Ib.py)
+                    import piecewise_regression
+                    pw_fit = piecewise_regression.Fit(
+                        x,
+                        y,
+                        start_values=[23600],
+                        n_breakpoints=1,
+                        n_boot=10,
+                        tolerance=1.0e-3,
+                        verbose=False,
+                    )
                     pw_fit.summary()
                     # Plot the data, fit, breakpoints and confidence intervals
-                    pw_fit.plot_data(color="grey", s=2)
+                    pw_fit.plot_data(color="grey", s=20)
                     # Pass in standard matplotlib keywords to control any of the plots
-                    pw_fit.plot_fit(color="red", linewidth=4)
+                    pw_fit.plot_fit(color="red", linewidth=2)
                     pw_fit.plot_breakpoints()
                     pw_fit.plot_breakpoint_confidence_intervals()
                     plt.xlabel("Référence_GR1 [A]")
@@ -446,6 +465,23 @@ def main():
                     plt.grid()
                     plt.show()
                     plt.close()
+                    """
+
+                    import pwlf
+
+                    my_pwlf = pwlf.PiecewiseLinFit(x, y)
+                    res = my_pwlf.fit(2)
+                    print(f"pwlf: res={res}")
+                    xHat = np.linspace(min(x), max(x), num=10000)
+                    yHat = my_pwlf.predict(xHat)
+                    # plot the results
+                    plt.figure()
+                    plt.plot(x, y, "o")
+                    plt.plot(xHat, yHat, "-")
+                    plt.grid()
+                    plt.show()
+                    plt.close()
+
                 del GR
 
             if bitter_only:
@@ -515,6 +551,9 @@ def main():
             [
                 pupitre_dict[site][args.key],
                 pupitre_dict[site][f"{args.key}_Q"],
+                pupitre_dict[site][f"{args.key}_Rpm"],
+                pupitre_dict[site][f"{args.key}_Pin"],
+                pupitre_dict[site][f"{args.key}_Pout"],
                 "teb",
                 "debitbrut",
             ],
@@ -527,16 +566,34 @@ def main():
         overview_dict[ofile]["data"]["pupitre"] = df_pupitre
 
         # IH/FlowH or IB/FlowB
+        from scipy import optimize
+
         x = df_pupitre[pupitre_dict[site][args.key]].to_numpy()
-        y = df_pupitre[pupitre_dict[site][f"{args.key}_Q"]].to_numpy()
-        my_ax = plt.gca()
-        my_ax.plot(x, y, "o")
-        plt.xlabel(f"{pupitre_dict[site][args.key]} [A]")
-        plt.ylabel(f'{pupitre_dict[site][f"{args.key}_Q"]} [l/s]')
-        plt.grid()
-        plt.title(overview_dict[ofile]["sources"]["pupitre"])
-        plt.show()
-        plt.close()
+        y = df_pupitre[pupitre_dict[site][f"{args.key}_Rpm"]].to_numpy()
+
+        # TODO: how to find Imax automatically
+        # use cjekel/piecewise_linear_fit_py??
+        Imax = 28000
+        from .flow_params import compute as flow_params
+
+        flow_params(
+            df_pupitre,
+            Ikey=pupitre_dict[site][args.key],
+            RpmKey=pupitre_dict[site][f"{args.key}_Rpm"],
+            QKey=pupitre_dict[site][f"{args.key}_Q"],
+            PinKey=pupitre_dict[site][f"{args.key}_Pin"],
+            PoutKey=pupitre_dict[site][f"{args.key}_Pout"],
+            name=ofile,
+            show=args.show,
+            debug=args.debug,
+        )
+
+        for extra_key in ["teb", "debitbrut"]:
+            print(f"{extra_key}: {df_pupitre[extra_key].describe()}")
+            df_pupitre.plot(x="t", y=extra_key)
+            plt.grid()
+            plt.show()
+            plt.close()
 
     # Load incidents data
     print("\nLoad Incidents data")
@@ -688,8 +745,7 @@ def main():
                     end = signature.times[i + 1]
                 print(f"regime P: {signature.times[i]} -> {end}")
         """
-        # plot sync data vs t or timestamp
-        msg = "vs timestamp"
+        msg = "ttt"
         plot_data(
             df_overview,
             df_archive,
@@ -698,24 +754,9 @@ def main():
             channels_dict,
             pupitre_dict,
             site,
-            "timestamp",
+            args.tkey,
             args.key,
-            filename,
-            msg,
-            args,
-        )
-        msg = "vs t"
-        plot_data(
-            df_overview,
-            df_archive,
-            df_pupitre,
-            df_incidents,
-            channels_dict,
-            pupitre_dict,
-            site,
-            "t",
-            args.key,
-            filename,
+            ofile,
             msg,
             args,
         )
@@ -750,14 +791,14 @@ def main():
                 best_index = (0, 0)
                 best_match = None
 
-                if regime in ["U", "D"] and i < len(signature.times) - 2:
+                if regime in ["U", "D"] and i <= len(signature.times) - 2:
                     values = (signature.values[i], signature.values[i + 1])
                     times = (signature.times[i], signature.times[i + 1])
                     for j, ref_regime in enumerate(reference_signature.regimes):
                         # get value and time range
                         if (
                             ref_regime in ["U", "D"]
-                            and j < len(reference_signature.times) - 2
+                            and j <= len(reference_signature.times) - 2
                         ):
                             ref_values = (
                                 reference_signature.values[j],
@@ -789,9 +830,13 @@ def main():
 
         best_matches = find_best_matching_regime(osignature, psignature)
 
+        duration = df_pupitre.index.values[-1] - df_pupitre.index.values[0]
         for regime, best_match, score, lags, best_index in best_matches:
+            msg = ""
+            if abs(lags[0]) / duration >= 0.2:
+                msg = "!! unlikely !!"
             print(
-                f"Best match for regime {regime} [{best_index[0]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}] in pupitre"
+                f"Best match for regime {regime} [{best_index[0]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}] in pupitre (duration={duration}) {msg}"
             )
 
         # get lag from 1st U sequence
@@ -833,8 +878,11 @@ def main():
         best_matches = find_best_matching_regime(osignature, psignature)
 
         for regime, best_match, score, lags, best_index in best_matches:
+            msg = ""
+            if abs(lags[0]) / duration >= 0.2:
+                msg = "!! unlikely !!"
             print(
-                f"1st lag: Best match for regime {regime} [{best_index[0]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}] in pupitre"
+                f"1st lag: Best match for regime {regime} [{best_index[0]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}] in pupitre (duration={duration}) {msg}"
             )
 
         # plots
@@ -973,9 +1021,10 @@ def main():
 
         ts_x = df_overview.loc[:, ["t", channels_dict[args.key]]]
         ts_x.set_index("t", inplace=True)
-        ts_x.index = ts_x.index.astype(int)
+        # TODO no longer working since t_offset on overview data
+        # ts_x.index = ts_x.index.astype(int)
         print("dtw ts_x:", ts_x)
-        ts_y = xdata_resampled
+        ts_y = xdata_resampled.loc[:, [pupitre_dict[site][args.key]]]
         # drop negative index in ts_y
         ts_y = ts_y[ts_y.index >= 0]
         ts_y.index = ts_y.index.astype(int)
@@ -1028,7 +1077,7 @@ def main():
         ax2.grid(True)
 
         # Point-to-Point Comparison Plot
-        ax3 = plt.subplot2grid((2, 2), (1, 0), colspan=2)
+        ax3 = plt.subplot2grid((2, 2), (1, 0), colspan=2, sharex=ax1)
         ax3.plot(ts_x, label=channels_dict[args.key], color="blue", marker="o")
         ax3.plot(
             ts_y,
@@ -1045,7 +1094,6 @@ def main():
                 linestyle="-",
                 linewidth=1,
                 alpha=0.5,
-                sharex=ax1,
             )
         ax3.set_title("Point-to-Point Comparison After DTW Alignment")
         ax3.legend()

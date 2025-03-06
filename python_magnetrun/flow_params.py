@@ -2,80 +2,16 @@
 Extract flow params from records using a fit
 """
 
-import tempfile
 import os
-import re
-
-import numpy as np
-from scipy import optimize
-from math import floor
-
-import datetime
 
 import json
 import pandas as pd
-from rich.progress import track
-from . import utils
 
 from .utils.fit import fit
-from .utils.files import concat_files
-from .utils.plots import plot_files
-from .magnetdata import MagnetData
+from .utils.plots import plot_df
 
 
-def stats(
-    Ikey: str,
-    Okey: str,
-    threshold: float,
-    files: list,
-    wd: str,
-    filename: str,
-    debug: bool = False,
-):
-    df = concat_files(files, keys=[Ikey, Okey], debug=debug)
-    df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    df.dropna(inplace=True)
-
-    # # drop values for Icoil1 > Imax
-    result = df.query(f"{Ikey} <= {threshold}")  # , inplace=True)
-    if result is not None and debug:
-        print(f"df: nrows={df.shape[0]}, results: nrows={result.shape[0]}")
-        print(f"result max: {result[Ikey].max()}")
-
-    plot_files(
-        filename,
-        files,
-        key1=Ikey,
-        key2=Okey,
-        fit=None,
-        show=debug,
-        debug=debug,
-        wd=wd,
-    )
-
-    if debug:
-        stats = result[Okey].describe(include="all")
-        print(f"{Okey} stats:\n{stats}")
-    return (result[Okey].mean(), result[Okey].std())
-
-
-def compute(
-    files: list,
-    Ikey: str,
-    RpmKey: str,
-    QKey: str,
-    PinKey: str,
-    PoutKey: str,
-    name: str,
-    debug: bool = False,
-):
-    """
-    compute flow_params for a given magnet
-    """
-
-    cwd = os.getcwd()
-    print(f"cwd={cwd}")
-
+def setup():
     # default value
     # set Imax to 40 kA to enable real Imax detection
     flow_params = {
@@ -89,20 +25,78 @@ def compute(
         "Imax": {"value": 28000, "unit": "A"},
     }
 
+    return flow_params
+
+
+def stats(
+    Ikey: str,
+    Okey: str,
+    threshold: float,
+    df: pd.DataFrame,
+    wd: str,
+    filename: str,
+    show: bool = False,
+    debug: bool = False,
+):
+    # # drop values for Icoil1 > Imax
+    result = df.query(f"{Ikey} <= {threshold}")  # , inplace=True)
+    if result is not None and debug:
+        print(f"df: nrows={df.shape[0]}, results: nrows={result.shape[0]}")
+        print(f"result max: {result[Ikey].max()}")
+
+    plot_df(
+        filename,
+        df,
+        key1=Ikey,
+        key2=Okey,
+        fit=None,
+        show=show,
+        debug=debug,
+        wd=wd,
+    )
+
+    if debug:
+        stats = result[Okey].describe(include="all")
+        print(f"{Okey} stats:\n{stats}")
+    return (result[Okey].mean(), result[Okey].std())
+
+
+def compute(
+    df: pd.DataFrame,
+    Ikey: str,
+    RpmKey: str,
+    QKey: str,
+    PinKey: str,
+    PoutKey: str,
+    name: str,
+    show: bool = False,
+    debug: bool = False,
+):
+    """
+    compute flow_params for a given magnet
+    """
+
+    cwd = os.getcwd()
+    print(f"cwd={cwd}")
+
+    _df = df.query(f"{Ikey} >= 300")
+
+    flow_params = setup()
     Imax = flow_params["Imax"]["value"]  # TODO find Imax value
 
     def vpump_func(x, a: float, b: float):
         return a * (x / Imax) ** 2 + b
 
-    params = fit(
+    params, params_covariance = fit(
         Ikey,
         RpmKey,
         "Rpm",
         Imax,
         vpump_func,
-        files,
+        _df,
         cwd,
         name,
+        show,
         debug,
     )
     flow_params["Vp0"]["value"] = params[1]
@@ -115,15 +109,16 @@ def compute(
     def flow_func(x, a: float, b: float):
         return a + b * vpump_func(x, vpmax, vp0) / (vpmax + vp0)
 
-    params = fit(
+    params, params_covariance = fit(
         Ikey,
         QKey,
         "Flow",
         Imax,
         flow_func,
-        files,
+        _df,
         cwd,
         name,
+        show,
         debug,
     )
     flow_params["F0"]["value"] = params[0]
@@ -134,15 +129,16 @@ def compute(
     def pressure_func(x, a: float, b: float):
         return a + b * (vpump_func(x, vpmax, vp0) / (vpmax + vp0)) ** 2
 
-    params = fit(
+    params, params_covariance = fit(
         Ikey,
         PinKey,
         "Pin",
         Imax,
         pressure_func,
-        files,
+        _df,
         cwd,
         name,
+        show,
         debug,
     )
     flow_params["Pmin"]["value"] = params[0]
@@ -156,9 +152,10 @@ def compute(
         Ikey,
         PoutKey,
         Imax,
-        files,
+        _df,
         cwd,
         name,
+        show,
         debug,
     )
     print(f"Pout(mean, std): {params}")
