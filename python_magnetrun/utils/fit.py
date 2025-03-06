@@ -5,7 +5,7 @@ import pandas as pd
 from scipy import optimize
 from math import floor
 
-from .plots import plot_files
+from .plots import plot_df
 from .files import concat_files
 
 
@@ -15,17 +15,15 @@ def fit(
     Ostring: str,
     threshold: float,
     fit_function,
-    files: list,
+    df: pd.DataFrame,
     wd: str,
     filename: str,
+    show: bool = False,
     debug: bool = False,
 ):
     """
     perform fit
     """
-    df = concat_files(files, keys=[Ikey, Okey], debug=debug)
-    df.replace([np.inf, -np.inf], np.nan, inplace=True)
-    df.dropna(inplace=True)
 
     result = df.query(f"{Ikey} <= {threshold}")  # , inplace=True)
     if result is not None and debug:
@@ -41,16 +39,15 @@ def fit(
     # print(f"\tcovariance: {params_covariance}")
     print(f"\tstderr: {np.sqrt(np.diag(params_covariance))}")
 
-    # TODO update interface with name=f'{sname}_{mname}'
-    plot_files(
+    plot_df(
         filename,
-        files,
+        df,
         key1=Ikey,
         key2=Okey,
         fit=(x_data, [fit_function(x, params[0], params[1]) for x in x_data]),
-        show=debug,
+        show=show,
         debug=debug,
         wd=wd,
     )
 
-    return params
+    return (params, params_covariance)

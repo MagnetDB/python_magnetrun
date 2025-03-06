@@ -15,8 +15,18 @@ import matplotlib.pyplot as plt
 matplotlib.rcParams["text.usetex"] = True
 
 
-# TODO use MagnetData instead of df
-def plot_vs_time(df: pd.DataFrame, items: list, show: bool = False, wd: str | None = None, ax=None, close: bool=False):
+# TODO add method to use MagnetData instead of df
+# TODO add symbol and unit to plot using json dict file
+
+
+def plot_vs_time(
+    df: pd.DataFrame,
+    items: list,
+    show: bool = False,
+    wd: str | None = None,
+    ax=None,
+    close: bool = False,
+):
     print(f"plot_vs_time: items={items}, close={close}", flush=True)
     keys = df.columns.values.tolist()
 
@@ -72,6 +82,54 @@ def plot_key_vs_key(df, pairs, show: bool = False, wd: str | None = None):
 
 
 # TODO use MagnetData instead of files
+def plot_df(
+    name: str,
+    df: pd.DataFrame,
+    key1: str,
+    key2: str,
+    from_i: int = 0,
+    to_i: int | None = None,
+    fit: tuple | None = None,
+    show: bool = False,
+    debug: bool = False,
+    wd: str | None = None,
+):
+
+    # Import Dataset
+    ax = plt.gca()
+
+    df.plot.scatter(
+        x=key1,
+        y=key2,
+        grid=True,
+        ax=ax,
+    )
+
+    # add fit if present
+    if fit:
+        (x, y) = fit
+        ax.plot(x, y, color="red", linestyle="dashed", linewidth=2, label="fit")
+
+    # add fit if present
+    if fit:
+        (x, y) = fit
+        ax.plot(x, y, color="red", linestyle="dashed", linewidth=2, label="fit")
+
+    plt.ylabel(key2)
+    plt.xlabel(key1)
+    plt.title(f"{name}: {key1} vs {key2}")
+
+    if not show:
+        filename = f"{name}-{key1}_vs_{key2}.png"
+        if wd is not None:
+            filename = f"{wd}/{filename}"
+        # print(f"save to file - {filename}")
+        plt.savefig(filename, dpi=300)
+    else:
+        plt.show()
+    plt.close()
+
+
 def plot_files(
     name: str,
     input_files: list,
@@ -139,7 +197,7 @@ def plot_files(
     # add fit if present
     if fit:
         (x, y) = fit
-        ax.plot(x, y, color='red', linestyle='dashed', linewidth=2, label='fit')
+        ax.plot(x, y, color="red", linestyle="dashed", linewidth=2, label="fit")
 
     # ax.legend()
     plt.legend(loc="best")
