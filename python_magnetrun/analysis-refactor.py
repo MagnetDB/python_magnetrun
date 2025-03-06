@@ -239,7 +239,7 @@ def load_df(file, site, insert, group, keys) -> tuple:
                 return df, t0
             t0 = mdata.Groups[group][keys[0]]["wf_start_time"]
             dt = mdata.Groups[group][keys[0]]["wf_increment"]
-            t_offset = mdata.Groups[group][keys[0]]["start_offset"]
+            t_offset = mdata.Groups[group][keys[0]]["wf_start_offset"]
             df = pd.DataFrame(mdata.getTdmsData(group, keys))
             df["timestamp"] = [
                 np.datetime64(t0).astype(datetime) + timedelta(0, i * dt + t_offset)
@@ -395,6 +395,7 @@ def main():
             symbol, unit = mdata.getUnitKey(f"{group}/{channels_dict[args.key]}")
 
             # get mode
+            # TODO make sure to screen current about a certain threshold
             bitter_only = True
             if (
                 f"{group}/Référence_GR1" in mdata.getKeys()
@@ -720,9 +721,6 @@ def main():
         for j in range(len(psignature.times)):
             psignature.times[j] = psignature.times[j] - lag.total_seconds()
 
-        # get lag from last D
-        print("last lag: ", flush=True)
-
         # plots
         msg = f"(sync, 1st lag with pigbrother {lag.total_seconds()} s)"
 
@@ -741,9 +739,65 @@ def main():
             msg,
             args,
         )
+
+        # get lag from last D
+        print("last lag: ", flush=True)
+
         # find the latest big change in signature for overview and pupitre
-        # the idea is to identify the regime which are the closest using the values at start/end not the time of the change
-        # then getting the start/end for each candidate give the lag between overview and pupitre
+        def compute_regime_score(regime, signature, reference_signature):
+            score = 0
+            lags = (float('inf'), float('inf'))
+            for i, ref_regime in enumerate(reference_signature.regimes):
+                if ref_regime == regime:
+                    start_diff = abs(reference_signature.values[i] - signature.values[i])
+                    end_diff = 0
+                    schange_diff = abs(reference_signature.times[i] - signature.times[i])
+                    echange_diff = 0
+                    if i <= len(reference_signature.regimes) - 1:
+                        end_diff = abs(reference_signature.values[i + 1] - signature.values[i + 1])
+                        echange_diff = abs(reference_signature.times[i+1] - signature.times[i+1])
+                    score += start_diff + end_diff 
+                    lags = (schange_diff, echange_diff)
+            return (score, lags)
+
+        def find_best_matching_regime(signature, reference_signature):
+            best_matches = []
+            for regime in signature.regimes:
+                best_score = float('inf')
+                best_match = None
+                for ref_regime in reference_signature.regimes:
+                    score, lags = compute_regime_score(regime, signature, reference_signature)
+                    if score < best_score:
+                        best_score = score
+                        best_match = ref_regime
+                best_matches.append((regime, best_match, best_score))
+            return best_matches
+
+        best_matches_overview = find_best_matching_regime(signature, osignature)
+        best_matches_pupitre = find_best_matching_regime(signature, psignature)
+
+        for regime, best_match, score, lags in best_matches_overview:
+            print(f"Best match for regime {regime} in overview: {best_match} with score {score} and lags {lags}")
+
+        for regime, best_match, score, lags in best_matches_pupitre:
+            print(f"Best match for regime {regime} in pupitre: {best_match} with score {score} and lags {lags}")
+
+        # Calculate lag between overview and pupitre based on best matching regimes
+        overview_lag = []
+        pupitre_lag = []
+        for regime, best_match, score in best_matches_overview:
+            if best_match in psignature.regimes:
+                overview_index = osignature.regimes.index(best_match)
+                pupitre_index = psignature.regimes.index(best_match)
+                overview_lag.append(osignature.times[overview_index])
+                pupitre_lag.append(psignature.times[pupitre_index])
+
+        if overview_lag and pupitre_lag:
+            avg_lag = np.mean(np.array(pupitre_lag) - np.array(overview_lag))
+            print(f"Average lag between overview and pupitre: {avg_lag} seconds")
+        else:
+            print("No matching regimes found to calculate lag")
+
         for marker in ["U", "D"]:
             print(f"{marker}: {args.key}")
             for i, regime in enumerate(signature.regimes):
