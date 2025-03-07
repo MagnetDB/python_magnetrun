@@ -4,6 +4,7 @@ from typing import List
 import pandas as pd
 
 from python_magnetrun.magnetdata import MagnetData
+import pint
 
 
 class Signature:
@@ -118,7 +119,7 @@ class Signature:
         df: pd.DataFrame,
         key: str,
         symbol: str,
-        unit: str,
+        unit: pint.Unit,
         tkey: str,
         threshold: float,
         timeshift: float = 0,

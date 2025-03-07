@@ -151,6 +151,7 @@ def setup():
         "UB": 0.1,
         "Ucoil15": 0.1,
         "Ucoil16": 0.1,
+        "debitbrut": 25,
     }
     return (
         color_dict,
@@ -412,6 +413,7 @@ def main():
             t0 = mdata.Groups[group][args.key]["wf_start_time"]
 
             symbol, unit = mdata.getUnitKey(f"{group}/{channels_dict[args.key]}")
+            print(f"symob={symbol}, unit={unit} (type: {type(unit)})")
 
             # get mode
             # TODO make sure to screen current about a certain threshold
@@ -556,9 +558,130 @@ def main():
                 pupitre_dict[site][f"{args.key}_Pout"],
                 "teb",
                 "debitbrut",
+                "Pmagnet",
             ],
         )
         df_pupitre = merge_data(df_pupitre_list)
+
+        # just a few check on extra_key
+        for extra_key in ["teb", "debitbrut", "Pmagnet"]:
+            print(f"{extra_key}: {df_pupitre[extra_key].describe()}")
+            df_pupitre.plot(x="t", y=extra_key)
+            plt.grid()
+            plt.show()
+            plt.close()
+
+        qt0 = df_pupitre.index.values[0]
+
+        qsymbol = "Q"
+        from pint import UnitRegistry
+
+        ureg = UnitRegistry()
+        qunit = ureg.meter**3 / ureg.hour
+
+        # Calculate differences between consecutive values
+        xdf = df_pupitre[["debitbrut", "Pmagnet"]].copy()
+        xdf["diff"] = xdf["debitbrut"].diff()
+
+        # Find points where the difference exceeds a threshold
+        threshold = xdf["diff"].std() * 7  # 3 standard deviations
+        sharp_changes = xdf[abs(xdf["diff"]) > threshold]
+        print(f"debitbrut: sharpchanges\n{sharp_changes}")
+
+        # histogram of debitbrut
+        print("debitbrut histo:\n", df_pupitre["debitbrut"].value_counts(bins=20))
+        df_pupitre.plot.hist(column=["debitbrut"], bins=20)
+        plt.grid()
+        plt.show()
+        plt.close()
+
+        # create thresholds list for hysteris model
+        # loop over sharps_changes row
+        # shall get an "even" number for U and D changes in debitbrut
+        # 1st U change, last D change: threshold
+        # 2nd ........, last-1 ...... : next threshold
+        # and so on
+        # at the end there shall be 3 pairs in threshold list
+        sharp_changes["pdiff"] = sharp_changes["Pmagnet"].diff()
+        selected_sharp_changes = sharp_changes[abs(sharp_changes["pdiff"]) > 0.5]
+        print(f"debitbrut: selected_sharpchanges\n{selected_sharp_changes}")
+        # from debitbrut U and D, get corresponding Pmagnet values
+        # U -> ascending_thresold
+        # D -> descending_thresold
+
+        qsignature = Signature.from_df(
+            ofile,
+            qt0,
+            df_pupitre,
+            "debitbrut",
+            qsymbol,
+            qunit,
+            tkey="t",
+            threshold=threshold_dict["debitbrut"],
+            timeshift=0,
+        )
+        print(f"qsignature: {qsignature.regimes}")
+
+        # plot debitbrut model
+        my_ax = plt.gca()
+        x = df_pupitre["Pmagnet"].to_numpy()
+        y = df_pupitre["debitbrut"].to_numpy()
+        from .utils.hysteresis import (
+            hysteresis_model,
+            multi_level_hysteresis,
+        )
+
+        hthresholds_list = [
+            (3.7, 2.3),
+            (9.9, 8.3),
+        ]
+        hvalues_list = [
+            (1150.0, 1050.0),
+            (1199.0, 1162.0),
+        ]
+
+        """
+        y_model = hysteresis_model(
+            x,
+            hthresholds_list[0][0],
+            hthresholds_list[0][1],
+            hvalues_list[0][1],
+            hvalues_list[0][0],
+        )
+        print(f"Q model: {y_model}")
+        """
+
+        high_values = [1150, 1199]
+        low_values = [1050, 1162]
+        y_model = multi_level_hysteresis(x, hthresholds_list, low_values, high_values)
+
+        legends = ["debitbrut"]
+        df_pupitre.plot(x="t", y="debitbrut", ax=my_ax)
+        legends.append("ymodel")
+        my_ax.plot(df_pupitre["t"].to_numpy(), y_model, marker="*", alpha=0.2)
+        for x in qsignature.times:
+            my_ax.axvline(x=x, color="red")
+        for x in selected_sharp_changes.index.to_list():
+            my_ax.axvline(x=x, color="blue")
+        plt.legend(legends)
+        plt.grid()
+        plt.title(f"{ofile}: Debitbrut vs Pmagnet model")
+        plt.xlabel("t[s]")
+        plt.ylabel(f"{symbol} [{unit:~P}]")
+        plt.show()
+        plt.close()
+        exit(1)
+
+        my_ax = plt.gca()
+        _df = df_pupitre[["t", "debitbrut", "Pmagnet"]].copy()
+        _df["debitbrut"] = _df["debitbrut"] / _df["debitbrut"].max()
+        _df["Pmagnet"] = _df["Pmagnet"] / _df["Pmagnet"].max()
+        _df.plot(x="t", y="debitbrut", ax=my_ax)
+        _df.plot(x="t", y="Pmagnet", ax=my_ax)
+        plt.grid()
+        plt.show()
+        plt.close()
+
         pt0 = df_pupitre.iloc[0]["timestamp"]
         df_pupitre["t"] = df_pupitre.apply(
             lambda row: (row.timestamp - pt0).total_seconds(), axis=1
@@ -573,7 +696,6 @@ def main():
 
         # TODO: how to find Imax automatically
         # use cjekel/piecewise_linear_fit_py??
-        Imax = 28000
         from .flow_params import compute as flow_params
 
         flow_params(
@@ -587,13 +709,6 @@ def main():
             show=args.show,
             debug=args.debug,
         )
-
-        for extra_key in ["teb", "debitbrut"]:
-            print(f"{extra_key}: {df_pupitre[extra_key].describe()}")
-            df_pupitre.plot(x="t", y=extra_key)
-            plt.grid()
-            plt.show()
-            plt.close()
 
     # Load incidents data
     print("\nLoad Incidents data")
