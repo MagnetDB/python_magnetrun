@@ -6,6 +6,8 @@ import os
 
 import json
 import pandas as pd
+import numpy as np
+
 
 from .utils.fit import fit
 from .utils.plots import plot_df
@@ -99,6 +101,28 @@ def compute(
         show,
         debug,
     )
+    if np.sqrt(np.diag(params_covariance))[0] > 0.1:
+        import pwlf
+
+        x = _df[Ikey].to_numpy()
+        y = _df[RpmKey].to_numpy()
+        my_pwlf = pwlf.PiecewiseLinFit(x, y, degree=2)
+        res = my_pwlf.fit(2)
+        print(f"pwlf: res={res}")
+        xHat = np.linspace(min(x), max(x), num=10000)
+        yHat = my_pwlf.predict(xHat)
+
+        # plot the results
+        import matplotlib.pyplot as plt
+
+        plt.figure()
+        plt.plot(x, y, "o")
+        plt.plot(xHat, yHat, "-")
+        plt.grid()
+        plt.show()
+        plt.close()
+        # exit(1)
+
     flow_params["Vp0"]["value"] = params[1]
     flow_params["Vpmax"]["value"] = params[0]
     vp0 = flow_params["Vp0"]["value"]
