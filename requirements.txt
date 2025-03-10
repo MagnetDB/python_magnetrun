@@ -23,9 +23,11 @@ ht >= 0.1.55
 clawpack >= 5.11.0
 
 # for data processing
-piecewise-regression
+# piecewise-regression
 pwlf
-ruptures
+sympy
+
+# ruptures
 # dtw # for Dynamic Time Warping
 pyts
 dtaidistance
