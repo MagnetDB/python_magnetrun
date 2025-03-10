@@ -445,9 +445,44 @@ def main():
 
                 my_pwlf = pwlf.PiecewiseLinFit(x, y)
                 res = my_pwlf.fit(2)
-                print(f"pwlf: res={res}")
+                errors = my_pwlf.standard_errors()
+                print(f"pwlf: res={res}, errors={errors}")
                 xHat = np.linspace(min(x), max(x), num=10000)
                 yHat = my_pwlf.predict(xHat)
+
+                # get error
+                p = my_pwlf.p_values(method="non-linear", step_size=1e-4)
+                se = my_pwlf.se  # standard errors
+                print("pwlf beta: ", my_pwlf.beta)
+                parameters = np.concatenate((my_pwlf.beta, my_pwlf.fit_breaks[1:-1]))
+
+                tables = []
+                headers = [
+                    "Parameter type",
+                    "Parameter value",
+                    "Standard error",
+                    "t",
+                    "P > np.abs(t) (p-value)",
+                ]
+
+                values = np.zeros((parameters.size, 5), dtype=np.object_)
+                values[:, 1] = np.around(parameters, decimals=3)
+                values[:, 2] = np.around(se, decimals=3)
+                values[:, 3] = np.around(parameters / se, decimals=3)
+                values[:, 4] = np.around(p, decimals=3)
+
+                for i, row in enumerate(values):
+                    table = []
+                    if i < my_pwlf.beta.size:
+                        table.append("Beta")
+                        # print(*row, sep=" | ")
+                    else:
+                        table.append("Breakpoint")
+                        # print(*row, sep=" | ")
+                    # print(row, type(row), flush=True)
+                    table += row.tolist()[1:]
+                    tables.append(table)
+                print(tabulate(tables, headers=headers, tablefmt="psql"))
 
                 from .utils.fit import find_eqn
 

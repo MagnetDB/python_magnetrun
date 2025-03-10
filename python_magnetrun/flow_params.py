@@ -112,13 +112,15 @@ def compute(
         y = _df[RpmKey].to_numpy()
         my_pwlf = pwlf.PiecewiseLinFit(x, y, degree=2)
         res = my_pwlf.fit(2)
-        print(f"pwlf: res={res}")
+        errors = my_pwlf.standard_errors()
+        print(f"pwlf: res={res}, errors={errors}")
         xHat = np.linspace(min(x), max(x), num=10000)
         yHat = my_pwlf.predict(xHat)
 
         # get error
         p = my_pwlf.p_values(method="non-linear", step_size=1e-4)
         se = my_pwlf.se  # standard errors
+        print("pwlf beta: ", my_pwlf.beta)
         parameters = np.concatenate((my_pwlf.beta, my_pwlf.fit_breaks[1:-1]))
 
         from tabulate import tabulate
