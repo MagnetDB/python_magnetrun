@@ -454,6 +454,7 @@ def main():
                 p = my_pwlf.p_values(method="non-linear", step_size=1e-4)
                 se = my_pwlf.se  # standard errors
                 print("pwlf beta: ", my_pwlf.beta)
+                print("pwlf fit_breaks: ", my_pwlf.fit_breaks)
                 parameters = np.concatenate((my_pwlf.beta, my_pwlf.fit_breaks[1:-1]))
 
                 tables = []

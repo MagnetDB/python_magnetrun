@@ -65,21 +65,29 @@ def find_eqn(my_pwlf_2):
         if segment_number < 1 or segment_number > pwlf_.n_segments:
             raise ValueError("segment_number not possible")
         # assemble degree = 1 first
+        print("degree 1 get_symbolic_eqn", 1)
         for line in range(segment_number):
-            print("get_symbolic_eqn", line)
+            print("line=", line, "brkp:", pwlf_.fit_breaks[0])
             if line == 0:
                 my_eqn = pwlf_.beta[0] + (pwlf_.beta[1]) * (x - pwlf_.fit_breaks[0])
+                print(my_eqn)
             else:
-                my_eqn += (pwlf_.beta[line + 1]) * (x - pwlf_.fit_breaks[line])
+                y0 = my_eqn.evalf(subs={x: pwlf_.fit_breaks[line]})
+                print("y0=", y0)
+                # my_eqn += (pwlf_.beta[line + 1]) * (x - pwlf_.fit_breaks[line])
+                my_eqn = y0 + (pwlf_.beta[line + 1]) * (x - pwlf_.fit_breaks[line])
+                print(line, ':', my_eqn)
         # assemble all other degrees
         if pwlf_.degree > 1:
-            print("get_symbolic_eqn", pwlf_.degree, line)
+            print("higher degree get_symbolic_eqn", pwlf_.degree,)
             for k in range(2, pwlf_.degree + 1):
                 for line in range(segment_number):
                     beta_index = pwlf_.n_segments * (k - 1) + line + 1
                     my_eqn += (pwlf_.beta[beta_index]) * (
                         x - pwlf_.fit_breaks[line]
                     ) ** k
+                    print('line=', line, 'k=', k, 'brkp:', pwlf_.fit_breaks[line], ':', my_eqn)
+            print(my_eqn)
         return my_eqn.simplify()
 
     eqn_list = []
