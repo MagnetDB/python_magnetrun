@@ -21,7 +21,7 @@ class TimeSeriesAnomalyDetector:
         self.series = np.array(series)
         self.n = len(series)
 
-    def zscore_detection(self, threshold: float = 3.0) -> Tuple[np.ndarray, np.ndarray]:
+    def zscore_detection(self, threshold: float = 3.5) -> Tuple[np.ndarray, np.ndarray]:
         """
         Detect anomalies using Z-score method.
 
@@ -31,6 +31,8 @@ class TimeSeriesAnomalyDetector:
         Returns:
             Tuple of (anomaly indices, anomaly scores)
         """
+        print(f"zcore: threshold={threshold}")
+
         mean = np.mean(self.series)
         std = np.std(self.series)
         z_scores = np.abs((self.series - mean) / std)
@@ -49,6 +51,7 @@ class TimeSeriesAnomalyDetector:
         Returns:
             Tuple of (anomaly indices, scores based on distance from IQR bounds)
         """
+        print(f"irq: irq={iqr_multiplier}")
         Q1 = np.percentile(self.series, 25)
         Q3 = np.percentile(self.series, 75)
         IQR = Q3 - Q1
@@ -62,7 +65,7 @@ class TimeSeriesAnomalyDetector:
         return np.where(anomalies)[0], scores
 
     def moving_average_detection(
-        self, window: int = 20, threshold: float = 2.5
+        self, window: int = 20, threshold: float = 3.5
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Detect anomalies using moving average and standard deviation.
@@ -74,6 +77,8 @@ class TimeSeriesAnomalyDetector:
         Returns:
             Tuple of (anomaly indices, deviation scores)
         """
+        print(f"moving_average: window={window}, threshold={threshold}")
+
         rolling_mean = pd.Series(self.series).rolling(window=window).mean()
         rolling_std = pd.Series(self.series).rolling(window=window).std()
 
@@ -83,7 +88,7 @@ class TimeSeriesAnomalyDetector:
         return np.where(anomalies)[0], scores
 
     def moving_median_detection(
-        self, window: int = 20, threshold: float = 2.5
+        self, window: int = 20, threshold: float = 3.5
     ) -> Tuple[np.ndarray, np.ndarray]:
         """
         Detect anomalies using moving median and standard deviation.
@@ -95,10 +100,35 @@ class TimeSeriesAnomalyDetector:
         Returns:
             Tuple of (anomaly indices, deviation scores)
         """
+        print(f"moving_median: window={window}, threshold={threshold}")
         rolling_median = pd.Series(self.series).rolling(window=window).median()
         rolling_std = pd.Series(self.series).rolling(window=window).std()
 
         deviation = np.abs(self.series - rolling_median) / rolling_std
+        scores = deviation.fillna(0)
+        anomalies = scores > threshold
+        return np.where(anomalies)[0], scores
+
+    def moving_zscore_detection(
+        self, window: int = 20, threshold: float = 3.5
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Detect anomalies using moving zcore.
+
+        Args:
+            window: Size of the moving window
+            threshold: Number of standard deviations to use as threshold
+
+        Returns:
+            Tuple of (anomaly indices, deviation scores)
+        """
+        from scipy import stats
+
+        print(f"moving_median: window={window}, threshold={threshold}")
+        rolling_median = pd.Series(self.series).rolling(window=window).median()
+        mad = stats.median_abs_deviation(self.series)
+
+        deviation = 0.6745 * np.abs(self.series - rolling_median) / mad
         scores = deviation.fillna(0)
         anomalies = scores > threshold
         return np.where(anomalies)[0], scores
@@ -115,6 +145,7 @@ class TimeSeriesAnomalyDetector:
         Returns:
             Tuple of (anomaly indices, anomaly scores)
         """
+        print(f"isolation_forest: contamination={contamination}")
         clf = IsolationForest(contamination=contamination, random_state=42)
         reshaped_data = self.series.reshape(-1, 1)
         scores = -clf.fit_predict(reshaped_data)  # -1 for anomalies, 1 for normal
@@ -127,18 +158,26 @@ class TimeSeriesAnomalyDetector:
         Returns:
             Dictionary containing results from all methods
         """
+
+        # TODO:
+        # 1. add params as dict for each methods
+        # 2. add Zscore with MAD
         results = {
             "zscore": self.zscore_detection(),
             "iqr": self.iqr_detection(),
             "moving_average": self.moving_average_detection(),
             "moving_median": self.moving_median_detection(),
+            "moving_zscore": self.moving_zscore_detection(),
             "isolation_forest": self.isolation_forest_detection(),
         }
         return results
 
 
 def plot_anomalies(
-    series: np.ndarray, anomaly_indices: np.ndarray, title: str = "Anomaly Detection"
+    series: np.ndarray,
+    scores,
+    anomaly_indices: np.ndarray,
+    title: str = "Anomaly Detection",
 ):
     """
     Plot the time series with highlighted anomalies.
@@ -146,15 +185,22 @@ def plot_anomalies(
     """
     import matplotlib.pyplot as plt
 
-    plt.figure(figsize=(15, 5))
-    plt.plot(series, label="Original Data")
-    plt.scatter(
+    fig, (ax1, ax2) = plt.subplots(2, sharex=True)
+    fig.suptitle(title)
+
+    ax1.plot(series, label="Original Data")
+    ax1.scatter(
         anomaly_indices, series[anomaly_indices], color="red", label="Anomalies"
     )
-    plt.title(title)
-    plt.grid()
-    plt.legend()
+    ax1.grid()
+    ax1.legend()
+
+    ax2.plot(scores, label="Score")
+    # ax2.xlabel("t [s]")
+    ax2.legend()
+    ax2.grid()
     plt.show()
+    plt.close()
 
 
 if __name__ == "__main__":
@@ -227,6 +273,8 @@ if __name__ == "__main__":
 
         mdata = mrun.getMData()
 
+        threshold = args.threshold
+        window = args.window
         anomaly_dicts = {
             "zscore": [],
             "iqr": [],
@@ -234,9 +282,11 @@ if __name__ == "__main__":
             "isolation_forest": [],
         }
 
-        for key in [
+        Ikeys = [
             "Courants_Alimentations/Courant_GR1",
             "Courants_Alimentations/Courant_GR2",
+        ]
+        Ukeys_H = [
             "Tensions_Aimant/Interne1",
             "Tensions_Aimant/Interne2",
             "Tensions_Aimant/Interne3",
@@ -244,14 +294,18 @@ if __name__ == "__main__":
             "Tensions_Aimant/Interne5",
             "Tensions_Aimant/Interne6",
             "Tensions_Aimant/Interne7",
+        ]
+        Ukeys_B = [
             "Tensions_Aimant/Externe1",
             "Tensions_Aimant/Externe2",
-        ]:
+        ]
+        for key in Ikeys:
             (group, channel) = key.split("/")
             (symbol, unit) = mdata.getUnitKey(key)
 
             ts = mdata.Data[group][channel]
-
+            if args.normalize:
+                ts = ts / ts.max()
             detector = TimeSeriesAnomalyDetector(ts)
 
             all_results = detector.detect_all_methods()
@@ -259,6 +313,7 @@ if __name__ == "__main__":
                 anomaly_indices, scores = result
                 plot_anomalies(
                     ts.to_numpy(),
+                    scores,
                     anomaly_indices,
-                    title=f"Anomaly Detection for {key} ({method})",
+                    title=f"{file}: Anomaly Detection for {key} ({method})",
                 )
