@@ -66,12 +66,14 @@ def find_eqn(my_pwlf_2):
             raise ValueError("segment_number not possible")
         # assemble degree = 1 first
         for line in range(segment_number):
+            print("get_symbolic_eqn", line)
             if line == 0:
                 my_eqn = pwlf_.beta[0] + (pwlf_.beta[1]) * (x - pwlf_.fit_breaks[0])
             else:
                 my_eqn += (pwlf_.beta[line + 1]) * (x - pwlf_.fit_breaks[line])
         # assemble all other degrees
         if pwlf_.degree > 1:
+            print("get_symbolic_eqn", pwlf_.degree, line)
             for k in range(2, pwlf_.degree + 1):
                 for line in range(segment_number):
                     beta_index = pwlf_.n_segments * (k - 1) + line + 1
@@ -89,4 +91,6 @@ def find_eqn(my_pwlf_2):
         print(eqn_list[-1], type(eqn_list[-1]))
         f_list.append(lambdify(x, eqn_list[-1]))
         coeff_list.append(eqn_list[-1].as_poly().all_coeffs())
+
     print(f"coeff_list={coeff_list}")
+    return coeff_list
