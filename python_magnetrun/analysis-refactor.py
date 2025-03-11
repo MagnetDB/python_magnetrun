@@ -16,6 +16,8 @@ from .signature import Signature
 
 from scipy import stats
 from .processing.distance import calc_euclidean, calc_mape, calc_correlation
+from .flow_params import pwlf_fit
+from sympy import Symbol
 from tabulate import tabulate
 
 
@@ -55,7 +57,12 @@ def parse_arguments():
         "--window", help="stopping criteria for nlopt", type=int, default=10
     )
     parser.add_argument(
-        "--synchronize", help="rolling window size", action="store_true"
+        "--synchronize",
+        help="synchronize clock pupitre/pigbrother files",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--distance", help="compute distance between series", action="store_true"
     )
     return parser.parse_args()
 
@@ -421,6 +428,7 @@ def main():
         # get mode
         # TODO make sure to screen current about a certain threshold
         bitter_only = True
+        mode = {"name": "normal", "Intercept": 0, "Slopes": [1], "Breakpoint": None}
         if len(Ikeys_ref) == 2:
             GR = mdata.getData(
                 [
@@ -428,75 +436,36 @@ def main():
                     f"{group}/Référence_GR2",
                 ]
             ).copy()
-            GR.loc[:, "diff"] = GR.loc[:, "Référence_GR2"] - GR.loc[:, "Référence_GR1"]
 
-            if GR["diff"].abs().max() > 5 and not (
-                GR["Référence_GR2"].abs().max() <= 1
-                or GR["Référence_GR1"].abs().max() <= 1
-            ):
-                print(f"{filename}: mode=ECOmode")
+            GR = GR.query("`Référence_GR1` >= 300 and `Référence_GR2` >= 300")
 
-                GR = GR.query("`Référence_GR1` >= 300 and `Référence_GR2` >= 300")
+            x = GR["Référence_GR1"].to_numpy()
+            y = GR["Référence_GR2"].to_numpy()
+            for segment in [1, 2]:
+                (mfit, eqns) = pwlf_fit(
+                    "Référence_GR1", x, "Référence_GR2", y, degree=1, segment=segment
+                )
+                # TODO if error ?my_pwlf.standard_errors()? on brkpoints is big, try with 1 segment
+                I0 = eqns[0].evalf(subs={Symbol("x"): 0})
+                if abs(I0) <= 10:
+                    break
 
-                x = GR["Référence_GR1"].to_numpy()
-                y = GR["Référence_GR2"].to_numpy()
-
-                import pwlf
-
-                my_pwlf = pwlf.PiecewiseLinFit(x, y)
-                res = my_pwlf.fit(2)
-                errors = my_pwlf.standard_errors()
-                print(f"pwlf: res={res}, errors={errors}")
-                xHat = np.linspace(min(x), max(x), num=10000)
-                yHat = my_pwlf.predict(xHat)
-
-                # get error
-                p = my_pwlf.p_values(method="non-linear", step_size=1e-4)
-                se = my_pwlf.se  # standard errors
-                print("pwlf beta: ", my_pwlf.beta)
-                print("pwlf fit_breaks: ", my_pwlf.fit_breaks)
-                parameters = np.concatenate((my_pwlf.beta, my_pwlf.fit_breaks[1:-1]))
-
-                tables = []
-                headers = [
-                    "Parameter type",
-                    "Parameter value",
-                    "Standard error",
-                    "t",
-                    "P > np.abs(t) (p-value)",
-                ]
-
-                values = np.zeros((parameters.size, 5), dtype=np.object_)
-                values[:, 1] = np.around(parameters, decimals=3)
-                values[:, 2] = np.around(se, decimals=3)
-                values[:, 3] = np.around(parameters / se, decimals=3)
-                values[:, 4] = np.around(p, decimals=3)
-
-                for i, row in enumerate(values):
-                    table = []
-                    if i < my_pwlf.beta.size:
-                        table.append("Beta")
-                        # print(*row, sep=" | ")
-                    else:
-                        table.append("Breakpoint")
-                        # print(*row, sep=" | ")
-                    # print(row, type(row), flush=True)
-                    table += row.tolist()[1:]
-                    tables.append(table)
-                print(tabulate(tables, headers=headers, tablefmt="psql"))
-
-                from .utils.fit import find_eqn
-
-                find_eqn(my_pwlf)
-
-                # plot the results
-                plt.figure()
-                plt.plot(x, y, "o")
-                plt.plot(xHat, yHat, "-")
-                plt.grid()
-                plt.show()
-                plt.close()
-
+            # mode: Intercept, slopes, brkpts
+            if segment == 1:
+                mode = {
+                    "name": "normal",
+                    "Intercept": eqns[0].evalf(subs={Symbol("x"): 0}),
+                    "Slopes": [float(mfit.beta[1])],
+                    "Breakpoint": None,
+                }
+            else:
+                mode = {
+                    "name": "ecomode",
+                    "Intercept": eqns[0].evalf(subs={Symbol("x"): 0}),
+                    "Slopes": [float(mfit.beta[1]), float(mfit.beta[1] + mfit.beta[2])],
+                    "Breakpoint": float(mfit.fit_breaks[1]),
+                }
+            print(f"mode:{mode}")
             del GR
 
         if bitter_only:
@@ -505,7 +474,7 @@ def main():
 
         print(f"dict_files[{filename}]: ", dict_files, flush=True)
         overview_dict[filename] = {
-            "mode": {},
+            "mode": mode,
             "signature": {},
             "sources": dict_files,
             "data": {
@@ -515,6 +484,7 @@ def main():
                 "default": pd.DataFrame(),
             },
             "t0": t0,
+            "BP": {},
             "teb": {},
             "debitbrut": {},
             "flow_params": {},
@@ -546,6 +516,9 @@ def main():
     # Load Archive data
     print("\nLoad Archive data")
     for ofile in overview_dict:
+        if len(overview_dict[ofile]["sources"]["archive"]) == 0:
+            raise RuntimeError(f"no archive file associated with {ofile}")
+
         df_archive_list = load_data(
             overview_dict[ofile]["sources"]["archive"],
             site,
@@ -553,7 +526,10 @@ def main():
             group,
             Ikeys,
         )
+
         df_archive = merge_data(df_archive_list)
+
+        # true if at0 is roughly equal to ot0
         at0 = df_archive.iloc[0]["timestamp"]
         t_offset = (1 / 120.0) / 2.0
         df_archive["t"] = df_archive.apply(
@@ -597,6 +573,10 @@ def main():
             plt.show()
             plt.close()
 
+        # TODO: save a better approx for teb
+        overview_dict[ofile]["teb"] = df_pupitre["teb"].mean()
+        overview_dict[ofile]["BP"] = df_pupitre["BP"].mean()
+
         qt0 = df_pupitre.index.values[0]
 
         qsymbol = "Q"
@@ -608,9 +588,10 @@ def main():
         # Calculate differences between consecutive values
         xdf = df_pupitre[["debitbrut", "Pmagnet"]].copy()
         xdf["diff"] = xdf["debitbrut"].diff()
+        print(f'debitbrut: xdf\n{xdf["diff"].describe()}')
 
         # Find points where the difference exceeds a threshold
-        threshold = xdf["diff"].std() * 7  # 3 standard deviations
+        threshold = xdf["diff"].std() * 3  # 3 standard deviations
         sharp_changes = xdf[abs(xdf["diff"]) > threshold]
         print(f"debitbrut: sharpchanges\n{sharp_changes}")
 
@@ -628,12 +609,24 @@ def main():
         # 2nd ........, last-1 ...... : next threshold
         # and so on
         # at the end there shall be 3 pairs in threshold list
-        sharp_changes["pdiff"] = sharp_changes["Pmagnet"].diff()
-        selected_sharp_changes = sharp_changes[abs(sharp_changes["pdiff"]) > 0.5]
-        print(f"debitbrut: selected_sharpchanges\n{selected_sharp_changes}")
+        print(f"debitbrut: sharpchanges\n{sharp_changes}")
+        selected_changes = sharp_changes[abs(sharp_changes["diff"]) > 12]
+        selected_changes = selected_changes[selected_changes["Pmagnet"] >= 2]
+        selected_changes["pdiff"] = selected_changes["Pmagnet"].diff()
+        print(f"debitbrut: selected_changes\n{selected_changes}")
+
+        up_changes = selected_changes[selected_changes["pdiff"] > 0.5]
+        up_changes = up_changes[up_changes["diff"] > 0]
+        # 3 plus gros diff avec le plus grand pdiff en cas egalite
+        down_changes = selected_changes[selected_changes["pdiff"] < -0.5]
+        down_changes = down_changes[
+            down_changes["diff"] < 0
+        ]  # 3 plus gros diff avec le plus grand pdiff en cas egalite
         # from debitbrut U and D, get corresponding Pmagnet values
         # U -> ascending_thresold
         # D -> descending_thresold
+        print(f"debitbrut: up\n{up_changes}")
+        print(f"debitbrut: down\n{down_changes}")
 
         qsignature = Signature.from_df(
             ofile,
@@ -668,9 +661,9 @@ def main():
         df_pupitre.plot(x="t", y="debitbrut", ax=my_ax)
         legends.append("ymodel")
         my_ax.plot(df_pupitre["t"].to_numpy(), y_model, marker="*", alpha=0.2)
-        for x in qsignature.times:
+        for x in up_changes.index.to_list():
             my_ax.axvline(x=x, color="red")
-        for x in selected_sharp_changes.index.to_list():
+        for x in down_changes.index.to_list():
             my_ax.axvline(x=x, color="blue")
         plt.legend(legends)
         plt.grid()
@@ -679,6 +672,12 @@ def main():
         plt.ylabel(f"{symbol} [{unit:~P}]")
         plt.show()
         plt.close()
+
+        overview_dict[ofile]["debitbrut"] = {
+            "thresholds": hthresholds_list,
+            "high": high_values,
+            "low": low_values,
+        }
 
         pt0 = df_pupitre.iloc[0]["timestamp"]
         df_pupitre["t"] = df_pupitre.apply(
@@ -703,9 +702,9 @@ def main():
                 QKey=pupitre_dict[site][f"{key}_Q"],
                 PinKey=pupitre_dict[site][f"{key}_Pin"],
                 PoutKey="BP",
-                name=ofile,
+                name=f"{ofile}",
                 show=args.show,
-                debug=True,
+                debug=False,
             )
 
     # Load incidents data
@@ -752,6 +751,7 @@ def main():
 
         lag_done = False
         for key in Ikeys_ref:
+            print("**** {key} ****")
             tables = []
             headers = ["P", "count", "mean", "std", "min", "25%", "50%", "75%", "max"]
             signature = overview_dict[ofile]["signature"][key]
@@ -859,21 +859,22 @@ def main():
                         end = signature.times[i + 1]
                     print(f"regime P: {signature.times[i]} -> {end}")
             """
-            msg = "ttt"
-            plot_data(
-                df_overview,
-                df_archive,
-                df_pupitre,
-                df_incidents,
-                channels_dict,
-                pupitre_dict,
-                site,
-                args.tkey,
-                key,
-                ofile,
-                msg,
-                args,
-            )
+            if not lag_done:
+                msg = "before 1st lag"
+                plot_data(
+                    df_overview,
+                    df_archive,
+                    df_pupitre,
+                    df_incidents,
+                    channels_dict,
+                    pupitre_dict,
+                    site,
+                    args.tkey,
+                    key,
+                    ofile,
+                    msg,
+                    args,
+                )
 
             # find the latest big change in signature for overview and pupitre
             def compute_regime_score(
@@ -885,17 +886,26 @@ def main():
                 reference_time: tuple,
             ):
                 score = float("inf")
+                tscore = float("inf")
                 lags = (float("inf"), float("inf"))
                 if reference_regime == regime:
                     start_diff = abs(value[0] - reference_value[0])
                     end_diff = abs(value[1] - reference_value[1])
                     score = start_diff + end_diff
+                    score = abs(
+                        abs(value[1] - value[0])
+                        - abs(reference_value[1] - reference_value[0])
+                    )
 
+                    tscore = abs(
+                        abs(time[1] - time[0])
+                        - abs(reference_time[1] - reference_time[0])
+                    )
                     start_lag = time[0] - reference_time[0]
                     end_lag = time[1] - reference_time[1]
                     lags = (start_lag, end_lag)
 
-                return (score, lags)
+                return (score, tscore, lags)
 
             def find_best_matching_regime(signature, reference_signature):
                 best_matches = []
@@ -923,7 +933,7 @@ def main():
                                     reference_signature.times[j + 1],
                                 )
 
-                                score, lags = compute_regime_score(
+                                score, tscore, lags = compute_regime_score(
                                     regime,
                                     values,
                                     times,
@@ -931,6 +941,7 @@ def main():
                                     ref_values,
                                     ref_times,
                                 )
+                                print(i, regime, j, ref_regime, score, tscore, lags)
 
                                 if score < best_score:
                                     best_score = score
@@ -949,8 +960,10 @@ def main():
                 msg = ""
                 if abs(lags[0]) / duration >= 0.2:
                     msg = "!! unlikely !!"
+
+                best_index[0]
                 print(
-                    f"Best match for regime {regime} [{best_index[0]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}] in pupitre (duration={duration}) {msg}"
+                    f"Best match for regime {regime} [{best_index[0]}, t={osignature.times[best_index[0]]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}, t={psignature.times[best_index[1]]}] in pupitre (duration={duration}) {msg}"
                 )
 
             # get lag from 1st U sequence
@@ -982,12 +995,12 @@ def main():
 
                 # update timestamp and t
                 pt0 = df_pupitre["timestamp"].iloc[0]
-                print("new t0 (pupitre):", df_pupitre["timestamp"].iloc[0])
+                print("new t0 (pupitre):", pt0)
                 df_pupitre.drop(["t"], axis=1, inplace=True)
                 df_pupitre["t"] = df_pupitre.apply(
                     lambda row: (row.timestamp - ot0).total_seconds(), axis=1
                 )
-                print(df_pupitre.head())
+                print(f"df_pupitre with lag:\n{df_pupitre.head()}")
 
                 # update times for psignature
                 for j in range(len(psignature.times)):
@@ -1001,7 +1014,7 @@ def main():
                 if abs(lags[0]) / duration >= 0.2:
                     msg = "!! unlikely !!"
                 print(
-                    f"1st lag: Best match for regime {regime} [{best_index[0]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}] in pupitre (duration={duration}) {msg}"
+                    f"1st lag: Best match for regime {regime} [{best_index[0]}, t={osignature.times[best_index[0]]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}, t={psignature.times[best_index[1]]}] in pupitre (duration={duration}) {msg}"
                 )
 
             # plots
@@ -1023,154 +1036,161 @@ def main():
                 args,
             )
 
-            # compute distance between pupitre and pigbrother
-            # print("df_pupitre:", df_pupitre)
-            xdata = df_pupitre.copy()
-            xdata.set_index("timestamp", inplace=True)
-            xdata_index = xdata.index.to_list()
-            xdata_resampled = xdata.resample("1s", origin=ot0).asfreq()
-            # Interpolate missing values (optional, depending on your use case)
-            xdata_resampled = xdata_resampled.interpolate(method="linear")
-            xdata_resampled = xdata_resampled + xdata_resampled.min()
+            if args.distance:
+                # compute distance between pupitre and pigbrother
+                # print("df_pupitre:", df_pupitre)
+                xdata = df_pupitre.copy()
+                xdata.set_index("timestamp", inplace=True)
+                print("xdata:\n", xdata.head())
+                xdata_index = xdata.index.to_list()
+                xdata_resampled = xdata.resample("1s", origin=ot0).asfreq()
+                # Interpolate missing values (optional, depending on your use case)
+                xdata_resampled = xdata_resampled.interpolate(method="linear")
+                # xdata_resampled = xdata_resampled + xdata_resampled.min()
 
-            print("xdata_resampled:", xdata_resampled.head())
-            xdata_resampled.set_index("t", inplace=True)
-            # print("after resample xdata_resampled:", xdata_resampled)
-            end_index = xdata_resampled.index.values[-1].astype(int)
-            print(
-                f"\nDistance between pupitre {pupitre_dict[site][key]} and pigbrother {channels_dict[key]} from t=0 to t={end_index} s"
-            )
-
-            x = (
-                xdata_resampled[pupitre_dict[site][key]]
-                .loc[0:end_index]
-                .to_numpy()
-                .reshape(-1)
-            )
-            y = df_overview[channels_dict[key]].loc[0:end_index].to_numpy().reshape(-1)
-
-            plt.plot(x, label="pupitre", marker=".", color="g")
-            plt.plot(y, label="overview", marker="o", color="r", alpha=0.2)
-            plt.title("distance")
-            plt.legend()
-            plt.grid()
-            plt.show()
-            plt.close()
-
-            # print('Ib:', x, type(x), x.shape)
-            scipy_stats = stats.describe(y - x)
-
-            (label, igroup) = key.split("_")
-            tables = []
-            headers = [
-                "Euclidean",
-                "MAE",
-                "Pearson",
-                "Image",
-                "mean",
-                "min",
-                "max",
-                "var",
-            ]
-            table = [
-                calc_euclidean(x, y),
-                calc_mape(x, y),
-                calc_correlation(x, y),
-                f'{filename.replace("_Overview","")}-{igroup}.png',
-                scipy_stats.mean,
-                scipy_stats.minmax[0],
-                scipy_stats.minmax[1],
-                scipy_stats.variance,
-            ]
-            tables.append(table)
-            print(tabulate(tables, headers, tablefmt="simple"), "\n")
-
-            # Calculate DTW distance and obtain the warping paths (no need for the C library)
-            from dtaidistance import dtw
-            from scipy.stats import pearsonr
-
-            ts_x = df_overview.loc[:, ["t", channels_dict[key]]]
-            ts_x.set_index("t", inplace=True)
-            # TODO no longer working since t_offset on overview data
-            # ts_x.index = ts_x.index.astype(int)
-            print("dtw ts_x:", ts_x)
-            ts_y = xdata_resampled.loc[:, [pupitre_dict[site][key]]]
-            # drop negative index in ts_y
-            ts_y = ts_y[ts_y.index >= 0]
-            ts_y.index = ts_y.index.astype(int)
-            print("dtw ts_y:", ts_y)
-
-            ts_x = ts_x.to_numpy().reshape(-1)
-            ts_y = ts_y.to_numpy().reshape(-1)
-
-            distance, paths = dtw.warping_paths(ts_x, ts_y, use_c=False)
-            best_path = dtw.best_path(paths)
-            similarity_score = distance / len(best_path)
-
-            # Create a DataFrame to display the similarity score and correlation coefficient
-            results_df = pd.DataFrame(
-                {"Metric": ["DTW Similarity Score"], "Value": [similarity_score]}
-            )
-
-            # Add descriptions for the results
-            results_df["Description"] = [
-                "Lower scores indicate greater similarity between the time series."
-            ]
-            print(results_df)
-
-            plt.figure(figsize=(12, 8))
-
-            # Original Time Series Plot
-            ax1 = plt.subplot2grid((2, 2), (0, 0))
-            ax1.plot(ts_x, label=channels_dict[key], color="blue")
-            ax1.plot(
-                ts_y, label=pupitre_dict[site][key], linestyle="--", color="orange"
-            )
-            ax1.set_title("Original Time Series")
-            ax1.legend()
-            ax1.grid(True)
-
-            # Shortest Path Plot (Cost Matrix with the path)
-            # In this example, only the path is plotted, not the entire cost matrix.
-
-            ax2 = plt.subplot2grid((2, 2), (0, 1))
-            ax2.plot(
-                np.array(best_path)[:, 0],
-                np.array(best_path)[:, 1],
-                "green",
-                marker="o",
-                linestyle="-",
-            )
-            ax2.set_title("Shortest Path (Best Path)")
-            ax2.set_xlabel(channels_dict[key])
-            ax2.set_ylabel(pupitre_dict[site][key])
-            ax2.grid(True)
-
-            # Point-to-Point Comparison Plot
-            ax3 = plt.subplot2grid((2, 2), (1, 0), colspan=2, sharex=ax1)
-            ax3.plot(ts_x, label=channels_dict[key], color="blue", marker="o")
-            ax3.plot(
-                ts_y,
-                label=pupitre_dict[site][key],
-                color="orange",
-                marker="x",
-                linestyle="--",
-            )
-            for a, b in best_path:
-                ax3.plot(
-                    [a, b],
-                    [ts_x[a], ts_y[b]],
-                    color="grey",
-                    linestyle="-",
-                    linewidth=1,
-                    alpha=0.5,
+                print("xdata_resampled:\n", xdata_resampled.head())
+                xdata_resampled.set_index("t", inplace=True)
+                # print("after resample xdata_resampled:", xdata_resampled)
+                end_index = xdata_resampled.index.values[-1].astype(int)
+                print(
+                    f"\nDistance between pupitre {pupitre_dict[site][key]} and pigbrother {channels_dict[key]} from t=0 to t={end_index} s"
                 )
-            ax3.set_title("Point-to-Point Comparison After DTW Alignment")
-            ax3.legend()
-            ax3.grid(True)
 
-            plt.tight_layout()
-            plt.show()
+                x = (
+                    xdata_resampled[pupitre_dict[site][key]]
+                    .loc[0:end_index]
+                    .to_numpy()
+                    .reshape(-1)
+                )
+                y = (
+                    df_overview[channels_dict[key]]
+                    .loc[0:end_index]
+                    .to_numpy()
+                    .reshape(-1)
+                )
+
+                plt.plot(x, label="pupitre", marker=".", color="g")
+                plt.plot(y, label="overview", marker="o", color="r", alpha=0.2)
+                plt.title(f"distance: {key}")
+                plt.legend()
+                plt.grid()
+                plt.show()
+                plt.close()
+
+                # print('Ib:', x, type(x), x.shape)
+                scipy_stats = stats.describe(y - x)
+
+                (label, igroup) = key.split("_")
+                tables = []
+                headers = [
+                    "Euclidean",
+                    "MAE",
+                    "Pearson",
+                    "Image",
+                    "mean",
+                    "min",
+                    "max",
+                    "var",
+                ]
+                table = [
+                    calc_euclidean(x, y),
+                    calc_mape(x, y),
+                    calc_correlation(x, y),
+                    f'{filename.replace("_Overview","")}-{igroup}.png',
+                    scipy_stats.mean,
+                    scipy_stats.minmax[0],
+                    scipy_stats.minmax[1],
+                    scipy_stats.variance,
+                ]
+                tables.append(table)
+                print(tabulate(tables, headers, tablefmt="simple"), "\n")
+
+                # Calculate DTW distance and obtain the warping paths (no need for the C library)
+                from dtaidistance import dtw
+                from scipy.stats import pearsonr
+
+                ts_x = df_overview.loc[:, ["t", channels_dict[key]]]
+                ts_x.set_index("t", inplace=True)
+                # TODO no longer working since t_offset on overview data
+                # ts_x.index = ts_x.index.astype(int)
+                print("dtw ts_x:", ts_x)
+                ts_y = xdata_resampled.loc[:, [pupitre_dict[site][key]]]
+                # drop negative index in ts_y
+                ts_y = ts_y[ts_y.index >= 0]
+                ts_y.index = ts_y.index.astype(int)
+                print("dtw ts_y:", ts_y)
+
+                ts_x = ts_x.to_numpy().reshape(-1)
+                ts_y = ts_y.to_numpy().reshape(-1)
+
+                distance, paths = dtw.warping_paths(ts_x, ts_y, use_c=False)
+                best_path = dtw.best_path(paths)
+                similarity_score = distance / len(best_path)
+
+                # Create a DataFrame to display the similarity score and correlation coefficient
+                results_df = pd.DataFrame(
+                    {"Metric": ["DTW Similarity Score"], "Value": [similarity_score]}
+                )
+
+                # Add descriptions for the results
+                results_df["Description"] = [
+                    "Lower scores indicate greater similarity between the time series."
+                ]
+                print(results_df)
+
+                plt.figure(figsize=(12, 8))
+
+                # Original Time Series Plot
+                ax1 = plt.subplot2grid((2, 2), (0, 0))
+                ax1.plot(ts_x, label=channels_dict[key], color="blue")
+                ax1.plot(
+                    ts_y, label=pupitre_dict[site][key], linestyle="--", color="orange"
+                )
+                ax1.set_title("Original Time Series")
+                ax1.legend()
+                ax1.grid(True)
+
+                # Shortest Path Plot (Cost Matrix with the path)
+                # In this example, only the path is plotted, not the entire cost matrix.
+
+                ax2 = plt.subplot2grid((2, 2), (0, 1))
+                ax2.plot(
+                    np.array(best_path)[:, 0],
+                    np.array(best_path)[:, 1],
+                    "green",
+                    marker="o",
+                    linestyle="-",
+                )
+                ax2.set_title("Shortest Path (Best Path)")
+                ax2.set_xlabel(channels_dict[key])
+                ax2.set_ylabel(pupitre_dict[site][key])
+                ax2.grid(True)
+
+                # Point-to-Point Comparison Plot
+                ax3 = plt.subplot2grid((2, 2), (1, 0), colspan=2, sharex=ax1)
+                ax3.plot(ts_x, label=channels_dict[key], color="blue", marker="o")
+                ax3.plot(
+                    ts_y,
+                    label=pupitre_dict[site][key],
+                    color="orange",
+                    marker="x",
+                    linestyle="--",
+                )
+                for a, b in best_path:
+                    ax3.plot(
+                        [a, b],
+                        [ts_x[a], ts_y[b]],
+                        color="grey",
+                        linestyle="-",
+                        linewidth=1,
+                        alpha=0.5,
+                    )
+                ax3.set_title("Point-to-Point Comparison After DTW Alignment")
+                ax3.legend()
+                ax3.grid(True)
+
+                plt.tight_layout()
+                plt.show()
 
 
 if __name__ == "__main__":
