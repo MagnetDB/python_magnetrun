@@ -3,7 +3,6 @@ import numpy as np
 import pandas as pd
 
 
-
 def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False):
     """Find duplicates key in dataframe and eventually drop them
 
@@ -21,21 +20,16 @@ def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False)
     """
 
     dups = pd.Index(df[key].to_numpy()).duplicated()
+    # print(f"dups: {dups}")
     unique, counts = np.unique(dups, return_counts=True)
-    #print(f'duplicated df[t]: {dict(zip(unique, counts))}')
+    # print(f"duplicated df[t]: {dict(zip(unique, counts))}")
     dups_dict = dict(zip(unique, counts))
-    # print(f'dups_dict df[t]: {dups_dict}')
+    # print(f"dups_dict df[t]: {dups_dict}")
     if np.True_ in dups_dict:
-        dups_index = np.where(dups == np.True_)
-        drop_index = [i.item() for i in dups_index]
-        print(f'duplicated index found in {name} at rows={drop_index}')
-        for i in drop_index:
-            print(f'rows={i}/{i-1}:\n{df.loc[i-1:i].head()}')
         if strict:
             raise RuntimeError(f"found duplicates time in {name}")
-        else:
-            print("remove duplicates")
-            df.drop(df.index[drop_index], inplace=True)
-            return df
-        
+
+        print(f"remove {dups_dict[np.True_]} duplicates")
+        df = df[~df.index.duplicated(keep="first")]
+
     return df
