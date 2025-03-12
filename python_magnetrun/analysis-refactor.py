@@ -157,6 +157,7 @@ def setup():
         "Ucoil15": 0.1,
         "Ucoil16": 0.1,
         "debitbrut": 25,
+        "Pmagnet": 0.1,
     }
     return (
         color_dict,
@@ -580,11 +581,48 @@ def main():
         qt0 = df_pupitre.index.values[0]
 
         qsymbol = "Q"
+        punit = "P"
         from pint import UnitRegistry
 
         ureg = UnitRegistry()
         qunit = ureg.meter**3 / ureg.hour
+        punit = ureg.megawatt
 
+        # use pwlf to get threshold and value
+        # TODO how to estimate the number of segment
+        # is it enough to get Pmagnet.max to have an idea of segments???
+        # or try more advanded features: see find the best number of line segments
+        # see https://jekel.me/piecewise_linear_fit_py/examples.html#fit-constants-or-polynomials
+        print(f'Pmagnet max: {df_pupitre["Pmagnet"].max()}')
+        # Pmagnet > 15 MW: 7
+        # Pmagnet > 10 MW: 5
+        # Pmagnet > MW: 3
+        # sinon 1
+        x = df_pupitre["t"].to_numpy()
+        y = df_pupitre["debitbrut"].to_numpy()
+        my_pwlf, eqns = pwlf_fit("t", x, "debitbrut", y, 0, 7, show=True)
+
+        # from Beta get high and low value use numpy.cumsum
+        # from breakpoint get Pmagnet value
+        # get signature for Pmagnet to tell high from low value
+        psignature = Signature.from_df(
+            ofile,
+            qt0,
+            df_pupitre,
+            "Pmagnet",
+            psymbol,
+            punit,
+            tkey="t",
+            threshold=threshold_dict["Pmagnet"],
+            timeshift=0,
+        )
+        print(f"psignature: {psignature.regimes}")
+        print(f"debitbrut values: {my_pwlf.beta} ({type(my_pwlf.beta)})")
+
+        # pandas.Index.get_indexer_for returns np array
+        exit(1)
+
+        """
         # Calculate differences between consecutive values
         xdf = df_pupitre[["debitbrut", "Pmagnet"]].copy()
         xdf["diff"] = xdf["debitbrut"].diff()
@@ -640,6 +678,7 @@ def main():
             timeshift=0,
         )
         print(f"qsignature: {qsignature.regimes}")
+        """
 
         # plot debitbrut model
         from .utils.hysteresis import (
