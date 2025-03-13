@@ -58,3 +58,9 @@ Because of downsampling applied to store pigbrother data:
 * overview: 1/2 s
 * archive: (1/120)/2 s
 * default: 0
+
+# Analysis-refactor
+
+get Reference key from tdms
+loop over reference key instead of passing reference key as argparse argument
+save signature with flow_params and teb, debitbrut data
