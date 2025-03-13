@@ -42,13 +42,13 @@
                 "ms-python.debugpy",
                 "GitHub.vscode-pull-request-github"
             ],
-            "python.analysis.typeCheckingMode": "basic",
             "[python]": {
-                "editor.formatOnSave": true,
-                "editor.defaultFormatter": "ms-python.black-formatter"
+                // "analysis.typeCheckingMode": "basic",
+                "analysis.autoImportCompletions": true,
+                "editor.defaultFormatter": "ms-python.black-formatter",
+                "editor.formatOnSave": true
                 // "editor.defaultFormatter": "charliermarsh.ruff"
-            },
-            "python.analysis.autoImportCompletions": true
+            }
         }
     },
     // Use 'appPort' to create a container with published ports. If the port isn't working, be sure
