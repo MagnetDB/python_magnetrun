@@ -1,7 +1,15 @@
 = records
 
+== problematic files
+
+M9_Overview_200629-1003.tdms only one archive M9_Archive_200629-1503.tdms starting 5h later!!!
+
+lag is not functionning for this case
+
+== with anomalies
+
 ```bash
-python -m python_magnetrun.analysis  pigbrotherdata/Fichiers_Data/M9/Overview/M9_Overview_240509-*.tdms --key Référence_GR1 --show --synchronize
+python -m python_magnetrun.analysis-refactor  pigbrotherdata/Fichiers_Data/M9/Overview/M9_Overview_240509-*.tdms --key Référence_GR1 --show --synchronize
 ```
 
 - `M10_2019.05.30---17:22:17.txt`: missing data for `Flow`
@@ -101,3 +109,4 @@ Rename after "manual" download:
 ```bash
 for file in 2025.*.txt; do echo mv \"$file\" M9_$(echo "$file" | tr ' ' '-'| tr '_' ':'); done
 ```
+
