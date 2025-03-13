@@ -85,6 +85,8 @@ def pwlf_fit(
     xHat = np.linspace(min(x), max(x), num=10000)
     yHat = my_pwlf.predict(xHat)
 
+    # TODO test fit with breakpoint guess for Imax: breaks = my_pwlf.fit_guess([Imax])
+
     # get error
     p = my_pwlf.p_values(method="non-linear", step_size=1e-4)
     se = my_pwlf.se  # standard errors
@@ -116,7 +118,9 @@ def pwlf_fit(
         tables.append(table)
     print(tabulate(tables, headers=headers, tablefmt="psql"), flush=True)
 
-    (eqn_list, coeff_list) = find_eqn(my_pwlf)
+    eqn_list = []
+    if degree >= 1:
+        (eqn_list, coeff_list) = find_eqn(my_pwlf)
 
     # plot the results
 
