@@ -1,0 +1,55 @@
+Source: python-magnetrun
+Section: unknown
+Priority: optional
+Maintainer: Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>
+Build-Depends: debhelper-compat (= 12),
+ dh-python,
+ python3-setuptools,
+ python3-all,
+ python3-nptdms,
+ python3-pandas,
+ python3-ht,
+ python3-iapws | python3-freesteam,
+ python3-tabulate,
+ python3-matplotlib,
+ python3-requests,
+ python3-natsort,
+ python3-statsmodels,
+ python3-seaborn,
+ python3-rich,
+ python3-pint,
+ python3-typing-extensions,
+ python3-lxml (>= 4.9.2),
+ python3-nlopt
+Standards-Version: 4.5.1
+Homepage: https://github.com/Trophime/python_magnetrun
+#Vcs-Browser: https://salsa.debian.org/debian/python-magnetrun
+#Vcs-Git: https://salsa.debian.org/debian/python-magnetrun.git
+#Testsuite: autopkgtest-pkg-python
+Rules-Requires-Root: no
+
+Package: python3-magnetrun
+Architecture: all
+Depends: ${python3:Depends}, ${misc:Depends}
+Suggests: python-python-magnetrun-doc
+Description: Utils for viewing and analyzing magnet runs (Python 3)
+ Python MagnetRun provides utils to view and analyse magnet runs:
+ * Load txt, cvs and tdms files from control/monitoring system
+ * Extract field(s)
+ * Plot field(s) vs time
+ * Plot field vs field
+ .
+ This package installs the library for Python 3.
+
+Package: python-python-magnetrun-doc
+Architecture: all
+Section: doc
+Depends: ${sphinxdoc:Depends}, ${misc:Depends}
+Description: Utils for viewing and analyzing magnet runs (common documentation)
+ Python MagnetRun provides utils to view and analyse magnet runs:
+ * Load txt, cvs and tdms files from control/monitoring system
+ * Extract field(s)
+ * Plot field(s) vs time
+ * Plot field vs field
+ .
+ This is the common documentation package.
