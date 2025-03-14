@@ -1,561 +1,1076 @@
 """Main module."""
 
-import math
 import os
-import sys
-import datetime
-import pandas as pd
+import traceback
+
+from matplotlib.cbook import flatten
+
+from .MagnetRun import MagnetRun
+from .processing.smoothers import savgol
+from scipy.signal import find_peaks
+
+from tabulate import tabulate
+
+# import logging
+from natsort import natsorted
+
 import numpy as np
+import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
+from matplotlib import gridspec
+
 # print("matplotlib=", matplotlib.rcParams.keys())
-matplotlib.rcParams['text.usetex'] = True
+matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
-from .magnetdata import MagnetData
 
 
-def list_sequence(lst, seq):
-    """Return sequences of seq in lst"""
-    sequences = []
-    count = 0
-    len_seq = len(seq)
-    upper_bound = len(lst)-len_seq+1
-    for i in range(upper_bound):
-        if lst[i:i+len_seq] == seq:
-            count += 1
-            sequences.append([i,i+len_seq])
-    return sequences
+def plot_bkpts(
+    file: str,
+    channel: str,
+    symbol: str,
+    unit: str,
+    ts: pd.DataFrame,
+    smoothed: np.ndarray,
+    smoothed_der1: np.ndarray,
+    smoothed_der2: np.ndarray,
+    quantiles_der: float,
+    peaks: np.ndarray,
+    ignore_peaks: list[int],
+    anomalies: list[int],
+    save: bool = False,
+):
+    """_summary_
 
-# see:  https://stackoverflow.com/questions/5419204/index-of-duplicates-items-in-a-python-list
-#from collections import defaultdict
-
-def list_duplicates_of(seq,item):
-    """Return sequences of duplicate adjacent item in seq"""
-    start_at = -1
-    locs = []
-    sequences = []
-    start_index = -1
-    while True:
-        try:
-            loc = seq.index(item,start_at+1)
-        except ValueError:
-            end_index = locs[-1]
-            sequences.append([start_index, end_index])
-            # print("break end_index=%d" % end_index)
-            break
-        else:
-            if not locs:
-                # seq=[loc,0]
-                start_index = loc
-                # print( "item=%d, start: %d" % (item, loc) )
-            else:
-                if (loc-locs[-1]) != 1:
-                    end_index = locs[-1]
-                    sequences.append([start_index, end_index])
-                    start_index = loc
-                    # print( "item=%d, end: %d, new_start: %d" % (item, locs[-1], loc) )
-            locs.append(loc)
-            start_at = loc
-    return sequences #locs
-
-class MagnetRun:
+    :param file: _description_
+    :type file: str
+    :param channel: _description_
+    :type channel: str
+    :param symbol: _description_
+    :type symbol: str
+    :param unit: _description_
+    :type unit: str
+    :param ts: _description_
+    :type ts: pd.tseries
+    :param smoothed: _description_
+    :type smoothed: np.ndarray
+    :param smoothed_der1: _description_
+    :type smoothed_der1: np.ndarray
+    :param smoothed_der2: _description_
+    :type smoothed_der2: np.ndarray
+    :param quantiles_der: _description_
+    :type quantiles_der: float
+    :param peaks: _description_
+    :type peaks: np.ndarray
+    :param ignore_peaks: _description_
+    :type ignore_peaks: list[int]
+    :param anomalies: _description_
+    :type anomalies: list[int]
+    :param save: _description_, defaults to False
+    :type save: bool, optional
     """
-    Magnet Run
+    fig = plt.figure(figsize=(16, 12))
+    gs = gridspec.GridSpec(3, 1)
 
-    Site: name of the site
-    Insert: list of the MagnetIDs composing the insert
-    MagnetData: pandas dataframe or tdms file
-    """
+    ax0 = plt.subplot(gs[0])
+    ax0.plot(ts.to_numpy(), label=key, color="blue", marker="o", linestyle="None")
+    ax0.plot(smoothed, label="smoothed", color="red")
+    ax0.legend()
+    ax0.grid()
+    # ax0.set_xlabel('t [s]')
+    ax0.set_ylabel(f"{symbol} [{unit:~P}]")
+    ax0.set_title(f"{file}: {key}")
 
-    def __init__(self, site="unknown", insert="", data=None):
-        """default constructor"""
-        self.Site = site
-        self.Insert = insert
-        self.MagnetData = data
+    ax1 = plt.subplot(gs[1], sharex=ax0)
+    ax1.plot(smoothed_der2, label=key, color="red")
+    ax1.legend()
+    ax1.grid()
+    # ax1.set_xlabel('t [s]')
+    ax1.set_title(f"Savgo filter [2nd order der]: ({level}%: {quantiles_der:.3e})")
 
-        start_date = None
-        try:
-            if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
-                start_date=self.MagnetData.getData("Date").iloc[0]
-                start_time=self.MagnetData.getData("Time").iloc[0]
-                end_date=self.MagnetData.getData("Date").iloc[-1]
-                end_time = self.MagnetData.getData('Time').iloc[-1]
+    ax2 = plt.subplot(gs[2], sharex=ax0)
+    std_ts = ts.rolling(window=args.window).std()
+    ax2.plot(std_ts.to_numpy(), label="rolling std", color="blue")
+    ax2.legend()
+    ax2.grid()
+    ax2.set_xlabel("t [s]")
+    ax2.set_title("Rolling std")
 
-                tformat="%Y.%m.%d %H:%M:%S"
-                t0 = datetime.datetime.strptime(start_date+" "+start_time, tformat)
-                t1 = datetime.datetime.strptime(end_date+" "+end_time, tformat)
-                dt = (t1-t0)
-                duration = dt / datetime.timedelta(seconds=1)
+    if peaks.shape[0]:
+        ax0.plot(peaks, smoothed[peaks], "go", label="peaks")
+        ax0.legend()
 
-                print("* Site: %s, Insert: %s" % (self.Site, self.Insert),
-                      "MagnetData.Type: %d" % self.MagnetData.Type,
-                      "start_date=%s" % start_date,
-                      "start_time=%s" % start_time,
-                      "duration=%g s" % duration)
-                
-        except:
-            print("MagnetRun.__init__: trouble loading data")
-            try:
-                file_name = "%s_%s_%s-wrongdata.txt" % (self.Site, self.Insert,start_date)
-                self.MagnetData.to_csv(file_name, sep=str('\t'), index=False, header=True)
-            except:
-                print("MagnetRun.__init__: trouble loading data - fail to save csv file")
-                pass
-            pass
-            
-    @classmethod
-    def fromtdms(cls, site, insert, filename):
-        """create from a tdms file"""
-        print(f'MagnetRun:frontdms: {filename}', flush=True)
-        with open(filename, 'r') as f:
-            data = MagnetData.fromtdms(filename)
+        ax1.plot(peaks, smoothed_der2[peaks], "go", label="peaks")
+        ax1.legend()
 
-       # print("magnetrun.fromtxt: data=", data)
-        return cls(site, insert, data)
+    if ignore_peaks:
+        ax0.plot(ignore_peaks, smoothed[ignore_peaks], "yo", label="ignore peaks")
+        ax0.legend()
 
-    @classmethod
-    def fromtxt(cls, site, filename):
-        """create from a txt file"""
-        with open(filename, 'r') as f:
-            insert=f.readline().split()[-1]
-            data = MagnetData.fromtxt(filename)
+        ax1.plot(ignore_peaks, smoothed_der2[ignore_peaks], "yo", label="ignore peaks")
+        ax1.legend()
 
-            if site == "M9":
-                data.addData("IH", "IH = Idcct1 + Idcct2")
-                data.addData("IB", "IB = Idcct3 + Idcct4")
-            elif site in ["M8", "M10"]:
-                data.addData("IH", "IH = Idcct3 + Idcct4")
-                data.addData("IB", "IB = Idcct1 + Idcct2")
-            # what about M1, M5 and M7???
+    if anomalies:
+        ax0.plot(anomalies, smoothed[anomalies], "ro", label="anomalies")
+        ax0.legend()
 
-        # print("magnetrun.fromtxt: data=", data)
-        return cls(site, insert, data)
+        ax1.plot(anomalies, smoothed_der2[anomalies], "ro", label="anomalies")
+        ax1.legend()
 
-    @classmethod
-    def fromcsv(cls, site, insert, filename):
-        """create from a csv file"""
-        data = MagnetData.fromcsv(filename)
-        return cls(site, insert, data)
+    if save:
+        plt.savefig(
+            f'{file.replace(f_extension,"")}-{channel}-detect_bkpts.png', dpi=300
+        )
+    else:
+        plt.show()
+    plt.close()
 
-    @classmethod
-    def fromStringIO(cls, site, name):
-        """create from a stringIO"""
-        from io import StringIO
-
-        # try:
-        ioname = StringIO(name)
-        # TODO rework: get item 2 otherwise set to unknown
-        insert = "Unknown"
-        headers = ioname.readline().split()
-        if len(headers) >=2:
-            insert = headers[1]
-        data = MagnetData.fromStringIO(name)
-        # except:
-        #      print("cannot read data for %s insert, %s site" % (insert, site) )
-        #      fo = open("wrongdata.txt", "w", newline='\n')
-        #      fo.write(ioname)
-        #      fo.close()
-        #      sys.exit(1)
-        return cls(site, insert, data)
-
-    def __repr__(self):
-        return "%s(Site=%r, Insert=%r, MagnetData=%r)" % \
-             (self.__class__.__name__,
-              self.Site,
-              self.Insert,
-              self.MagnetData)
-
-    def getSite(self):
-        """returns Site"""
-        return self.Site
-
-    def getInsert(self):
-        """returns Insert"""
-        return self.Insert
-
-    def setSite(self, site):
-        """set Site"""
-        self.Site = site
-
-    def getType(self):
-        """returns Data Type"""
-        return self.MagnetData.Type
-
-    def getMData(self):
-        """return Magnet Data object"""
-        return self.MagnetData
-
-    def getData(self, key=""):
-        """return Data"""
-        return self.MagnetData.getData(key)
-
-    def getKeys(self):
-        """return list of Data keys"""
-        return self.MagnetData.Keys
-
-    def getDuration(self):
-        """compute duration of the run in seconds"""
-        duration = None
-        if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
-            start_date=self.MagnetData.getData("Date").iloc[0]
-            start_time=self.MagnetData.getData("Time").iloc[0]
-            end_date=self.MagnetData.getData("Date").iloc[-1]
-            end_time = self.MagnetData.getData('Time').iloc[-1]
-
-            tformat="%Y.%m.%d %H:%M:%S"
-            t0 = datetime.datetime.strptime(start_date+" "+start_time, tformat)
-            t1 = datetime.datetime.strptime(end_date+" "+end_time, tformat)
-            dt = (t1-t0)
-            duration = dt / datetime.timedelta(seconds=1)
-        return duration
-    
-    def stats(self):
-        """compute stats from the actual run"""
-
-        # TODO:
-        # add teb,... to list
-        # add duration
-        # add duration per Field above certain values
-        # add \int Power over time
-
-        from tabulate import tabulate
-        # see https://github.com/astanin/python-tabulate for tablefmt
-
-        print("Statistics:\n")
-        tables = []
-        headers = ["Name", "Mean", "Max", "Min", "Std", "Median", "Mode"]
-        for (f,unit) in zip(['Field', 'Pmagnet', 'teb', 'debitbrut'],["T", "MW", "C","m\u00B3/h"]):
-            v_min = float(self.MagnetData.getData(f).min())
-            v_max = float(self.MagnetData.getData(f).max())
-            v_mean = float(self.MagnetData.getData(f).mean())
-            v_var = float(self.MagnetData.getData(f).var())
-            v_median = float(self.MagnetData.getData(f).median())
-            v_mode = float(self.MagnetData.getData(f).mode())
-            table = ["%s[%s]" % (f,unit), v_mean, v_max, v_min, math.sqrt(v_var), v_median, v_mode]
-            tables.append(table)
-
-        print(tabulate(tables, headers, tablefmt="simple"), "\n")
-        return 0
-
-    def plateaus(self, twindows=6, threshold=1.e-4, b_threshold=1.e-3, duration=5, show=False, save=True, debug=False):
-        """get plateaus, pics from the actual run"""
-
-        # TODO:
-        # pass b_thresold as input param
-        # b_threshold = 1.e-3
-        
-        if debug:
-            print("Search for plateaux:", "Type:", self.MagnetData.Type)
-
-        B_min = float(self.MagnetData.getData('Field').min())
-        B_max = float(self.MagnetData.getData('Field').max())
-        B_mean = float(self.MagnetData.getData('Field').mean())
-        B_var = float(self.MagnetData.getData('Field').var())
-
-        Bz = self.MagnetData.getData('Field')
-        regime = Bz.to_numpy()
-        df_ = pd.DataFrame(regime)
-        df_['regime']=pd.Series(regime)
-
-        diff = np.diff(regime) # scale by B_max??
-        df_['diff']=pd.Series(diff)
-
-        ndiff = np.where(abs(diff) >= threshold, diff, 0)
-        df_['ndiff']=pd.Series(ndiff)
-        if debug:
-            print("gradient: ", df_)
-
-        # TODO:
-        # check gradient:
-        #     if 0 in between two 1 (or -1), 0 may be replaced by 1 or -1 depending on ndiff values
-        #     same for small sequense of 0 (less than 2s)
-        gradient = np.sign(df_["ndiff"].to_numpy())
-        gradkey = 'gradient-%s' % 'Field'
-        df_[gradkey] = pd.Series(gradient)
-
-        # # Try to remove spikes
-        # ref: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
-        
-        df_['pandas'] = df_[gradkey].rolling(window=twindows, center=True).median()
-
-        difference = np.abs(df_[gradkey] - df_['pandas'])
-        outlier_idx = difference > threshold
-        # print("median[%d]:" % df_[gradkey][outlier_idx].size, df_[gradkey][outlier_idx])
-
-        kw = dict(marker='o', linestyle='none', color='g',label=str(threshold), legend=True)
-        df_[gradkey][outlier_idx].plot(**kw)
-        # not needed if center=True
-        # df_['shifted\_pandas'] =  df_['pandas'].shift(periods=-twindows//2)
-        df_.rename(columns={0:'Field'}, inplace=True)
-
-        del df_['ndiff']
-        del df_['diff']
-        del df_['regime']
-        # del df_['pandas']
-
-        if show or save:
-            ax = plt.gca()
-            df_.plot(ax=ax, grid=True)
-
-            if show:
-                plt.show()
-
-            if save:
-                # imagefile = self.Site + "_" + self.Insert
-                imagefile = self.Site
-                start_date = ""
-                start_time = ""
-                if "Date" in self.MagnetData.getKeys() and "Time" in self.MagnetData.getKeys():
-                    tformat="%Y.%m.%d %H:%M:%S"
-                    start_date=self.MagnetData.getData("Date").iloc[0]
-                    start_time=self.MagnetData.getData("Time").iloc[0]
-            
-                plt.savefig('%s_%s---%s.png' % (imagefile,str(start_date),str(start_time)) , dpi=300 )
-                plt.close()
-
-        # convert panda column to a list
-        # print("df_:", df_.columns.values.tolist())
-        B_list = df_['pandas'].values.tolist()
-
-        from functools import partial
-        regimes_in_source = partial(list_duplicates_of, B_list)
-        if debug:
-            for c in [1, 0, -1]:
-                print(c, regimes_in_source(c))
-
-        # # To get timedelta in mm or millseconds
-        # time_d_min = time_d / datetime.timedelta(minutes=1)
-        # time_d_ms  = time_d / datetime.timedelta(milliseconds=1)
-        plateaux = regimes_in_source(0)
-        print( "%s plateaus(thresold=%g): %d" % ('Field', threshold, len(plateaux)) )
-        tformat="%Y.%m.%d %H:%M:%S"
-        actual_plateaux = []
-        for p in plateaux:
-            start=self.MagnetData.getData('Date').iloc[p[0]]
-            start_time=self.MagnetData.getData('Time').iloc[p[0]]
-            end=self.MagnetData.getData('Date').iloc[p[1]]
-            end_time = self.MagnetData.getData('Time').iloc[p[1]]
-
-            t0 = datetime.datetime.strptime(start+" "+start_time, tformat)
-            t1 = datetime.datetime.strptime(end+" "+end_time, tformat)
-            dt = (t1-t0)
-
-            # b0=self.MagnetData.getData('Field').values.tolist()[p[0]]
-            b0 = float(self.MagnetData.getData('Field').iloc[p[0]])
-            b1 = float(self.MagnetData.getData('Field').iloc[p[1]])
-            if debug:
-                print( "\t%s\t%s\t%8.6g\t%8.4g\t%8.4g" % (start_time, end_time, dt.total_seconds(), b0, b1) )
-
-            # if (b1-b0)/b1 > b_thresold: reject plateau
-            # if abs(b1) < b_thresold and abs(b0) < b_thresold: reject plateau
-            if (dt / datetime.timedelta(seconds=1)) >= duration:
-                if abs(b1) >= b_threshold and abs(b0) >= b_threshold:
-                    actual_plateaux.append([start_time, end_time, dt.total_seconds(), b0, b1])
-
-        print( "%s plateaus(threshold=%g, b_threshold=%g, duration>=%g s): %d over %d" %
-               ('Field', threshold, b_threshold, duration, len(actual_plateaux), len(plateaux)) )
-        tables = []
-        for p in actual_plateaux:
-            b_diff = abs(1. - p[3] / p[4])
-            tables.append([ p[0], p[1], p[2], p[3], p[4], b_diff*100.])
-
-        pics = list_sequence(B_list, [1.0,-1.0])
-        print( " \n%s pics (aka sequence[1,-1]): %d" % ('Field', len(pics)) )
-        pics = list_sequence(B_list, [1.0,0,-1.0,0,1.])
-        print( " \n%s pics (aka sequence[1,0,-1,0,1]): %d" % ('Field', len(pics)) )
-
-        # remove adjacent duplicate
-        import itertools
-        B_ = [x[0] for x in itertools.groupby(B_list)]
-        if debug:
-            print( "B_=", B_, B_.count(0))
-        print( "%s commisionning ? (aka sequence [1.0,0,-1.0,0.0,-1.0]): %d" % ('Field', len(list_sequence(B_, [1.0,0,-1.0,0.0,-1.0]))) )
-        print("\n\n")
-
-
-        from tabulate import tabulate
-        headers = ["start", "end", "duration", "B0[T]", "B1[T]", "\u0394B/B[%]" ]
-        print( tabulate(tables, headers, tablefmt="simple"), "\n" )
-
-        return 0
 
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("input_file") # can be a list
-    parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9") # use housing instead
+    parser.add_argument("input_file", nargs="+", help="enter input file")
+    parser.add_argument(
+        "--site", help="specify a site (ex. M8, M9,...)", default="M9"
+    )  # use housing instead
     parser.add_argument("--insert", help="specify an insert", default="notdefined")
-    parser.add_argument("--plot_vs_time", help="select key(s) to plot (ex. \"Field[;Ucoil1]\")") # use nargs instead
-    parser.add_argument("--plot_key_vs_key", help="select pair(s) of keys to plot (ex. \"Field-Icoil1")
-    parser.add_argument("--output_time", help="output key(s) for time")
-    parser.add_argument("--output_timerange", help="set time range to extract (start;end)")
-    parser.add_argument("--output_key", help="output key(s) for time")
-    parser.add_argument("--extract_pairkeys", help="dump key(s) to file")
-    parser.add_argument("--show", help="display graphs (requires X11 server active)", action='store_true')
-    parser.add_argument("--save", help="save graphs (png format)", action='store_true')
-    parser.add_argument("--list", help="list key in csv", action='store_true')
-    parser.add_argument("--convert", help="convert file to csv", action='store_true')
-    parser.add_argument("--stats", help="display stats and find regimes", action='store_true')
-    parser.add_argument("--thresold", help="specify thresold for regime detection", type=float, default=1.e-3)
-    parser.add_argument("--bthresold", help="specify b thresold for regime detection", type=float, default=1.e-3)
-    parser.add_argument("--dthresold", help="specify duration thresold for regime detection", type=float, default=10)
-    parser.add_argument("--window", help="stopping criteria for nlopt", type=int, default=10)
-    parser.add_argument("--debug", help="acticate debug", action='store_true')
+    parser.add_argument("--debug", help="acticate debug", action="store_true")
+
+    subparsers = parser.add_subparsers(
+        title="commands", dest="command", help="sub-command help"
+    )
+    parser_info = subparsers.add_parser("info", help="info help")
+    parser_add = subparsers.add_parser("add", help="add help")
+    parser_select = subparsers.add_parser("select", help="select help")
+    parser_stats = subparsers.add_parser("stats", help="stats help")
+    parser_plot = subparsers.add_parser("plot", help="select help")
+
+    # add info subcommand
+    parser_info.add_argument("--list", help="list key in csv", action="store_true")
+    parser_info.add_argument("--convert", help="save to csv", action="store_true")
+
+    # add add subcommand
+    parser_add.add_argument(
+        "--formula", help="add new column with associated formula", type=str, default=""
+    )
+    parser_add.add_argument("--compute", help="compute", action="store_true")
+    parser_add.add_argument("--plot", help="plot ", action="store_true")
+    parser_add.add_argument(
+        "--vs_time",
+        help='select key(s) to plot (ex. "Field [Ucoil1]")',
+        nargs="+",
+        action="append",
+    )
+    parser_add.add_argument(
+        "--key_vs_key",
+        help='select pair(s) of keys to plot (ex. "Field-Icoil1")',
+        nargs="+",
+        action="append",
+    )
+    parser_add.add_argument(
+        "--normalize", help="normalize data before plot", action="store_true"
+    )
+    parser_add.add_argument("--save", help="save ", action="store_true")
+
+    # add plot subcommand
+    parser_plot.add_argument(
+        "--normalize", help="normalize data before plot", action="store_true"
+    )
+    parser_plot.add_argument(
+        "--vs_time",
+        help='select key(s) to plot (ex. "Field [Ucoil1]")',
+        nargs="+",
+        action="append",
+    )
+    parser_plot.add_argument(
+        "--key_vs_key",
+        help='select pair(s) of keys to plot (ex. "Field-Icoil1")',
+        nargs="+",
+        action="append",
+    )
+    parser_plot.add_argument(
+        "--save", help="save graphs (png format)", action="store_true"
+    )
+
+    # extract subcommand
+    parser_select.add_argument(
+        "--output_time", nargs="+", help="output key(s) for time"
+    )
+    parser_select.add_argument(
+        "--output_timerange",
+        help="set time range to extract (start;end)",
+        action="append",
+    )
+    parser_select.add_argument(
+        "--output_key",
+        nargs="+",
+        help="output key(s) for time",
+        action="append",
+    )
+    parser_select.add_argument(
+        "--extract_pairkeys",
+        nargs="+",
+        help="dump key(s) to file",
+        action="append",
+    )
+    parser_select.add_argument(
+        "--convert", help="convert file to csv", action="store_true"
+    )
+
+    # add stats subcommand
+    parser_stats.add_argument(
+        "--detect_bkpts", help="find breaking points", action="store_true"
+    )
+    parser_stats.add_argument("--localmax", help="find local max", action="store_true")
+    parser_stats.add_argument("--plateau", help="find plateau", action="store_true")
+    parser_stats.add_argument(
+        "--save", help="save graphs (png format)", action="store_true"
+    )
+    parser_stats.add_argument(
+        "--show", help="display graphs (require X11)", action="store_true"
+    )
+    parser_stats.add_argument(
+        "--keys",
+        help="select key(s) to perform selected stats",
+        nargs="+",
+    )
+    parser_stats.add_argument(
+        "--threshold",
+        help="specify threshold for regime detection",
+        type=float,
+        default=1.0e-3,
+    )
+    parser_stats.add_argument(
+        "--bthreshold",
+        help="specify b threshold for regime detection",
+        type=float,
+        default=1.0e-3,
+    )
+    parser_stats.add_argument(
+        "--dthreshold",
+        help="specify duration threshold for regime detection",
+        type=float,
+        default=10,
+    )
+    parser_stats.add_argument(
+        "--window", help="stopping criteria for nlopt", type=int, default=10
+    )
+    parser_stats.add_argument("--level", help="select level", type=int, default=90)
     args = parser.parse_args()
+    print(f"args: {args}", flush=True)
 
     # load df pandas from input_file
     # check extension
     supported_formats = [".txt", ".tdms", ".csv"]
-    f_extension=os.path.splitext(args.input_file)[-1]
-    file_name, file_extension = os.path.splitext(args.input_file)
-    print(f'file_name={file_name}, file_extension={file_extension}', flush=True)
-    #if f_extension not in supported_formats:
-    #    raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
 
-    filename = os.path.basename(args.input_file)
-    result = filename.startswith("M")
-    if result:
+    inputs = {}
+    extensions = {}
+    for i, file in enumerate(args.input_file):
+        f_extension = os.path.splitext(file)[-1]
+        if f_extension not in extensions:
+            extensions[f_extension] = [i]
+        else:
+            extensions[f_extension].append(i)
+    # print(f"extensions: {extensions}, entries: {len(extensions.keys())}")
+    # print(f"args.vs_time: {args.vs_time}, entries: {len(args.vs_time)}")
+
+    input_files = natsorted(args.input_file)
+    for file in input_files:
+        f_extension = os.path.splitext(file)[-1]
+        if f_extension not in supported_formats:
+            raise RuntimeError(
+                f"so far file with extension in {supported_formats} are implemented"
+            )
+
+        filename = os.path.basename(file)
+        result = filename.startswith("M")
+        insert = "tututu"
+        site = "tttt"
+        if result:
+            try:
+                index = filename.index("_")
+                site = filename[0:index]
+                # print(f"site detected: {site}")
+            except Exception as error:
+                print(f"{file}: no site detected - use args.site argument instead")
+                continue
+            if args.debug:
+                print(f"site={site}")
+
         try:
-            index = filename.index("_")
-            args.site = filename[0:index]
-            print("site detected: %s" % args.site)
-        except:
-            print("no site detected - use args.site argument instead")
-            pass
+            match f_extension:
+                case ".txt":
+                    mrun = MagnetRun.fromtxt(site, insert, file)
+                case ".tdms":
+                    mrun = MagnetRun.fromtdms(site, insert, file)
+                case ".csv":
+                    mrun = MagnetRun.fromcsv(site, insert, file)
+                case _:
+                    raise RuntimeError(
+                        f"so far file with extension in {supported_formats} are implemented"
+                    )
+        except Exception as error:
+            print(f"{file}: an error occurred when loading:", error)
+            continue
 
-    match file_extension:
-        case ".txt":
-            mrun = MagnetRun.fromtxt(args.site, args.input_file)
-        case '.tdms':
-            mrun = MagnetRun.fromtdms(args.site, args.insert, args.input_file)
-        case '.csv':
-            mrun = MagnetRun.fromcsv(args.site, args.input_file)
-        case _:
-            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")        
+        inputs[file] = {"data": mrun}
 
-    dkeys = mrun.getKeys()
+        if args.command == "add":
+            mdata = mrun.getMData()
+            print(mdata.getKeys())
 
-    if args.list:
-        print("Valid keys are:")
-        for key in dkeys:
-            print(key)
-        sys.exit(0)
+            if args.compute:
+                from .cooling import water
+                from pint import UnitRegistry
 
-    if args.convert:
-        extension = os.path.splitext(args.input_file)[-1]
-        file_name = args.input_file.replace(extension, ".csv")
-        mrun.getData().to_csv(file_name, sep=str('\t'), index=False, header=True)
-        sys.exit(0)
+                ureg = UnitRegistry()
+                nkey = "rho"
+                nkey_unit = ("rho", ureg.kilogram / ureg.meter**3)
+                nkey_params = ["HPH", "TinH"]
+                nkey_method = water.getRho
+
+                mdata.computeData(nkey_method, nkey, nkey_params, nkey_unit)
+                print(mdata.getKeys())
+                print(mdata.getData("rho").describe())
+
+                if args.plot:
+                    my_ax = plt.gca()
+                    mdata.plotData(x="t", y=nkey, ax=my_ax, normalize=args.normalize)
+                    for param in nkey_params:
+                        mdata.plotData(
+                            x="t", y=param, ax=my_ax, normalize=args.normalize
+                        )
+
+                    if not args.save:
+                        plt.show()
+                    else:
+                        imagefile = nkey
+                        print(f"saveto: {imagefile}_vs_time.png", flush=True)
+                        plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
+                    plt.close()
+
+            if args.formula:
+                print(f"add {args.formula}, plot={args.plot}")
+
+                nkey = args.formula.split(" = ")[0]
+                nunit = str()
+
+                # self.units[key] = ("U", ureg.volt)
+                print(f"try to add nkey={nkey} (formula={args.formula[1:]})")
+                mdata.addData(key=nkey, formula=args.formula, unit=nunit)
+                print(mdata.getKeys())
+                if args.plot:
+                    my_ax = plt.gca()
+                    mdata.plotData(x="t", y=nkey, ax=my_ax, normalize=args.normalize)
+
+                    print(f"args.vs_time: {args.vs_time}")
+                    if args.vs_time:
+                        for key in args.vs_time[0]:
+                            print(key)
+                            mdata.plotData(
+                                x="t", y=key, ax=my_ax, normalize=args.normalize
+                            )
+
+                    if not args.save:
+                        plt.show()
+                    else:
+                        imagefile = nkey
+                        print(f"saveto: {imagefile}_vs_time.png", flush=True)
+                        plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
+                    plt.close()
+
+        if args.command == "info":
+            mdata = mrun.getMData()
+            mdata.info()
+            if args.list:
+                print(f"{file}: valid keys")
+                for key in mrun.getKeys():
+                    print("\t", key)
+
+            if args.convert:
+                data = mdata.Data
+                if mdata.Type == 0:
+                    csvfile = file.replace(f_extension, ".csv")
+                    data.to_csv(csvfile, sep=str("\t"), index=True, header=True)
+                elif mdata.Type == 1:
+                    for key, df in data.items():
+                        print(f"convert: key={key}", flush=True)
+                        csvfile = file.replace(f_extension, f"-{key}.csv")
+                        df.to_csv(csvfile, sep=str("\t"), index=True, header=True)
 
     # perform operations defined by options
-    if args.plot_vs_time:
-        my_ax = plt.gca()
-        # split into keys
-        items = args.plot_vs_time.split(';')
-        print(f"items={items}", flush=True)
-        # loop over key
-        for key in items:
-            print(f"plot key={key}, type={type(key)}")
-            mrun.getMData().plotData(x='Time', y=key, ax=my_ax)
-        if args.show:
-            plt.show()
-        else:
-            imagefile = args.input_file.replace(".txt", "")
-            plt.savefig(f'{imagefile}_vs_time.png', dpi=300 )
-            plt.close()
+    if args.command == "plot":
+        print("subcommands: plot")
+        if args.vs_time:
+            assert len(args.vs_time) == len(
+                extensions.keys()
+            ), f"expected {len(extensions.keys())} vs_time arguments - got {len(args.vs_time)} "
 
-    if args.plot_key_vs_key:
-        # split pairs in key1, key2
-        print(f"plot_key_vs_key={args.plot_key_vs_key}")
-        pairs = args.plot_key_vs_key.split(';')
-        for pair in pairs:
-            print(f"pair={pair}")
             my_ax = plt.gca()
-            #print("pair=", pair, " type=", type(pair))
-            items = pair.split('-')
-            if len(items) != 2:
-                raise RuntimeError(f"invalid pair of keys:{pair}")
-            key1= items[0]
-            key2 =items[1]
-            if key1 in dkeys and key2 in dkeys:
-                mrun.getMData().plotData(x=key1, y=key2, ax=my_ax) # on graph per pair
-            else:
-                raise Exception(f"unknown keys: {key1} {key2}, (Check valid keys with --list option)")
-            if args.show:
+
+            items = args.vs_time
+            print(f"items={items}", flush=True)
+            title = os.path.basename(input_files[0])
+            if len(input_files) > 1:
+                klabels = flatten(items)
+                title = f"{'-'.join(klabels)}"
+
+            legends = []
+            for file in input_files:
+                # print(f"file={file}")
+                f_extension = os.path.splitext(file)[-1]
+                plot_args = items[list(extensions.keys()).index(f_extension)]
+                print(
+                    f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}"
+                )
+                if args.debug:
+                    print(
+                        f"plot_args: {plot_args}, f_extension:{f_extension}, {extensions[f_extension]}"
+                    )
+                mrun: MagnetRun = inputs[file]["data"]
+                mdata = mrun.getMData()
+                for key in plot_args:
+                    try:
+                        # print(f"plot key={key}, type={type(key)}", flush=True)
+                        (symbol, unit) = mdata.getUnitKey(key)
+                        print(f"plot {key} [{symbol} {unit:~P}]")
+
+                        mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
+                        legends.append(
+                            f'{os.path.basename(file).replace(f_extension,"")}: {key}'
+                        )
+                        if args.normalize:
+                            legends[
+                                -1
+                            ] += f" max={float(mdata.getData([key]).max().iloc[0]):.3f} [{unit:~P}]"
+                            print("normalize")
+                    except RuntimeError:
+                        print(f"key: {key} not found in {file}")
+                        print(f"available keys: {mdata.getKeys()}")
+                        continue
+
+            plt.ylabel(f"{symbol} [{unit:~P}]")
+            if args.normalize:
+                plt.ylabel("normalized")
+
+            if len(legends) > 1:
+                my_ax.legend(labels=legends)
+
+            (symbol, unit) = mdata.getUnitKey("t")
+            plt.xlabel(f"{symbol} [{unit:~P}]")
+
+            plt.title(title)
+            if not args.save:
                 plt.show()
             else:
-                imagefile = args.input_file.replace(".txt", "")
-                plt.savefig(f'{imagefile}_{key1}_vs_{key2}.png', dpi=300 )
-                plt.close()
+                imagefile = f"{file.replace(f_extension,'')}-{key}"
+                print(f"saveto: {imagefile}_vs_time.png", flush=True)
+                plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
+            plt.close()
 
-    if args.output_time:
-        if mrun.getType() != 0:
-            raise RuntimeError("output_time: feature not implemented for tdms format")
+        if args.key_vs_key:
+            assert len(args.key_vs_key) == len(
+                extensions
+            ), f"expected {len(extensions)} key_vs_key arguments - got {len(args.key_vs_key)} "
 
-        times = args.output_time.split(";")
-        print (f"Select data at {times}")
-        df = mrun.getData()
+            my_ax = plt.gca()
+
+            items = args.key_vs_key
+            title = os.path.basename(input_files[0])
+            if len(input_files) > 1:
+                klabels = flatten(items)
+                title = f"{'-'.join(klabels)}"
+
+            legends = []
+            # split pairs in key1, key2
+            # print(f"key_vs_key={args.key_vs_key}")
+            pairs = args.key_vs_key
+            for file in input_files:
+                legends.append(os.path.basename(file).replace(f_extension, ""))
+                f_extension = os.path.splitext(file)[-1]
+                plot_args = pairs[list(extensions.keys()).index(f_extension)]
+                print(
+                    f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}"
+                )
+                mrun: MagnetRun = inputs[file]["data"]
+                mdata = mrun.getMData()
+
+                for pair in plot_args:
+                    # print(f"pair={pair}")
+                    # print("pair=", pair, " type=", type(pair))
+                    items = pair.split("-")
+                    if len(items) != 2:
+                        raise RuntimeError(f"invalid pair of keys:{pair}")
+                    key1 = items[0]
+                    key2 = items[1]
+                    mdata.plotData(x=key1, y=key2, ax=my_ax)
+
+            if len(legends) > 1:
+                plt.legend(labels=legends)
+            plt.title(title)
+
+            if not args.save:
+                plt.show()
+            else:
+                imagefilename = f"{file.replace(f_extension,'')}-{'_'.join(items)}"
+                print(f"saveto: {imagefilename}.png", flush=True)
+                plt.savefig(f"{imagefilename}.png", dpi=300)
+            plt.close()
+
+    if args.command == "select":
+        # plot_args = items[extensions[f_extension][0]]
+        if args.output_time:
+            assert len(args.output_time) == len(
+                extensions.keys()
+            ), f"expected {len(extensions.keys())} output_time arguments - got {len(args.output_time)} "
+
+            times = args.output_time.split(";")
+            print(f"Select data at {times}")
+            for file in inputs:
+                f_extension = os.path.splitext(file)[-1]
+                mrun: MagnetRun = inputs[file]["data"]
+                mdata = mrun.getMData()
+                select_args = times[extensions[f_extension][0]]
+                select_args_str = "_at"
+                for item in select_args:
+                    select_args_str += f"-{item:.3f}s"
+
+                if mdata.Type == 0:
+                    data = mdata.Data
+                    df = data[data["timestamp"].isin(times)]
+                    file_name = file.replace(f_extension, "")
+                    file_name = file_name + select_args_str + ".csv"
+                    df.to_csv()
+
+                elif mdata.Type == 1:
+                    data = mdata.Data
+                    for group in data:
+                        df = data[data.index.isin(times)]
+                        file_name = file.replace(f_extension, f"-{group}")
+                        file_name = file_name + select_args_str + ".csv"
+                        df.to_csv()
+
+        if args.output_timerange:
+            assert len(args.output_timerange) == len(
+                extensions.keys()
+            ), f"expected {len(extensions.keys())} output_timerange arguments - got {len(args.output_timerange)} "
+
+            timerange = args.output_timerange.split(";")
+            for file in inputs:
+                f_extension = os.path.splitext(file)[-1]
+                mrun: MagnetRun = inputs[file]["data"]
+                mdata = mrun.getMData()
+                select_args = args.output_timerange[extensions[f_extension][0]]
+                for item in select_args:
+                    timerange = item.split(";")
+
+                    file_name = file.replace(f_extension, "")
+                    file_name = (
+                        file_name + "_from" + str(timerange[0].replace(":", "-"))
+                    )
+                    file_name = (
+                        file_name + "_to" + str(timerange[1].replace(":", "-")) + ".csv"
+                    )
+
+                    if mdata.Type == 0:
+                        selected_df = mdata.extractTimeData(timerange)
+                        if selected_df is not None:
+                            selected_df.to_csv(
+                                file_name, sep=str("\t"), index=False, header=True
+                            )
+                    elif mdata.Type == 1:
+                        for group in mdata.Data:
+                            selected_df = mdata.extractTimeData(timerange, group)
+                            if selected_df is not None:
+                                selected_df.to_csv(
+                                    file_name, sep=str("\t"), index=False, header=True
+                                )
+
         if args.output_key:
-            keys = args.output_key.split(";")
-            print(df[df['Time'].isin(times)][keys])
-        else:
-            print(df[df['Time'].isin(times)])
+            assert len(args.output_key) == len(
+                extensions.keys()
+            ), f"expected {len(extensions.keys())} output_key arguments - got {len(args.output_key)} "
 
-    if args.output_timerange:
-        if mrun.getType() != 0:
-            raise RuntimeError("output_time: feature not implemented for tdms/csv format")
+            for file in inputs:
+                f_extension = os.path.splitext(file)[-1]
+                mrun: MagnetRun = inputs[file]["data"]
+                mdata = mrun.getMData()
+                select_args = args.output_key[extensions[f_extension][0]]
+                for item in select_args:
+                    keys = item.split(";")
+                    keys.insert(0, "Time")
 
-        timerange = args.output_timerange.split(";")
+                    file_name = file.replace(f_extension, "")
+                    for key in keys:
+                        if key != "Time":
+                            file_name = file_name + "_" + key
+                    file_name = file_name + "_vs_Time.csv"
 
-        file_name = args.input_file.replace(".txt", "")
-        file_name = file_name + "_from" + str(timerange[0].replace(":", "-"))
-        file_name = file_name + "_to" + str(timerange[1].replace(":", "-")) + ".csv"
-        selected_df = mrun.getMData().extractTimeData(timerange)
-        selected_df.to_csv(file_name, sep=str('\t'), index=False, header=True)
+                    selected_df = mdata.extractData(keys)
+                    if selected_df is not None:
+                        selected_df.to_csv(
+                            file_name, sep=str("\t"), index=False, header=True
+                        )
 
-    if args.output_key:
-        if mrun.getType() != 0:
-            raise RuntimeError("output_time: feature not implemented for tdms format")
+        if args.extract_pairkeys:
+            assert len(args.extract_pairkeys) == len(
+                extensions.keys()
+            ), f"expected {len(extensions.keys())} extract_pairkeys arguments - got {len(args.extract_pairkeys)} "
+            for file in inputs:
+                f_extension = os.path.splitext(file)[-1]
+                mrun: MagnetRun = inputs[file]["data"]
+                mdata = mrun.getMData()
+                select_args = args.extract_pairkeys[extensions[f_extension][0]]
+                for item in select_args:
+                    pairs = item.split(";")
+                    for pair in pairs:
+                        items = pair.split("-")
+                        if len(items) != 2:
+                            raise RuntimeError(f"invalid pair of keys: {pair}")
+                        key1 = items[0]
+                        key2 = items[1]
+                        if mdata is not None:
+                            newdf = mdata.extractData([key1, key2])
+                            if newdf is not None:
+                                # Remove line with I=0
+                                newdf = newdf[newdf[key1] != 0]
+                                newdf = newdf[newdf[key2] != 0]
 
-        keys = args.output_key.split(";")
-        keys.insert(0, 'Time')
+                                file_name = (
+                                    f"{file.replace(f_extension,'')}-{str(pair)}.csv"
+                                )
+                                newdf.to_csv(
+                                    file_name, sep=str("\t"), index=False, header=False
+                                )
 
-        file_name = args.input_file.replace(".txt", "")
-        for key in keys:
-            if key != 'Time':
-                file_name = file_name + "_" + key
-        file_name = file_name + "_vs_Time.csv"
+        if args.convert:
+            for file in inputs:
+                mrun: MagnetRun = inputs[file]["data"]
+                mdata = mrun.getMData()
 
-        selected_df = mrun.getMData().extractData(keys)
-        selected_df.to_csv(file_name, sep=str('\t'), index=False, header=True)
+                extension = os.path.splitext(file)[-1]
+                file_name = file.replace(extension, ".csv")
+                if mdata.Type == 0:
+                    mdata.to_csv(file_name, sep=str("\t"), index=False, header=True)
 
-    if args.extract_pairkeys:
-        if mrun.getType():
-            raise RuntimeError("output_time: feature not implemented for tdms format")
+    if args.command == "stats":
+        from .processing import stats
 
-        pairs = args.extract_pairkeys.split(';')
-        for pair in pairs:
-            items = pair.split('-')
-            if len(items) != 2:
-                raise RuntimeError(f"invalid pair of keys: {pair}")
-            key1= items[0]
-            key2 =items[1]
-            newdf = mrun.getMData().extractData([key1, key2])
+        if args.plateau:
+            from .utils.plateaux import nplateaus
 
-            # Remove line with I=0
-            newdf = newdf[newdf[key1] != 0]
-            newdf = newdf[newdf[key2] != 0]
+        print("Stats:", flush=True)
 
-            file_name=str(pair)+".csv"
-            newdf.to_csv(file_name, sep=str('\t'), index=False, header=False)
+        # to display stats
+        multiindex = [[], []]
+        columns = []
+        data = []
+        df_data = []
+        output = "stats"
+        if args.plateau:
+            if not args.keys:
+                args.keys = ["Field"]
+            output += "-plateau"
+        if args.localmax:
+            if not args.keys:
+                args.keys = ["Field"]
+            output += "-localmax"
+        if args.detect_bkpts:
+            if not args.keys:
+                args.keys = ["Field"]
+            output += "-bkpts"
 
-    if args.stats:
-        mrun.stats()
-        mrun.plateaus(twindows=args.window,
-                      thresold=args.thresold,
-                      bthresold=args.bthresold,
-                      duration=args.dthresold,
-                      show=args.show,
-                      save=args.save,
-                      debug=args.debug)
+        for file in inputs:
+            # print(file)
+            extension = os.path.splitext(file)[-1]
+            mrun: MagnetRun = inputs[file]["data"]
+            mdata = mrun.getMData()
+
+            multiindex[0].append(os.path.basename(file).replace(extension, ""))
+
+            if not args.plateau and not args.detect_bkpts and not args.localmax:
+                result = stats.stats(mdata, display=False)
+                # print("headers: ", result[1])
+                # print("data: ", result[0])
+
+                if not multiindex[1]:
+                    multiindex[1] = [table[0] for table in result[0]]
+                    columns = result[1][1:]
+
+                for table in result[0]:
+                    data.append(table[1:])
+
+            try:
+                # print(f"args.keys: {args.keys}")
+
+                if args.keys:
+                    multiindex[1] = args.keys
+                    for key in args.keys:
+                        if mdata.Type == 0:
+                            print(f"pupitre: stats for {key}", flush=True)
+                            (symbol, unit) = mdata.getUnitKey(key)
+
+                            period = 1
+                            num_points_threshold = int(args.dthreshold / period)
+                            tkey = "t"
+                            channel = key
+                        elif mdata.Type == 1:
+                            print(f"pigbrother: stats for {key}", flush=True)
+                            (symbol, unit) = mdata.getUnitKey(key)
+
+                            # compute num_points_threshold from dthresold
+                            (group, channel) = key.split("/")
+                            period = mdata.Groups[group][channel]["wf_increment"]
+                            num_points_threshold = int(args.dthreshold / period)
+
+                            tkey = f"{group}/t"
+
+                        print(f"num_points_threshold: {num_points_threshold}")
+
+                        if args.localmax:
+                            # find local maximum
+                            from scipy.signal import argrelextrema
+
+                            # create a sample series
+                            Field = mdata.getData([tkey, key])
+                            # print(Field.keys())
+
+                            # use shift() function
+                            local_max_indices = argrelextrema(
+                                Field[channel].values, np.greater, mode="clip"
+                            )
+                            # print the results
+                            # print(f"local_max_indices: {local_max_indices}")
+                            """
+                            for local in local_max_indices[0]:
+                                print(local, end=": ", flush=True)
+                                local_max = s["Field"].iat[int(local)]
+                                print(local_max)
+                            """
+
+                            my_ax = plt.gca()
+                            mdata.plotData(x="t", y=key, ax=my_ax)
+
+                            local_max = Field.iloc[local_max_indices[0]]
+                            # print(local_max, "type=", type(local_max))
+                            local_max.plot(x="t", y=channel, ax=my_ax, marker="*")
+                            plt.grid()
+                            plt.show()
+
+                        if args.plateau:
+                            print(f"display plateaus for {key}")
+                            pdata = nplateaus(
+                                mdata,
+                                xField=("t", "t", "s"),
+                                yField=(key, symbol, unit),
+                                threshold=args.threshold,
+                                num_points_threshold=num_points_threshold,
+                                save=args.save,
+                                show=args.show,
+                                verbose=False,
+                            )
+
+                            df_plateaux = pd.DataFrame()
+                            for entry in ["start", "end", "value"]:
+                                df_plateaux[entry] = [
+                                    plateau[entry] for plateau in pdata
+                                ]
+                            df_plateaux["duration"] = (
+                                df_plateaux["end"] - df_plateaux["start"]
+                            )
+
+                            # print only if plateaux
+                            (nrows, ncols) = df_plateaux.shape
+                            print(f"df_plateaux: {df_plateaux.shape}")
+                            if nrows != 0:
+                                data.append(
+                                    df_plateaux.loc[df_plateaux["duration"].idxmax()]
+                                    .to_numpy()
+                                    .tolist()
+                                )
+                                # rename column value using symbol and unit
+                                df_plateaux.rename(
+                                    columns={
+                                        "start": "start [s]",
+                                        "end": "end [s]",
+                                        "duration": "duration [s]",
+                                        "value": f"value [{unit:~P}]",
+                                    },
+                                    inplace=True,
+                                )
+                                columns = list(df_plateaux.keys())
+                                print(
+                                    tabulate(
+                                        df_plateaux,
+                                        headers="keys",
+                                        tablefmt="psql",
+                                        showindex=False,
+                                    )
+                                )
+
+                                # create a signature of the B profile
+                            else:
+                                data.append(
+                                    [
+                                        stats.numpy_NaN,
+                                        stats.numpy_NaN,
+                                        stats.numpy_NaN,
+                                        stats.numpy_NaN,
+                                    ]
+                                )
+                                print(
+                                    f'{file.replace(f_extension,"")}: no peaks detected - duration={mdata.getDuration()}, {mdata.getData(key).describe()}'
+                                )
+                            # print(f"data: {len(data)}")
+                            # print(f"data: {data[-1]}")
+
+                        if args.detect_bkpts:
+                            ts = None
+                            if mdata.Type == 0:
+                                ts = mdata.Data[key]
+                                freq = 1
+                                print(f"{key}: freq={freq} Hz", flush=True)
+                            elif mdata.Type == 1:
+                                ts = mdata.Data[group][channel]
+                                freq = 1 / mdata.Groups[group][channel]["wf_increment"]
+                                print(f"{group}/{channel}: freq={freq} Hz", flush=True)
+
+                            #
+                            smoothed = savgol(
+                                y=ts.to_numpy(),
+                                window=args.window,
+                                polyorder=3,
+                                deriv=0,
+                            )
+                            print(f"{file}: stats for smoothed")
+                            print(f"min: {abs(smoothed).min()}")
+                            print(f"mean: {abs(smoothed).mean()}")
+                            print(f"max: {abs(smoothed).max()}")
+                            print(f"std: {abs(smoothed).std()}")
+                            quantiles = {}
+                            for level in range(5, 100, 5):
+                                quantiles[str(level)] = np.quantile(
+                                    abs(smoothed), level / 100.0
+                                )
+
+                            level = args.level
+                            max_level_50 = (
+                                abs(1 - abs(smoothed).max() / quantiles["50"]) * 100.0
+                            )
+                            max_level_75 = (
+                                abs(1 - abs(smoothed).max() / quantiles["75"]) * 100.0
+                            )
+                            print(
+                                f"max_level_50={max_level_50}, max_level_75={max_level_75}"
+                            )
+                            if max_level_75 >= 5000:
+                                print(f"overwrite level: {level} -> 40")
+                                level = 40
+                            if max_level_75 >= 1000:
+                                print(f"overwrite level: {level} -> 80")
+                                level = 80
+                            if max_level_75 <= 500:
+                                print(f"overwrite level: {level} -> 95")
+                                level = 95
+                            if max_level_75 <= 60:
+                                print(f"overwrite level: {level} -> 96")
+                                level = 96
+                            if max_level_75 <= 20:
+                                print(f"overwrite level: {level} -> 97")
+                                level = 97
+                            if max_level_75 <= 10:
+                                print(f"overwrite level: {level} -> 98")
+                                level = 98
+                            if max_level_75 <= 0.1:
+                                print(f"overwrite level: {level} -> 99")
+                                level = 99
+                            if max_level_75 <= 0.02:
+                                print(f"overwrite level: {level} -> 99.7")
+                                level = 99.7
+                            # print(f'{file}: {max_level}%', flush=True)
+
+                            smoothed_der1 = savgol(
+                                y=ts.to_numpy(),
+                                window=args.window,
+                                polyorder=3,
+                                deriv=1,
+                            )
+                            smoothed_der2 = savgol(
+                                y=ts.to_numpy(),
+                                window=args.window,
+                                polyorder=3,
+                                deriv=2,
+                            )
+                            print(f"{file}: stats for smoother 2nd order derivate")
+                            print(f"min: {abs(smoothed_der2).min()}")
+                            print(f"mean: {abs(smoothed_der2).mean()}")
+                            print(f"max: {abs(smoothed_der2).max()}")
+                            print(f"std: {abs(smoothed_der2).std()}")
+                            quantiles_der = np.quantile(
+                                abs(smoothed_der2), level / 100.0
+                            )
+
+                            # find peak of der2
+                            peaks, peaks_properties = find_peaks(
+                                abs(smoothed_der2), height=quantiles_der
+                            )
+
+                            # get peaks where std is above a giventhresold
+                            # filtered_std_df = std_ts.gt(10)
+                            ignore_peaks = []
+                            """
+                            for peak in peaks:
+                                # print(f'peak={peak}', flush=True)
+                                num = peak-1  # args.window
+                                before = smoothed_der1[num]
+                                num = peak+1 #args.window
+                                after = smoothed_der1[num]
+                                diff = abs(before-after)
+                                # print(f'{peak}: before={before} after={after} diff={diff}', end="")
+                                if diff <= 1:
+                                    # print(' **')
+                                    ignore_peaks.append(peak)
+                                print(flush=True)
+                            """
+                            print(
+                                f"{channel}: peaks={peaks.shape[0]}, ignore_peaks={len(ignore_peaks)}"
+                            )
+
+                            plot_bkpts(
+                                file,
+                                channel,
+                                symbol,
+                                unit,
+                                ts,
+                                smoothed,
+                                smoothed_der1,
+                                smoothed_der2,
+                                quantiles_der,
+                                peaks,
+                                ignore_peaks,
+                                [],
+                                args.save,
+                            )
+
+                            if mdata.Type == 1:
+                                # select key from GR1 or GR2
+                                selected = [
+                                    t
+                                    for t in mdata.Keys
+                                    if t.startswith("Tensions_Aimant/Interne")
+                                ]
+                                print(f"selected: {selected}")
+                                for key in selected:
+                                    (symbol, unit) = mdata.getUnitKey(key)
+
+                                    (group, channel) = key.split("/")
+                                    period = mdata.Groups[group][channel][
+                                        "wf_increment"
+                                    ]
+                                    num_points_threshold = int(args.dthreshold / period)
+
+                                    ts = mdata.Data[group][channel]
+                                    smoothed = savgol(
+                                        y=ts.to_numpy(),
+                                        window=args.window,
+                                        polyorder=3,
+                                        deriv=0,
+                                    )
+                                    smoothed_der1 = savgol(
+                                        y=ts.to_numpy(),
+                                        window=args.window,
+                                        polyorder=3,
+                                        deriv=1,
+                                    )
+                                    smoothed_der2 = savgol(
+                                        y=ts.to_numpy(),
+                                        window=args.window,
+                                        polyorder=3,
+                                        deriv=2,
+                                    )
+                                    quantiles_der = np.quantile(
+                                        abs(smoothed_der2), level / 100.0
+                                    )
+                                    cpeaks, cpeaks_properties = find_peaks(
+                                        abs(smoothed_der2), height=quantiles_der
+                                    )
+
+                                    if cpeaks.shape[0] != peaks.shape[0]:
+                                        # print(f'{channel}: peaks={cpeaks.shape[0]}')
+                                        # print(f'peaks: {peaks}')
+                                        # print(f'cpeaks: {cpeaks}')
+                                        isin = np.isin(cpeaks, peaks)
+                                        anomalies = []
+                                        real_anomalies = []
+                                        for i, item in enumerate(isin):
+                                            if not item:
+                                                first = np.isin([cpeaks[i] - 1], peaks)
+                                                last = np.isin([cpeaks[i] + 1], peaks)
+                                                # print(cpeaks[i], first, last, item)
+                                                if not first[0] and not last[0]:
+                                                    anomalies.append(cpeaks[i])
+
+                                                    # calculate the difference array
+                                                    difference_array = np.absolute(
+                                                        peaks - cpeaks[i]
+                                                    )
+
+                                                    # find the index of minimum element from the array
+                                                    index = difference_array.argmin()
+                                                    msg = f"{i}: closest values in peaks={peaks[index]}, cpeaks[{i}]={cpeaks[i]}"
+
+                                                    if (
+                                                        abs(peaks[index] - cpeaks[i])
+                                                        >= args.window
+                                                    ):
+                                                        msg += " **"
+                                                        real_anomalies.append(cpeaks[i])
+                                                    print(f"{msg}")
+
+                                        print(
+                                            f"anomalies: {len(anomalies)} - likely {len(real_anomalies)}"
+                                        )
+                                        if real_anomalies:
+                                            # if args.verbose:
+                                            #     print(f"anomalies: {anomalies}")
+                                            plot_bkpts(
+                                                file,
+                                                channel,
+                                                symbol,
+                                                unit,
+                                                ts,
+                                                smoothed,
+                                                smoothed_der1,
+                                                smoothed_der2,
+                                                quantiles_der,
+                                                cpeaks,
+                                                [],
+                                                real_anomalies,
+                                                args.save,
+                                            )
+
+            except Exception:
+                print(traceback.format_exc())
+                pass
+
+        print(
+            "concat tabs:",
+            f"multi_index={len(multiindex[0]), len(multiindex[1])}",
+            f"columns={len(columns)}",
+            f"data={len(data)}",
+        )
+        print(f"multiindex: {multiindex}")
+        print(f"columns: {columns}")
+        print(f"data: {data}")
+
+        df = pd.DataFrame(
+            data,
+            pd.MultiIndex.from_product(multiindex),
+            columns=columns,
+        )
+        print(df.to_markdown(tablefmt="simple"))
+
+        # save df to csv
+        print("head:", df.head())
+        df.to_csv(f"{output}.csv")
