@@ -1,16 +1,39 @@
-numpy >= 1.19.5
+typing_extensions>=4.5
+#itertools
+iapws >= 1.3.4
+nptdms >= 1.7.0
 pandas >=1.4.1
-pint
-requests >=2.27.1
-rich >= 9.11.0
+statsmodels >= 0.12.2
+numpy >= 1.19.5
 scipy >= 1.6.0
-matplotlib
-seaborn
-tabulate
-nptdms
+matplotlib >= 3.3.4
+seaborn >= 0.11.1
+requests >=2.27.1
+lxml >= 4.9.2
+natsort >= 7.1.1
+rich >= 9.11.0
+pint >= 0.17
+requests >= 2.27.1
+tabulate >= 0.8.9
+natsort >= 7.1.1
+nlopt >= 2.7.0
 
-iapws
-ht
-clawpack
+# for cooling directory
+ht >= 0.1.55
+clawpack >= 5.11.0
 
-pytest
+# for data processing
+# piecewise-regression
+pwlf
+sympy
+
+# ruptures
+# dtw # for Dynamic Time Warping
+pyts
+dtaidistance
+
+# darts
+
+# view csv
+visidata
+
