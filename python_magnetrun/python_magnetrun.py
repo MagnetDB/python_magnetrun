@@ -104,6 +104,16 @@ class MagnetRun:
             pass
             
     @classmethod
+    def fromtdms(cls, site, insert, filename):
+        """create from a tdms file"""
+        print(f'MagnetRun:frontdms: {filename}', flush=True)
+        with open(filename, 'r') as f:
+            data = MagnetData.fromtdms(filename)
+
+       # print("magnetrun.fromtxt: data=", data)
+        return cls(site, insert, data)
+
+    @classmethod
     def fromtxt(cls, site, filename):
         """create from a txt file"""
         print(f'pwd={os.getcwd()}')
@@ -377,9 +387,10 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("input_file")
-    parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9")
-    parser.add_argument("--plot_vs_time", help="select key(s) to plot (ex. \"Field[;Ucoil1]\")")
+    parser.add_argument("input_file") # can be a list
+    parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9") # use housing instead
+    parser.add_argument("--insert", help="specify an insert", default="notdefined")
+    parser.add_argument("--plot_vs_time", help="select key(s) to plot (ex. \"Field[;Ucoil1]\")") # use nargs instead
     parser.add_argument("--plot_key_vs_key", help="select pair(s) of keys to plot (ex. \"Field-Icoil1")
     parser.add_argument("--output_time", help="output key(s) for time")
     parser.add_argument("--output_timerange", help="set time range to extract (start;end)")
@@ -399,9 +410,12 @@ if __name__ == "__main__":
 
     # load df pandas from input_file
     # check extension
+    supported_formats = [".txt", ".tdms", ".csv"]
     f_extension=os.path.splitext(args.input_file)[-1]
-    if f_extension != ".txt":
-        raise RuntimeError("so far only txt file support is implemented")
+    file_name, file_extension = os.path.splitext(args.input_file)
+    print(f'file_name={file_name}, file_extension={file_extension}', flush=True)
+    #if f_extension not in supported_formats:
+    #    raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
 
     filename = os.path.basename(args.input_file)
     result = filename.startswith("M")
@@ -413,7 +427,17 @@ if __name__ == "__main__":
         except:
             print("no site detected - use args.site argument instead")
             pass
-    mrun = MagnetRun.fromtxt(args.site, args.input_file)
+
+    match file_extension:
+        case ".txt":
+            mrun = MagnetRun.fromtxt(args.site, args.input_file)
+        case '.tdms':
+            mrun = MagnetRun.fromtdms(args.site, args.insert, args.input_file)
+        case '.csv':
+            mrun = MagnetRun.fromcsv(args.site, args.input_file)
+        case _:
+            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")        
+
     dkeys = mrun.getKeys()
 
     if args.list:
@@ -433,40 +457,40 @@ if __name__ == "__main__":
         my_ax = plt.gca()
         # split into keys
         items = args.plot_vs_time.split(';')
-        print("items=", items)
+        print(f"items={items}", flush=True)
         # loop over key
         for key in items:
-            print("plot key=", key, "type=", type(key))
+            print(f"plot key={key}, type={type(key)}")
             mrun.getMData().plotData(x='Time', y=key, ax=my_ax)
         if args.show:
             plt.show()
         else:
             imagefile = args.input_file.replace(".txt", "")
-            plt.savefig('%s_vs_time.png' % imagefile, dpi=300 )
+            plt.savefig(f'{imagefile}_vs_time.png', dpi=300 )
             plt.close()
 
     if args.plot_key_vs_key:
         # split pairs in key1, key2
-        print("plot_key_vs_key=", args.plot_key_vs_key)
+        print(f"plot_key_vs_key={args.plot_key_vs_key}")
         pairs = args.plot_key_vs_key.split(';')
         for pair in pairs:
-            print("pair=", pair)
+            print(f"pair={pair}")
             my_ax = plt.gca()
             #print("pair=", pair, " type=", type(pair))
             items = pair.split('-')
             if len(items) != 2:
-                raise RuntimeError("invalid pair of keys: %s" % pair)
+                raise RuntimeError(f"invalid pair of keys:{pair}")
             key1= items[0]
             key2 =items[1]
             if key1 in dkeys and key2 in dkeys:
                 mrun.getMData().plotData(x=key1, y=key2, ax=my_ax) # on graph per pair
             else:
-                raise Exception("unknown keys: %s %s" % (key1, key2), " (Check valid keys with --list option)")
+                raise Exception(f"unknown keys: {key1} {key2}, (Check valid keys with --list option)")
             if args.show:
                 plt.show()
             else:
                 imagefile = args.input_file.replace(".txt", "")
-                plt.savefig('%s_%s_vs_%s.png' % (imagefile, key1, key2), dpi=300 )
+                plt.savefig(f'{imagefile}_{key1}_vs_{key2}.png', dpi=300 )
                 plt.close()
 
     if args.output_time:
@@ -474,7 +498,7 @@ if __name__ == "__main__":
             raise RuntimeError("output_time: feature not implemented for tdms format")
 
         times = args.output_time.split(";")
-        print ("Select data at %s " % (times) )
+        print (f"Select data at {times}")
         df = mrun.getData()
         if args.output_key:
             keys = args.output_key.split(";")
@@ -484,7 +508,7 @@ if __name__ == "__main__":
 
     if args.output_timerange:
         if mrun.getType() != 0:
-            raise RuntimError("output_time: feature not implemented for tdms format")
+            raise RuntimeError("output_time: feature not implemented for tdms/csv format")
 
         timerange = args.output_timerange.split(";")
 
@@ -496,7 +520,7 @@ if __name__ == "__main__":
 
     if args.output_key:
         if mrun.getType() != 0:
-            raise RuntimError("output_time: feature not implemented for tdms format")
+            raise RuntimeError("output_time: feature not implemented for tdms format")
 
         keys = args.output_key.split(";")
         keys.insert(0, 'Time')
@@ -512,13 +536,13 @@ if __name__ == "__main__":
 
     if args.extract_pairkeys:
         if mrun.getType():
-            raise RuntimError("output_time: feature not implemented for tdms format")
+            raise RuntimeError("output_time: feature not implemented for tdms format")
 
         pairs = args.extract_pairkeys.split(';')
         for pair in pairs:
             items = pair.split('-')
             if len(items) != 2:
-                raise RuntimeError("invalid pair of keys: %s" % pair)
+                raise RuntimeError(f"invalid pair of keys: {pair}")
             key1= items[0]
             key2 =items[1]
             newdf = mrun.getMData().extractData([key1, key2])
