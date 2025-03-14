@@ -1,4 +1,6 @@
 *~
+\#*\#
+*.rej
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -10,8 +12,7 @@ __pycache__/
 
 # Distribution / packaging
 .Python
-env/
-magnetrun-env/
+*env/
 build/
 develop-eggs/
 dist/
@@ -89,6 +90,7 @@ celerybeat-schedule
 # virtualenv
 .venv
 venv/
+magnetrun-env/
 ENV/
 
 # Spyder project settings
@@ -107,16 +109,35 @@ ENV/
 # IDE settings
 .vscode/
 
+# Sphinx
+docs/build
+docs/source/_static
+docs/source/_templates
+
 # Log files from installation
 log*
 python_magnetrun/_output/
 
 *.png
-python_magnetrun/*.csv
-python_magnetrun/*.txt
 python_magnetrun/data/
 python_magnetrun/txt/
 python_magnetrun/png/
+python_magnetrun/json/
 
-M*txt
-M*json
+srvdata
+pigbrotherdata
+*.csv
+*.csv.*
+*.tdms
+
+M*.csv
+M*.txt
+M*.json
+H*.json
+M*.conf
+
+*log
+*old
+*orig
+*new
+

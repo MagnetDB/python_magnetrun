@@ -1,0 +1,18 @@
+python-magnetrun (0.0.2-1) unstable; urgency=medium
+
+  * update to branch refactor git rev
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Wed, 21 Dec 2022 11:00:24 +0100
+
+python-magnetrun (0.0.1-1.1) unstable; urgency=medium
+
+  * update to git rev fe339bedec 
+  * init.patch
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Thu, 20 Jan 2022 11:55:38 +0100
+
+python-magnetrun (0.0.1-1) unstable; urgency=medium
+
+  * Initial release (Closes: #nnnn)  <nnnn is the bug number of your ITP>
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Wed, 24 Mar 2021 10:54:50 +0100
