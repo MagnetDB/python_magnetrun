@@ -23,11 +23,8 @@ ENV LANG=en_US.UTF-8 \
     OMPI_MCA_btl_vader_single_copy_mechanism=none
 
 # Configure apt and install packages
-RUN apt update \
-    && apt install -y lsb-release \
+RUN apt-get update \
     && apt-get -y install --no-install-recommends apt-utils dialog 2>&1 \
-    # \
-    # Verify git, process tools, lsb-release (useful for CLI installs) installed\
     && apt-get -y install git git-lfs iproute2 procps lsb-release \
     #\
     # Install dev tools\
@@ -73,14 +70,9 @@ RUN groupadd --gid $USER_GID $USERNAME \
 # To be added:
 # python3-myst-parser python3-sphinxcontrib-mermaid python3-sphinx-rtd-theme
 
+
 # Switch back to dialog for any ad-hoc use of apt-get
 ENV DEBIAN_FRONTEND=dialog
-
-# Setup demo environment variables
-ENV LANG=en_US.UTF-8 \
-    LANGUAGE=en_US.UTF-8 \
-    LC_ALL=C.UTF-8 \
-    OMPI_MCA_btl_vader_single_copy_mechanism=none
 
 
 # add motd see https://gist.github.com/ashgillman/a6aa7a5afc9e146a65fb
@@ -98,6 +90,7 @@ RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/issue && cat /etc/motd' \
     \n\
     * To quit the virtual env:\n\
     deactivate\n"\
+
     > /etc/motd
 
 # Switch to USERNAME
