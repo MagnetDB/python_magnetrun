@@ -38,19 +38,26 @@ class MagnetData:
     def fromtdms(cls, name):
         """create from a tdms file"""
         Keys = []
-        Groups = []
+        Groups = {}
         Data = None
         with open(name, 'r') as f:
             f_extension=os.path.splitext(name)[-1]
             # print("f_extension: % s" % f_extension)
-            if f_extension == ".tdms":
-                Data = TdmsFile.open(name, 'r')
-                for group in Data.groups():
-                    for channel in group.channels():
-                        Keys.append(channel.name)
-                        Groups[channel.name] = group.name
-            else:
+            if f_extension != ".tdms":
                 raise("fromtdms: expect a tdms filename - got %s" % name)
+            
+            rawData = TdmsFile.open(name, 'r')
+            for group in rawData.groups():
+                print(f'group: {group.name}', flush=True)
+
+                for channel in group.channels():
+                    print(f'channel: {channel.name}', flush=True)
+                    Groups[channel.name] = group.name
+
+            Data = rawData.as_dataframe(time_index=False, absolute_time=False, scaled_data=True, arrow_dtypes=False)
+            Keys = Data.columns.values.tolist()
+            
+        print(f'magnetdata/fromtdms: Groups={Groups}', flush=True)
         return cls(name, Groups, Keys, 1, Data)
 
     @classmethod
