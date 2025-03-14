@@ -58,6 +58,12 @@ To mount `pigbrother` data, you have to:
 sudo mount -v -t cifs //pigbrother_server_ip/d $pwd/pigbrotherdata -o user=pbsurv,password=passwd
 ```
 
+* mount colddata from `pigbrother` server as `pigbrothercolddata`:
+
+```bash
+sudo mount -v -t cifs //pigbrother_server_ip/df $pwd/pigbrothercolddata -o user=pbsurv,password=passwd
+```
+
 [NOTE]
 ====
 Adapt the script with the proper variables
