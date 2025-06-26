@@ -596,22 +596,23 @@ if __name__ == "__main__":
                 f_extension = os.path.splitext(file)[-1]
                 mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
-                select_args = args.output_key[extensions[f_extension][0]]
-                for item in select_args:
-                    keys = item.split(";")
-                    keys.insert(0, "Time")
+                selected_keys = args.output_key[extensions[f_extension][0]]
+                print(f"selected_keys[file]: {selected_keys}")
+                if "t" not in selected_keys:
+                    selected_keys.insert(0, "t")
+                print(f"selected keys: {selected_keys}")
 
-                    file_name = file.replace(f_extension, "")
-                    for key in keys:
-                        if key != "Time":
-                            file_name = file_name + "_" + key
-                    file_name = file_name + "_vs_Time.csv"
+                file_name = file.replace(f_extension, "")
+                for key in selected_keys:
+                    if key != "t":
+                        file_name += f"_{key}"
+                file_name = file_name + "_vs_Time.csv"
 
-                    selected_df = mdata.extractData(keys)
-                    if selected_df is not None:
-                        selected_df.to_csv(
-                            file_name, sep=str("\t"), index=False, header=True
-                        )
+                selected_df = mdata.extractData(selected_keys)
+                if selected_df is not None:
+                    selected_df.to_csv(
+                        file_name, sep=str("\t"), index=False, header=True
+                    )
 
         if args.extract_pairkeys:
             assert len(args.extract_pairkeys) == len(
