@@ -605,7 +605,7 @@ if __name__ == "__main__":
                 file_name = file.replace(f_extension, "")
                 for key in selected_keys:
                     if key != "t":
-                        file_name += f"_{key}"
+                        file_name += f"_{key.replace('/','_')}"
                 file_name = file_name + "_vs_Time.csv"
 
                 selected_df = mdata.extractData(selected_keys)

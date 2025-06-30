@@ -9,6 +9,7 @@ import sys
 
 import pandas as pd
 import numpy as np
+from pint._typing import F
 from scipy import stats
 
 
@@ -65,9 +66,9 @@ class MagnetData:
             # add t_offset to account for tdms downsampled data
             t_offset = 0
             if "Overview" in name:
-                t_offset = (1)/2.
+                t_offset = (1) / 2.0
             elif "Archive" in name:
-                t_offset = (1/120.)/2.
+                t_offset = (1 / 120.0) / 2.0
 
             rawData = TdmsFile.open(name)
             # print(f"rawData: {rawData.properties}", flush=True)
@@ -955,7 +956,7 @@ class MagnetData:
         :return: pd.DataFrame
         :rtype: pd.DataFrame
         """
-
+        print(f"extractData: filename={self.FileName}, keys={keys}", flush=True)
         if self.Type == 0:
             for key in keys:
                 if key not in self.Keys:
@@ -965,10 +966,19 @@ class MagnetData:
             return pd.concat([self.Data[key] for key in keys], axis=1)
 
         elif self.Type == 1:
+
             dfs = []
+            Addt = False
             for item in keys:
-                (group, channel) = item.split("/")
-                dfs.append(self.getTdmsData(group, channel))
+                print(item)
+                if item != "t":
+                    (group, channel) = item.split("/")
+                    dfs.append(self.getTdmsData(group, channel))
+                    if "t" in keys and Addt == False:
+                        dt = self.Groups[group][channel]["wf_increment"]
+                        t_offset = self.Groups[group][channel]["wf_start_offset"]
+                        dfs[-1]["t"] = dfs[-1].index * dt + t_offset
+                        Addt = True
             return pd.concat(dfs)
 
         # else:
@@ -1107,7 +1117,7 @@ class MagnetData:
                     t_offset = self.Groups[ygroup][ychannel]["wf_start_offset"]
 
                     if xchannel == "t":
-                        df[xchannel] = df.index * dt  + t_offset
+                        df[xchannel] = df.index * dt + t_offset
                     elif xchannel == "timestamp":
                         t0 = self.Groups[ygroup][ychannel]["wf_start_time"]
                         # print(f"plotData ({self.FileName}: t0={t0})")
