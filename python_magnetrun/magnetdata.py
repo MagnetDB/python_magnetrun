@@ -247,20 +247,29 @@ class MagnetData:
         :param channel: _description_
         :type channel: str
         """
+        print(
+            f"getTdmsData: group={group}, channel={channel} ({type(channel)})",
+            end="",
+            flush=True,
+        )
 
         if not isinstance(self.Data, dict):
             raise Exception(
                 f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict"
             )
 
+        result = None
         if channel is None:
-            return self.Data[group]
+            resukt = self.Data[group]
         else:
             # print(f"getTdms: group={group}, channel={channel}")
             if isinstance(channel, list):
-                return self.Data[group][channel]
+                result = self.Data[group][channel]
             else:
-                return self.Data[group][channel]
+                result = self.Data[group][channel]
+
+        print(f"-> result={result.keys()} (type={type(result)})", flush=True)
+        return result
 
     def getData(self, key: list[str] | str = None) -> pd.DataFrame:
         """_summary_
@@ -956,7 +965,7 @@ class MagnetData:
         :return: pd.DataFrame
         :rtype: pd.DataFrame
         """
-        print(f"extractData: filename={self.FileName}, keys={keys}", flush=True)
+        print(f"extractData: filename={self.FileName}, keys={keys}", end="", flush=True)
         if self.Type == 0:
             for key in keys:
                 if key not in self.Keys:
@@ -967,19 +976,37 @@ class MagnetData:
 
         elif self.Type == 1:
 
+            groups = []
+            channels = []
             dfs = []
             Addt = False
             for item in keys:
-                print(item)
                 if item != "t":
                     (group, channel) = item.split("/")
-                    dfs.append(self.getTdmsData(group, channel))
-                    if "t" in keys and Addt == False:
-                        dt = self.Groups[group][channel]["wf_increment"]
-                        t_offset = self.Groups[group][channel]["wf_start_offset"]
-                        dfs[-1]["t"] = dfs[-1].index * dt + t_offset
-                        Addt = True
-            return pd.concat(dfs)
+                    df = self.getTdmsData(group, channel)
+                    dfs.append(df)
+                    groups.append(group)
+                    channels.append(channel)
+
+            result = pd.concat(dfs, axis=1)
+            if "t" in keys:
+
+                def all_same_string(lst):
+                    return len(set(lst)) <= 1
+
+                if all_same_string(groups):
+                    group = groups[0]
+                    channel = channels[0]
+                    dt = self.Groups[group][channel]["wf_increment"]
+                    t_offset = self.Groups[group][channel]["wf_start_offset"]
+                else:
+                    raise RuntimeError(
+                        f"extractData: keys={keys} - cannot add t column - groups are not the same: {groups}"
+                    )
+                result["t"] = result.index * dt + t_offset
+
+            print(f"-> result={result.keys()} (type={type(result)})", flush=True)
+            return result
 
         # else:
         #    raise RuntimeError(f"extractData: magnetdata type ({self.Type})unsupported")

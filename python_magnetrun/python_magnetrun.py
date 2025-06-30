@@ -597,7 +597,7 @@ if __name__ == "__main__":
                 mrun: MagnetRun = inputs[file]["data"]
                 mdata = mrun.getMData()
                 selected_keys = args.output_key[extensions[f_extension][0]]
-                print(f"selected_keys[file]: {selected_keys}")
+                print(f"selected_keys[{file}]: {selected_keys}")
                 if "t" not in selected_keys:
                     selected_keys.insert(0, "t")
                 print(f"selected keys: {selected_keys}")
