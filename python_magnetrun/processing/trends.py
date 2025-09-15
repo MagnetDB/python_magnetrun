@@ -1,8 +1,11 @@
-from inspect import Signature
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 
 from python_magnetrun.magnetdata import MagnetData
 from python_magnetrun.signature import Signature
+
+
 
 
 def piecewise_linear_approximation(
@@ -25,6 +28,7 @@ def piecewise_linear_approximation(
     previous_trend = None
 
     # Iterate over the dataframe
+    current_init = serie.iloc[0]
     for i in range(1, len(serie)):
         current_value = serie.iloc[i]
         difference = current_value - previous_value
@@ -38,14 +42,15 @@ def piecewise_linear_approximation(
         # print(i, current_value, difference, threshold, current_trend)
 
         # Append the trend to the signature list
-        signature.append(current_trend)
+        signature.append((current_trend, difference))
 
         # Update previous values
         previous_value = current_value
         previous_trend = current_trend
+        previous_diff = difference
 
     # Add the signature column to the dataframe
-    signature.append(previous_trend)
+    signature.append((previous_trend, previous_diff))
 
     return signature
 
@@ -109,10 +114,17 @@ def trends_df(
     # get index of changes in signature
     changes = [0]
     for i in range(1, len(signature)):
-        if signature[i] != signature[i - 1]:
+        if signature[i][0] != signature[i - 1][0]:
             changes.append(i)
+        else:
+            if signature[i][0] != "P":
+                diff_slope = abs(1 - signature[i - 1][1] / signature[i][1])
+                if diff_slope >= 0.4:
+                    print(f"{i}: {diff_slope}, {df[tkey].iloc[i]} ****", flush=True)
+                    changes.append(i)
+    print("changes: ", len(changes))
 
-    regimes = [signature[i] for i in changes]
+    regimes = [signature[i][0] for i in changes]
     times = [float(df[tkey].iloc[i]) for i in changes]
     values = [float(df[key].iloc[i]) for i in changes]
 

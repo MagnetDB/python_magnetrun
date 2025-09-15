@@ -57,6 +57,29 @@ mdata = mrun.getMData()
 
 # TODO get key symbol and unit from MagnetRun
 key = args.key
-signature = trends(mdata, tkey, key, window=args.window, threshold=args.threshold, save=args.save, debug=True)
-# print(signature)
+# signature = trends(mdata, tkey, key, window=args.window, threshold=args.threshold, save=args.save, debug=True)
+#print(signature)
 
+from python_magnetrun.signature import Signature
+signature = Signature.from_mdata(mdata, key, "t", args.threshold)
+print('regimes:', len(signature.regimes))
+print(signature)
+
+import pandas as pd
+
+# Column names as strings
+column_names = ['time', key]
+
+# Method 1: Create DataFrame using a dictionary
+df = pd.DataFrame({
+    column_names[0]: signature.times,
+    column_names[1]: signature.values
+})
+
+
+basename = os.path.basename(args.input_file)
+keyname = key.replace("/","_")
+csv_filename = basename.replace(f_extension,f"-{keyname}.csv")
+print(f"save to {csv_filename}")
+
+df.to_csv(csv_filename, index=False)
