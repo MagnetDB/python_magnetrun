@@ -17,6 +17,7 @@ requests >= 2.27.1
 tabulate >= 0.8.9
 natsort >= 7.1.1
 nlopt >= 2.7.0
+# https://github.com/gotthardp/python-xml2dict
 python-xml2dict
 
 # for cooling directory
@@ -26,6 +27,7 @@ clawpack >= 5.11.0
 # for data processing
 # piecewise-regression
 pwlf
+# GPyOpt
 sympy
 
 # ruptures

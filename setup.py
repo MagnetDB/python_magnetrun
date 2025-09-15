@@ -11,9 +11,8 @@ with open("HISTORY.rst") as history_file:
     history = history_file.read()
 
 requirements = [
-    "itertools",
     "iapws",
-    "itertools",
+    #"more-itertools",
     "lxml",
     "matplotlib",
     "seaborn",
@@ -23,7 +22,7 @@ requirements = [
     "nptdms",
     "pint",
     "requests",
-    "statsmodel",
+    "statsmodels",
     "tabulate",
     "natsort",
 ]
