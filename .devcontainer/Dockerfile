@@ -84,7 +84,7 @@ RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/issue && cat /etc/motd' \
     ===================================================================\n\
     \n\
     * To create the virtual env:\n\
-    python -m venv ./magnetrun\n\
+    python -m venv ./magnetrun-env\n\
     * To start the virtual env:\n\
     source ./magnetrun-env/bin/activate\n\
     \n\
