@@ -581,6 +581,7 @@ def main():
         qt0 = df_pupitre.index.values[0]
 
         qsymbol = "Q"
+        psymbol = "P"
         punit = "P"
         from pint import UnitRegistry
 
