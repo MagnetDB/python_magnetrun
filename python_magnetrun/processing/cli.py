@@ -6,7 +6,6 @@ https://xavierbourretsicotte.github.io/loess.html
 """
 
 import os
-from ssl import CHANNEL_BINDING_TYPES
 import sys
 
 from math import ceil
@@ -22,7 +21,7 @@ import pandas as pd
 
 import statsmodels.api as sm
 from .filters import filterpikes
-from .correlations import lagged_correlation
+from .correlations import lag_correlation
 from .smoothers import lowess_ag, lowess_sm, lowess_bell_shape_kern, kernel_function
 from ..MagnetRun import MagnetRun
 from ..magnetdata import MagnetData
@@ -273,10 +272,11 @@ def main():
             plt.close()
 
     if args.command == "lag":
-        for key in skeys:
-            df = mrun.getData()
-            for t in range(args.trange):
-                lagged_correlation(df, args.target, key, t)
+        print("lag: not implemented yet -- see analysis-refactor.py for proper use")
+        # for key in skeys:
+        #     df = mrun.getData()
+        #     for t in range(args.trange):
+        #         lag_correlation(df, args.target, key, t)
 
 
 if __name__ == "__main__":
