@@ -1,3 +1,10 @@
+python-magnetrun (0.0.7-1) unstable; urgency=medium
+
+  * fix signature for eco-mode
+  * add smother option when extracting key 
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Mon, 15 Sep 2025 16:16:48 +0200
+
 python-magnetrun (0.0.6-1) unstable; urgency=medium
 
   * fix extractdata for tdms

@@ -33,7 +33,7 @@ done
 shift $((OPTIND - 1))
 
 # add parameters
-: ${VERSION:="0.0.6"}
+: ${VERSION:="0.0.7"}
 : ${DIST:="bookworm"}
 
 # cleanup source
