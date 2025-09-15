@@ -1,3 +1,27 @@
+python-magnetrun (0.0.6-1) unstable; urgency=medium
+
+  * fix extractdata for tdms
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Mon, 30 Jun 2025 13:43:26 +0200
+
+python-magnetrun (0.0.5-1) unstable; urgency=medium
+
+  * fix extract data from tdms to csv
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Mon, 30 Jun 2025 11:04:49 +0200
+
+python-magnetrun (0.0.4-1) unstable; urgency=medium
+
+  * fix select option for extracting fields
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Thu, 26 Jun 2025 15:59:51 +0200
+
+python-magnetrun (0.0.3-1) unstable; urgency=medium
+
+  * new upstream release
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Mon, 23 Jun 2025 12:45:49 +0200
+
 python-magnetrun (0.0.2-1) unstable; urgency=medium
 
   * update to branch refactor git rev

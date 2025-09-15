@@ -33,7 +33,7 @@ done
 shift $((OPTIND - 1))
 
 # add parameters
-: ${VERSION:="0.3.0"}
+: ${VERSION:="0.0.6"}
 : ${DIST:="bookworm"}
 
 # cleanup source
@@ -46,7 +46,6 @@ tar \
     --exclude-vcs \
     --exclude=feelppdb \
     --exclude=tmp \
-    --exclude=data \
     --exclude=debian \
     --exclude=.pc \
     --exclude=.devcontainer \
@@ -54,8 +53,22 @@ tar \
     --exclude=*.sif \
     --exclude=*.crt \
     --exclude=*.pem \
-    --exclude=*.log \
+    --exclude=*log \
+    --exclude=*.csv* \
+    --exclude=*.orig \
+    --exclude=*.new \
+    --exclude=*.rej \
+    --exclude=python_magnetrun/*.json \
+    --exclude=python_magnetrun/*.png \
+    --exclude=*env \
+    --exclude=*data \
+    --exclude=*.tdms \
+    --exclude=tmp \
+    --exclude=python_magnetrun/*output* \
+    --exclude=python_magnetrun/json \
+    --exclude=python_magnetrun/png \
     --exclude=*~ \
+    --exclude=\#*\# \
     --exclude=pyproject.toml \
     --exclude=poetry.lock \
     -zcvf ${PACKAGE}_${VERSION}.orig.tar.gz ${SRCDIR}

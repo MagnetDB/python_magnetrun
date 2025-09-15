@@ -30,7 +30,7 @@ Rules-Requires-Root: no
 
 Package: python3-magnetrun
 Architecture: all
-Depends: ${python3:Depends}, ${misc:Depends}
+Depends: python3-statsmodels, ${python3:Depends}, ${misc:Depends}
 Suggests: python-python-magnetrun-doc
 Description: Utils for viewing and analyzing magnet runs (Python 3)
  Python MagnetRun provides utils to view and analyse magnet runs:
