@@ -217,8 +217,27 @@ if __name__ == "__main__":
     parser_select.add_argument(
         "--convert", help="convert file to csv", action="store_true"
     )
+    parser_select.add_argument(
+        "--smoother",
+        help="smooth selected data with selected methods: [ag, bell_kernel, statsmodel_sm, savgol]",
+        type=str,
+        choices=["ag", "bell_kernel", "statsmodel_sm", "savgol"],
+    )
+    parser_select.add_argument(
+        "--window", help="size of rolling window", type=int, default=10
+    )
+    parser_select.add_argument(
+        "--smoothing_f", help="set smoothing_f", type=float, default=0.7
+    )
+    parser_select.add_argument(
+        "--smoothing_tau", help="set smoothing_tau", type=float, default=400
+    )
+    parser_select.add_argument(
+        "--smoothing_iter", help="set smootihn_iter", type=int, default=3
+    )
 
-    # add stats subcommand
+    # add stats subcomm
+
     parser_stats.add_argument(
         "--detect_bkpts", help="find breaking points", action="store_true"
     )
@@ -254,7 +273,7 @@ if __name__ == "__main__":
         default=10,
     )
     parser_stats.add_argument(
-        "--window", help="stopping criteria for nlopt", type=int, default=10
+        "--window", help="size of rolling window", type=int, default=10
     )
     parser_stats.add_argument("--level", help="select level", type=int, default=90)
     args = parser.parse_args()
@@ -382,11 +401,9 @@ if __name__ == "__main__":
 
         if args.command == "info":
             mdata = mrun.getMData()
-            mdata.info()
             if args.list:
                 print(f"{file}: valid keys")
-                for key in mrun.getKeys():
-                    print("\t", key)
+                mdata.info()
 
             if args.convert:
                 data = mdata.Data
@@ -610,6 +627,54 @@ if __name__ == "__main__":
 
                 selected_df = mdata.extractData(selected_keys)
                 if selected_df is not None:
+
+                    if args.smoother is not None:
+                        from .processing.smoothers import (
+                            lowess_ag,
+                            lowess_sm,
+                            lowess_bell_shape_kern,
+                            kernel_function,
+                        )
+
+                        for key in selected_keys:
+                            if key != "t":
+                                print(f"smooth {key}")
+
+                            y = selected_df[key].to_numpy()
+                            x = selected_df["t"].to_numpy()
+                            y_smoothed = None
+                            smoother = args.smoother
+                            match smoother:
+                                case "savgol":
+                                    y_smoothed = savgol(
+                                        y=y,
+                                        window=args.window,
+                                        polyorder=3,
+                                        deriv=0,
+                                    )
+                                case "ag":
+                                    y_smoothed = lowess_ag(
+                                        x,
+                                        y,
+                                        f=args.smoothing_f,
+                                        iter=args.smoothing_iter,
+                                    )
+                                case "bell_kernel":
+                                    y_smoothed = lowess_bell_shape_kern(
+                                        x, y, args.smoothing_tau
+                                    )
+                                case "statsmodel_sm":
+                                    y_smoothed = lowess_sm(
+                                        x,
+                                        y,
+                                        f=args.smoothing_f,
+                                        iter=args.smoothing_iter,
+                                    )
+                                case _:
+                                    print(f"{key}: unknow smoother {smoother}")
+
+                            selected_df.replace({key: y_smoothed})
+
                     selected_df.to_csv(
                         file_name, sep=str("\t"), index=False, header=True
                     )
