@@ -6,12 +6,11 @@ build-backend = "poetry.core.masonry.api"
 name = "python_magnetrun"
 version = "0.1.0"
 description = "Python MagnetRun contains utils to view and analyse Magnet runs"
-license = {text = "MIT"}
+license = "MIT"
 keywords = ["python_magnetrun"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
