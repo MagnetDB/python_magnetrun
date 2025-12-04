@@ -624,7 +624,7 @@ def main():
 
         # (changes, regimes, times, values, trend_component) = trends_df(df_pupitre, "t", "debitbrut", args.window, threshold_dict["debitbrut"], overview_dict[ofile]["sources"]["pupitre"], show=True)
 
-        from .utils.hysteresis import (
+        from .processing.hysteresis import (
             hysteresis_model,
             multi_level_hysteresis,
             remove_low_x_outliers,
