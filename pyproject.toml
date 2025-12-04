@@ -43,9 +43,11 @@ system = [
     "ht>=0.1.55",
 ]
 signal = [
+    "pwlf>=2.4.0",
+    "scikit-learn>=1.7.2",
+    "sympy>=1.11.1",
     "ruptures>=1.0.3",
     "piecewise-regression>=1.5.0",
-    "pwlf>=2.4.0",
     "pyts>=0.13.0",
     "dtaidistance>=2.3.12",
     "pyextremes>=2.3.3",
