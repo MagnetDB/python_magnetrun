@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from natsort import natsorted
 from .MagnetRun import MagnetRun
 
-from .processing.trends import trends
+from .processing.trends import trends_df
 from .utils.convert import convert_to_timestamp
 
 from .processing.correlations import compute_lag
@@ -54,15 +54,18 @@ def parse_arguments():
         "--show", help="display graphs (X11 required)", action="store_true"
     )
     parser.add_argument(
-        "--window", help="stopping criteria for nlopt", type=int, default=10
-    )
-    parser.add_argument(
         "--synchronize",
         help="synchronize clock pupitre/pigbrother files",
         action="store_true",
     )
     parser.add_argument(
         "--distance", help="compute distance between series", action="store_true"
+    )
+    parser.add_argument(
+        "--bins", help="set bins for histograms", type=int, default=10
+    )
+    parser.add_argument(
+        "--window", help="set rolling window size", type=int, default=50
     )
     return parser.parse_args()
 
@@ -170,6 +173,7 @@ def setup():
 
 
 def extract_data(file: str, insert: str, key: str | None) -> tuple:
+    print(f"extract_data: file={file}")
     extension = os.path.splitext(file)[-1]
     filename = os.path.basename(file).replace(extension, "")
 
@@ -194,10 +198,12 @@ def extract_data(file: str, insert: str, key: str | None) -> tuple:
             if len(res) == 3:
                 (site, mode, timestamp) = res
                 date, time = timestamp.split("-")
-                (start_timestamp, start_ftimestamp) = convert_to_timestamp(date, time)
+                print(f"data={date}, time={time} (type={type(time)})")
+                (start_timestamp, start_ftimestamp) = convert_to_timestamp(date, time[0:4])
             # special for default files
             elif len(res) == 4:
                 (site, mode, timestamp, dmode) = res
+                print(f"mode={mode}, dmode={dmode}")
                 date, time = timestamp.split("-")
                 (start_timestamp, start_ftimestamp) = convert_to_timestamp(
                     date, time, "%y%m%d", "%H%M%S"
@@ -233,10 +239,14 @@ def find_files(args, site, time):
     archive_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Archive")
     archive_filter = f"{archive_datadir}/{pigbrother.replace(time[1],'*.tdms')}"
     default_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Default")
+    trigger_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Manuel_Trig")
 
     default = filename.replace("Overview", "Default")
     default_filter = f"{default_datadir}/{default.replace(time[1],'*.tdms')}"
-    return pupitre_filter, archive_filter, default_filter
+
+    trigger = filename.replace("Overview", "ManuelTrig")
+    trigger_filter = f"{trigger_datadir}/{trigger.replace(time[1],'*.tdms')}"
+    return pupitre_filter, archive_filter, default_filter, trigger_filter
 
 
 def load_df(file, site, insert, group, keys) -> tuple:
@@ -304,7 +314,7 @@ def plot_data(
     df_overview: pd.DataFrame,
     df_archive: pd.DataFrame,
     df_pupitre: pd.DataFrame,
-    df_incidents: pd.DataFrame,
+    df_incidents: list[pd.DataFrame] | None,
     channels_dict: dict,
     pupitre_dict: dict,
     site: str,
@@ -325,9 +335,11 @@ def plot_data(
     legends.append(f"Pupitre: {pupitre_dict[site][key]}")
     plt.legend(labels=legends)
 
-    if not df_incidents.empty:
-        for incident in df_incidents[tkey].to_list():
-            plt.axvline(incident, color="red", alpha=0.2, label="Incident")
+    if df_incidents is not None and len(df_incidents):
+        print(f"plot_data: incidents: {len(df_incidents)}")
+        for incident in df_incidents:
+            incident.plot(x=tkey, y=channels_dict[key], alpha=0.5, color="y", ax=my_ax)
+
 
     plt.title(f'{title.replace("_Overview","")}: {key} {msg}')
     plt.grid()
@@ -362,22 +374,25 @@ def main():
     print(f"site={site}, date={date}, time={time}, insert={insert}", flush=True)
 
     # select files
-    pupitre_filter, archive_filter, default_filter = find_files(
+    pupitre_filter, archive_filter, default_filter, trigger_filter = find_files(
         args, site, (date, time)
     )
     pupitre_files = natsorted(glob.glob(pupitre_filter))
     archive_files = natsorted(glob.glob(archive_filter))
     default_files = natsorted(glob.glob(default_filter))
+    trigger_files = natsorted(glob.glob(trigger_filter))
     print("\nfilters:")
     print(
-        f"pfilter: {pupitre_filter},\nafilter: {archive_filter},\ndfilter: {default_filter}",
+        f"pfilter: {pupitre_filter},\nafilter: {archive_filter},\ndfilter: {default_filter},\ntfilter: {trigger_filter}",
         flush=True,
     )
     print("\nfiles:")
     print(f"pupitre_files={pupitre_files}", flush=True)
     print(f"archive_files={archive_files}", flush=True)
     print(f"default_files={default_files}", flush=True)
+    print(f"trigger_files={trigger_files}", flush=True)
     print("\n")
+
 
     symbol = str()
     unit = str()
@@ -414,7 +429,7 @@ def main():
             if not pskip:
                 if pstart >= start and pend <= end:
                     dict_files["archive"].append(pfile)
-        for pfile in default_files:
+        for pfile in default_files + trigger_files:
             pstart, pend, pskip = extract_data(
                 pfile, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
             )
@@ -562,7 +577,7 @@ def main():
                 "teb",
                 "debitbrut",
                 "Pmagnet",
-            ],
+            ]
         )
         df_pupitre = merge_data(df_pupitre_list)
 
@@ -601,32 +616,48 @@ def main():
         # sinon 1
         x = df_pupitre["t"].to_numpy()
         y = df_pupitre["debitbrut"].to_numpy()
-        my_pwlf, eqns = pwlf_fit("t", x, "debitbrut", y, 0, 7, show=True)
+        df_pupitre.plot(x="Pmagnet", y="debitbrut")
+        plt.title(f"{ofile}: Debitbrut vs Pmagnet")
+        plt.grid()
+        plt.show()
+        plt.close()
 
-        # from Beta get high and low value use numpy.cumsum
-        # from breakpoint get Pmagnet value
-        # get signature for Pmagnet to tell high from low value
-        psignature = Signature.from_df(
-            ofile,
-            qt0,
-            df_pupitre,
-            "Pmagnet",
-            psymbol,
-            punit,
-            tkey="t",
-            threshold=threshold_dict["Pmagnet"],
-            timeshift=0,
+        # (changes, regimes, times, values, trend_component) = trends_df(df_pupitre, "t", "debitbrut", args.window, threshold_dict["debitbrut"], overview_dict[ofile]["sources"]["pupitre"], show=True)
+
+        from .utils.hysteresis import (
+            hysteresis_model,
+            multi_level_hysteresis,
+            remove_low_x_outliers,
+            estimate_hysteresis_parameters,
+            refine_thresholds_with_hysteresis_loop
         )
-        print(f"psignature: {psignature.regimes}")
-        print(f"debitbrut values: {my_pwlf.beta} ({type(my_pwlf.beta)})")
 
-        # pandas.Index.get_indexer_for returns np array
-        exit(1)
+        # Automatically detect bottom 25% of x, remove outliers there
+        df_clean = remove_low_x_outliers(df_pupitre, x_col='Pmagnet', y_col='debitbrut', x_percentile=25, verbose=True)
+        """
+        df_clean.plot(x="Pmagnet", y="debitbrut")
+        plt.title(f"{ofile}: Debitbrut vs Power - clean")
+        plt.grid()
+        plt.show()
+        plt.close()
+
+
+        # histogram of debitbrut
+        bins = args.bins
+        print("debitbrut histo:\n", df_clean["debitbrut"].value_counts(bins=bins))
+        df_clean.plot.hist(column=["debitbrut"], bins=bins)
+        plt.title(f"{ofile}: Debitbrut histogram (bins={bins})")
+        plt.grid()
+        plt.show()
+        plt.close()
+        """
+
+        # Calculate differences between consecutive values
+        xdf = df_clean[["t", "debitbrut", "Pmagnet"]].copy()
 
         """
-        # Calculate differences between consecutive values
-        xdf = df_pupitre[["debitbrut", "Pmagnet"]].copy()
         xdf["diff"] = xdf["debitbrut"].diff()
+        print(f"debitbrut: {df_clean['debitbrut']}")
         print(f'debitbrut: xdf\n{xdf["diff"].describe()}')
 
         # Find points where the difference exceeds a threshold
@@ -634,12 +665,6 @@ def main():
         sharp_changes = xdf[abs(xdf["diff"]) > threshold]
         print(f"debitbrut: sharpchanges\n{sharp_changes}")
 
-        # histogram of debitbrut
-        print("debitbrut histo:\n", df_pupitre["debitbrut"].value_counts(bins=20))
-        df_pupitre.plot.hist(column=["debitbrut"], bins=20)
-        plt.grid()
-        plt.show()
-        plt.close()
 
         # create thresholds list for hysteris model
         # loop over sharps_changes row
@@ -667,54 +692,80 @@ def main():
         print(f"debitbrut: up\n{up_changes}")
         print(f"debitbrut: down\n{down_changes}")
 
-        qsignature = Signature.from_df(
-            ofile,
-            qt0,
-            df_pupitre,
-            "debitbrut",
-            qsymbol,
-            qunit,
-            tkey="t",
-            threshold=threshold_dict["debitbrut"],
-            timeshift=0,
-        )
-        print(f"qsignature: {qsignature.regimes}")
-        """
-
-        # plot debitbrut model
-        from .utils.hysteresis import (
-            hysteresis_model,
-            multi_level_hysteresis,
-        )
-
-        hthresholds_list = [(3.7, 2.3), (9.9, 8.3), (14.87, 11.8)]
-
-        high_values = [1150, 1199, 1275]
-        low_values = [1050, 1162, 1200]
-
-        x = df_pupitre["Pmagnet"].to_numpy()
-        y = df_pupitre["debitbrut"].to_numpy()
-        y_model = multi_level_hysteresis(x, hthresholds_list, low_values, high_values)
-
+        # just plot debitbrut
+        rolling_window=args.window
+        xdf['flow_mean'] = xdf["debitbrut"].rolling(window=rolling_window).mean()
+        xdf['power_mean'] = xdf["Pmagnet"].rolling(window=rolling_window).mean()
         my_ax = plt.gca()
-        legends = ["debitbrut"]
-        df_pupitre.plot(x="t", y="debitbrut", ax=my_ax)
-        legends.append("ymodel")
-        my_ax.plot(df_pupitre["t"].to_numpy(), y_model, marker="*", alpha=0.2)
+        xdf.plot(x="t", y="debitbrut", ax=my_ax, label="debitbrut")
+        xdf.plot(x="t", y="flow_mean", ax=my_ax, label=f"rolling_mean ({rolling_window}s)")
+        plt.title(f"{ofile}: Debitbrut rolling mean ({rolling_window}s)")
         for x in up_changes.index.to_list():
             my_ax.axvline(x=x, color="red")
         for x in down_changes.index.to_list():
             my_ax.axvline(x=x, color="blue")
+        plt.grid()
+        plt.show()
+        plt.close()
+
+        my_ax = plt.gca()
+        xdf.plot(x="power_mean", y="flow_mean", ax=my_ax, label="mean")
+        xdf.plot(x="Pmagnet", y="debitbrut", ax=my_ax, label="raw", alpha=0.1)
+        plt.title(f"{ofile}: Debitbrut vs Power")
+        plt.grid()
+        plt.show()
+        plt.close()
+        """
+
+        # how to estimate levels ? from max pmagnet? from debitbrut?
+        print("estimate_hysteresis_parameters:")
+        result = estimate_hysteresis_parameters(xdf, x_col='Pmagnet', y_col='debitbrut', n_levels=4, verbose=True)
+
+        # Extract the parameters for multi_level_hysteresis()
+        thresholds = result['thresholds']
+        low_values = result['low_values']
+        high_values = result['high_values']
+        print(f"Estimated thresholds: {thresholds}")
+        print(f"Estimated low values: {low_values}")
+        print(f"Estimated high values: {high_values}", flush=True)
+
+        # print("\n=== Method 2: Hysteresis loop analysis ===")
+        # loop_result = refine_thresholds_with_hysteresis_loop(df_pupitre, x_col='power_mean', y_col='flow_mean')
+        # print(f"Loop-based thresholds: {loop_result}")
+
+        # hthresholds_list = [(3.7, 2.3), (9.9, 8.3), (14.87, 11.8)]
+        # high_values = [1150, 1199, 1275]
+        # low_values = [1050, 1162, 1200]
+
+        x = xdf["Pmagnet"].to_numpy()
+        y = xdf["debitbrut"].to_numpy()
+        y_model = multi_level_hysteresis(x, thresholds, low_values, high_values)
+
+        # overview_dict[ofile]["sources"]["pupitre"]
+        symbol = "Q_brut"
+        yunit = ureg.meter**3 / ureg.hour # see magnetdata.py L394
+
+        my_ax = plt.gca()
+        legends = ["debitbrut"]
+        xdf.plot(x="t", y="debitbrut", ax=my_ax)
+        legends.append("ymodel")
+        my_ax.plot(xdf["t"].to_numpy(), y_model, marker="*", alpha=0.2)
+        """
+        for change in up_changes.index.to_list():
+            my_ax.axvline(x=change, color="red")
+        for change in down_changes.index.to_list():
+            my_ax.axvline(x=change, color="blue")
+        """
         plt.legend(legends)
         plt.grid()
         plt.title(f"{ofile}: Debitbrut vs Pmagnet model")
         plt.xlabel("t[s]")
-        plt.ylabel(f"{symbol} [{unit:~P}]")
+        plt.ylabel(f"{symbol} [{yunit:~P}]")
         plt.show()
         plt.close()
 
         overview_dict[ofile]["debitbrut"] = {
-            "thresholds": hthresholds_list,
+            "thresholds": thresholds,
             "high": high_values,
             "low": low_values,
         }
@@ -751,12 +802,15 @@ def main():
     print("\nLoad Incidents data")
     for ofile in overview_dict:
         incidents = []
+        overview_dict[ofile]["data"]["defaut_source"] = []
         print(f'{ofile}: {overview_dict[ofile]["sources"]["default"]}')
         for ifile in overview_dict[ofile]["sources"]["default"]:
             mrun = MagnetRun.fromtdms(site, insert, ifile)
             mdata = mrun.getMData()
             t0 = mdata.Groups[group][Ikeys_ref[0]]["wf_start_time"]
             incidents.append(t0)
+            if "defaut_source" in overview_dict[ofile]["data"]:
+                overview_dict[ofile]["data"]["defaut_source"].append(mdata.Data)
 
         ot0 = overview_dict[ofile]["data"]["overview"].iloc[0]["timestamp"]
         df = pd.DataFrame(incidents, columns=["timestamp"])
@@ -776,7 +830,7 @@ def main():
             lambda row: (row.timestamp - ot0).total_seconds() + t_offset, axis=1
         )
         df_archive = overview_dict[ofile]["data"]["archive"]
-        df_incidents = overview_dict[ofile]["data"]["default"]
+        df_incidents = overview_dict[ofile]["data"]["default_source"]
 
         # synchronize data ad get timeshit
         timeshift, df_pupitre = synchronize_data(

@@ -71,7 +71,7 @@ class MagnetData:
                 t_offset = (1 / 120.0) / 2.0
 
             rawData = TdmsFile.open(name)
-            # print(f"rawData: {rawData.properties}", flush=True)
+            # print(f"rawData: groups={rawData.groups()}, properties={rawData.properties}", flush=True)
             for group in rawData.groups():
                 gname = group.name.replace(" ", "_")
                 gname = gname.replace("_et_Ref.", "")
@@ -247,11 +247,11 @@ class MagnetData:
         :param channel: _description_
         :type channel: str
         """
-        print(
-            f"getTdmsData: group={group}, channel={channel} ({type(channel)})",
-            end="",
-            flush=True,
-        )
+        # print(
+        #     f"getTdmsData: group={group}, channel={channel} ({type(channel)})",
+        #     end="",
+        #     flush=True,
+        # )
 
         if not isinstance(self.Data, dict):
             raise Exception(
@@ -268,7 +268,7 @@ class MagnetData:
             else:
                 result = self.Data[group][channel]
 
-        print(f"-> result={result.keys()} (type={type(result)})", flush=True)
+        # print(f"-> result={result.keys()} (type={type(result)})", flush=True)
         return result
 
     def getData(self, key: list[str] | str = None) -> pd.DataFrame:
@@ -317,7 +317,8 @@ class MagnetData:
     def PigBrotherUnits(self, key: str, debug: bool = False) -> tuple:
         from pint import UnitRegistry
 
-        # print(f"PigBrotherUnits: key={key}")
+        if debug:
+            print(f"PigBrotherUnits: key={key}")
         ureg = UnitRegistry()
 
         PigBrotherUnits = {
@@ -412,7 +413,8 @@ class MagnetData:
                 print(f"{key}: symbol={symbol}, unit={unit:~P}", flush=True)
 
     def getUnitKey(self, key: str) -> tuple:
-        # print(f'getUnitKey: {key}')
+        # print(f"getUnitKey: {key}", flush=True)
+        # print(f"available keys: {self.Keys}", flush=True)
         if key not in self.Keys:
             from pint import UnitRegistry
 
@@ -972,6 +974,7 @@ class MagnetData:
                     raise RuntimeError(
                         f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {key} key"
                     )
+            print("-> Done", flush=True)
             return pd.concat([self.Data[key] for key in keys], axis=1)
 
         elif self.Type == 1:
@@ -1005,7 +1008,7 @@ class MagnetData:
                     )
                 result["t"] = result.index * dt + t_offset
 
-            print(f"-> result={result.keys()} (type={type(result)})", flush=True)
+            # print(f"-> result={result.keys()} (type={type(result)}) Done", flush=True)
             return result
 
         # else:

@@ -120,9 +120,9 @@ def trends_df(
             if signature[i][0] != "P":
                 diff_slope = abs(1 - signature[i - 1][1] / signature[i][1])
                 if diff_slope >= 0.4:
-                    print(f"{i}: {diff_slope}, {df[tkey].iloc[i]} ****", flush=True)
+                    # print(f"{i}: {diff_slope}, {df[tkey].iloc[i]} ****", flush=True)
                     changes.append(i)
-    print("changes: ", len(changes))
+    print(f"trends_df[{key}]: changes={len(changes)}")
 
     regimes = [signature[i][0] for i in changes]
     times = [float(df[tkey].iloc[i]) for i in changes]
