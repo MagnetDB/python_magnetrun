@@ -240,13 +240,18 @@ def find_files(args, site, time):
     archive_filter = f"{archive_datadir}/{pigbrother.replace(time[1],'*.tdms')}"
     default_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Default")
     trigger_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Manuel_Trig")
+    spike_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Spike")
 
     default = filename.replace("Overview", "Default")
     default_filter = f"{default_datadir}/{default.replace(time[1],'*.tdms')}"
 
     trigger = filename.replace("Overview", "ManuelTrig")
     trigger_filter = f"{trigger_datadir}/{trigger.replace(time[1],'*.tdms')}"
-    return pupitre_filter, archive_filter, default_filter, trigger_filter
+
+    spike = filename.replace("Overview", "Spikes")
+    spike_filter = f"{spike_datadir}/{spike.replace(time[1],'*.tdms')}"
+
+    return pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter
 
 
 def load_df(file, site, insert, group, keys) -> tuple:
@@ -336,8 +341,9 @@ def plot_data(
     plt.legend(labels=legends)
 
     if df_incidents is not None and len(df_incidents):
-        print(f"plot_data: incidents: {len(df_incidents)}")
+        print(f"plot_data: incidents: {len(df_incidents)} (type={df_incidents})")
         for incident in df_incidents:
+            print(f"plot_data: incident: {incident} (type={type(incident)})", flush=True)
             incident.plot(x=tkey, y=channels_dict[key], alpha=0.5, color="y", ax=my_ax)
 
 
@@ -374,16 +380,17 @@ def main():
     print(f"site={site}, date={date}, time={time}, insert={insert}", flush=True)
 
     # select files
-    pupitre_filter, archive_filter, default_filter, trigger_filter = find_files(
+    pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter = find_files(
         args, site, (date, time)
     )
     pupitre_files = natsorted(glob.glob(pupitre_filter))
     archive_files = natsorted(glob.glob(archive_filter))
     default_files = natsorted(glob.glob(default_filter))
     trigger_files = natsorted(glob.glob(trigger_filter))
+    spike_files = natsorted(glob.glob(spike_filter))
     print("\nfilters:")
     print(
-        f"pfilter: {pupitre_filter},\nafilter: {archive_filter},\ndfilter: {default_filter},\ntfilter: {trigger_filter}",
+        f"pfilter: {pupitre_filter},\nafilter: {archive_filter},\ndfilter: {default_filter},\ntfilter: {trigger_filter},\ntfilter: {spike_filter}",
         flush=True,
     )
     print("\nfiles:")
@@ -391,6 +398,7 @@ def main():
     print(f"archive_files={archive_files}", flush=True)
     print(f"default_files={default_files}", flush=True)
     print(f"trigger_files={trigger_files}", flush=True)
+    print(f"spike_files={spike_files}", flush=True)
     print("\n")
 
 
@@ -414,7 +422,7 @@ def main():
         start, end, skip = extract_data(file, insert, f"{group}/{Ikeys_ref[0]}")
         print(f"{filename}: file={file}, start={start}, end={end}", flush=True)
 
-        dict_files = {"pupitre": [], "archive": [], "default": []}
+        dict_files = {"pupitre": [], "archive": [], "default": [], "trigger": [], "spike": []}
 
         for pfile in pupitre_files:
             pstart, pend, pskip = extract_data(
@@ -429,13 +437,29 @@ def main():
             if not pskip:
                 if pstart >= start and pend <= end:
                     dict_files["archive"].append(pfile)
-        for pfile in default_files + trigger_files:
+        for pfile in default_files:
             pstart, pend, pskip = extract_data(
                 pfile, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
             )
             if not pskip:
                 if pstart >= start and pend <= end:
                     dict_files["default"].append(pfile)
+
+        for pfile in trigger_files:
+            pstart, pend, pskip = extract_data(
+                pfile, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
+            )
+            if not pskip:
+                if pstart >= start and pend <= end:
+                    dict_files["trigger"].append(pfile)
+
+        for pfile in spike_files:
+            pstart, pend, pskip = extract_data(
+                pfile, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
+            )
+            if not pskip:
+                if pstart >= start and pend <= end:
+                    dict_files["spike"].append(pfile)
 
         t0 = mdata.Groups[group][Ikeys_ref[0]]["wf_start_time"]
 
@@ -497,7 +521,9 @@ def main():
                 "overview": pd.DataFrame(),
                 "pupitre": pd.DataFrame(),
                 "archive": pd.DataFrame(),
-                "default": pd.DataFrame(),
+                "default": [],
+                "trigger": [],
+                "spike": [],
             },
             "t0": t0,
             "BP": {},
@@ -801,21 +827,25 @@ def main():
     # Load incidents data
     print("\nLoad Incidents data")
     for ofile in overview_dict:
-        incidents = []
-        overview_dict[ofile]["data"]["defaut_source"] = []
-        print(f'{ofile}: {overview_dict[ofile]["sources"]["default"]}')
-        for ifile in overview_dict[ofile]["sources"]["default"]:
-            mrun = MagnetRun.fromtdms(site, insert, ifile)
-            mdata = mrun.getMData()
-            t0 = mdata.Groups[group][Ikeys_ref[0]]["wf_start_time"]
-            incidents.append(t0)
-            if "defaut_source" in overview_dict[ofile]["data"]:
-                overview_dict[ofile]["data"]["defaut_source"].append(mdata.Data)
+        at0 = overview_dict[ofile]["data"]["archive"].iloc[0]["timestamp"]
+        for type in ["default", "trigger", "spike"]:
+            print(f'{ofile}: {overview_dict[ofile]["sources"][type]}')
+            overview_dict[ofile]["data"][type] = load_data(
+                overview_dict[ofile]["sources"][type],
+                site,
+                insert,
+                group,
+                Ikeys,
+            )
 
-        ot0 = overview_dict[ofile]["data"]["overview"].iloc[0]["timestamp"]
-        df = pd.DataFrame(incidents, columns=["timestamp"])
-        df["t"] = df.apply(lambda row: (row.timestamp - ot0).total_seconds(), axis=1)
-        overview_dict[ofile]["data"]["defaut"] = df
+            for i, df in enumerate(overview_dict[ofile]["data"][type]):
+                it0 = df["timestamp"].iloc[0]
+                t_offset = (1 / 4800.0) / 2.0
+                print(f'{type} file {overview_dict[ofile]["sources"][type][i]}: it0={it0}, at0={at0}, t0={(it0 - at0).total_seconds() + t_offset}, len={len(df)}')
+                print(df['timestamp'])
+                df["t"] = df.apply(
+                    lambda row: (row.timestamp - at0).total_seconds() + t_offset, axis=1
+                )
 
     # save signature per overview file
     print("\nProcess Overview Files (signature, lag)")
@@ -830,7 +860,10 @@ def main():
             lambda row: (row.timestamp - ot0).total_seconds() + t_offset, axis=1
         )
         df_archive = overview_dict[ofile]["data"]["archive"]
-        df_incidents = overview_dict[ofile]["data"]["default_source"]
+        df_incidents = overview_dict[ofile]["data"]["default"]
+        df_incidents += overview_dict[ofile]["data"]["spike"]
+        df_incidents += overview_dict[ofile]["data"]["trigger"]
+
 
         # synchronize data ad get timeshit
         timeshift, df_pupitre = synchronize_data(
