@@ -34,7 +34,7 @@ def fit(
     y_data = result[Okey].to_numpy()
     params, params_covariance = optimize.curve_fit(fit_function, x_data, y_data)
 
-    print(f"{Ostring} Fit:")
+    print(f"Fit: {Ostring}({Ikey}) ")
     print(f"\tparams: {params}")
     # print(f"\tcovariance: {params_covariance}")
     print(f"\tstderr: {np.sqrt(np.diag(params_covariance))}")

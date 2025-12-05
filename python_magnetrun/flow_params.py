@@ -14,6 +14,7 @@ from sympy import Symbol
 
 from .utils.fit import fit, find_eqn
 from .utils.plots import plot_df
+from typing import List
 
 
 def setup():
@@ -63,7 +64,7 @@ def stats(
     if debug:
         stats = result[Okey].describe(include="all")
         print(f"{Okey} stats:\n{stats}")
-    return (result[Okey].mean(), result[Okey].std())
+    return (result[Okey].mean().item(), result[Okey].std().item())
 
 
 def pwlf_fit(
@@ -73,13 +74,19 @@ def pwlf_fit(
     y,
     degree: int = 1,
     segment: int = 1,
+    guess: List[float] = None,
     show: bool = False,
     debug: bool = False,
 ):
     import pwlf
 
+    print(f"pwl_fit: Ikey={Ikey}, PKey={PKey}, show={show}")
     my_pwlf = pwlf.PiecewiseLinFit(x, y, degree=degree)
-    res = my_pwlf.fit(segment)
+    if guess is not None and guess:
+        res = my_pwlf.fit_guess(guess)
+        print(f"pwlf: using guess breaks (guess={guess}): {res}")
+    else:
+        res = my_pwlf.fit(segment)
     errors = my_pwlf.standard_errors()
     print(f"pwlf: res={res}, errors={errors}")
     xHat = np.linspace(min(x), max(x), num=10000)
@@ -136,7 +143,7 @@ def pwlf_fit(
             # set xrange, yrange
             plt.xlim([x.min(), 1.1 * x.max()])
             plt.ylim([y.min(), 1.1 * y.max()])
-        plt.title(f"{Ikey} vs {PKey}: pwlf,  res={res}")
+        plt.title(f"{PKey}({Ikey}): pwlf,  res={res}")
         plt.grid()
         plt.show()
         plt.close()
@@ -179,7 +186,7 @@ def compute(
     my_pwlf, eqns = pwlf_fit(Ikey, x, RpmKey, y, 2, 2, show=True)
 
     # compute Imax, Vp0, Vpmax
-    print(f"{Ikey} vs {RpmKey}: {my_pwlf.n_segments}")
+    print(f"{RpmKey}({Ikey}): {my_pwlf.n_segments}")
     if my_pwlf.n_segments == 2:
         print(f"new_Imax: {Imax} ->{my_pwlf.fit_breaks[1]}")
         Imax = my_pwlf.fit_breaks[1]
@@ -207,10 +214,10 @@ def compute(
 
     x = _df[Ikey].to_numpy()
     y = _df[QKey].to_numpy()
-    my_pwlf, eqns = pwlf_fit(Ikey, x, QKey, y, 2, 2, show=True)
+    my_pwlf, eqns = pwlf_fit(Ikey, x, QKey, y, 2, 2, guess=[Imax], show=True)
 
     # compute Imax, Vp0, Vpmax
-    print(f"{Ikey} vs {QKey}: {my_pwlf.n_segments}")
+    print(f"{QKey}({Ikey}): {my_pwlf.n_segments}")
     if my_pwlf.n_segments == 2:
         print(f"new_Imax: {Imax} ->{my_pwlf.fit_breaks[1]}")
         # Imax = my_pwlf.fit_breaks[1]
@@ -235,32 +242,22 @@ def compute(
     def pressure_func(x, a: float, b: float):
         return a + b * (vpump_func(x, vpmax, vp0) / (vpmax + vp0)) ** 2
 
-    x = _df[Ikey].to_numpy()
-    y = _df[PinKey].to_numpy()
+    params, params_covariance = fit(
+        Ikey,
+        PinKey,
+        "Pin",
+        Imax,
+        pressure_func,
+        _df,
+        cwd,
+        name,
+        show,
+        debug,
+    )
 
-    # TODO not so good in general - try with breaks = my_pwlf.fit_guess([Imax])
-
-    my_pwlf, eqns = pwlf_fit(Ikey, x, PinKey, y, 2, 2, show=True)
-
-    # compute Imax, Vp0, Vpmax
-    print(f"{Ikey} vs {PinKey}: {my_pwlf.n_segments}")
-    if my_pwlf.n_segments == 2:
-        print(f"new_Imax: {Imax} ->{my_pwlf.fit_breaks[1]}")
-        # Imax = my_pwlf.fit_breaks[1]
-        print(
-            f'new Pmin={flow_params["Pmin"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): 0})}'
-        )
-        print(
-            f'new Pmax={flow_params["Pmax"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): Imax})}'
-        )
-        params = [
-            float(eqns[0].evalf(subs={Symbol("x"): Imax})),
-            float(eqns[0].evalf(subs={Symbol("x"): 0})),
-        ]
-        print(params[0], type(params[0]))
-
-    flow_params["Pmax"]["value"] = params[0]
-    flow_params["Pmin"]["value"] = params[1]
+    print(f"Pin: params={params}")
+    flow_params["Pmin"]["value"] = params[0]
+    flow_params["Pmax"]["value"] = params[1]
     params = []
 
     # correlation Pout
@@ -277,9 +274,101 @@ def compute(
     print(f"Pout(mean, std): {params}")
     Pout = params[0]
     flow_params["Pout"]["value"] = Pout
+    print(f"final flow_params: {flow_params}", flush=True)
 
-    # save flow_params
+    # # save flow_params
     filename = f"{cwd}/{name}-{Ikey}-flow_params.json"
     print(f"{filename}: {json.dumps(flow_params, indent=4)}")
     with open(filename, "w") as f:
         f.write(json.dumps(flow_params, indent=4))
+
+
+def debitbrut(df: pd.DataFrame, ofile: str):
+    # DebitBrut
+    qt0 = df.index.values[0]
+
+    qsymbol = "Q"
+    psymbol = "P"
+    punit = "P"
+    from pint import UnitRegistry
+
+    ureg = UnitRegistry()
+    qunit = ureg.meter**3 / ureg.hour
+    punit = ureg.megawatt
+
+    # use pwlf to get threshold and value
+    # TODO how to estimate the number of segment
+    # is it enough to get Pmagnet.max to have an idea of segments???
+    # or try more advanded features: see find the best number of line segments
+    # see https://jekel.me/piecewise_linear_fit_py/examples.html#fit-constants-or-polynomials
+    print(f'Pmagnet max: {df["Pmagnet"].max()}')
+    # Pmagnet > 15 MW: 7
+    # Pmagnet > 10 MW: 5
+    # Pmagnet > MW: 3
+    # sinon 1
+    x = df["t"].to_numpy()
+    y = df["debitbrut"].to_numpy()
+    df.plot(x="Pmagnet", y="debitbrut")
+    plt.title(f"{ofile}: Debitbrut(Pmagnet)")
+    plt.grid()
+    plt.show()
+    plt.close()
+
+    # (changes, regimes, times, values, trend_component) = trends_df(df_pupitre, "t", "debitbrut", args.window, threshold_dict["debitbrut"], overview_dict[ofile]["sources"]["pupitre"], show=True)
+
+    from .processing.hysteresis import (
+        hysteresis_model,
+        multi_level_hysteresis,
+        remove_low_x_outliers,
+        estimate_hysteresis_parameters,
+        refine_thresholds_with_hysteresis_loop,
+    )
+
+    # Automatically detect bottom 25% of x, remove outliers there
+    df_clean = remove_low_x_outliers(
+        df,
+        x_col="Pmagnet",
+        y_col="debitbrut",
+        x_percentile=25,
+        verbose=True,
+    )
+
+    # Calculate differences between consecutive values
+    xdf = df_clean[["t", "debitbrut", "Pmagnet"]].copy()
+
+    # how to estimate levels ? from max pmagnet? from debitbrut?
+    print("estimate_hysteresis_parameters:")
+    result = estimate_hysteresis_parameters(
+        xdf, x_col="Pmagnet", y_col="debitbrut", n_levels=4, verbose=True
+    )
+
+    # Extract the parameters for multi_level_hysteresis()
+    thresholds = result["thresholds"]
+    low_values = result["low_values"]
+    high_values = result["high_values"]
+    print(f"Estimated thresholds: {thresholds}")
+    print(f"Estimated low values: {low_values}")
+    print(f"Estimated high values: {high_values}", flush=True)
+
+    x = xdf["Pmagnet"].to_numpy()
+    y = xdf["debitbrut"].to_numpy()
+    y_model = multi_level_hysteresis(x, thresholds, low_values, high_values)
+
+    # overview_dict[ofile]["sources"]["pupitre"]
+    symbol = "Q_brut"
+    yunit = ureg.meter**3 / ureg.hour  # see magnetdata.py L394
+
+    my_ax = plt.gca()
+    legends = ["debitbrut"]
+    xdf.plot(x="t", y="debitbrut", ax=my_ax)
+    legends.append("ymodel")
+    my_ax.plot(xdf["t"].to_numpy(), y_model, marker="*", alpha=0.2)
+    plt.legend(legends)
+    plt.grid()
+    plt.title(f"Debitbrut(Pmagnet) model")
+    plt.xlabel("t[s]")
+    plt.ylabel(f"{symbol} [{yunit:~P}]")
+    plt.show()
+    plt.close()
+
+    return (thresholds, high_values, low_values)
