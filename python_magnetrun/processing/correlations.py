@@ -27,6 +27,7 @@ def lag_correlation(
     :return: _description_
     :rtype: _type_
     """
+    print(f"lag_correlation: {data1['field']} - {data2['field']}")
 
     from scipy.signal import correlate, correlation_lags
 
@@ -91,6 +92,8 @@ def lag_correlation(
     # print(time_trend_slice_lag.head())
 
     # Plot the results
+    print(f'name_series="{name_series}", name_trend="{name_trend}", lag={lag}s')
+
     plt.figure(figsize=(12, 6))
     plt.subplot(2, 1, 1)
     plt.plot(time_series_slice, label=name_series, marker="+")
@@ -132,6 +135,8 @@ def compute_lag(
     save: bool = False,
     debug: bool = False,
 ):
+    print(f"compute_lag: {df1_data['field']} - {df2_data['field']}")
+
     ts1 = df1_data["df"].copy()
     key1 = df1_data["field"]
     (istart1, iend1) = df1_data["range"]
@@ -142,20 +147,27 @@ def compute_lag(
     ts1_index = ts1.index.to_list()
     otstart = ts1_index[istart1]
     otend = ts1_index[-1]
-    if not iend1 is None:
+    if iend1 is not None:
         otend = ts1_index[iend1]
     if debug:
         print(f"ts1 range: [{istart1}, {iend1}]-> [{otstart}, {otend}]")
 
     ts2 = df2_data["df"].copy()
-    key2 = df1_data["field"]
+    key2 = df2_data["field"]
     (istart2, iend2) = df2_data["range"]
     ts2.set_index(tkey, inplace=True)
     ts2 = ts2.iloc[:, 0]
     # resample to make sure that timeseries share the same index
-    ts2_index = ts2.index.to_list()
-    ts2_resampled = ts2.resample("1s", origin=ts2_index[0]).asfreq()
-
+    try:
+        ts2_index = ts2.index.to_list()
+        ts2_resampled = ts2.resample("1s", origin=ts2_index[0]).asfreq()
+    except Exception as e:
+        print(f"compute_lag: resample error: {e}")
+        print(f"ts2 index:\n{ts2.index}")
+        print(f"ts2:\n{ts2}")
+        duplicates = ts2.index.duplicated()
+        print(duplicates)
+        raise e
     pstart = ()
     pend = ()
 
@@ -195,6 +207,7 @@ def compute_lag(
         "df": ts1,
         "range": {"start": otstart, "end": otend},
     }
+    print(f"compute_lag: {ts1_data['field']} - {ts2_data['field']}")
     lag = lag_correlation(
         ts2_data,
         ts1_data,

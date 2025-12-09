@@ -19,6 +19,14 @@ def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False)
     :rtype: _type_
     """
 
+    counts = df[key].value_counts()
+    if (counts > 1).any():
+        print(f"Duplicates found in {key}:")
+        print(counts[counts > 1])
+    df_clean = df.drop_duplicates(subset=[key])
+    return df_clean
+
+    """
     dups = pd.Index(df[key].to_numpy()).duplicated()
     # print(f"dups: {dups}")
     unique, counts = np.unique(dups, return_counts=True)
@@ -32,4 +40,8 @@ def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False)
         print(f"remove {dups_dict[np.True_]} duplicates")
         df = df[~df.index.duplicated(keep="first")]
 
+    # print(f"find_duplicate:\,n{df.head()}")
+    # duplicates = df[key].duplicated()
+    print(f"find_duplicate: duplicates\n{df[df[key].duplicated()]}")
     return df
+    """

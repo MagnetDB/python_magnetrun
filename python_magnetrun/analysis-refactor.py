@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 from natsort import natsorted
 from .MagnetRun import MagnetRun
 
-from .processing.trends import trends_df
 from .utils.convert import convert_to_timestamp
 
 from .processing.correlations import compute_lag
@@ -21,6 +20,7 @@ from sympy import Symbol
 from tabulate import tabulate
 
 
+# new default for pupitre-datadir: srvdata -> /home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file", nargs="+", help="enter input file tdms")
@@ -28,7 +28,7 @@ def parse_arguments():
         "--pupitre_datadir",
         help="enter pupitre datadir (default srvdata)",
         type=str,
-        default="srvdata",
+        default="/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install",
     )
 
     """
@@ -48,6 +48,7 @@ def parse_arguments():
         default="t",
     )
 
+    parser.add_argument("--dry_run", help="dry_run mode", action="store_true")
     parser.add_argument("--debug", help="activate debug", action="store_true")
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
     parser.add_argument(
@@ -59,12 +60,18 @@ def parse_arguments():
         action="store_true",
     )
     parser.add_argument(
+        "--lag",
+        help="compute lag between pupitre and pigbrother data",
+        action="store_true",
+    )
+    parser.add_argument(
         "--distance", help="compute distance between series", action="store_true"
     )
     parser.add_argument("--bins", help="set bins for histograms", type=int, default=10)
     parser.add_argument(
         "--window", help="set rolling window size", type=int, default=50
     )
+    parser.add_argument("--levels", help="set levels", type=int, default=4)
     return parser.parse_args()
 
 
@@ -170,8 +177,9 @@ def setup():
     )
 
 
-def extract_data(file: str, insert: str, key: str | None) -> tuple:
-    print(f"extract_data: file={file}")
+def extract_data(
+    file: str, site: str, insert: str, key: str | None, dry_run: bool = False
+) -> tuple:
     extension = os.path.splitext(file)[-1]
     filename = os.path.basename(file).replace(extension, "")
 
@@ -180,13 +188,15 @@ def extract_data(file: str, insert: str, key: str | None) -> tuple:
     mrun = MagnetRun()
     match extension:
         case ".txt":
-            (site, timestamp) = filename.split("_")
-            date, time = timestamp.split("---")
+            # (site, timestamp) = filename.split("_")
+            # date, time = timestamp.split("---")
+            date, time = filename.replace(".txt", "").split(" - ")
             # convert ddate and dtime into a timestamp
             (start_timestamp, start_ftimestamp) = convert_to_timestamp(
                 date, time, date_format="%Y.%m.%d", time_format="%H:%M:%S"
             )
-            mrun = MagnetRun.fromtxt(site, insert, file)
+            if not dry_run:
+                mrun = MagnetRun.fromtxt(site, insert, file)
         case ".tdms":
             site = str()
             timestamp = str()
@@ -196,69 +206,106 @@ def extract_data(file: str, insert: str, key: str | None) -> tuple:
             if len(res) == 3:
                 (site, mode, timestamp) = res
                 date, time = timestamp.split("-")
-                print(f"data={date}, time={time} (type={type(time)})")
+                # print(f"data={date}, time={time} (type={type(time)})")
                 (start_timestamp, start_ftimestamp) = convert_to_timestamp(
                     date, time[0:4]
                 )
             # special for default files
             elif len(res) == 4:
                 (site, mode, timestamp, dmode) = res
-                print(f"mode={mode}, dmode={dmode}")
+                # print(f"mode={mode}, dmode={dmode}")
                 date, time = timestamp.split("-")
                 (start_timestamp, start_ftimestamp) = convert_to_timestamp(
                     date, time, "%y%m%d", "%H%M%S"
                 )
 
-            mrun = MagnetRun.fromtdms(site, insert, file)
+            if not dry_run:
+                mrun = MagnetRun.fromtdms(site, insert, file)
         case _:
             raise RuntimeError(f"{file}: unsupported {extension}")
 
     skip = False
-    mdata = mrun.getMData()
-    if key is not None:
-        if not key in mdata.getKeys():
-            print(f"{file}: {key} not found")
-            skip = True
+    end_ftimestamp = str()
+    if not dry_run:
+        mdata = mrun.getMData()
+        if key is not None:
+            if key not in mdata.getKeys():
+                print(f"{file}: {key} not found")
+                skip = True
 
-    duration = mdata.getDuration()
-    end_timestamp = datetime.fromtimestamp(start_timestamp) + pd.to_timedelta(
-        duration, unit="s"
-    )
-    end_ftimestamp = end_timestamp.strftime("%Y-%m-%d %H:%M:%S")
+        duration = mdata.getDuration()
+        end_timestamp = datetime.fromtimestamp(start_timestamp) + pd.to_timedelta(
+            duration, unit="s"
+        )
+        end_ftimestamp = end_timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+    # print(
+    #     f"extract_data: file={file}, start={start_ftimestamp}, end={end_ftimestamp}, skip={skip }",
+    #     flush=True,
+    # )
     return (start_ftimestamp, end_ftimestamp, skip)
 
 
-def find_files(args, site, time):
-    pupitre_datadir = args.pupitre_datadir
-    pupitre_filter = f"{pupitre_datadir}/{site}_20{time[0][0:2]}.{time[0][2:4]}.{time[0][4:]}---*.txt"
+def find_files(args, file, site, date, time):
+    # LNCMIG-Data/srv-data-install/M9/2025.12.08 - 08:58:59.txt
+    pupitre_datadir = f"{args.pupitre_datadir}/{site}"
+    pupitre_filter = f"{pupitre_datadir}/20{date[0:2]}.{date[2:4]}.{date[4:]}*.txt"
 
-    file = args.input_file[0]
+    # pupitre_datadir = args.pupitre_datadir
+    # pupitre_filter = (
+    #     f"{pupitre_datadir}/{site}_20{date[0:2]}.{date[2:4]}.{date[4:]}---*.txt"
+    # )
+
     extension = os.path.splitext(file)[-1]
     filename = os.path.basename(file).replace(extension, "")
     pigbrother = filename.replace("Overview", "Archive")
     archive_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Archive")
-    archive_filter = f"{archive_datadir}/{pigbrother.replace(time[1],'*.tdms')}"
+    archive_filter = f"{archive_datadir}/{pigbrother.replace(time,'*.tdms')}"
+
     default_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Default")
     trigger_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Manuel_Trig")
     spike_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Spike")
 
     default = filename.replace("Overview", "Default")
-    default_filter = f"{default_datadir}/{default.replace(time[1],'*.tdms')}"
+    default_filter = f"{default_datadir}/{default.replace(time,'*.tdms')}"
 
     trigger = filename.replace("Overview", "ManuelTrig")
-    trigger_filter = f"{trigger_datadir}/{trigger.replace(time[1],'*.tdms')}"
+    trigger_filter = f"{trigger_datadir}/{trigger.replace(time,'*.tdms')}"
 
     spike = filename.replace("Overview", "Spikes")
-    spike_filter = f"{spike_datadir}/{spike.replace(time[1],'*.tdms')}"
+    spike_filter = f"{spike_datadir}/{spike.replace(time,'*.tdms')}"
 
     return pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter
+
+
+def select_files(files: list, site: str, start: str, end: str):
+    tformat = "%Y-%m-%d %H:%M:%S"
+    start_time = datetime.strptime(start, tformat)
+    end_time = datetime.strptime(end, tformat)
+    selected = []
+    for file in files:
+        res = extract_data(file, site=site, insert=None, key=None)
+        start_time_file = datetime.strptime(res[0], tformat)
+        end_time_file = datetime.strptime(res[1], tformat)
+        # print(
+        #     f"{file}: start_time_file={start_time_file} end_time_file={end_time_file}, start_time={start_time}, end_time={end_time}",
+        #     flush=True,
+        # )
+        if start_time_file >= start_time and end_time_file < end_time:
+            selected.append(file)
+        # print(f"Difference: {timestamp - itimestamp} seconds")
+
+    # print(f"selected: {selected}", flush=True)
+    if selected:
+        return natsorted(selected)
+    return selected
 
 
 def load_df(file, site, insert, group, keys) -> tuple:
     extension = os.path.splitext(file)[-1]
 
     df = pd.DataFrame()
-    t0 = datetime.now()
+    # t0 = datetime.now()
     match extension:
         case ".txt":
             mrun = MagnetRun.fromtxt(site, insert, file)
@@ -268,7 +315,7 @@ def load_df(file, site, insert, group, keys) -> tuple:
         case ".tdms":
             mrun = MagnetRun.fromtdms(site, insert, file)
             mdata = mrun.getMData()
-            if not keys[0] in mdata.Groups[group]:
+            if keys[0] not in mdata.Groups[group]:
                 print(f"load_df tdms {group}/{keys[0]} not found in {mdata.FileName}")
                 """
                 print(f"available keys are: {mdata.Groups[group].keys()}")
@@ -344,7 +391,7 @@ def plot_data(
     annotation_dict = {}
     if df_incidents is not None:
         for itype, incident in df_incidents.items():
-            print(f"plot_data: itype={itype}", flush=True)
+            # print(f"plot_data: itype={itype}", flush=True)
             for i, idf in enumerate(incident):
                 t_mid = idf[tkey].median()
                 f_mid = idf[channels_dict[key]].median()
@@ -432,36 +479,9 @@ def main():
     ) = setup()
 
     input_files = natsorted(args.input_file)
-    print(f"input_files: {input_files}", flush=True)
+    # print(f"input_files: {input_files}", flush=True)
 
     insert = "tututu"
-    extension = os.path.splitext(input_files[0])[-1]
-    filename = os.path.basename(input_files[0]).replace(extension, "")
-    (site, mode, timestamp) = filename.split("_")
-    date, time = timestamp.split("-")
-    print(f"site={site}, date={date}, time={time}, insert={insert}", flush=True)
-
-    # select files
-    pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter = (
-        find_files(args, site, (date, time))
-    )
-    pupitre_files = natsorted(glob.glob(pupitre_filter))
-    archive_files = natsorted(glob.glob(archive_filter))
-    default_files = natsorted(glob.glob(default_filter))
-    trigger_files = natsorted(glob.glob(trigger_filter))
-    spike_files = natsorted(glob.glob(spike_filter))
-    print("\nfilters:")
-    print(
-        f"pfilter: {pupitre_filter},\nafilter: {archive_filter},\ndfilter: {default_filter},\ntfilter: {trigger_filter},\ntfilter: {spike_filter}",
-        flush=True,
-    )
-    print("\nfiles:")
-    print(f"pupitre_files={pupitre_files}", flush=True)
-    print(f"archive_files={archive_files}", flush=True)
-    print(f"default_files={default_files}", flush=True)
-    print(f"trigger_files={trigger_files}", flush=True)
-    print(f"spike_files={spike_files}", flush=True)
-    print("\n")
 
     symbol = str()
     unit = str()
@@ -469,427 +489,405 @@ def main():
     Ikeys_ref = []
     overview_dict = {}
     for file in input_files:
+        print(f"*** processing file: {file} ***", flush=True)
         extension = os.path.splitext(file)[-1]
-        # dirname = os.path.dirname(file)
         filename = os.path.basename(file).replace(extension, "")
+        (site, mode, timestamp) = filename.split("_")
+        date, time = timestamp.split("-")
+        # print(f"site={site}, date={date}, time={time}, insert={insert}", flush=True)
+        (start_ftimestamp, end_ftimestamp, skip) = extract_data(
+            file, site, insert=insert, key=None
+        )
 
-        mrun = MagnetRun.fromtdms(site, insert, file)
-        mdata = mrun.getMData()
-        Ikeys_ref = [
-            key.replace(f"{group}/", "")
-            for key in mdata.getKeys()
-            if "Référence_GR" in key
-        ]
-        start, end, skip = extract_data(file, insert, f"{group}/{Ikeys_ref[0]}")
-        print(f"{filename}: file={file}, start={start}, end={end}", flush=True)
+        # select files
+        pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter = (
+            find_files(args, file, site, date, time)
+        )
+        pupitre_files = select_files(
+            glob.glob(pupitre_filter), site, start_ftimestamp, end_ftimestamp
+        )
+        archive_files = select_files(
+            glob.glob(archive_filter), site, start_ftimestamp, end_ftimestamp
+        )
+        default_files = select_files(
+            glob.glob(default_filter), site, start_ftimestamp, end_ftimestamp
+        )
+        trigger_files = select_files(
+            glob.glob(trigger_filter), site, start_ftimestamp, end_ftimestamp
+        )
+        spike_files = select_files(
+            glob.glob(spike_filter), site, start_ftimestamp, end_ftimestamp
+        )
+        print("\nfilters:")
+        print(
+            f"pfilter: {pupitre_filter},\nafilter: {archive_filter},\ndfilter: {default_filter},\ntfilter: {trigger_filter},\ntfilter: {spike_filter}",
+            flush=True,
+        )
 
-        dict_files = {
-            "pupitre": [],
-            "archive": [],
-            "default": [],
-            "trigger": [],
-            "spike": [],
-        }
+        print("\nfiles:")
+        print(f"pupitre_files={pupitre_files}", flush=True)
+        print(f"archive_files={archive_files}", flush=True)
+        print(f"default_files={default_files}", flush=True)
+        print(f"trigger_files={trigger_files}", flush=True)
+        print(f"spike_files={spike_files}", flush=True)
+        print("\n")
 
-        for pfile in pupitre_files:
-            pstart, pend, pskip = extract_data(
-                pfile, insert, pupitre_dict[site][Ikeys_ref[0]]
+        if not args.dry_run:
+            mrun = MagnetRun.fromtdms(site, insert, file)
+            mdata = mrun.getMData()
+            Ikeys_ref = [
+                key.replace(f"{group}/", "")
+                for key in mdata.getKeys()
+                if "Référence_GR" in key
+            ]
+            start, end, skip = extract_data(
+                file, site, insert, f"{group}/{Ikeys_ref[0]}"
             )
-            if pstart >= start and pend <= end:
-                dict_files["pupitre"].append(pfile)
-        for pfile in archive_files:
-            pstart, pend, pskip = extract_data(
-                pfile, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
-            )
-            if not pskip:
-                if pstart >= start and pend <= end:
-                    dict_files["archive"].append(pfile)
-        for pfile in default_files:
-            pstart, pend, pskip = extract_data(
-                pfile, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
-            )
-            if not pskip:
-                if pstart >= start and pend <= end:
-                    dict_files["default"].append(pfile)
+            # print(f"{filename}: file={file}, start={start}, end={end}", flush=True)
 
-        for pfile in trigger_files:
-            pstart, pend, pskip = extract_data(
-                pfile, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
-            )
-            if not pskip:
-                if pstart >= start and pend <= end:
-                    dict_files["trigger"].append(pfile)
-
-        for pfile in spike_files:
-            pstart, pend, pskip = extract_data(
-                pfile, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
-            )
-            if not pskip:
-                if pstart >= start and pend <= end:
-                    dict_files["spike"].append(pfile)
-
-        t0 = mdata.Groups[group][Ikeys_ref[0]]["wf_start_time"]
-
-        symbol, unit = mdata.getUnitKey(f"{group}/{channels_dict[Ikeys_ref[0]]}")
-
-        # get mode
-        # TODO make sure to screen current about a certain threshold
-        bitter_only = True
-        mode = {"name": "normal", "Intercept": 0, "Slopes": [1], "Breakpoint": None}
-        if len(Ikeys_ref) == 2:
-            GR = mdata.getData(
-                [
-                    f"{group}/Référence_GR1",
-                    f"{group}/Référence_GR2",
-                ]
-            ).copy()
-
-            GR = GR.query("`Référence_GR1` >= 300 and `Référence_GR2` >= 300")
-
-            x = GR["Référence_GR1"].to_numpy()
-            y = GR["Référence_GR2"].to_numpy()
-            for segment in [1, 2]:
-                (mfit, eqns) = pwlf_fit(
-                    "Référence_GR1", x, "Référence_GR2", y, degree=1, segment=segment
-                )
-                # TODO if error ?my_pwlf.standard_errors()? on brkpoints is big, try with 1 segment
-                I0 = eqns[0].evalf(subs={Symbol("x"): 0})
-                if abs(I0) <= 10:
-                    break
-
-            # mode: Intercept, slopes, brkpts
-            if segment == 1:
-                mode = {
-                    "name": "normal",
-                    "Intercept": eqns[0].evalf(subs={Symbol("x"): 0}),
-                    "Slopes": [float(mfit.beta[1])],
-                    "Breakpoint": None,
-                }
-            else:
-                mode = {
-                    "name": "ecomode",
-                    "Intercept": eqns[0].evalf(subs={Symbol("x"): 0}),
-                    "Slopes": [float(mfit.beta[1]), float(mfit.beta[1] + mfit.beta[2])],
-                    "Breakpoint": float(mfit.fit_breaks[1]),
-                }
-            print(f"mode:{mode}")
-            del GR
-
-        if bitter_only:
-            uprobes = ["ALL_externes", "Externe1", "Externe2"]
-            print("\n!!! Selecting only U probes for Bitter !!!\n")
-
-        print(f"dict_files[{filename}]: ", dict_files, flush=True)
-        overview_dict[filename] = {
-            "mode": mode,
-            "signature": {},
-            "sources": dict_files,
-            "data": {
-                "overview": pd.DataFrame(),
-                "pupitre": pd.DataFrame(),
-                "archive": pd.DataFrame(),
+            dict_files = {
+                "overview": [file],
+                "pupitre": [],
+                "archive": [],
                 "default": [],
                 "trigger": [],
                 "spike": [],
-            },
-            "t0": t0,
-            "BP": {},
-            "teb": {},
-            "debitbrut": {},
-            "flow_params": {},
-        }
+            }
 
-        for key in Ikeys_ref:
-            overview_dict[filename]["signature"][key] = Signature.from_mdata(
-                mdata,
-                f"{group}/{key}",
-                "t",
-                threshold_dict[key],
+            for pfile in pupitre_files:
+                pstart, pend, pskip = extract_data(
+                    pfile, site, insert, pupitre_dict[site][Ikeys_ref[0]]
+                )
+                if pstart >= start and pend <= end:
+                    dict_files["pupitre"].append(pfile)
+            for pfile in archive_files:
+                pstart, pend, pskip = extract_data(
+                    pfile, site, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
+                )
+                if not pskip:
+                    if pstart >= start and pend <= end:
+                        dict_files["archive"].append(pfile)
+            for pfile in default_files:
+                pstart, pend, pskip = extract_data(
+                    pfile, site, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
+                )
+                if not pskip:
+                    if pstart >= start and pend <= end:
+                        dict_files["default"].append(pfile)
+
+            for pfile in trigger_files:
+                pstart, pend, pskip = extract_data(
+                    pfile, site, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
+                )
+                if not pskip:
+                    if pstart >= start and pend <= end:
+                        dict_files["trigger"].append(pfile)
+
+            for pfile in spike_files:
+                pstart, pend, pskip = extract_data(
+                    pfile, site, insert, f"{group}/{channels_dict[Ikeys_ref[0]]}"
+                )
+                if not pskip:
+                    if pstart >= start and pend <= end:
+                        dict_files["spike"].append(pfile)
+
+            print(f"{file}: dict_files: {dict_files}", flush=True)
+            t0 = mdata.Groups[group][Ikeys_ref[0]]["wf_start_time"]
+
+            symbol, unit = mdata.getUnitKey(f"{group}/{channels_dict[Ikeys_ref[0]]}")
+
+            # get mode
+            # TODO make sure to screen current about a certain threshold
+            print("find mode:")
+            bitter_only = True
+            mode = {"name": "normal", "Intercept": 0, "Slopes": [1], "Breakpoint": None}
+            if len(Ikeys_ref) == 2:
+                GR = mdata.getData(
+                    [
+                        f"{group}/Référence_GR1",
+                        f"{group}/Référence_GR2",
+                    ]
+                ).copy()
+
+                GR = GR.query("`Référence_GR1` >= 300 and `Référence_GR2` >= 300")
+
+                x = GR["Référence_GR1"].to_numpy()
+                y = GR["Référence_GR2"].to_numpy()
+                for segment in [1, 2]:
+                    (mfit, eqns) = pwlf_fit(
+                        "Référence_GR1",
+                        x,
+                        "Référence_GR2",
+                        y,
+                        degree=1,
+                        segment=segment,
+                    )
+                    # TODO if error ?my_pwlf.standard_errors()? on brkpoints is big, try with 1 segment
+                    I0 = eqns[0].evalf(subs={Symbol("x"): 0})
+                    if abs(I0) <= 10:
+                        break
+
+                # mode: Intercept, slopes, brkpts
+                if segment == 1:
+                    mode = {
+                        "name": "normal",
+                        "Intercept": eqns[0].evalf(subs={Symbol("x"): 0}),
+                        "Slopes": [float(mfit.beta[1])],
+                        "Breakpoint": None,
+                    }
+                else:
+                    mode = {
+                        "name": "ecomode",
+                        "Intercept": eqns[0].evalf(subs={Symbol("x"): 0}),
+                        "Slopes": [
+                            float(mfit.beta[1]),
+                            float(mfit.beta[1] + mfit.beta[2]),
+                        ],
+                        "Breakpoint": float(mfit.fit_breaks[1]),
+                    }
+                print(f"mode:{mode}")
+                del GR
+
+            if bitter_only:
+                uprobes = ["ALL_externes", "Externe1", "Externe2"]
+                print("\n!!! Selecting only U probes for Bitter !!!\n")
+
+            print(f"dict_files[{filename}]: ", dict_files, flush=True)
+            overview_dict[filename] = {
+                "mode": mode,
+                "signature": {},
+                "sources": dict_files,
+                "data": {
+                    "overview": pd.DataFrame(),
+                    "pupitre": pd.DataFrame(),
+                    "archive": pd.DataFrame(),
+                    "default": [],
+                    "trigger": [],
+                    "spike": [],
+                },
+                "t0": t0,
+                "BP": {},
+                "teb": {},
+                "debitbrut": {},
+                "flow_params": {},
+            }
+
+            for key in Ikeys_ref:
+                overview_dict[filename]["signature"][key] = Signature.from_mdata(
+                    mdata,
+                    f"{group}/{key}",
+                    "t",
+                    threshold_dict[key],
+                )
+
+            # Load Overview data
+            Ikeys = Ikeys_ref + [channels_dict[key] for key in Ikeys_ref]
+            print("\nLoad Overview data")
+            # print(i, filename)
+            df_overview_list = load_data(
+                overview_dict[filename]["sources"]["overview"],
+                site,
+                insert,
+                group,
+                Ikeys,
             )
+            # print(f"df_overview_list: {len(df_overview_list)} files")
+            overview_dict[filename]["data"]["overview"] = df_overview_list[0]
+            # print(
+            #     f"{filename}: overview \n {overview_dict[filename]['data']['overview']}"
+            # )
 
-    # Load Overview data
-    Ikeys = Ikeys_ref + [channels_dict[key] for key in Ikeys_ref]
-    df_overview_list = load_data(
-        input_files,
-        site,
-        insert,
-        group,
-        Ikeys,
-    )
-    # print("df_overview_list:", len(df_overview_list), flush=True)
+            df_overview = overview_dict[filename]["data"][
+                "overview"
+            ]  # df_overview_list[i]
+            ot0 = df_overview["timestamp"].iloc[0]
 
-    for i, ofile in enumerate(overview_dict):
-        # print(i, ofile)
-        overview_dict[ofile]["data"]["overview"] = df_overview_list[i]
+            print("\nLoad Archive data")
+            if len(overview_dict[filename]["sources"]["archive"]) == 0:
+                raise RuntimeError(f"no archive file associated with {filename}")
 
-    # Load Archive data
-    print("\nLoad Archive data")
-    for ofile in overview_dict:
-        if len(overview_dict[ofile]["sources"]["archive"]) == 0:
-            raise RuntimeError(f"no archive file associated with {ofile}")
-
-        df_archive_list = load_data(
-            overview_dict[ofile]["sources"]["archive"],
-            site,
-            insert,
-            group,
-            Ikeys,
-        )
-
-        df_archive = merge_data(df_archive_list)
-
-        # true if at0 is roughly equal to ot0
-        at0 = df_archive.iloc[0]["timestamp"]
-        t_offset = (1 / 120.0) / 2.0
-        df_archive["t"] = df_archive.apply(
-            lambda row: (row.timestamp - at0).total_seconds() + t_offset, axis=1
-        )
-        overview_dict[ofile]["data"]["archive"] = df_archive
-
-    # Load pupitre data
-    print("\nLoad Pupitre data")
-    Ikeys_p = [pupitre_dict[site][key] for key in Ikeys_ref]
-    Flowkeys = []
-    for key in Ikeys_ref:
-        Flowkeys += [
-            pupitre_dict[site][f"{key}_Q"],
-            pupitre_dict[site][f"{key}_Rpm"],
-            pupitre_dict[site][f"{key}_Pin"],
-        ]
-
-    for ofile in overview_dict:
-        df_pupitre_list = load_data(
-            overview_dict[ofile]["sources"]["pupitre"],
-            site,
-            insert,
-            group,
-            Ikeys_p
-            + Flowkeys
-            + [
-                "BP",
-                "teb",
-                "debitbrut",
-                "Pmagnet",
-            ],
-        )
-        df_pupitre = merge_data(df_pupitre_list)
-
-        # just a few check on extra_key
-        for extra_key in ["teb", "debitbrut", "Pmagnet", "BP"]:
-            print(f"{extra_key}: {df_pupitre[extra_key].describe()}")
-            df_pupitre.plot(x="t", y=extra_key)
-            plt.grid()
-            plt.show()
-            plt.close()
-
-        # TODO: save a better approx for teb
-        overview_dict[ofile]["teb"] = df_pupitre["teb"].mean()
-        overview_dict[ofile]["BP"] = df_pupitre["BP"].mean()
-
-        from .flow_params import debitbrut
-
-        (thresholds, high_values, low_values) = debitbrut(df_pupitre, ofile)
-        overview_dict[ofile]["debitbrut"] = {
-            "thresholds": thresholds,
-            "high": high_values,
-            "low": low_values,
-        }
-
-        pt0 = df_pupitre.iloc[0]["timestamp"]
-        df_pupitre["t"] = df_pupitre.apply(
-            lambda row: (row.timestamp - pt0).total_seconds(), axis=1
-        )
-        overview_dict[ofile]["data"]["pupitre"] = df_pupitre
-
-        # IH/FlowH or IB/FlowB
-        print(f"list key df_pupitre: {list(df_pupitre.keys())}")
-        for key in Ikeys_ref:
-            print(
-                f'flow-params for {key}: Ikey={pupitre_dict[site][key]}, RpmKey={pupitre_dict[site][f"{key}_Rpm"]}'
-            )
-            # TODO: how to find Imax automatically
-            # use cjekel/piecewise_linear_fit_py??
-            from .flow_params import compute as flow_params
-
-            flow_params(
-                df_pupitre,
-                Ikey=pupitre_dict[site][key],
-                RpmKey=pupitre_dict[site][f"{key}_Rpm"],
-                QKey=pupitre_dict[site][f"{key}_Q"],
-                PinKey=pupitre_dict[site][f"{key}_Pin"],
-                PoutKey="BP",
-                name=f"{ofile}",
-                show=args.show,
-                debug=False,
-            )
-
-    # Load incidents data
-    print("\nLoad Incidents data")
-    for ofile in overview_dict:
-        at0 = overview_dict[ofile]["data"]["archive"].iloc[0]["timestamp"]
-        for type in ["default", "trigger", "spike"]:
-            print(f'{ofile}: {overview_dict[ofile]["sources"][type]}')
-            overview_dict[ofile]["data"][type] = load_data(
-                overview_dict[ofile]["sources"][type],
+            df_archive_list = load_data(
+                overview_dict[filename]["sources"]["archive"],
                 site,
                 insert,
                 group,
                 Ikeys,
             )
 
-            for i, df in enumerate(overview_dict[ofile]["data"][type]):
-                it0 = df["timestamp"].iloc[0]
-                t_offset = (1 / 4800.0) / 2.0
+            df_archive = merge_data(df_archive_list)
+
+            # true if at0 is roughly equal to ot0
+            at0 = df_archive.iloc[0]["timestamp"]
+            t_offset = (1 / 120.0) / 2.0
+            df_archive["t"] = df_archive.apply(
+                lambda row: (row.timestamp - at0).total_seconds() + t_offset, axis=1
+            )
+            overview_dict[filename]["data"]["archive"] = df_archive
+
+            # Load pupitre data
+            print("\nLoad Pupitre data")
+            Ikeys_p = [pupitre_dict[site][key] for key in Ikeys_ref]
+            Flowkeys = []
+            for key in Ikeys_ref:
+                Flowkeys += [
+                    pupitre_dict[site][f"{key}_Q"],
+                    pupitre_dict[site][f"{key}_Rpm"],
+                    pupitre_dict[site][f"{key}_Pin"],
+                ]
+
+            df_pupitre_list = load_data(
+                overview_dict[filename]["sources"]["pupitre"],
+                site,
+                insert,
+                group,
+                Ikeys_p
+                + Flowkeys
+                + [
+                    "BP",
+                    "teb",
+                    "debitbrut",
+                    "Pmagnet",
+                ],
+            )
+            df_pupitre = merge_data(df_pupitre_list)
+            print(f"{filename}: pupitre \n {df_pupitre.keys()}")
+            pt0 = df_pupitre.iloc[0]["timestamp"]
+            df_pupitre["t"] = df_pupitre.apply(
+                lambda row: (row.timestamp - pt0).total_seconds(), axis=1
+            )
+
+            # TODO: save a better approx for teb
+            overview_dict[filename]["teb"] = df_pupitre["teb"].mean()
+            overview_dict[filename]["BP"] = df_pupitre["BP"].mean()
+
+            from .flow_params import debitbrut
+
+            for nlevel in range(1, args.levels + 1):
+                (thresholds, high_values, low_values) = debitbrut(
+                    df_pupitre, filename, nlevels=nlevel
+                )
+
+            overview_dict[filename]["debitbrut"] = {
+                "thresholds": thresholds,
+                "high": high_values,
+                "low": low_values,
+            }
+
+            overview_dict[filename]["data"]["pupitre"] = df_pupitre
+            # synchronize data ad get timeshit
+            timeshift, df_pupitre = synchronize_data(
+                overview_dict[filename]["data"]["pupitre"], ot0
+            )
+
+            # just a few check on extra_key
+            for extra_key in ["teb", "debitbrut", "Pmagnet", "BP"]:
+                print(f"{extra_key}: {df_pupitre[extra_key].describe()}")
+                df_pupitre.plot(x="t", y=extra_key)
+                plt.grid()
+                plt.show()
+                plt.close()
+
+            # IH/FlowH or IB/FlowB
+            print(f"list key df_pupitre: {list(df_pupitre.keys())}")
+            for key in Ikeys_ref:
                 print(
-                    f'{type} file {overview_dict[ofile]["sources"][type][i]}: it0={it0}, at0={at0}, t0={(it0 - at0).total_seconds() + t_offset}, len={len(df)}'
+                    f'flow-params for {key}: Ikey={pupitre_dict[site][key]}, RpmKey={pupitre_dict[site][f"{key}_Rpm"]}'
                 )
-                print(df["timestamp"])
-                df["t"] = df.apply(
-                    lambda row: (row.timestamp - at0).total_seconds() + t_offset, axis=1
+                # TODO: how to find Imax automatically
+                # use cjekel/piecewise_linear_fit_py??
+                from .flow_params import compute as flow_params
+
+                flow_params(
+                    df_pupitre,
+                    Ikey=pupitre_dict[site][key],
+                    RpmKey=pupitre_dict[site][f"{key}_Rpm"],
+                    QKey=pupitre_dict[site][f"{key}_Q"],
+                    PinKey=pupitre_dict[site][f"{key}_Pin"],
+                    PoutKey="BP",
+                    name=f"{filename}",
+                    show=args.show,
+                    debug=False,
                 )
 
-    # save signature per overview file
-    print("\nProcess Overview Files (signature, lag)")
-    for i, ofile in enumerate(overview_dict):
-        # get pandas dataframe
-        df_overview = overview_dict[ofile]["data"]["overview"]  # df_overview_list[i]
-        ot0 = df_overview["timestamp"].iloc[0]
+            # Load incidents data
+            print("\nLoad Incidents data")
+            at0 = overview_dict[filename]["data"]["archive"].iloc[0]["timestamp"]
+            for type in ["default", "trigger", "spike"]:
+                print(f'{filename}: {overview_dict[filename]["sources"][type]}')
+                overview_dict[filename]["data"][type] = load_data(
+                    overview_dict[filename]["sources"][type],
+                    site,
+                    insert,
+                    group,
+                    Ikeys,
+                )
 
-        # for overview files
-        t_offset = 1 / 2.0
-        df_overview["t"] = df_overview.apply(
-            lambda row: (row.timestamp - ot0).total_seconds() + t_offset, axis=1
-        )
-        df_archive = overview_dict[ofile]["data"]["archive"]
-        df_incidents = {
-            "default": overview_dict[ofile]["data"]["default"],
-            "spike": overview_dict[ofile]["data"]["spike"],
-            "trigger": overview_dict[ofile]["data"]["trigger"],
-        }
+                for i, df in enumerate(overview_dict[filename]["data"][type]):
+                    it0 = df["timestamp"].iloc[0]
+                    t_offset = (1 / 4800.0) / 2.0
+                    print(
+                        f'{type} file {overview_dict[filename]["sources"][type][i]}: it0={it0}, at0={at0}, t0={(it0 - at0).total_seconds() + t_offset}, len={len(df)}'
+                    )
+                    print(df["timestamp"])
+                    df["t"] = df.apply(
+                        lambda row: (row.timestamp - at0).total_seconds() + t_offset,
+                        axis=1,
+                    )
 
-        # synchronize data ad get timeshit
-        timeshift, df_pupitre = synchronize_data(
-            overview_dict[ofile]["data"]["pupitre"], ot0
-        )
+            # save signature per overview file
+            print(f"\nProcess Overview Files (signature, lag): {filename} ****")
 
-        # get lag correlation
-        # lag_correlation(
-        print("\nLag correlation: pupitre/pigbrother overview")
-        print("t0 (overview):", df_overview["timestamp"].iloc[0])
-        print("t0 (pupitre):", df_pupitre["timestamp"].iloc[0])
-
-        lag_done = False
-        for key in Ikeys_ref:
-            print("**** {key} ****")
-            tables = []
-            headers = ["P", "count", "mean", "std", "min", "25%", "50%", "75%", "max"]
-            signature = overview_dict[ofile]["signature"][key]
-            t0 = overview_dict[ofile]["t0"]
-            for i, regime in enumerate(signature.regimes):
-                istart = signature.changes[i]
-                iend = df_overview.index.to_list()[-1]
-                if i < len(signature.changes) - 1:
-                    iend = signature.changes[i + 1]
-
-                if regime == "P":
-                    table = [i] + df_overview[key].iloc[
-                        istart:iend
-                    ].describe().to_list()
-                    tables.append(table)
-            print(tabulate(tables, headers=headers, tablefmt="psql"))
-            print("regimes (overview/reference):", signature.regimes)
-
-            osignature = Signature.from_df(
-                ofile,
-                t0,
-                df_overview,
-                channels_dict[key],
-                symbol,
-                unit,
-                tkey="t",
-                threshold=threshold_dict[channels_dict[key]],
-                timeshift=0,
+            # for overview files
+            t_offset = 1 / 2.0
+            df_overview["t"] = df_overview.apply(
+                lambda row: (row.timestamp - ot0).total_seconds() + t_offset, axis=1
             )
+            df_archive = overview_dict[filename]["data"]["archive"]
+            df_incidents = {
+                "default": overview_dict[filename]["data"]["default"],
+                "spike": overview_dict[filename]["data"]["spike"],
+                "trigger": overview_dict[filename]["data"]["trigger"],
+            }
 
-            print("regimes (overview/current):", osignature.regimes)
+            # get lag correlation
+            # lag_correlation(
+            print("\nLag correlation: pupitre/pigbrother overview")
+            print("t0 (overview):", df_overview["timestamp"].iloc[0])
+            print("t0 (pupitre):", df_pupitre["timestamp"].iloc[0])
 
-            psignature = Signature.from_df(
-                ofile,
-                t0,
-                df_pupitre,
-                pupitre_dict[site][key],
-                symbol,
-                unit,
-                tkey="t",
-                threshold=threshold_dict[pupitre_dict[site][key]],
-                timeshift=0,
-            )
-            print("regimes (pupitre/current):", psignature.regimes)
-            print("times (overview/current):", osignature.times)
+            lag_done = False
+            msg = "(nosync)"
+            for key in Ikeys_ref:
+                print(f"**** {key} ****", flush=True)
+                tables = []
+                headers = [
+                    "P",
+                    "count",
+                    "mean",
+                    "std",
+                    "min",
+                    "25%",
+                    "50%",
+                    "75%",
+                    "max",
+                ]
+                signature = overview_dict[filename]["signature"][key]
+                t0 = overview_dict[filename]["t0"]
+                for i, regime in enumerate(signature.regimes):
+                    istart = signature.changes[i]
+                    iend = df_overview.index.to_list()[-1]
+                    if i < len(signature.changes) - 1:
+                        iend = signature.changes[i + 1]
 
-            fig, (ax1, ax2, ax3) = plt.subplots(3, sharex=True, sharey=True)
-            legends = [pupitre_dict[site][key]]
-            df_pupitre.plot(
-                x="t", y=pupitre_dict[site][key], color="red", marker=".", ax=ax1
-            )
+                    if regime == "P":
+                        table = [i] + df_overview[key].iloc[
+                            istart:iend
+                        ].describe().to_list()
+                        tables.append(table)
+                print(tabulate(tables, headers=headers, tablefmt="psql"))
+                if args.debug:
+                    print(f"regimes (overview[{key}]):", signature.regimes)
 
-            for x in psignature.times:
-                ax1.axvline(x=x, color="red")
-            ax1.legend(labels=legends)
-            ax1.grid(True)
-
-            legends = [channels_dict[key]]
-            df_overview.plot(
-                x="t",
-                y=channels_dict[key],
-                color="blue",
-                marker="o",
-                alpha=0.2,
-                ax=ax2,
-            )
-            for x in osignature.times:
-                ax2.axvline(x=x, color="blue")
-            ax2.legend(labels=legends)
-            ax2.grid(True)
-
-            legends = [key]
-            df_overview.plot(x="t", y=key, color="green", marker="*", alpha=0.2, ax=ax3)
-            for x in signature.times:
-                ax3.axvline(x=x, color="green")
-            ax3.legend(labels=legends)
-            ax3.grid(True)
-
-            fig.suptitle(f"{filename}: Decompose {pupitre_dict[site][key]}")
-            plt.show()
-            plt.close()
-
-            """
-            # Check consistend data with plateaux
-            from .utils.plateaux import nplateaus
-
-            symbol, unit = mdata.getUnitKey(f"{group}/{key}")
-            pdata = nplateaus(
-                mdata,
-                xField=("t", "t", "s"),
-                yField=(f"{group}/{key}", symbol, unit),
-                threshold=threshold_dict[key],
-                num_points_threshold=10,
-                save=args.save,
-                show=args.show,
-                verbose=False,
-            )
-            print("pdata:", pdata)
-            for plateau in pdata:
-                print(f'plateau: {plateau["start"]} -> {plateau["end"]}')
-            for i, regime in enumerate(signature.regimes):
-                if regime == "P":
-                    end = df_overview["t"].iloc[-1]
-                    if i < len(signature.times) - 2:
-                        end = signature.times[i + 1]
-                    print(f"regime P: {signature.times[i]} -> {end}")
-            """
-            if not lag_done:
-                msg = "before 1st lag"
                 plot_data(
                     df_overview,
                     df_archive,
@@ -900,326 +898,386 @@ def main():
                     site,
                     args.tkey,
                     key,
-                    ofile,
+                    filename,
                     msg,
                     args,
                 )
 
-            # find the latest big change in signature for overview and pupitre
-            def compute_regime_score(
-                regime: str,
-                value: tuple,
-                time: tuple,
-                reference_regime: str,
-                reference_value: tuple,
-                reference_time: tuple,
-            ):
-                score = float("inf")
-                tscore = float("inf")
-                lags = (float("inf"), float("inf"))
-                if reference_regime == regime:
-                    start_diff = abs(value[0] - reference_value[0])
-                    end_diff = abs(value[1] - reference_value[1])
-                    score = start_diff + end_diff
-                    score = abs(
-                        abs(value[1] - value[0])
-                        - abs(reference_value[1] - reference_value[0])
+                # get lag from 1st U sequence
+                if args.lag:
+                    osignature = Signature.from_df(
+                        filename,
+                        t0,
+                        df_overview,
+                        channels_dict[key],
+                        symbol,
+                        unit,
+                        tkey="t",
+                        threshold=threshold_dict[channels_dict[key]],
+                        timeshift=0,
+                        show=False,
+                        debug=args.debug,
                     )
-
-                    tscore = abs(
-                        abs(time[1] - time[0])
-                        - abs(reference_time[1] - reference_time[0])
+                    psignature = Signature.from_df(
+                        filename,
+                        t0,
+                        df_pupitre,
+                        pupitre_dict[site][key],
+                        symbol,
+                        unit,
+                        tkey="t",
+                        threshold=threshold_dict[pupitre_dict[site][key]],
+                        timeshift=0,
+                        show=False,
+                        debug=args.debug,
                     )
-                    start_lag = time[0] - reference_time[0]
-                    end_lag = time[1] - reference_time[1]
-                    lags = (start_lag, end_lag)
-
-                return (score, tscore, lags)
-
-            def find_best_matching_regime(signature, reference_signature):
-                best_matches = []
-                for i, regime in enumerate(signature.regimes):
-                    best_score = float("inf")
-                    best_lags = (float("inf"), float("inf"))
-                    best_index = (0, 0)
-                    best_match = None
-
-                    if regime in ["U", "D"] and i <= len(signature.times) - 2:
-                        values = (signature.values[i], signature.values[i + 1])
-                        times = (signature.times[i], signature.times[i + 1])
-                        for j, ref_regime in enumerate(reference_signature.regimes):
-                            # get value and time range
-                            if (
-                                ref_regime in ["U", "D"]
-                                and j <= len(reference_signature.times) - 2
-                            ):
-                                ref_values = (
-                                    reference_signature.values[j],
-                                    reference_signature.values[j + 1],
-                                )
-                                ref_times = (
-                                    reference_signature.times[j],
-                                    reference_signature.times[j + 1],
-                                )
-
-                                score, tscore, lags = compute_regime_score(
-                                    regime,
-                                    values,
-                                    times,
-                                    ref_regime,
-                                    ref_values,
-                                    ref_times,
-                                )
-                                print(i, regime, j, ref_regime, score, tscore, lags)
-
-                                if score < best_score:
-                                    best_score = score
-                                    best_match = ref_regime
-                                    best_lags = lags
-                                    best_index = (i, j)
-                        best_matches.append(
-                            (regime, best_match, best_score, best_lags, best_index)
+                    if args.debug:
+                        print(
+                            f"regimes (pupitre[{pupitre_dict[site][key]}]):",
+                            psignature.regimes,
                         )
-                return best_matches
+                        print(
+                            f"times (overview[{channels_dict[key]}]):", osignature.times
+                        )
 
-            best_matches = find_best_matching_regime(osignature, psignature)
+                    # find the latest big change in signature for overview and pupitre
+                    def compute_regime_score(
+                        regime: str,
+                        value: tuple,
+                        time: tuple,
+                        reference_regime: str,
+                        reference_value: tuple,
+                        reference_time: tuple,
+                    ):
+                        score = float("inf")
+                        tscore = float("inf")
+                        lags = (float("inf"), float("inf"))
+                        if reference_regime == regime:
+                            start_diff = abs(value[0] - reference_value[0])
+                            end_diff = abs(value[1] - reference_value[1])
+                            score = start_diff + end_diff
+                            score = abs(
+                                abs(value[1] - value[0])
+                                - abs(reference_value[1] - reference_value[0])
+                            )
 
-            duration = df_pupitre.index.values[-1] - df_pupitre.index.values[0]
-            for regime, best_match, score, lags, best_index in best_matches:
-                msg = ""
-                if abs(lags[0]) / duration >= 0.2:
-                    msg = "!! unlikely !!"
+                            tscore = abs(
+                                abs(time[1] - time[0])
+                                - abs(reference_time[1] - reference_time[0])
+                            )
+                            start_lag = time[0] - reference_time[0]
+                            end_lag = time[1] - reference_time[1]
+                            lags = (start_lag, end_lag)
 
-                best_index[0]
-                print(
-                    f"Best match for regime {regime} [{best_index[0]}, t={osignature.times[best_index[0]]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}, t={psignature.times[best_index[1]]}] in pupitre (duration={duration}) {msg}"
-                )
+                        return (score, tscore, lags)
 
-            # get lag from 1st U sequence
-            if not lag_done:
-                print("1st lag")
-                df1_data = {
-                    "df": df_overview.loc[:, ["timestamp", channels_dict[key]]],
-                    "field": channels_dict[key],
-                    "range": (osignature.changes[0], osignature.changes[2] + 2),
-                }
-                df2_data = {
-                    "df": df_pupitre.loc[:, ["timestamp", pupitre_dict[site][key]]],
-                    "field": pupitre_dict[site][key],
-                    "range": (psignature.changes[0], psignature.changes[2] + 2),
-                }
+                    def find_best_matching_regime(signature, reference_signature):
+                        best_matches = []
+                        for i, regime in enumerate(signature.regimes):
+                            best_score = float("inf")
+                            best_lags = (float("inf"), float("inf"))
+                            best_index = (0, 0)
+                            best_match = None
 
-                lag = compute_lag(
-                    "timestamp",
-                    df1_data,
-                    df2_data,
-                    show=args.show,
-                    save=args.save,
-                    debug=args.debug,
-                )
-                print(f"1st lag: {lag.total_seconds()} s")
-                df_pupitre["timestamp"] = df_pupitre["timestamp"] - pd.to_timedelta(
-                    f"{lag}s"
-                )
+                            if regime in ["U", "D"] and i <= len(signature.times) - 2:
+                                values = (signature.values[i], signature.values[i + 1])
+                                times = (signature.times[i], signature.times[i + 1])
+                                for j, ref_regime in enumerate(
+                                    reference_signature.regimes
+                                ):
+                                    # get value and time range
+                                    if (
+                                        ref_regime in ["U", "D"]
+                                        and j <= len(reference_signature.times) - 2
+                                    ):
+                                        ref_values = (
+                                            reference_signature.values[j],
+                                            reference_signature.values[j + 1],
+                                        )
+                                        ref_times = (
+                                            reference_signature.times[j],
+                                            reference_signature.times[j + 1],
+                                        )
 
-                # update timestamp and t
-                pt0 = df_pupitre["timestamp"].iloc[0]
-                print("new t0 (pupitre):", pt0)
-                df_pupitre.drop(["t"], axis=1, inplace=True)
-                df_pupitre["t"] = df_pupitre.apply(
-                    lambda row: (row.timestamp - ot0).total_seconds(), axis=1
-                )
-                print(f"df_pupitre with lag:\n{df_pupitre.head()}")
+                                        score, tscore, lags = compute_regime_score(
+                                            regime,
+                                            values,
+                                            times,
+                                            ref_regime,
+                                            ref_values,
+                                            ref_times,
+                                        )
+                                        # print(i, regime, j, ref_regime, score, tscore, lags)
 
-                # update times for psignature
-                for j in range(len(psignature.times)):
-                    psignature.times[j] = psignature.times[j] - lag.total_seconds()
-                lag_done = True
+                                        if score < best_score:
+                                            best_score = score
+                                            best_match = ref_regime
+                                            best_lags = lags
+                                            best_index = (i, j)
+                                            best_matches.append(
+                                                (
+                                                    regime,
+                                                    best_match,
+                                                    best_score,
+                                                    best_lags,
+                                                    best_index,
+                                                )
+                                            )
+                        return best_matches
 
-            # find lags at U and D
-            best_matches = find_best_matching_regime(osignature, psignature)
-            for regime, best_match, score, lags, best_index in best_matches:
-                msg = ""
-                if abs(lags[0]) / duration >= 0.2:
-                    msg = "!! unlikely !!"
-                print(
-                    f"1st lag: Best match for regime {regime} [{best_index[0]}, t={osignature.times[best_index[0]]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}, t={psignature.times[best_index[1]]}] in pupitre (duration={duration}) {msg}"
-                )
+                    best_matches = find_best_matching_regime(osignature, psignature)
 
-            # plots
-            msg = f"(sync, 1st lag with pigbrother {lag.total_seconds()} s)"
+                    duration = df_pupitre.index.values[-1] - df_pupitre.index.values[0]
+                    for regime, best_match, score, lags, best_index in best_matches:
+                        rmsg = ""
+                        if abs(lags[0]) / duration >= 0.2:
+                            rmsg = "!! unlikely !!"
 
-            # plot sync data vs t or timestamp
-            plot_data(
-                df_overview,
-                df_archive,
-                df_pupitre,
-                df_incidents,
-                channels_dict,
-                pupitre_dict,
-                site,
-                args.tkey,
-                key,
-                filename,
-                msg,
-                args,
-            )
+                        """
+                        print(f"{key}  Best match for regime {regime} [{best_index[0]}, t={osignature.times[best_index[0]]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}, t={psignature.times[best_index[1]]}] in pupitre (duration={duration}) {rmsg}"
+                        )
+                        """
 
-            if args.distance:
-                # compute distance between pupitre and pigbrother
-                # print("df_pupitre:", df_pupitre)
-                xdata = df_pupitre.copy()
-                xdata.set_index("timestamp", inplace=True)
-                print("xdata:\n", xdata.head())
-                xdata_index = xdata.index.to_list()
-                xdata_resampled = xdata.resample("1s", origin=ot0).asfreq()
-                # Interpolate missing values (optional, depending on your use case)
-                xdata_resampled = xdata_resampled.interpolate(method="linear")
-                # xdata_resampled = xdata_resampled + xdata_resampled.min()
+                    if not lag_done:
+                        print(
+                            f"1st lag for {key}: between {channels_dict[key]} - {pupitre_dict[site][key]}"
+                        )
+                        df1_data = {
+                            "df": df_overview.loc[:, ["timestamp", channels_dict[key]]],
+                            "field": channels_dict[key],
+                            "range": (osignature.changes[0], osignature.changes[2] + 2),
+                        }
+                        df2_data = {
+                            "df": df_pupitre.loc[
+                                :, ["timestamp", pupitre_dict[site][key]]
+                            ],
+                            "field": pupitre_dict[site][key],
+                            "range": (psignature.changes[0], psignature.changes[2] + 2),
+                        }
 
-                print("xdata_resampled:\n", xdata_resampled.head())
-                xdata_resampled.set_index("t", inplace=True)
-                # print("after resample xdata_resampled:", xdata_resampled)
-                end_index = xdata_resampled.index.values[-1].astype(int)
-                print(
-                    f"\nDistance between pupitre {pupitre_dict[site][key]} and pigbrother {channels_dict[key]} from t=0 to t={end_index} s"
-                )
+                        lag = compute_lag(
+                            "timestamp",
+                            df1_data,
+                            df2_data,
+                            show=args.show,
+                            save=args.save,
+                            debug=args.debug,
+                        )
+                        print(f"1st lag: {lag.total_seconds()} s")
+                        df_pupitre["timestamp"] = df_pupitre[
+                            "timestamp"
+                        ] - pd.to_timedelta(f"{lag}s")
 
-                x = (
-                    xdata_resampled[pupitre_dict[site][key]]
-                    .loc[0:end_index]
-                    .to_numpy()
-                    .reshape(-1)
-                )
-                y = (
-                    df_overview[channels_dict[key]]
-                    .loc[0:end_index]
-                    .to_numpy()
-                    .reshape(-1)
-                )
+                        # update timestamp and t
+                        pt0 = df_pupitre["timestamp"].iloc[0]
+                        print("new t0 (pupitre):", pt0)
+                        df_pupitre.drop(["t"], axis=1, inplace=True)
+                        df_pupitre["t"] = df_pupitre.apply(
+                            lambda row: (row.timestamp - ot0).total_seconds(), axis=1
+                        )
+                        if args.debug:
+                            print(f"df_pupitre with lag:\n{df_pupitre.head()}")
 
-                plt.plot(x, label="pupitre", marker=".", color="g")
-                plt.plot(y, label="overview", marker="o", color="r", alpha=0.2)
-                plt.title(f"distance: {key}")
-                plt.legend()
-                plt.grid()
-                plt.show()
-                plt.close()
+                        # update times for pupitre signature
+                        for j in range(len(psignature.times)):
+                            psignature.times[j] = (
+                                psignature.times[j] - lag.total_seconds()
+                            )
+                            lag_done = True
 
-                # print('Ib:', x, type(x), x.shape)
-                scipy_stats = stats.describe(y - x)
+                        # find lags at U and D
+                        best_matches = find_best_matching_regime(osignature, psignature)
+                        for regime, best_match, score, lags, best_index in best_matches:
+                            rmsg = ""
+                            if abs(lags[0]) / duration >= 0.2:
+                                rmsg = "!! unlikely !!"
+                            """
+                            print(
+                            f"{key} 1st lag: Best match for regime {regime} [{best_index[0]}, t={osignature.times[best_index[0]]}] in overview: {best_match} with score {score} and lags {lags} [{best_index[1]}, t={psignature.times[best_index[1]]}] in pupitre (duration={duration}) {rmsg}"
+                        )
+                            """
 
-                (label, igroup) = key.split("_")
-                tables = []
-                headers = [
-                    "Euclidean",
-                    "MAE",
-                    "Pearson",
-                    "Image",
-                    "mean",
-                    "min",
-                    "max",
-                    "var",
-                ]
-                table = [
-                    calc_euclidean(x, y),
-                    calc_mape(x, y),
-                    calc_correlation(x, y),
-                    f'{filename.replace("_Overview","")}-{igroup}.png',
-                    scipy_stats.mean,
-                    scipy_stats.minmax[0],
-                    scipy_stats.minmax[1],
-                    scipy_stats.variance,
-                ]
-                tables.append(table)
-                print(tabulate(tables, headers, tablefmt="simple"), "\n")
+                    # plots
+                    msg = f"(sync, 1st lag with pigbrother {lag.total_seconds()} s)"
 
-                # Calculate DTW distance and obtain the warping paths (no need for the C library)
-                from dtaidistance import dtw
-                from scipy.stats import pearsonr
-
-                ts_x = df_overview.loc[:, ["t", channels_dict[key]]]
-                ts_x.set_index("t", inplace=True)
-                # TODO no longer working since t_offset on overview data
-                # ts_x.index = ts_x.index.astype(int)
-                print("dtw ts_x:", ts_x)
-                ts_y = xdata_resampled.loc[:, [pupitre_dict[site][key]]]
-                # drop negative index in ts_y
-                ts_y = ts_y[ts_y.index >= 0]
-                ts_y.index = ts_y.index.astype(int)
-                print("dtw ts_y:", ts_y)
-
-                ts_x = ts_x.to_numpy().reshape(-1)
-                ts_y = ts_y.to_numpy().reshape(-1)
-
-                distance, paths = dtw.warping_paths(ts_x, ts_y, use_c=False)
-                best_path = dtw.best_path(paths)
-                similarity_score = distance / len(best_path)
-
-                # Create a DataFrame to display the similarity score and correlation coefficient
-                results_df = pd.DataFrame(
-                    {"Metric": ["DTW Similarity Score"], "Value": [similarity_score]}
-                )
-
-                # Add descriptions for the results
-                results_df["Description"] = [
-                    "Lower scores indicate greater similarity between the time series."
-                ]
-                print(results_df)
-
-                plt.figure(figsize=(12, 8))
-
-                # Original Time Series Plot
-                ax1 = plt.subplot2grid((2, 2), (0, 0))
-                ax1.plot(ts_x, label=channels_dict[key], color="blue")
-                ax1.plot(
-                    ts_y, label=pupitre_dict[site][key], linestyle="--", color="orange"
-                )
-                ax1.set_title("Original Time Series")
-                ax1.legend()
-                ax1.grid(True)
-
-                # Shortest Path Plot (Cost Matrix with the path)
-                # In this example, only the path is plotted, not the entire cost matrix.
-
-                ax2 = plt.subplot2grid((2, 2), (0, 1))
-                ax2.plot(
-                    np.array(best_path)[:, 0],
-                    np.array(best_path)[:, 1],
-                    "green",
-                    marker="o",
-                    linestyle="-",
-                )
-                ax2.set_title("Shortest Path (Best Path)")
-                ax2.set_xlabel(channels_dict[key])
-                ax2.set_ylabel(pupitre_dict[site][key])
-                ax2.grid(True)
-
-                # Point-to-Point Comparison Plot
-                ax3 = plt.subplot2grid((2, 2), (1, 0), colspan=2, sharex=ax1)
-                ax3.plot(ts_x, label=channels_dict[key], color="blue", marker="o")
-                ax3.plot(
-                    ts_y,
-                    label=pupitre_dict[site][key],
-                    color="orange",
-                    marker="x",
-                    linestyle="--",
-                )
-                for a, b in best_path:
-                    ax3.plot(
-                        [a, b],
-                        [ts_x[a], ts_y[b]],
-                        color="grey",
-                        linestyle="-",
-                        linewidth=1,
-                        alpha=0.5,
+                    # plot sync data vs t or timestamp
+                    plot_data(
+                        df_overview,
+                        df_archive,
+                        df_pupitre,
+                        df_incidents,
+                        channels_dict,
+                        pupitre_dict,
+                        site,
+                        args.tkey,
+                        key,
+                        filename,
+                        msg,
+                        args,
                     )
-                ax3.set_title("Point-to-Point Comparison After DTW Alignment")
-                ax3.legend()
-                ax3.grid(True)
 
-                plt.tight_layout()
-                plt.show()
+                if args.distance:
+                    # compute distance between pupitre and pigbrother
+                    # print("df_pupitre:", df_pupitre)
+                    xdata = df_pupitre.copy()
+                    xdata.set_index("timestamp", inplace=True)
+                    print("xdata:\n", xdata.head())
+                    xdata_index = xdata.index.to_list()
+                    xdata_resampled = xdata.resample("1s", origin=ot0).asfreq()
+                    # Interpolate missing values (optional, depending on your use case)
+                    xdata_resampled = xdata_resampled.interpolate(method="linear")
+                    # xdata_resampled = xdata_resampled + xdata_resampled.min()
+
+                    print("xdata_resampled:\n", xdata_resampled.head())
+                    xdata_resampled.set_index("t", inplace=True)
+                    # print("after resample xdata_resampled:", xdata_resampled)
+                    end_index = xdata_resampled.index.values[-1].astype(int)
+                    print(
+                        f"\nDistance between pupitre {pupitre_dict[site][key]} and pigbrother {channels_dict[key]} from t=0 to t={end_index} s"
+                    )
+
+                    x = (
+                        xdata_resampled[pupitre_dict[site][key]]
+                        .loc[0:end_index]
+                        .to_numpy()
+                        .reshape(-1)
+                    )
+                    y = (
+                        df_overview[channels_dict[key]]
+                        .loc[0:end_index]
+                        .to_numpy()
+                        .reshape(-1)
+                    )
+
+                    plt.plot(x, label="pupitre", marker=".", color="g")
+                    plt.plot(y, label="overview", marker="o", color="r", alpha=0.2)
+                    plt.title(f"distance: {key}")
+                    plt.legend()
+                    plt.grid()
+                    plt.show()
+                    plt.close()
+
+                    # print('Ib:', x, type(x), x.shape)
+                    scipy_stats = stats.describe(y - x)
+
+                    (label, igroup) = key.split("_")
+                    tables = []
+                    headers = [
+                        "Euclidean",
+                        "MAE",
+                        "Pearson",
+                        "Image",
+                        "mean",
+                        "min",
+                        "max",
+                        "var",
+                    ]
+                    table = [
+                        calc_euclidean(x, y),
+                        calc_mape(x, y),
+                        calc_correlation(x, y),
+                        f'{filename.replace("_Overview","")}-{igroup}.png',
+                        scipy_stats.mean,
+                        scipy_stats.minmax[0],
+                        scipy_stats.minmax[1],
+                        scipy_stats.variance,
+                    ]
+                    tables.append(table)
+                    print(tabulate(tables, headers, tablefmt="simple"), "\n")
+
+                    # Calculate DTW distance and obtain the warping paths (no need for the C library)
+                    # see https://medium.com/@markstent/dynamic-time-warping-a8c5027defb6
+                    from dtaidistance import dtw
+                    from scipy.stats import pearsonr
+
+                    ts_x = df_overview.loc[:, ["t", channels_dict[key]]]
+                    ts_x.set_index("t", inplace=True)
+                    # TODO no longer working since t_offset on overview data
+                    # ts_x.index = ts_x.index.astype(int)
+                    print("dtw ts_x:", ts_x)
+                    ts_y = xdata_resampled.loc[:, [pupitre_dict[site][key]]]
+                    # drop negative index in ts_y
+                    ts_y = ts_y[ts_y.index >= 0]
+                    ts_y.index = ts_y.index.astype(int)
+                    print("dtw ts_y:", ts_y)
+
+                    ts_x = ts_x.to_numpy().reshape(-1)
+                    ts_y = ts_y.to_numpy().reshape(-1)
+
+                    distance, paths = dtw.warping_paths(ts_x, ts_y, use_c=False)
+                    best_path = dtw.best_path(paths)
+                    similarity_score = distance / len(best_path)
+
+                    # Create a DataFrame to display the similarity score and correlation coefficient
+                    results_df = pd.DataFrame(
+                        {
+                            "Metric": ["DTW Similarity Score"],
+                            "Value": [similarity_score],
+                        }
+                    )
+
+                    # Add descriptions for the results
+                    results_df["Description"] = [
+                        "Lower scores indicate greater similarity between the time series."
+                    ]
+                    print(results_df)
+
+                    plt.figure(figsize=(12, 8))
+
+                    # Original Time Series Plot
+                    ax1 = plt.subplot2grid((2, 2), (0, 0))
+                    ax1.plot(ts_x, label=channels_dict[key], color="blue")
+                    ax1.plot(
+                        ts_y,
+                        label=pupitre_dict[site][key],
+                        linestyle="--",
+                        color="orange",
+                    )
+                    ax1.set_title("Original Time Series")
+                    ax1.legend()
+                    ax1.grid(True)
+
+                    # Shortest Path Plot (Cost Matrix with the path)
+                    # In this example, only the path is plotted, not the entire cost matrix.
+
+                    ax2 = plt.subplot2grid((2, 2), (0, 1))
+                    ax2.plot(
+                        np.array(best_path)[:, 0],
+                        np.array(best_path)[:, 1],
+                        "green",
+                        marker="o",
+                        linestyle="-",
+                    )
+                    ax2.set_title("Shortest Path (Best Path)")
+                    ax2.set_xlabel(channels_dict[key])
+                    ax2.set_ylabel(pupitre_dict[site][key])
+                    ax2.grid(True)
+
+                    # Point-to-Point Comparison Plot
+                    ax3 = plt.subplot2grid((2, 2), (1, 0), colspan=2, sharex=ax1)
+                    ax3.plot(ts_x, label=channels_dict[key], color="blue", marker="o")
+                    ax3.plot(
+                        ts_y,
+                        label=pupitre_dict[site][key],
+                        color="orange",
+                        marker="x",
+                        linestyle="--",
+                    )
+                    for a, b in best_path:
+                        ax3.plot(
+                            [a, b],
+                            [ts_x[a], ts_y[b]],
+                            color="grey",
+                            linestyle="-",
+                            linewidth=1,
+                            alpha=0.5,
+                        )
+                    ax3.set_title("Point-to-Point Comparison After DTW Alignment")
+                    ax3.legend()
+                    ax3.grid(True)
+
+                    plt.tight_layout()
+                    plt.show()
 
 
 if __name__ == "__main__":

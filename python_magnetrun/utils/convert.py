@@ -1,10 +1,13 @@
 import datetime
 
-def convert_to_timestamp(date_str: str, time_str: str, date_format: str="%y%m%d", time_format: str="%H%M") -> tuple:
+
+def convert_to_timestamp(
+    date_str: str, time_str: str, date_format: str = "%y%m%d", time_format: str = "%H%M"
+) -> tuple:
     """_summary_
 
     ex for tdms files
-    
+
     date_format = "%y%m%d"
     time_format = "%H%M%S"
 
@@ -22,6 +25,7 @@ def convert_to_timestamp(date_str: str, time_str: str, date_format: str="%y%m%d"
     """
 
     from datetime import datetime
+
     # Format the date and time strings
 
     # Parse the date and time strings into a datetime object
@@ -31,6 +35,7 @@ def convert_to_timestamp(date_str: str, time_str: str, date_format: str="%y%m%d"
 
     # Convert the datetime object to a timestamp
     timestamp = date_time_obj.timestamp()
+    # print(f"convert_to_timestamp: timestamp={timestamp}, type={type(timestamp)}")
 
     # Format the datetime object to the desired string format
     formatted_date_time = date_time_obj.strftime("%Y-%m-%d %H:%M:%S")

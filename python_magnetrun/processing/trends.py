@@ -3,9 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from python_magnetrun.magnetdata import MagnetData
-from python_magnetrun.signature import Signature
-
-
 
 
 def piecewise_linear_approximation(
@@ -73,10 +70,8 @@ def trends_df(
     """
     from tabulate import tabulate
     from statsmodels.tsa.seasonal import seasonal_decompose
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import os
 
+    print(f"trends_df: key={key}, window={window}, threshold={threshold}", flush=True)
     if debug:
         print(f"{key}: data({df[tkey].shape})")
         print(df.head())
@@ -105,11 +100,16 @@ def trends_df(
         plt.show()
     plt.close()
 
+    # Create a mask for non-NaN values
+    valid_mask = ~np.isnan(result.trend)
+
+    # Create TimeSeries with tkey values as index
+    trend_series = pd.Series(
+        result.trend[valid_mask].values, index=df.loc[valid_mask, tkey].values
+    )
+
     # Get signature in terms of Up, Plateau, Down
-    trend_component = result.trend
-    # Drop NaN values from trend slice
-    trend_component = trend_component[~np.isnan(trend_component)]
-    signature = piecewise_linear_approximation(trend_component, threshold)
+    signature = piecewise_linear_approximation(trend_series, threshold)
 
     # get index of changes in signature
     changes = [0]
@@ -122,7 +122,7 @@ def trends_df(
                 if diff_slope >= 0.4:
                     # print(f"{i}: {diff_slope}, {df[tkey].iloc[i]} ****", flush=True)
                     changes.append(i)
-    print(f"trends_df[{key}]: changes={len(changes)}")
+    print(f"trends_df[{key}]: changes={len(changes)}", flush=True)
 
     regimes = [signature[i][0] for i in changes]
     times = [float(df[tkey].iloc[i]) for i in changes]
@@ -133,16 +133,7 @@ def trends_df(
         print(f"{tkey}: {times}")
         print(f"{key}: {values}")
 
-    # TODO for result.trend, result.seasonal and result.resid
-    # make sure that trend and df share the same index tkey
-    nindex = trend_component.index.values.astype(int)
-    new_index = [float(df[tkey].iloc[i]) for i in nindex]
-    # print("new_index: ", new_index, flush=True)
-    trend_values = trend_component.to_numpy()
-    ntrend_component = pd.Series(data=trend_values, index=new_index)
-    trend_component = ntrend_component.copy()
-
-    return (changes, regimes, times, values, trend_component)
+    return (changes, regimes, times, values, trend_series)
 
 
 def trends(
@@ -160,10 +151,7 @@ def trends(
 
     NB: does not work properly if dt is not constant
     """
-    from tabulate import tabulate
-    from statsmodels.tsa.seasonal import seasonal_decompose
     import matplotlib.pyplot as plt
-    import numpy as np
     import os
 
     df = pd.DataFrame()
@@ -174,10 +162,10 @@ def trends(
     match mdata.Data:
         case pd.DataFrame():
             df = mdata.getData([tkey, key])
-            t0 = mdata.Data.iloc[0]["timestamp"]
+            # t0 = mdata.Data.iloc[0]["timestamp"]
         case dict():
             (group, channel) = key.split("/")
-            t0 = mdata.Groups[group][channel]["wf_start_time"]
+            # t0 = mdata.Groups[group][channel]["wf_start_time"]
 
             df = mdata.getData(key).copy()
             dt = mdata.Groups[group][channel]["wf_increment"]

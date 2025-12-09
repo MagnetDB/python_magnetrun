@@ -250,7 +250,7 @@ class MagnetData:
         # print(
         #     f"getTdmsData: group={group}, channel={channel} ({type(channel)})",
         #     end="",
-        #     flush=True,
+        #     flush=True,
         # )
 
         if not isinstance(self.Data, dict):
@@ -939,10 +939,10 @@ class MagnetData:
                 # check interval in t column
                 times = self.Data["t"].to_numpy()
                 dt = np.diff(times)
-                if dt.min() != dt.max():
-                    print(
-                        f"!!! {self.FileName}: dt from {dt.min()} to {dt.max()} !!!"
-                    )  # stats={stats.describe(dt)}"
+                # if dt.min() != dt.max():
+                #     print(
+                #        f"!!! {self.FileName}: dt from {dt.min()} to {dt.max()} !!!"
+                #     )  # stats={stats.describe(dt)}"
 
                 # print("magnetdata.AddTime: add t and timestamp")
                 # remove Date and Time ??

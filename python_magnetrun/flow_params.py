@@ -169,11 +169,11 @@ def compute(
         f"flow_params.compute: Ikey={Ikey}, RpmKey={RpmKey},  Qkey={QKey}, PinKey={PinKey}, PoutKey={PoutKey}"
     )
     cwd = os.getcwd()
-    print(f"cwd={cwd}")
-    print(df.head())
+    # print(f"cwd={cwd}")
+    # print(df.head())
 
     _df = df.query(f"{Ikey} >= 300")
-    print(_df.head())
+    # print(_df.head())
 
     flow_params = setup()
     Imax = flow_params["Imax"]["value"]  # TODO find Imax value
@@ -183,23 +183,31 @@ def compute(
 
     x = _df[Ikey].to_numpy()
     y = _df[RpmKey].to_numpy()
-    my_pwlf, eqns = pwlf_fit(Ikey, x, RpmKey, y, 2, 2, show=True)
+    for segment in [1, 2]:
+        my_pwlf, eqns = pwlf_fit(
+            Ikey, x, RpmKey, y, degree=2, segment=segment, show=True
+        )
+        # TODO if error ?my_pwlf.standard_errors()? on brkpoints is big, try with 1 segment
+        final_y = eqns[0].evalf(subs={Symbol("x"): x[-1]})
+        if abs(final_y - y[-1]) <= 10:
+            break
 
     # compute Imax, Vp0, Vpmax
     print(f"{RpmKey}({Ikey}): {my_pwlf.n_segments}")
     if my_pwlf.n_segments == 2:
         print(f"new_Imax: {Imax} ->{my_pwlf.fit_breaks[1]}")
         Imax = my_pwlf.fit_breaks[1]
-        print(
-            f'new Vp0={flow_params["Vp0"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): 0})}'
-        )
-        print(
-            f'new Vpmax={flow_params["Vpmax"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): Imax})}'
-        )
-        params = [
-            float(eqns[0].evalf(subs={Symbol("x"): Imax})),
-            float(eqns[0].evalf(subs={Symbol("x"): 0})),
-        ]
+
+    print(
+        f'new Vp0={flow_params["Vp0"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): 0})}'
+    )
+    print(
+        f'new Vpmax={flow_params["Vpmax"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): Imax})}'
+    )
+    params = [
+        float(eqns[0].evalf(subs={Symbol("x"): Imax})),
+        float(eqns[0].evalf(subs={Symbol("x"): 0})),
+    ]
 
     flow_params["Imax"]["value"] = Imax
     flow_params["Vp0"]["value"] = params[1]
@@ -212,30 +220,22 @@ def compute(
     def flow_func(x, a: float, b: float):
         return a + b * vpump_func(x, vpmax, vp0) / (vpmax + vp0)
 
-    x = _df[Ikey].to_numpy()
-    y = _df[QKey].to_numpy()
-    my_pwlf, eqns = pwlf_fit(Ikey, x, QKey, y, 2, 2, guess=[Imax], show=True)
+    params, params_covariance = fit(
+        Ikey,
+        QKey,
+        "Flow",
+        Imax,
+        flow_func,
+        _df,
+        cwd,
+        name,
+        show,
+        debug,
+    )
 
-    # compute Imax, Vp0, Vpmax
-    print(f"{QKey}({Ikey}): {my_pwlf.n_segments}")
-    if my_pwlf.n_segments == 2:
-        print(f"new_Imax: {Imax} ->{my_pwlf.fit_breaks[1]}")
-        # Imax = my_pwlf.fit_breaks[1]
-        print(
-            f'new F0={flow_params["F0"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): 0})}'
-        )
-        print(
-            f'new Fmax={flow_params["Fmax"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): Imax})}'
-        )
-        params = [
-            float(eqns[0].evalf(subs={Symbol("x"): Imax})),
-            float(eqns[0].evalf(subs={Symbol("x"): 0})),
-        ]
-        print(params[0], type(params[0]))
-
-    flow_params["Imax"]["value"] = Imax
-    flow_params["Fmax"]["value"] = params[0]
-    flow_params["F0"]["value"] = params[1]
+    print(f"{QKey}: params={params}")
+    flow_params["F0"]["value"] = params[0]
+    flow_params["Fmax"]["value"] = params[1]
     params = []
 
     # Fit for Pressure
@@ -255,7 +255,7 @@ def compute(
         debug,
     )
 
-    print(f"Pin: params={params}")
+    print(f"{PinKey}: params={params}")
     flow_params["Pmin"]["value"] = params[0]
     flow_params["Pmax"]["value"] = params[1]
     params = []
@@ -283,7 +283,9 @@ def compute(
         f.write(json.dumps(flow_params, indent=4))
 
 
-def debitbrut(df: pd.DataFrame, ofile: str):
+def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
+    print(f"debitbrut: ofile={ofile}, nlevels={nlevels}")
+
     # DebitBrut
     qt0 = df.index.values[0]
 
@@ -317,11 +319,9 @@ def debitbrut(df: pd.DataFrame, ofile: str):
     # (changes, regimes, times, values, trend_component) = trends_df(df_pupitre, "t", "debitbrut", args.window, threshold_dict["debitbrut"], overview_dict[ofile]["sources"]["pupitre"], show=True)
 
     from .processing.hysteresis import (
-        hysteresis_model,
         multi_level_hysteresis,
         remove_low_x_outliers,
         estimate_hysteresis_parameters,
-        refine_thresholds_with_hysteresis_loop,
     )
 
     # Automatically detect bottom 25% of x, remove outliers there
@@ -339,7 +339,7 @@ def debitbrut(df: pd.DataFrame, ofile: str):
     # how to estimate levels ? from max pmagnet? from debitbrut?
     print("estimate_hysteresis_parameters:")
     result = estimate_hysteresis_parameters(
-        xdf, x_col="Pmagnet", y_col="debitbrut", n_levels=4, verbose=True
+        xdf, x_col="Pmagnet", y_col="debitbrut", n_levels=nlevels, verbose=True
     )
 
     # Extract the parameters for multi_level_hysteresis()
@@ -353,6 +353,14 @@ def debitbrut(df: pd.DataFrame, ofile: str):
     x = xdf["Pmagnet"].to_numpy()
     y = xdf["debitbrut"].to_numpy()
     y_model = multi_level_hysteresis(x, thresholds, low_values, high_values)
+
+    # compute error
+    residuals = y - y_model
+    mae = np.mean(np.abs(residuals))
+    mse = np.mean(residuals**2)
+    rmse = np.sqrt(mse)
+    mape = np.mean(np.abs((y - y_model) / y))
+    print(f"debitbrut: mae={mae}, mse = {mse}, rmse={rmse}, mape={mape}", flush=True)
 
     # overview_dict[ofile]["sources"]["pupitre"]
     symbol = "Q_brut"

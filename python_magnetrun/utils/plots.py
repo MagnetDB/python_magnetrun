@@ -117,7 +117,7 @@ def plot_df(
 
     plt.ylabel(key2)
     plt.xlabel(key1)
-    plt.title(f"{name}: {key1} vs {key2}")
+    plt.title(f"{name}: {key2}({key1})")
 
     if not show:
         filename = f"{name}-{key1}_vs_{key2}.png"

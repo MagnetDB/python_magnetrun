@@ -123,6 +123,8 @@ class Signature:
         tkey: str,
         threshold: float,
         timeshift: float = 0,
+        show: bool = False,
+        debug: bool = False,
     ) -> "Signature":
         """
         Create a Signature instance from a magnetdata.
@@ -148,9 +150,9 @@ class Signature:
             window=1,
             threshold=threshold,
             filename=filename,
-            show=False,
+            show=show,
             save=False,
-            debug=False,
+            debug=debug,
         )
 
         return cls(
