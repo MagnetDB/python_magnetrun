@@ -679,7 +679,7 @@ if __name__ == "__main__":
                                     selected_df.plot("t", f"{key}_smoothed", ax=ax)
                                     plt.show()
                                     plt.close()
-                                    selected_df = selected_df.drop(f"{key}_smoothed", axis=1) 
+                                    selected_df = selected_df.drop(f"{key}_smoothed", axis=1)
 
                                 selected_df[key] = y_smoothed
 
@@ -732,7 +732,7 @@ if __name__ == "__main__":
         from .processing import stats
 
         if args.plateau:
-            from .utils.plateaux import nplateaus
+            from .processing.plateaux import nplateaus
 
         print("Stats:", flush=True)
 
