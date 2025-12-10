@@ -251,3 +251,28 @@ class Signature:
         with open(f"{filename}.json", "w") as file:
             # print('signature.dump:', self.to_dict())
             json.dump(self.to_dict(), file, indent=4)
+
+    def save(self, filename):
+        """Save signature to file in JSON format"""
+        import json
+        import os
+
+        sfilename = f"{filename}_signature.json"
+        with open(filename, "w") as file:
+
+            # Column names as strings
+            column_names = ["time", self.name]
+
+            # Method 1: Create DataFrame using a dictionary
+            df = pd.DataFrame(
+                {column_names[0]: self.times, column_names[1]: self.values}
+            )
+            csv_filename = f"{filename}-{self.name}.csv"
+            df.to_csv(csv_filename, index=False)
+
+            data = self.to_dict()
+            data["csv_file"] = csv_filename
+            del data["times"]
+            del data["values"]
+            json.dump(data, file, indent=4)
+        print(f"Signature saved to {os.path.abspath(sfilename)}")
