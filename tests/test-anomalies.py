@@ -6,145 +6,7 @@ from python_magnetrun.MagnetRun import MagnetRun
 import matplotlib.pyplot as plt
 
 
-def remove_low_x_outliers(
-    df,
-    x_col="x",
-    y_col="y",
-    x_percentile=25,
-    method="iqr",
-    threshold=1.5,
-    verbose=False,
-):
-    """
-    Detect and remove outliers specifically in the LOW x region.
-
-    Parameters:
-    -----------
-    df : pandas DataFrame
-        Data
-    x_col : str
-        Name of x column
-    y_col : str
-        Name of y column
-    x_percentile : float
-        Consider x values below this percentile as "low" (default 25 = bottom quartile)
-    method : str
-        'iqr' - Interquartile range on y values in low-x region
-        'zscore' - Z-score on y values in low-x region
-        'both_dims' - IQR on both x and y in low-x region
-    threshold : float
-        IQR multiplier or z-score threshold
-    verbose : bool
-        Print diagnostic info
-
-    Returns:
-    --------
-    DataFrame with low-x outliers removed
-    """
-    import numpy as np
-
-    df_clean = df.copy()
-    x = df_clean[x_col].values
-    y = df_clean[y_col].values
-
-    # Find the threshold x value for "low x" region
-    x_cutoff = np.percentile(x, x_percentile)
-
-    # Identify points in low-x region
-    low_x_mask = x <= x_cutoff
-    n_low_x = np.sum(low_x_mask)
-
-    if verbose:
-        print(
-            f"Low-x region: x <= {x_cutoff:.4f} ({n_low_x} points, {100*n_low_x/len(df):.1f}%)"
-        )
-
-    # Start with all points as inliers
-    inlier_mask = np.ones(len(df_clean), dtype=bool)
-
-    if method == "iqr":
-        # Apply IQR only to y values in low-x region
-        if n_low_x > 0:
-            y_low = y[low_x_mask]
-            Q1 = np.percentile(y_low, 25)
-            Q3 = np.percentile(y_low, 75)
-            IQR = Q3 - Q1
-            lower_bound = Q1 - threshold * IQR
-            upper_bound = Q3 + threshold * IQR
-
-            # Mark outliers in low-x region
-            low_x_outliers = low_x_mask & ((y < lower_bound) | (y > upper_bound))
-            inlier_mask = ~low_x_outliers
-
-            if verbose:
-                n_removed = np.sum(low_x_outliers)
-                print(
-                    f"  IQR on low-x y values: y in [{lower_bound:.4f}, {upper_bound:.4f}]"
-                )
-                print(f"  Removed {n_removed} outliers from low-x region")
-
-    elif method == "zscore":
-        # Apply z-score only to y values in low-x region
-        if n_low_x > 0:
-            y_low = y[low_x_mask]
-            mean_y = np.mean(y_low)
-            std_y = np.std(y_low)
-            if std_y > 0:
-                z_scores = np.abs((y[low_x_mask] - mean_y) / std_y)
-                low_x_outliers_bool = z_scores > threshold
-
-                # Convert boolean mask back to full-length mask
-                low_x_outliers = np.zeros(len(df_clean), dtype=bool)
-                low_x_indices = np.where(low_x_mask)[0]
-                low_x_outliers[low_x_indices[low_x_outliers_bool]] = True
-
-                inlier_mask = ~low_x_outliers
-
-                if verbose:
-                    n_removed = np.sum(low_x_outliers)
-                    print(f"  Z-score on low-x y values (threshold={threshold})")
-                    print(f"  Removed {n_removed} outliers from low-x region")
-
-    elif method == "both_dims":
-        # Apply IQR to both x and y in low-x region
-        if n_low_x > 0:
-            x_low = x[low_x_mask]
-            y_low = y[low_x_mask]
-
-            # IQR on x values in low-x region
-            Q1_x = np.percentile(x_low, 25)
-            Q3_x = np.percentile(x_low, 75)
-            IQR_x = Q3_x - Q1_x
-            x_lower = Q1_x - threshold * IQR_x
-            x_upper = Q3_x + threshold * IQR_x
-
-            # IQR on y values in low-x region
-            Q1_y = np.percentile(y_low, 25)
-            Q3_y = np.percentile(y_low, 75)
-            IQR_y = Q3_y - Q1_y
-            y_lower = Q1_y - threshold * IQR_y
-            y_upper = Q3_y + threshold * IQR_y
-
-            # Mark outliers
-            low_x_outliers = low_x_mask & (
-                (x < x_lower) | (x > x_upper) | (y < y_lower) | (y > y_upper)
-            )
-            inlier_mask = ~low_x_outliers
-
-            if verbose:
-                n_removed = np.sum(low_x_outliers)
-                print("  IQR on low-x region (both dims):")
-                print(f"    x in [{x_lower:.4f}, {x_upper:.4f}]")
-                print(f"    y in [{y_lower:.4f}, {y_upper:.4f}]")
-                print(f"  Removed {n_removed} outliers from low-x region")
-
-    else:
-        raise ValueError(f"Unknown method: {method}")
-
-    return df_clean[inlier_mask].reset_index(drop=True)
-
-
-def zscore(df, key, debug: bool = False):
+def zscore(df, key: str, debug: bool = False):
     from scipy import stats
     import numpy as np
 
@@ -366,6 +228,8 @@ for group in args.group:
             ax=axs[i],
             label="raw",
         )
+
+        from python_magnetrun.processing.hysteresis import remove_low_x_outliers
 
         df_clean = remove_low_x_outliers(
             df,
