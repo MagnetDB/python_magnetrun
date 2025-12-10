@@ -6,7 +6,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 from ..magnetdata import MagnetData
-from .sequence import list_duplicates_of, list_sequence
+from ..utils.sequence import list_duplicates_of, list_sequence
 
 from datetime import timedelta
 from tabulate import tabulate
