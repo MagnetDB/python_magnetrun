@@ -1,6 +1,5 @@
 """MagnetData"""
 
-from logging import raiseExceptions
 from natsort import natsorted
 from datetime import datetime
 
@@ -9,8 +8,6 @@ import sys
 
 import pandas as pd
 import numpy as np
-from pint._typing import F
-from scipy import stats
 
 
 class MagnetData:
@@ -108,6 +105,10 @@ class MagnetData:
                 else:
                     Groups[gname]["Infos"] = group
             # print(f"keys: {Keys}")
+
+        #
+        print(f"Data groups: {list(Data.keys())}", flush=True)
+        print(f"Data: { {k: v.shape for k, v in Data.items()} }", flush=True)
 
         # Add reference for GR1, GR2
         if "Référence_A1" in Data["Courants_Alimentations"]:
@@ -260,7 +261,7 @@ class MagnetData:
 
         result = None
         if channel is None:
-            resukt = self.Data[group]
+            result = self.Data[group]
         else:
             # print(f"getTdms: group={group}, channel={channel}")
             if isinstance(channel, list):
@@ -1170,7 +1171,7 @@ class MagnetData:
                         )
                         del df
                     else:
-                        df.plot(x=xchannel, y=ychannel, ax=ax, grid=True)
+                        df.plot(x=xchannel, y=ychannel, alpha=alpha, ax=ax, grid=True)
                 else:
                     raise RuntimeError(
                         f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: xgroup={xgroup} != {ygroup}"
