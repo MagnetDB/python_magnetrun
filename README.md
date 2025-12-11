@@ -194,7 +194,7 @@ python -m tests.test-signature srvdata/M10_2025.01.27---15:39:29.txt --window=10
 For overview pigbrother files:
 
 ```bash
-python -m python_magnetrun.analysis  pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250211-*.tdms --key Référence_GR1 --show --synchronize 
+python -m python_magnetrun.analysis  pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250211-*.tdms --key Référence_GR1 --show --synchronize
 ```
 
 see also:
@@ -209,6 +209,15 @@ Example is functional, but the results are good. The method does not work correc
 
 ```bash
 python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms  stats --show --keys Courants_Alimentations/Référence_GR1 --detect_bkpts --sav
+```
+
+Display defauts detected with several methods (Z-score, IQR, rolling mean std):
+
+```bash
+python tests/test-anomalies.py \
+   pigbrotherdata/Fichiers_Data/M9/Fichiers_Spike/M9_Spikes_251207-115319.tdms \
+   --group Courants_Alimentations \
+   [--window 80] [--dry_run]
 ```
 
 - check field factor (not working properly since Ih and Ib are "piecewise" dependant)
