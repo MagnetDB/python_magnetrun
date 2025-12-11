@@ -45,8 +45,11 @@ To quit the virtual env, run `deactivate`.
 You can:
 
 * Get data from `Pupitre`using `python_magnetrun.requests.cli` as described in the next section.
-* Or, mount `Pupitre`data directory ??
+* Or, mount `Pupitre`, using for instance:
 
+```bash
+sshfs -o uid=uid,gid=gid -o IdentityFile=/home/LNCMI-G/$USER/.ssh/id_ecdsa $SRVDATA_SERVER:$SRVDATA_DIR ~/LNCMIG-Data/
+```
 ## `PigBrother`
 
 To mount `pigbrother` data, you have to:
@@ -64,10 +67,8 @@ sudo mount -v -t cifs //pigbrother_server_ip/d $pwd/pigbrotherdata -o user=pbsur
 sudo mount -v -t cifs //pigbrother_server_ip/df $pwd/pigbrothercolddata -o user=pbsurv,password=passwd
 ```
 
-[NOTE]
-====
-Adapt the script with the proper variables
-====
+> [!NOTE]
+> Adapt the script with the proper variables
 
 # Features
 
@@ -80,18 +81,20 @@ Adapt the script with the proper variables
 
 # Examples
 
-- To retrieve `pupitre` data from control/monitoring system
-
-```bash
-python3 -m  python_magnetrun.requests.cli --user email --datadir datadir [--save]
-```
+## Basic usage
 
 - To list fields recorded during an experiment:
 
 ```bash
 python3 -m python_magnetrun.python_magnetrun srvdata/M9_2019.02.14---23\:00\:38.txt info --list
 ```
+- List records that last at least 60 s and with a magnetic filed above 18:
 
+```bash
+python -m python_magnetrun.examples.get-record srvdata/M8*.txt select --duration 60 --field 18.
+```
+
+#### Plotting
 
 - To view the magnetic field during an experiment:
 
@@ -103,13 +106,33 @@ python3 -m python_magnetrun.python_magnetrun srvdata/M9_2019.02.14---23\:00\:38.
 - To view the current in group1 from pigbrother and pupitre files:
 
 ```bash
-python -m python_magnetrun.python_magnetrun srvdata/M10_2025.01.27---*.txt pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms plot --key_vs_key timestamp-IH --key_vs_key timestamp-Courants_Alimentations/Référence_GR1
+python -m python_magnetrun.python_magnetrun \
+   srvdata/M10_2025.01.27---*.txt \
+   pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms \
+   plot --key_vs_key timestamp-IH --key_vs_key timestamp-Courants_Alimentations/Référence_GR1
+```
+- View Teb vs timestamp for all M8 records (may crash due to high memory usage):
+
+```bash
+python -m python_magnetrun.examples.get-record srvdata/M8*.txt plot --xfield timestamp --fields teb --show
 ```
 
-[NOTE]
-====
-How to account for the lag between pigbrother and pupitre horloges?
-====
+- Plot `pigbrother` and `pupitre` current for Helices insert:
+
+```bash
+python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms ~/M9_2024.05.09---16_34_03.txt \
+    plot --vs_time Courants_Alimentations/Courant_GR1 --vs_time IH
+```
+
+## Getting data (obsolete)
+
+- To retrieve `pupitre` data from control/monitoring system
+
+```bash
+python3 -m  python_magnetrun.requests.cli --user email --datadir datadir [--save]
+```
+
+
 
 <!--
 - To model transient:
@@ -121,17 +144,8 @@ How to account for the lag between pigbrother and pupitre horloges?
 ```python3 heatexchanger_primary.py M9_2019.02.14-23_00_38.txt --ohtc=2103.09 --dT=4.93827 [find]```
  -->
 
-- List records that last at least 60 s and with a magnetic filed above 18:
 
-```bash
-python -m python_magnetrun.examples.get-record srvdata/M8*.txt select --duration 60 --field 18.
-```
-
-- View Teb vs timestamp for all M8 records (may crash due to high memory usage):
-
-```bash
-python -m python_magnetrun.examples.get-record srvdata/M8*.txt plot --xfield timestamp --fields teb --show
-```
+## stats
 
 - Aggregata Teb data
 
@@ -152,13 +166,7 @@ python -m python_magnetrun.python_magnetrun  srvdata/M8*.txt  stats
 python -m python_magnetrun.python_magnetrun  srvdata/M8*.txt  stats --plateau
 ```
 
-
-- Plot `pigbrother` and `pupitre` current for Helices insert:
-
-```bash
-python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms ~/M9_2024.05.09---16_34_03.txt \
-    plot --vs_time Courants_Alimentations/Courant_GR1 --vs_time IH
-```
+## Extra data
 
 - Compute and plot Power dissipated in Helices
 
@@ -179,6 +187,8 @@ python -m python_magnetrun.python_magnetrun pigbrotherdata/Fichiers_Data/M10/Ove
     --plot
 ```
 TODO: change symbol and unit for Busbar_A2
+
+## Detect
 
 - Detect Breaking points and Compute Signature (UPD) of record
 
@@ -217,8 +227,34 @@ Display defauts detected with several methods (Z-score, IQR, rolling mean std):
 python tests/test-anomalies.py \
    pigbrotherdata/Fichiers_Data/M9/Fichiers_Spike/M9_Spikes_251207-115319.tdms \
    --group Courants_Alimentations \
-   [--window 80] [--dry_run]
+   [--dry_run]
 ```
+
+>[!NOTE]
+> - interactive CLI
+>
+>```bash
+>python script.pytests/test-anomalies.py data.tdms --methods dbscan mad \
+>    --method-params dbscan.eps=0.3 mad.threshold=4.0
+>```
+
+>- with a json string for API/scripting
+>```bash
+>python tests/test-anomalies.py data.tdms --methods dbscan mad \
+>    --method-params-json '{"dbscan": {"eps": 0.3}, "mad": {"threshold": 4.0}}'
+>```
+
+>- with a config file
+>```bash
+>python tests/test-anomalies.py data.tdms --config params.json
+>```
+
+>- combined: config as base, override specific params via CLI
+>```bash
+>python tests/test-anomalies.py data.tdms --config params.yaml \
+>    --method-params dbscan.eps=0.1
+>```
+
 
 - check field factor (not working properly since Ih and Ib are "piecewise" dependant)
 
