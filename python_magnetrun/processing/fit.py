@@ -5,8 +5,8 @@ import pandas as pd
 from scipy import optimize
 from math import floor
 
-from .plots import plot_df
-from .files import concat_files
+from ..utils.plots import plot_df
+from ..utils.files import concat_files
 
 
 def fit(

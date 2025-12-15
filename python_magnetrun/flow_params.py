@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from tabulate import tabulate
 from sympy import Symbol
 
-from .utils.fit import fit, find_eqn
+from .processing.fit import fit, find_eqn
 from .utils.plots import plot_df
 from typing import List
 
