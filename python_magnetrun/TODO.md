@@ -68,17 +68,37 @@ if "Icoil16" in keys:
 - use probes for magnets objects in msite object (see magnetgeo) instead
 
 # Analysis-refactor
+- performance:
+  - [] avoid loading data several times
+  - [] best strategies for reducing memory (cache?) and speedup
+  - [] measure memory footprint
 
-- save signature for reference per overview data
-  - save timerange when several pupitre attached to overview
-  - save signatures.times and signatures.values as a csv file with column names ['time', key]
-- save an approx of teb  as a csv file with column names ['time', key]
-- compute best hysteresis model for debitbrut data with increasing levels (up to 4)
-  - save hysteris model
-- water_flows params per pupitre file
-- add water_flow and hysteresis model to signature per pupitre?
-- analyse DTW between pupitre and overview data
+- plotting:
+  - [] downsampling for plot
+  - [x] simple downsampling percent
+  - [] more downsampling sophisticated method (see email)
+    
+- improvements
+  - [x] get t_offset from tdms
+
+- signature
+  - [] save signature for reference per overview data
+  - [] save timerange when several pupitre attached to overview
+  - [] save signatures.times and signatures.values as a csv file with column names ['time', key]
+  - [] save an approx of teb  as a csv file with column names ['time', key]
+  
+- water flow params
+  - [x] compute best hysteresis model for debitbrut data with increasing levels (up to 4)
+  - [] save besthysteris model
+  - [] water_flows params per pupitre file
+  - [] add water_flow and hysteresis model to signature per pupitre?
+
+- lag and DTW
+  - [] analyse DTW between pupitre and overview data
   - what conclusions?
-- display defauts and spikes on overview plots
-  - search for the actual defauts - see log from pigbrother
-  - perform automatic detection of spikes and defauts
+
+- defauts/spikes
+  - [x] display defauts and spikes on overview plots
+  - [] search for the actual defauts/spikes details - see log from pigbrother (see logtdms)
+  - [] see test-anomalies.py to display defauts/spikes - from details
+  - [] try to perform automatic detection of defauts/spikes
