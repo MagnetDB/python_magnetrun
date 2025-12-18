@@ -3,10 +3,8 @@ import pandas as pd
 
 
 from scipy import optimize
-from math import floor
 
 from ..utils.plots import plot_df
-from ..utils.files import concat_files
 
 
 def fit(

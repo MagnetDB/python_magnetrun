@@ -1012,6 +1012,54 @@ def compute_distance(
     plt.close()
 
 
+def expand_input_files(input_patterns: list, datadir: dict) -> list:
+    """
+    Expand glob patterns in input file arguments.
+
+    Args:
+        input_patterns: List of file patterns to expand
+        datadir: Dictionary mapping file extensions to their base directories
+
+    Returns:
+        List of expanded file paths
+    """
+
+    print(f"Expanding input files ({input_patterns})...", flush=True)
+    expanded_files = []
+    for pattern in input_patterns:
+        extension = os.path.splitext(pattern)[-1]
+        print(f"pattern: {pattern}, extension: {extension}", flush=True)
+        # Check if pattern contains a directory component
+        if os.path.dirname(pattern):
+            # Pattern has a directory, use it as is
+            search_pattern = pattern
+        else:
+            # No directory in pattern, prepend appropriate datadir based on extension
+            base_datadir = datadir[extension]
+            if extension == ".tdms":
+                (site, mode, timestamp) = pattern.split("_")
+                print(
+                    f"pattern: site={site}, mode={mode}, timestamp={timestamp}",
+                    flush=True,
+                )
+                search_pattern = os.path.join(base_datadir, site, mode, pattern)
+            else:
+                search_pattern = os.path.join(base_datadir, pattern)
+        print(search_pattern, flush=True)
+
+        matches = glob.glob(search_pattern)
+        if matches:
+            print(f"matches: {matches}", flush=True)
+            expanded_files.extend(matches)
+        else:
+            # If no matches, keep the original pattern (might be a literal filename)
+            print(f"No matches found for pattern: {pattern}", flush=True)
+            expanded_files.append(pattern)
+
+    print(f"expanded_files: {expanded_files}", flush=True)
+    return expanded_files
+
+
 def main():
     args = parse_arguments()
     print(args.input_file)
@@ -1025,33 +1073,14 @@ def main():
         threshold_dict,
     ) = setup()
 
-    # Expand glob patterns in input_file arguments
-    print(f"Expanding input files ({args.input_file})...", flush=True)
-    expanded_files = []
-    for pattern in args.input_file:
-        print(pattern, flush=True)
-        # Check if pattern contains a directory component
-        if os.path.dirname(pattern):
-            # Pattern has a directory, use it as is
-            search_pattern = pattern
-        else:
-            # No directory in pattern, prepend pigbrother_datadir
-            (site, mode, timestamp) = pattern.split("_")
-            print(
-                f"pattern: site={site}, mode={mode}, timestamp={timestamp}", flush=True
-            )
-            search_pattern = os.path.join(args.pigbrother_datadir, pattern)
-        print(search_pattern, flush=True)
+    # Create datadir dictionary mapping extensions to data directories
+    datadir = {
+        ".tdms": args.pigbrother_datadir,
+        ".txt": args.pupitre_datadir,
+    }
 
-        matches = glob.glob(search_pattern)
-        if matches:
-            print(f"matches: {matches}", flush=True)
-            expanded_files.extend(matches)
-        else:
-            # If no matches, keep the original pattern (might be a literal filename)
-            print(f"No matches found for pattern: {pattern}", flush=True)
-            expanded_files.append(pattern)
-    print(f"expanded_files: {expanded_files}", flush=True)
+    # Expand glob patterns in input_file arguments
+    expanded_files = expand_input_files(args.input_file, datadir)
 
     input_files = natsorted(expanded_files)
     print(f"input_files: {input_files}", flush=True)

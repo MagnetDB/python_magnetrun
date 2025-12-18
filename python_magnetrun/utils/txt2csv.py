@@ -13,11 +13,63 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as colors
 
-from .files import concat_files
 from .plots import plot_vs_time
 from .plots import plot_key_vs_key
 
 from ..cooling import water
+
+
+def concat_files(
+    input_files: list, keys: list = [], debug: bool = False
+) -> pd.DataFrame:
+    if debug:
+        print(f"concat_files: input_files={input_files}, keys={keys}")
+
+    df_f = []
+    for i, f in enumerate(input_files):
+        _df = pd.DataFrame()
+        if debug:
+            print(f"concat_files: process {f}")
+        try:
+            if f.endswith(".txt"):
+                _df = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=1)
+            else:
+                _df = pd.read_csv(f, sep="str(',')", engine="python", skiprows=0)
+
+            # print(f'load_files: {f}')
+            if keys:
+                df_f.append(_df[keys])
+            else:
+                df_f.append(_df)
+        except Exception as e:
+            raise RuntimeError(f"load_files: failed to load {f} with pandas") from e
+
+    df = pd.concat(df_f, axis=0)
+    df = df.dropna(axis=1, how="all")
+
+    try:
+        # Add a time column
+        tformat = "%Y.%m.%d %H:%M:%S"
+        start_date = df["Date"].iloc[0]
+        start_time = df["Time"].iloc[0]
+        end_time = df["Time"].iloc[-1]
+        print("start_time=", start_time, "start_date=", start_date)
+
+        t0 = datetime.datetime.strptime(
+            df["Date"].iloc[0] + " " + df["Time"].iloc[0], tformat
+        )
+        df["t"] = df.apply(
+            lambda row: (
+                datetime.datetime.strptime(row.Date + " " + row.Time, tformat) - t0
+            ).total_seconds(),
+            axis=1,
+        )
+        # # del df['Date']
+        # # del df['Time']
+    except:
+        pass
+
+    return df
 
 
 def main():
