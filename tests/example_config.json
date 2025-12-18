@@ -1,0 +1,19 @@
+{
+    "method_params": {
+        "dbscan": {
+            "eps": 0.3,
+            "min_samples": 10
+        },
+        "mad": {
+            "threshold": 4.0
+        },
+        "isolationforest": {
+            "contamination": 0.05,
+            "random_state": 42
+        },
+        "stumpy_decompose": {
+            "m": 100,
+            "percentile": 99
+        }
+    }
+}

@@ -47,7 +47,9 @@ def mad(df, key, threshold: float = 3.5, debug: bool = False):
     return anomalies
 
 
-def movingaverage(df, key, window: int = 7, threshold_std: float = 3.0, debug: bool = False):
+def movingaverage(
+    df, key, window: int = 7, threshold_std: float = 3.0, debug: bool = False
+):
     ma = df[key].rolling(window=window).mean()
     deviation = np.abs(df[key] - ma)
     threshold = threshold_std * deviation.std()
@@ -57,7 +59,14 @@ def movingaverage(df, key, window: int = 7, threshold_std: float = 3.0, debug: b
     return anomalies
 
 
-def isolationforest(df, key, tkey="t", contamination: float = 0.01, random_state: int = 42, debug: bool = False):
+def isolationforest(
+    df,
+    key,
+    tkey="t",
+    contamination: float = 0.01,
+    random_state: int = 42,
+    debug: bool = False,
+):
     from sklearn.ensemble import IsolationForest
 
     model = IsolationForest(contamination=contamination, random_state=random_state)
@@ -74,7 +83,14 @@ def isolationforest(df, key, tkey="t", contamination: float = 0.01, random_state
     return anomalies
 
 
-def lof(df, key, tkey="t", n_neighbors: int = 20, contamination: float = 0.01, debug: bool = False):
+def lof(
+    df,
+    key,
+    tkey="t",
+    n_neighbors: int = 20,
+    contamination: float = 0.01,
+    debug: bool = False,
+):
     from sklearn.neighbors import LocalOutlierFactor
 
     model = LocalOutlierFactor(n_neighbors=n_neighbors, contamination=contamination)
@@ -90,7 +106,9 @@ def lof(df, key, tkey="t", n_neighbors: int = 20, contamination: float = 0.01, d
     return anomalies
 
 
-def dbscan(df, key, tkey="t", eps: float = 0.5, min_samples: int = 5, debug: bool = False):
+def dbscan(
+    df, key, tkey="t", eps: float = 0.5, min_samples: int = 5, debug: bool = False
+):
     from sklearn.cluster import DBSCAN
 
     model = DBSCAN(eps=eps, min_samples=min_samples)
@@ -106,7 +124,9 @@ def dbscan(df, key, tkey="t", eps: float = 0.5, min_samples: int = 5, debug: boo
     return anomalies
 
 
-def elliptic_envelope(df, key, tkey="t", contamination: float = 0.01, debug: bool = False):
+def elliptic_envelope(
+    df, key, tkey="t", contamination: float = 0.01, debug: bool = False
+):
     from sklearn.covariance import EllipticEnvelope
 
     model = EllipticEnvelope(contamination=contamination)
@@ -123,7 +143,15 @@ def elliptic_envelope(df, key, tkey="t", contamination: float = 0.01, debug: boo
     return anomalies
 
 
-def oneclass_svm(df, key, tkey="t", nu: float = 0.01, kernel: str = "rbf", gamma: str = "scale", debug: bool = False):
+def oneclass_svm(
+    df,
+    key,
+    tkey="t",
+    nu: float = 0.01,
+    kernel: str = "rbf",
+    gamma: str = "scale",
+    debug: bool = False,
+):
     from sklearn.svm import OneClassSVM
 
     model = OneClassSVM(nu=nu, kernel=kernel, gamma=gamma)
@@ -140,7 +168,9 @@ def oneclass_svm(df, key, tkey="t", nu: float = 0.01, kernel: str = "rbf", gamma
     return anomalies
 
 
-def seasonal_decompose(df, key, period: int = 12, threshold_std: float = 3.0, debug: bool = False):
+def seasonal_decompose(
+    df, key, period: int = 12, threshold_std: float = 3.0, debug: bool = False
+):
     from statsmodels.tsa.seasonal import seasonal_decompose as sd
 
     result = sd(df[key], model="additive", period=period)
@@ -154,7 +184,9 @@ def seasonal_decompose(df, key, period: int = 12, threshold_std: float = 3.0, de
     return anomalies
 
 
-def stumpy_decompose(df, key, tkey="t", m: int = 50, percentile: float = 95, debug: bool = False):
+def stumpy_decompose(
+    df, key, tkey="t", m: int = 50, percentile: float = 95, debug: bool = False
+):
     import stumpy
 
     mp = stumpy.stump(df[key].values, m=m)
@@ -174,48 +206,59 @@ def stumpy_decompose(df, key, tkey="t", m: int = 50, percentile: float = 95, deb
 # Registry of all available detection methods
 DETECT_METHODS = {
     "zscore": DetectMethod(
-        func=zscore, marker=".", color="blue",
-        default_params={"threshold": 3.0}
+        func=zscore, marker=".", color="blue", default_params={"threshold": 3.0}
     ),
-    "irq": DetectMethod(
-        func=irq, marker="o", color="cyan",
-        default_params={"k": 1.5}
-    ),
+    "irq": DetectMethod(func=irq, marker="o", color="cyan", default_params={"k": 1.5}),
     "mad": DetectMethod(
-        func=mad, marker="v", color="red",
-        default_params={"threshold": 3.5}
+        func=mad, marker="v", color="red", default_params={"threshold": 3.5}
     ),
     "movingaverage": DetectMethod(
-        func=movingaverage, marker="<", color="orange",
-        default_params={"window": 7, "threshold_std": 3.0}
+        func=movingaverage,
+        marker="<",
+        color="orange",
+        default_params={"window": 7, "threshold_std": 3.0},
     ),
     "isolationforest": DetectMethod(
-        func=isolationforest, marker="1", color="purple",
-        default_params={"contamination": 0.01, "random_state": 42}
+        func=isolationforest,
+        marker="1",
+        color="purple",
+        default_params={"contamination": 0.01, "random_state": 42},
     ),
     "lof": DetectMethod(
-        func=lof, marker="8", color="brown",
-        default_params={"n_neighbors": 20, "contamination": 0.01}
+        func=lof,
+        marker="8",
+        color="brown",
+        default_params={"n_neighbors": 20, "contamination": 0.01},
     ),
     "dbscan": DetectMethod(
-        func=dbscan, marker="s", color="green",
-        default_params={"eps": 0.5, "min_samples": 5}
+        func=dbscan,
+        marker="s",
+        color="green",
+        default_params={"eps": 0.5, "min_samples": 5},
     ),
     "elliptic_envelope": DetectMethod(
-        func=elliptic_envelope, marker="p", color="yellow",
-        default_params={"contamination": 0.01}
+        func=elliptic_envelope,
+        marker="p",
+        color="yellow",
+        default_params={"contamination": 0.01},
     ),
     "oneclass_svm": DetectMethod(
-        func=oneclass_svm, marker="*", color="pink",
-        default_params={"nu": 0.01, "kernel": "rbf", "gamma": "scale"}
+        func=oneclass_svm,
+        marker="*",
+        color="pink",
+        default_params={"nu": 0.01, "kernel": "rbf", "gamma": "scale"},
     ),
     "seasonal_decompose": DetectMethod(
-        func=seasonal_decompose, marker="d", color="gray",
-        default_params={"period": 12, "threshold_std": 3.0}
+        func=seasonal_decompose,
+        marker="d",
+        color="gray",
+        default_params={"period": 12, "threshold_std": 3.0},
     ),
     "stumpy_decompose": DetectMethod(
-        func=stumpy_decompose, marker="h", color="magenta",
-        default_params={"m": 50, "percentile": 95}
+        func=stumpy_decompose,
+        marker="h",
+        color="magenta",
+        default_params={"m": 50, "percentile": 95},
     ),
 }
 
@@ -225,25 +268,28 @@ DEFAULT_METHODS = ["mad", "dbscan", "elliptic_envelope", "stumpy_decompose"]
 
 def parse_method_params(param_list: list[str]) -> dict[str, dict]:
     """Parse method parameters from dot notation.
-    
+
     Args:
         param_list: List of strings like ["dbscan.eps=0.3", "mad.threshold=4.0"]
-    
+
     Returns:
         Nested dict like {"dbscan": {"eps": 0.3}, "mad": {"threshold": 4.0}}
     """
     params = {}
     if not param_list:
         return params
-    
+
     for item in param_list:
         if "=" not in item or "." not in item.split("=")[0]:
-            print(f"Warning: invalid param format '{item}', expected 'method.param=value'", flush=True)
+            print(
+                f"Warning: invalid param format '{item}', expected 'method.param=value'",
+                flush=True,
+            )
             continue
-        
+
         key, value = item.split("=", 1)
         method, param = key.split(".", 1)
-        
+
         # Type inference
         parsed_value = value
         if value.lower() in ("true", "false"):
@@ -256,32 +302,35 @@ def parse_method_params(param_list: list[str]) -> dict[str, dict]:
                     parsed_value = float(value)
                 except ValueError:
                     pass  # Keep as string
-        
+
         if method not in params:
             params[method] = {}
         params[method][param] = parsed_value
-    
+
     return params
 
 
 def parse_method_params_json(json_str: str) -> dict[str, dict]:
     """Parse method parameters from JSON string.
-    
+
     Args:
         json_str: JSON string like '{"dbscan": {"eps": 0.3}}'
-    
+
     Returns:
         Nested dict with method parameters
     """
     import json
-    
+
     if not json_str:
         return {}
-    
+
     try:
         params = json.loads(json_str)
         if not isinstance(params, dict):
-            print(f"Warning: JSON params must be an object, got {type(params).__name__}", flush=True)
+            print(
+                f"Warning: JSON params must be an object, got {type(params).__name__}",
+                flush=True,
+            )
             return {}
         return params
     except json.JSONDecodeError as e:
@@ -291,30 +340,34 @@ def parse_method_params_json(json_str: str) -> dict[str, dict]:
 
 def load_config_file(config_path: str) -> dict:
     """Load configuration from JSON or YAML file.
-    
+
     Args:
         config_path: Path to config file (.json or .yaml/.yml)
-    
+
     Returns:
         Dict with configuration including 'method_params' key
     """
     import json
-    
+
     if not config_path or not os.path.exists(config_path):
         if config_path:
             print(f"Warning: config file not found: {config_path}", flush=True)
         return {}
-    
+
     ext = os.path.splitext(config_path)[1].lower()
-    
+
     try:
         with open(config_path, "r") as f:
             if ext in (".yaml", ".yml"):
                 try:
                     import yaml
+
                     return yaml.safe_load(f) or {}
                 except ImportError:
-                    print("Warning: PyYAML not installed, cannot load YAML config", flush=True)
+                    print(
+                        "Warning: PyYAML not installed, cannot load YAML config",
+                        flush=True,
+                    )
                     return {}
             else:  # Default to JSON
                 return json.load(f)
@@ -325,10 +378,10 @@ def load_config_file(config_path: str) -> dict:
 
 def merge_method_params(*param_dicts: dict[str, dict]) -> dict[str, dict]:
     """Merge multiple method parameter dicts (later dicts override earlier).
-    
+
     Args:
         *param_dicts: Variable number of parameter dicts to merge
-    
+
     Returns:
         Merged dict with method parameters
     """
@@ -346,7 +399,7 @@ def get_method_params(method_name: str, user_params: dict[str, dict]) -> dict:
     method = DETECT_METHODS.get(method_name)
     if not method:
         return {}
-    
+
     params = dict(method.default_params)  # Copy defaults
     if method_name in user_params:
         params.update(user_params[method_name])  # Override with user params
@@ -355,7 +408,7 @@ def get_method_params(method_name: str, user_params: dict[str, dict]) -> dict:
 
 def downsample_for_plot(x, y, percent=10.0):
     """Downsample data for plotting to reduce memory usage.
-    
+
     Args:
         x, y: arrays to downsample
         percent: percentage of points to keep (0-100)
@@ -388,12 +441,11 @@ skipped_entries = {
     "Numérique_Alimentation": [],
 }
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file", help="enter input file")
-    parser.add_argument(
-        "--site", help="specify a site (ex. M8, M9,...)", default="M9"
-    )
+    parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9")
     parser.add_argument(
         "--group",
         help="set group to consider",
@@ -451,7 +503,10 @@ def main():
     # Validate methods
     invalid_methods = [m for m in args.methods if m not in DETECT_METHODS]
     if invalid_methods:
-        print(f"Warning: unknown methods {invalid_methods}, available: {list(DETECT_METHODS.keys())}", flush=True)
+        print(
+            f"Warning: unknown methods {invalid_methods}, available: {list(DETECT_METHODS.keys())}",
+            flush=True,
+        )
 
     # Parse method parameters from all sources (precedence: config < JSON < dot notation)
     config_params = {}
@@ -460,15 +515,15 @@ def main():
         config_params = config_data.get("method_params", {})
         if args.debug and config_params:
             print(f"Config file params: {config_params}", flush=True)
-    
+
     json_params = parse_method_params_json(args.method_params_json)
     if args.debug and json_params:
         print(f"JSON params: {json_params}", flush=True)
-    
+
     dot_params = parse_method_params(args.method_params)
     if args.debug and dot_params:
         print(f"Dot notation params: {dot_params}", flush=True)
-    
+
     # Merge with precedence: config < JSON < dot notation (later overrides earlier)
     user_method_params = merge_method_params(config_params, json_params, dot_params)
     if args.debug and user_method_params:
@@ -531,15 +586,20 @@ def main():
 
             # Use float32 only if explicitly requested (saves memory but reduces precision)
             dtype = np.float32 if args.use_float32 else np.float64
-            df = pd.DataFrame({
-                tkey: t_values.astype(dtype),
-                channel: y_values.astype(dtype),
-            })
+            df = pd.DataFrame(
+                {
+                    tkey: t_values.astype(dtype),
+                    channel: y_values.astype(dtype),
+                }
+            )
             del df_raw, t_values, y_values
             gc.collect()
 
             if args.debug:
-                print(f"data shape: {df.shape}, memory: {df.memory_usage(deep=True).sum() / 1e6:.1f} MB", flush=True)
+                print(
+                    f"data shape: {df.shape}, memory: {df.memory_usage(deep=True).sum() / 1e6:.1f} MB",
+                    flush=True,
+                )
 
             # Downsample for raw data plot
             x_plot, y_plot = downsample_for_plot(
@@ -578,12 +638,17 @@ def main():
             if not args.dry_run:
                 for method_name in args.methods:
                     if method_name not in DETECT_METHODS:
-                        print(f"  Warning: unknown method '{method_name}', skipping", flush=True)
+                        print(
+                            f"  Warning: unknown method '{method_name}', skipping",
+                            flush=True,
+                        )
                         continue
 
                     method = DETECT_METHODS[method_name]
                     method_params = get_method_params(method_name, user_method_params)
-                    detect_func = partial(method.func, debug=args.debug, **method_params)
+                    detect_func = partial(
+                        method.func, debug=args.debug, **method_params
+                    )
 
                     print(f"  Running {method_name}...", flush=True)
                     if args.debug:
