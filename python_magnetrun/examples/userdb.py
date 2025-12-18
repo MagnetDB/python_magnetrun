@@ -3,89 +3,88 @@
 Script to query the proposals-for-ct API endpoint
 """
 
+import os
 import requests
 import json
-from pathlib import Path
 
 # Configuration
-API_BASE_URL = "http://147.173.81.141/api/proposals-for-ct"
-TOKEN = "MY_TOKEN"  # Replace with your actual token
+API_BASE_URL = os.getenv("USERDB_SERVER") or "147.173.81.141"
+TOKEN = os.getenv("USERDB_API_KEY")
 
-def get_proposals(limit=10):
-    """
-    Fetch proposals from the API (JSON format)
-    
-    Args:
-        limit (int): Maximum number of proposals to retrieve
-    
-    Returns:
-        dict: JSON response from the API
-    """
-    headers = {
-        "Authorization": f"Bearer {TOKEN}"
-    }
-    
-    params = {
-        "limit": limit,
-        "token": TOKEN
-    }
-    
+
+def get_proposals(api_server, headers, limit=10, debug: bool = False):
+
+    url = api_server
+    params = {"limit": limit}
+
     try:
-        response = requests.get(API_BASE_URL, params=params)
+        response = requests.get(url, headers=headers, params=params)
         response.raise_for_status()  # Raise an exception for bad status codes
-        
+
         return response.json()
-    
+
     except requests.exceptions.RequestException as e:
         print(f"Error making request: {e}")
         return None
 
 
-def export_csv(output_file="proposals.csv"):
-    """
-    Export proposals to CSV file
-    
-    Args:
-        output_file (str): Path to save the CSV file
-    
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    url = f"{API_BASE_URL}/export-csv"
-    
-    params = {
-        "token": TOKEN
-    }
-    
+def export_csv(api_server, headers, output_file="proposals.csv", debug: bool = False):
+
+    url = f"{api_server}/export-csv"
+
     try:
-        response = requests.get(url, params=params)
+        response = requests.get(url, headers=headers)
         response.raise_for_status()
-        
+
         # Save the CSV content to file
-        with open(output_file, 'wb') as f:
+        with open(output_file, "wb") as f:
             f.write(response.content)
-        
+
         print(f"CSV exported successfully to: {output_file}")
         return True
-    
+
     except requests.exceptions.RequestException as e:
         print(f"Error exporting CSV: {e}")
         return False
 
 
 if __name__ == "__main__":
-    import sys
-    
-    # Check command line arguments
-    if len(sys.argv) > 1 and sys.argv[1] == "export":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--server", help="specify userdb host", type=str, default=API_BASE_URL
+    )
+    parser.add_argument("--token", help="specify userdb token", type=str, default=TOKEN)
+    parser.add_argument(
+        "--command", help="specify API command", type=str, default="get-proposals"
+    )
+    parser.add_argument(
+        "--output", help="specify output file", type=str, default="proposals.csv"
+    )
+    parser.add_argument("--limit", help="number of proposals to fetch", default=10)
+    parser.add_argument("--debug", help="enable debug mode", action="store_true")
+    args = parser.parse_args()
+
+    url = f"http://{API_BASE_URL}/api/proposals-for-ct"
+    if args.server:
+        url = f"http://{args.server}/api/proposals-for-ct"
+    print("url:", url)
+
+    if args.token:
+        TOKEN = args.token
+
+    headers = {"Authorization": f"Bearer {TOKEN}"}
+    # headers = {"Authorization": TOKEN}
+
+    if args.command == "export":
         # Export to CSV
-        output_file = sys.argv[2] if len(sys.argv) > 2 else "proposals.csv"
-        export_csv(output_file)
+        output_file = args.output
+        export_csv(url, headers, output_file, debug=args.debug)
     else:
         # Fetch proposals (JSON)
-        limit = int(sys.argv[1]) if len(sys.argv) > 1 else 10
-        data = get_proposals(limit=limit)
-        
+        limit = int(args.limit)
+        data = get_proposals(url, headers, limit=limit, debug=args.debug)
         if data:
             print("Response:")
             print(json.dumps(data, indent=2))
