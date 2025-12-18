@@ -1,5 +1,6 @@
 """MagnetData"""
 
+import keyword
 from natsort import natsorted
 from datetime import datetime
 
@@ -49,6 +50,8 @@ class MagnetData:
         :rtype: magnetdata
         """
         from nptdms import TdmsFile
+
+        print(f"magnetdata.fromtdms: {name}")
 
         Keys = []
         Groups = {}
@@ -103,12 +106,19 @@ class MagnetData:
 
                     # print(f"Data[{gname}]\n{Data[gname].head()}")
                 else:
-                    Groups[gname]["Infos"] = group
+                    Groups[gname] = group
+                    # print(f"Groups[{gname}]: {group}", flush=True)
+                    # for channel in group.channels():
+                    #    print(f"properties: {channel.properties}", flush=True)
             # print(f"keys: {Keys}")
 
-        #
-        print(f"Data groups: {list(Data.keys())}", flush=True)
-        print(f"Data: { {k: v.shape for k, v in Data.items()} }", flush=True)
+        # print(f"Data groups: {list(Data.keys())}", flush=True)
+        # print(f"Data: { {k: v.shape for k, v in Data.items()} }", flush=True)
+
+        if "Courants_Alimentations" not in Data:
+            raise RuntimeError(
+                f"magnetdata/fromtdms: Courants_Alimentations group not found in {name}"
+            )
 
         # Add reference for GR1, GR2
         if "Référence_A1" in Data["Courants_Alimentations"]:
@@ -275,10 +285,8 @@ class MagnetData:
     def getData(self, key: list[str] | str = None) -> pd.DataFrame:
         """_summary_
 
-        :param group: _description_, defaults to None
-        :type group: str, optional
-        :param channels: _description_, defaults to None
-        :type channels: list[str] | str, optional
+        :param key: _description_, defaults to None
+        :type key: list[str], str, optional
         :return: _description_
         :rtype: _type_
         """
@@ -288,23 +296,33 @@ class MagnetData:
             channels = []
             groups = []
             if isinstance(key, str):
-                (group, channel) = key.split("/")
-                channels.append(channel)
+                if "/" in key:
+                    (group, channel) = key.split("/")
+                    channels.append(channel)
+                else:
+                    group = key
                 groups.append(group)
+
             elif isinstance(key, list):
                 channels = []
 
                 # print(f"magnetda.getData: key={key}", flush=True)
                 for item in key:
-                    (group, channel) = item.split("/")
-                    # print(f"group{group}, channel={channel}", flush=True)
-                    channels.append(channel)
-                    if group not in groups:
-                        groups.append(group)
+                    if "/" in item:
+                        (group, channel) = item.split("/")
+                        # print(f"group{group}, channel={channel}", flush=True)
+                        channels.append(channel)
+                        if group not in groups:
+                            groups.append(group)
+                    else:
+                        groups.append(item)
                 # print(f"groups={groups}")
                 # print(f"channels={channels}")
 
-            if len(groups) > 1 or len(groups) == 0:
+            if groups and len(groups) > 1:
+                groups = list(dict.fromkeys(groups))
+
+            if len(groups) == 0 or len(groups) > 1:
                 raise RuntimeError(
                     f"magnetata:getData for tdms - expect only one group - got {len(groups)}"
                 )
