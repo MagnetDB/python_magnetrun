@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """
 Script to query the proposals-for-ct API endpoint
+
+# Get all proposals from 2024
+curl -H "Authorization: Bearer a2089c45497ebb6b541d6e97f0724ccd2cdaef2e31ba1a6a0639dfddb490adc6" "http://147.173.81.141/api/proposals-for-ct?experiment_year=2024"
+# Get submitted proposals from Grenoble
+curl -H "Authorization: Bearer a2089c45497ebb6b541d6e97f0724ccd2cdaef2e31ba1a6a0639dfddb490adc6" "http://147.173.81.141/api/proposals-for-ct?status=Submitted&facility=LNCMI Grenoble"
+# Get magnetism proposals with regular access
+curl -H "Authorization: Bearer a2089c45497ebb6b541d6e97f0724ccd2cdaef2e31ba1a6a0639dfddb490adc6" "http://147.173.81.141/api/proposals-for-ct?research_area=Magnetism&access_mode=Regular"
+# Combine multiple filters with pagination
+curl -H "Authorization: Bearer a2089c45497ebb6b541d6e97f0724ccd2cdaef2e31ba1a6a0639dfddb490adc6" "http://147.173.81.141/api/proposals-for-ct?status=Done&experiment_year=2024&limit=50&offset=0"
 """
 
 import os
