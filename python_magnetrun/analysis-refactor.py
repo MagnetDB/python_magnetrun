@@ -20,7 +20,7 @@ from tabulate import tabulate
 
 import json
 
-from .utils.files import extract_data, load_data, merge_data, select_files, find_files
+from .utils.files import extract_data, load_data, merge_data, select_files, find_files, expand_input_files
 
 
 def compute_mode(mdata, group: str, Ikeys_ref: list) -> dict:
@@ -97,72 +97,9 @@ def compute_mode(mdata, group: str, Ikeys_ref: list) -> dict:
 
 # new default for pupitre-datadir: srvdata -> /home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install
 def parse_arguments():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input_file", nargs="+", help="enter input file tdms")
-    parser.add_argument(
-        "--pupitre_datadir",
-        help="enter pupitre datadir (default srvdata)",
-        type=str,
-        default="/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install",
-    )
-    parser.add_argument(
-        "--pigbrother_datadir",
-        help="enter pigbrother datadir (default pigbrotherdata)",
-        type=str,
-        default="/home/LNCMI-G/christophe.trophime/github/python_magnetrun/pigbrotherdata/Fichiers_Data",
-    )
-
-    parser.add_argument("--logs", nargs="+", help="enter log files from ACQ_ENET")
-    parser.add_argument(
-        "--log_datadir",
-        help="enter log datadir (default srvdata)",
-        type=str,
-        default="/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install",
-    )
-
-    parser.add_argument(
-        "--tkey",
-        help="choose tkey",
-        choices=["t", "timestamp"],
-        type=str,
-        default="t",
-    )
-
-    parser.add_argument("--dry_run", help="dry_run mode", action="store_true")
-    parser.add_argument("--debug", help="activate debug", action="store_true")
-    parser.add_argument("--save", help="save graphs (png format)", action="store_true")
-    parser.add_argument(
-        "--show", help="display graphs (X11 required)", action="store_true"
-    )
-    parser.add_argument(
-        "--synchronize",
-        help="synchronize clock pupitre/pigbrother files",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--flow",
-        help="compute flow params from pupitre",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--lag",
-        help="compute lag between pupitre and pigbrother data",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--distance", help="compute distance between series", action="store_true"
-    )
-    parser.add_argument("--bins", help="set bins for histograms", type=int, default=10)
-    parser.add_argument(
-        "--window", help="set rolling window size", type=int, default=50
-    )
-    parser.add_argument("--levels", help="set levels", type=int, default=4)
-    parser.add_argument(
-        "--plot-percent",
-        help="percentage of points to plot (0-100, default 10)",
-        type=float,
-        default=10.0,
-    )
+    from .cli_args import create_analysis_parser, get_datadir_mapping
+    
+    parser = create_analysis_parser()
     return parser.parse_args()
 
 
@@ -1056,54 +993,6 @@ def compute_distance(
     plt.close()
 
 
-def expand_input_files(input_patterns: list, datadir: dict) -> list:
-    """
-    Expand glob patterns in input file arguments.
-
-    Args:
-        input_patterns: List of file patterns to expand
-        datadir: Dictionary mapping file extensions to their base directories
-
-    Returns:
-        List of expanded file paths
-    """
-
-    print(f"Expanding input files ({input_patterns})...", flush=True)
-    expanded_files = []
-    for pattern in input_patterns:
-        extension = os.path.splitext(pattern)[-1]
-        print(f"pattern: {pattern}, extension: {extension}", flush=True)
-        # Check if pattern contains a directory component
-        if os.path.dirname(pattern):
-            # Pattern has a directory, use it as is
-            search_pattern = pattern
-        else:
-            # No directory in pattern, prepend appropriate datadir based on extension
-            base_datadir = datadir[extension]
-            if extension == ".tdms":
-                (site, mode, timestamp) = pattern.split("_")
-                print(
-                    f"pattern: site={site}, mode={mode}, timestamp={timestamp}",
-                    flush=True,
-                )
-                search_pattern = os.path.join(base_datadir, site, mode, pattern)
-            else:
-                search_pattern = os.path.join(base_datadir, pattern)
-        print(search_pattern, flush=True)
-
-        matches = glob.glob(search_pattern)
-        if matches:
-            print(f"matches: {matches}", flush=True)
-            expanded_files.extend(matches)
-        else:
-            # If no matches, keep the original pattern (might be a literal filename)
-            print(f"No matches found for pattern: {pattern}", flush=True)
-            expanded_files.append(pattern)
-
-    print(f"expanded_files: {expanded_files}", flush=True)
-    return expanded_files
-
-
 def main():
     args = parse_arguments()
     print(args.input_file)
@@ -1118,10 +1007,8 @@ def main():
     ) = setup()
 
     # Create datadir dictionary mapping extensions to data directories
-    datadir = {
-        ".tdms": args.pigbrother_datadir,
-        ".txt": args.pupitre_datadir,
-    }
+    from .cli_args import get_datadir_mapping
+    datadir = get_datadir_mapping(args)
 
     # Expand glob patterns in input_file arguments
     expanded_files = expand_input_files(args.input_file, datadir)

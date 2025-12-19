@@ -13,6 +13,7 @@ from tabulate import tabulate
 
 # import logging
 from natsort import natsorted
+from .utils.files import expand_input_files
 
 import numpy as np
 import pandas as pd
@@ -920,156 +921,10 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
     plt.close()
 
 
-if __name__ == "__main__":
-    import argparse
+def main():
+    from .cli_args import create_main_parser, get_datadir_mapping
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input_file", nargs="+", help="enter input file")
-    parser.add_argument(
-        "--site", help="specify a site (ex. M8, M9,...)", default="M9"
-    )  # use housing instead
-    parser.add_argument("--insert", help="specify an insert", default="notdefined")
-    parser.add_argument("--debug", help="acticate debug", action="store_true")
-
-    subparsers = parser.add_subparsers(
-        title="commands", dest="command", help="sub-command help"
-    )
-    parser_info = subparsers.add_parser("info", help="info help")
-    parser_add = subparsers.add_parser("add", help="add help")
-    parser_select = subparsers.add_parser("select", help="select help")
-    parser_stats = subparsers.add_parser("stats", help="stats help")
-    parser_plot = subparsers.add_parser("plot", help="select help")
-
-    # add info subcommand
-    parser_info.add_argument("--list", help="list key in csv", action="store_true")
-    parser_info.add_argument("--convert", help="save to csv", action="store_true")
-
-    # add add subcommand
-    parser_add.add_argument(
-        "--formula", help="add new column with associated formula", type=str, default=""
-    )
-    parser_add.add_argument("--compute", help="compute", action="store_true")
-    parser_add.add_argument("--plot", help="plot ", action="store_true")
-    parser_add.add_argument(
-        "--vs_time",
-        help='select key(s) to plot (ex. "Field [Ucoil1]")',
-        nargs="+",
-        action="append",
-    )
-    parser_add.add_argument(
-        "--key_vs_key",
-        help='select pair(s) of keys to plot (ex. "Field-Icoil1")',
-        nargs="+",
-        action="append",
-    )
-    parser_add.add_argument(
-        "--normalize", help="normalize data before plot", action="store_true"
-    )
-    parser_add.add_argument("--save", help="save ", action="store_true")
-
-    # add plot subcommand
-    parser_plot.add_argument(
-        "--normalize", help="normalize data before plot", action="store_true"
-    )
-    parser_plot.add_argument(
-        "--vs_time",
-        help='select key(s) to plot (ex. "Field [Ucoil1]")',
-        nargs="+",
-        action="append",
-    )
-    parser_plot.add_argument(
-        "--key_vs_key",
-        help='select pair(s) of keys to plot (ex. "Field-Icoil1")',
-        nargs="+",
-        action="append",
-    )
-    parser_plot.add_argument(
-        "--save", help="save graphs (png format)", action="store_true"
-    )
-
-    # extract subcommand
-    parser_select.add_argument(
-        "--output_time", nargs="+", help="output key(s) for time"
-    )
-    parser_select.add_argument(
-        "--output_timerange",
-        help="set time range to extract (start;end)",
-        action="append",
-    )
-    parser_select.add_argument(
-        "--output_key",
-        nargs="+",
-        help="output key(s) for time",
-        action="append",
-    )
-    parser_select.add_argument(
-        "--extract_pairkeys",
-        nargs="+",
-        help="dump key(s) to file",
-        action="append",
-    )
-    parser_select.add_argument(
-        "--convert", help="convert file to csv", action="store_true"
-    )
-    parser_select.add_argument(
-        "--smoother",
-        help="smooth selected data with selected methods: [ag, bell_kernel, statsmodel_sm, savgol]",
-        type=str,
-        choices=["ag", "bell_kernel", "statsmodel_sm", "savgol"],
-    )
-    parser_select.add_argument(
-        "--window", help="size of rolling window", type=int, default=10
-    )
-    parser_select.add_argument(
-        "--smoothing_f", help="set smoothing_f", type=float, default=0.7
-    )
-    parser_select.add_argument(
-        "--smoothing_tau", help="set smoothing_tau", type=float, default=400
-    )
-    parser_select.add_argument(
-        "--smoothing_iter", help="set smootihn_iter", type=int, default=3
-    )
-
-    # add stats subcomm
-
-    parser_stats.add_argument(
-        "--detect_bkpts", help="find breaking points", action="store_true"
-    )
-    parser_stats.add_argument("--localmax", help="find local max", action="store_true")
-    parser_stats.add_argument("--plateau", help="find plateau", action="store_true")
-    parser_stats.add_argument(
-        "--save", help="save graphs (png format)", action="store_true"
-    )
-    parser_stats.add_argument(
-        "--show", help="display graphs (require X11)", action="store_true"
-    )
-    parser_stats.add_argument(
-        "--keys",
-        help="select key(s) to perform selected stats",
-        nargs="+",
-    )
-    parser_stats.add_argument(
-        "--threshold",
-        help="specify threshold for regime detection",
-        type=float,
-        default=1.0e-3,
-    )
-    parser_stats.add_argument(
-        "--bthreshold",
-        help="specify b threshold for regime detection",
-        type=float,
-        default=1.0e-3,
-    )
-    parser_stats.add_argument(
-        "--dthreshold",
-        help="specify duration threshold for regime detection",
-        type=float,
-        default=10,
-    )
-    parser_stats.add_argument(
-        "--window", help="size of rolling window", type=int, default=10
-    )
-    parser_stats.add_argument("--level", help="select level", type=int, default=90)
+    parser = create_main_parser()
     args = parser.parse_args()
     print(f"args: {args}", flush=True)
 
@@ -1077,9 +932,17 @@ if __name__ == "__main__":
     # check extension
     supported_formats = [".txt", ".tdms", ".csv"]
 
+    # Create datadir dictionary mapping extensions to data directories
+    datadir = get_datadir_mapping(args)
+
+    # Expand glob patterns in input_file arguments
+    expanded_files = expand_input_files(args.input_file, datadir)
+    input_files = natsorted(expanded_files)
+    print(f"input_files: {input_files}", flush=True)
+
     inputs = {}
     extensions = {}
-    for i, file in enumerate(args.input_file):
+    for i, file in enumerate(input_files):
         f_extension = os.path.splitext(file)[-1]
         if f_extension not in extensions:
             extensions[f_extension] = [i]
@@ -1088,7 +951,6 @@ if __name__ == "__main__":
     # print(f"extensions: {extensions}, entries: {len(extensions.keys())}")
     # print(f"args.vs_time: {args.vs_time}, entries: {len(args.vs_time)}")
 
-    input_files = natsorted(args.input_file)
     for file in input_files:
         f_extension = os.path.splitext(file)[-1]
         if f_extension not in supported_formats:
