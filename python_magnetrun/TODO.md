@@ -68,8 +68,18 @@ if "Icoil16" in keys:
 - use probes for magnets objects in msite object (see magnetgeo) instead
 
 # Analysis-refactor
+
+- hybrid data
+  
+- timestamp:
+  - use local time with pytz?
+  
 - performance:
   - [] avoid loading data several times
+  - [] how to "best" access data in tdms: 
+    - use pandas dataframe? 
+    - use nptdms API?
+    - replace pandas by polar in nptdms?  
   - [] best strategies for reducing memory (cache?) and speedup
   - [] measure memory footprint
 
@@ -79,7 +89,11 @@ if "Icoil16" in keys:
   - [] more downsampling sophisticated method (see email)
     
 - improvements
-  - [x] get t_offset from tdms
+  - [] get t_offset from tdms
+  - [] pupitre detection: tell cases
+    - overlap with tdms overview, 
+    - included in tdms overview (only considered in actual implementation), 
+    - include tdms overview
 
 - signature
   - [] save signature for reference per overview data
