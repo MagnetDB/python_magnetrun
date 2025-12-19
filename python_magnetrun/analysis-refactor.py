@@ -328,6 +328,12 @@ def plot_data(
         legends.append(f"Pupitre: {pupitre_dict[site][key]}")
     plt.legend(labels=legends)
 
+    # itype: incident type
+    # SpikeAimant
+    # DefautNums
+    # Courants50Hz
+    # PontAzero
+
     annotation_dict = {}
     if df_incidents is not None:
         for itype, incident in df_incidents.items():
@@ -789,15 +795,53 @@ def process_acqnet_logs(
         logs = json.load(open(lfile))
         for lkey in logs.keys():
             print(lkey, logs[lkey])
-            if lkey in [os.path.basename(f) for f in default_files + spike_files]:
+
+            # for Defauts:
+            if lkey in [os.path.basename(f) for f in default_files]:
+                t_log_str = logs[lkey]["detection_timestamp"]
+                t_log = datetime.strptime(t_log_str, "%Y-%m-%dT%H:%M:%S")
+
+                # get defaut type from logs[lkey]["type"]
+                dtype = logs[lkey]["type"]
+
                 tlogs[lkey] = {
                     "t0": [],
                     "t": [],
+                    "details": [],
                 }
                 print(
                     f"processing log file: {lkey}: {logs[lkey].keys()}",
                     flush=True,
                 )
+                tlogs[lkey]["timestamp"].append(t_log)
+                tlogs[lkey]["t"].append((t_log - t_start).total_seconds())
+                # get either ["details"]["currents"] for defaut type == "Courants50Hz"
+                if dtype == "Courants50Hz":
+                    tlogs[lkey]["details"].append(logs[lkey]["details"]["currents"])
+                # get either ["details"]["faults"] for defaut type == "DefautNums"
+                elif dtype == "DefautNums":
+                    tlogs[lkey]["details"].append(logs[lkey]["details"]["faults"])
+                else:
+                    print(f"{lkey}: Unknown defaut type {dtype}", flush=True)
+
+            # for Spikes:
+            if lkey in [os.path.basename(f) for f in spike_files]:
+                t_log_str = logs[lkey]["detection_timestamp"]
+                t_log = datetime.strptime(t_log_str, "%Y-%m-%dT%H:%M:%S")
+                tlogs[lkey] = {
+                    "t0": [],
+                    "t": [],
+                    "sensors": [],
+                }
+
+                print(
+                    f"processing log file: {lkey}: {logs[lkey].keys()}",
+                    flush=True,
+                )
+                tlogs[lkey]["timestamp"].append(t_log)
+                tlogs[lkey]["t"].append((t_log - t_start).total_seconds())
+                # get sensors from logs[lkey]["details"]["sensors"]
+                tlogs[lkey]["sensors"].append(logs[lkey]["details"]["sensors"])
 
     return tlogs
 
@@ -1366,6 +1410,11 @@ def main():
             at0 = overview_dict[filename]["data"]["archive"].iloc[0]["timestamp"]
             for dtype in ["default", "trigger", "spike"]:
                 print(f'{filename}: {overview_dict[filename]["sources"][dtype]}')
+
+                # TODO: get details from acqnet.log
+                # load AcqNet.json as json from args. as a dict
+                # using overview_dict[filename]["sources"][dtype] as key to get details
+                # where to store this detailed info?
                 overview_dict[filename]["data"][dtype] = load_data(
                     overview_dict[filename]["sources"][dtype],
                     site,
