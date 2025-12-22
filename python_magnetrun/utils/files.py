@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 import os
+import glob
 from datetime import datetime, timedelta
 from numpy.random import f
 import pandas as pd
@@ -10,9 +11,76 @@ from ..MagnetRun import MagnetRun
 from .convert import convert_to_timestamp
 
 
+def expand_input_files(input_patterns: list, datadir: dict) -> list:
+    """Expand glob patterns in input file arguments.
+
+    :param input_patterns: List of file patterns to expand
+    :type input_patterns: list
+    :param datadir: Dictionary mapping file extensions to their base directories
+    :type datadir: dict
+    :return: List of expanded file paths
+    :rtype: list
+    """
+    print(f"Expanding input files ({input_patterns})...", flush=True)
+    expanded_files = []
+    for pattern in input_patterns:
+        extension = os.path.splitext(pattern)[-1]
+        print(f"pattern: {pattern}, extension: {extension}", flush=True)
+        # Check if pattern contains a directory component
+        if os.path.dirname(pattern):
+            # Pattern has a directory, use it as is
+            search_pattern = pattern
+        else:
+            # No directory in pattern, prepend appropriate datadir based on extension
+            if extension in datadir:
+                base_datadir = datadir[extension]
+                if extension == ".tdms":
+                    # Special handling for tdms files: extract site and mode from pattern
+                    parts = os.path.basename(pattern).split("_")
+                    if len(parts) >= 2:
+                        site = parts[0]
+                        mode = parts[1]
+                        search_pattern = os.path.join(base_datadir, site, mode, pattern)
+                    else:
+                        search_pattern = os.path.join(base_datadir, pattern)
+                else:
+                    search_pattern = os.path.join(base_datadir, pattern)
+            else:
+                # Extension not in datadir, use pattern as is
+                search_pattern = pattern
+        print(f"search_pattern: {search_pattern}", flush=True)
+
+        matches = glob.glob(search_pattern)
+        if matches:
+            print(f"matches: {matches}", flush=True)
+            expanded_files.extend(matches)
+        else:
+            # If no matches, keep the original pattern (might be a literal filename)
+            print(f"No matches found for pattern: {pattern}", flush=True)
+            expanded_files.append(pattern)
+
+    print(f"expanded_files: {expanded_files}", flush=True)
+    return expanded_files
+
+
 def extract_data(
     file: str, site: str, insert: str, key: str | None, dry_run: bool = False
 ) -> tuple:
+    """Extract start and end timestamps from a data file.
+
+    :param file: Path to the data file (.txt, .tdms, or .csv)
+    :type file: str
+    :param site: Site identifier (e.g., M8, M9, M10)
+    :type site: str
+    :param insert: Insert identifier
+    :type insert: str
+    :param key: Optional key to validate existence in the file
+    :type key: str | None
+    :param dry_run: If True, skip loading actual data and only parse timestamps from filename
+    :type dry_run: bool
+    :return: Tuple of (start_timestamp, end_timestamp, skip_flag) as formatted strings
+    :rtype: tuple
+    """
     skip = False
     extension = os.path.splitext(file)[-1]
     filename = os.path.basename(file).replace(extension, "")
@@ -84,6 +152,21 @@ def extract_data(
 
 
 def find_files(args, file, site, date, time):
+    """Generate file filter patterns for different data types.
+
+    :param args: Command line arguments containing data directory paths
+    :type args: argparse.Namespace
+    :param file: Overview file path used as reference
+    :type file: str
+    :param site: Site identifier (e.g., M8, M9, M10)
+    :type site: str
+    :param date: Date string in YYMMDD format
+    :type date: str
+    :param time: Time string in HHMM format
+    :type time: str
+    :return: Tuple of filter patterns (pupitre, archive, default, trigger, spike)
+    :rtype: tuple
+    """
     print(f"find_files: file={file}, site={site}", flush=True)
 
     pupitre_datadir = f"{args.pupitre_datadir}/{site}"
@@ -115,6 +198,19 @@ def find_files(args, file, site, date, time):
 
 
 def select_files(files: list, site: str, start: str, end: str):
+    """Select files that fall within a specified time range.
+
+    :param files: List of file paths to filter
+    :type files: list
+    :param site: Site identifier (e.g., M8, M9, M10)
+    :type site: str
+    :param start: Start timestamp in format '%Y-%m-%d %H:%M:%S'
+    :type start: str
+    :param end: End timestamp in format '%Y-%m-%d %H:%M:%S'
+    :type end: str
+    :return: Naturally sorted list of files within the time range
+    :rtype: list
+    """
     tformat = "%Y-%m-%d %H:%M:%S"
     start_time = datetime.strptime(start, tformat)
     end_time = datetime.strptime(end, tformat)
@@ -190,6 +286,21 @@ def select_files(files: list, site: str, start: str, end: str):
 
 
 def load_df(file, site, insert, group, keys) -> tuple:
+    """Load data from a file into a pandas DataFrame.
+
+    :param file: Path to the data file (.txt or .tdms)
+    :type file: str
+    :param site: Site identifier (e.g., M8, M9, M10)
+    :type site: str
+    :param insert: Insert identifier
+    :type insert: str
+    :param group: Data group name for TDMS files
+    :type group: str
+    :param keys: List of data keys to extract
+    :type keys: list
+    :return: Tuple of (DataFrame with data, start timestamp)
+    :rtype: tuple
+    """
     extension = os.path.splitext(file)[-1]
 
     df = pd.DataFrame()
@@ -225,6 +336,21 @@ def load_df(file, site, insert, group, keys) -> tuple:
 
 
 def load_data(files, site, insert, group, keys) -> list[pd.DataFrame]:
+    """Load data from multiple files into a list of DataFrames.
+
+    :param files: List of file paths to load
+    :type files: list
+    :param site: Site identifier (e.g., M8, M9, M10)
+    :type site: str
+    :param insert: Insert identifier
+    :type insert: str
+    :param group: Data group name for TDMS files
+    :type group: str
+    :param keys: List of data keys to extract
+    :type keys: list
+    :return: List of DataFrames containing data from each file
+    :rtype: list[pd.DataFrame]
+    """
     df_ = []
     for file in files:
         df, t0 = load_df(file, site, insert, group, keys)
@@ -234,9 +360,13 @@ def load_data(files, site, insert, group, keys) -> list[pd.DataFrame]:
 
 
 def merge_data(df_list: list) -> pd.DataFrame:
+    """Merge multiple DataFrames into a single DataFrame.
+
+    :param df_list: List of DataFrames to merge
+    :type df_list: list
+    :return: Concatenated DataFrame if multiple DataFrames, otherwise the single DataFrame
+    :rtype: pd.DataFrame
+    """
     if len(df_list) > 1:
         return pd.concat(df_list)
     return df_list[0]
-
-
-# TODO use MagnetData instead of files
