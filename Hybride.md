@@ -8,7 +8,6 @@ reference: `ASNet-Structure_données_V2.pdf`
 * trigger:
 * vprocess: 1 Hz (1s),  1 fichier par heure,Archivage journée
 
-```
 kHz
 ├── 2020
 │   ├── 2020-01-30
@@ -30,7 +29,6 @@ vprocess/
 .
 .
 └── 2025-12-18
-```
 
 # Resistifs data
 
