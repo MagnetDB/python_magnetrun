@@ -3,7 +3,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-def remove_outliers(df, x_col='x', y_col='y', method='iqr', threshold=1.5, verbose=False):
+def remove_outliers(
+    df, x_col="x", y_col="y", method="iqr", threshold=1.5, verbose=False
+):
     """
     Remove outliers from x,y data using various methods.
 
@@ -34,7 +36,7 @@ def remove_outliers(df, x_col='x', y_col='y', method='iqr', threshold=1.5, verbo
     x = df_clean[x_col].values
     y = df_clean[y_col].values
 
-    if method == 'iqr':
+    if method == "iqr":
         # Remove outliers in x using IQR method
         Q1_x = np.percentile(x, 25)
         Q3_x = np.percentile(x, 75)
@@ -49,8 +51,12 @@ def remove_outliers(df, x_col='x', y_col='y', method='iqr', threshold=1.5, verbo
         lower_bound_y = Q1_y - threshold * IQR_y
         upper_bound_y = Q3_y + threshold * IQR_y
 
-        mask = (x >= lower_bound_x) & (x <= upper_bound_x) & \
-               (y >= lower_bound_y) & (y <= upper_bound_y)
+        mask = (
+            (x >= lower_bound_x)
+            & (x <= upper_bound_x)
+            & (y >= lower_bound_y)
+            & (y <= upper_bound_y)
+        )
 
         if verbose:
             n_removed = len(df_clean) - np.sum(mask)
@@ -58,7 +64,7 @@ def remove_outliers(df, x_col='x', y_col='y', method='iqr', threshold=1.5, verbo
             print(f"  x range: [{lower_bound_x:.4f}, {upper_bound_x:.4f}]")
             print(f"  y range: [{lower_bound_y:.4f}, {upper_bound_y:.4f}]")
 
-    elif method == 'zscore':
+    elif method == "zscore":
         # Remove outliers using Z-score
         z_x = np.abs((x - np.mean(x)) / np.std(x))
         z_y = np.abs((y - np.mean(y)) / np.std(y))
@@ -66,9 +72,11 @@ def remove_outliers(df, x_col='x', y_col='y', method='iqr', threshold=1.5, verbo
 
         if verbose:
             n_removed = len(df_clean) - np.sum(mask)
-            print(f"Z-score method (threshold={threshold}): Removed {n_removed} outliers")
+            print(
+                f"Z-score method (threshold={threshold}): Removed {n_removed} outliers"
+            )
 
-    elif method == 'mad':
+    elif method == "mad":
         # Median Absolute Deviation (robust to extreme outliers)
         median_x = np.median(x)
         mad_x = np.median(np.abs(x - median_x))
@@ -81,8 +89,12 @@ def remove_outliers(df, x_col='x', y_col='y', method='iqr', threshold=1.5, verbo
         lower_bound_y = median_y - threshold * mad_y
         upper_bound_y = median_y + threshold * mad_y
 
-        mask = (x >= lower_bound_x) & (x <= upper_bound_x) & \
-               (y >= lower_bound_y) & (y <= upper_bound_y)
+        mask = (
+            (x >= lower_bound_x)
+            & (x <= upper_bound_x)
+            & (y >= lower_bound_y)
+            & (y <= upper_bound_y)
+        )
 
         if verbose:
             n_removed = len(df_clean) - np.sum(mask)
@@ -90,12 +102,13 @@ def remove_outliers(df, x_col='x', y_col='y', method='iqr', threshold=1.5, verbo
             print(f"  x range: [{lower_bound_x:.4f}, {upper_bound_x:.4f}]")
             print(f"  y range: [{lower_bound_y:.4f}, {upper_bound_y:.4f}]")
 
-    elif method == 'isolation_forest':
+    elif method == "isolation_forest":
         try:
             from sklearn.ensemble import IsolationForest
+
             iso_forest = IsolationForest(
                 contamination=threshold,  # Fraction of outliers expected (0-1)
-                random_state=42
+                random_state=42,
             )
             features = np.column_stack([x, y])
             outlier_labels = iso_forest.fit_predict(features)
@@ -103,10 +116,14 @@ def remove_outliers(df, x_col='x', y_col='y', method='iqr', threshold=1.5, verbo
 
             if verbose:
                 n_removed = len(df_clean) - np.sum(mask)
-                print(f"Isolation Forest (contamination={threshold}): Removed {n_removed} outliers")
+                print(
+                    f"Isolation Forest (contamination={threshold}): Removed {n_removed} outliers"
+                )
         except ImportError:
             print("Warning: sklearn not available. Falling back to IQR method.")
-            return remove_outliers(df, x_col, y_col, method='iqr', threshold=1.5, verbose=verbose)
+            return remove_outliers(
+                df, x_col, y_col, method="iqr", threshold=1.5, verbose=verbose
+            )
 
     else:
         raise ValueError(f"Unknown method: {method}")
@@ -114,7 +131,7 @@ def remove_outliers(df, x_col='x', y_col='y', method='iqr', threshold=1.5, verbo
     return df_clean[mask].reset_index(drop=True)
 
 
-def remove_outliers_by_x_range(df, x_col='x', x_min=None, x_max=None, verbose=False):
+def remove_outliers_by_x_range(df, x_col="x", x_min=None, x_max=None, verbose=False):
     """
     Remove outliers by specifying acceptable x range (simple domain knowledge approach).
 
@@ -151,8 +168,15 @@ def remove_outliers_by_x_range(df, x_col='x', x_min=None, x_max=None, verbose=Fa
     return df_clean[mask].reset_index(drop=True)
 
 
-def remove_low_x_outliers(df, x_col='x', y_col='y', x_percentile=25, method='iqr',
-                          threshold=1.5, verbose=False):
+def remove_low_x_outliers(
+    df,
+    x_col="x",
+    y_col="y",
+    x_percentile=25,
+    method="iqr",
+    threshold=1.5,
+    verbose=False,
+):
     """
     Detect and remove outliers specifically in the LOW x region.
 
@@ -191,12 +215,14 @@ def remove_low_x_outliers(df, x_col='x', y_col='y', x_percentile=25, method='iqr
     n_low_x = np.sum(low_x_mask)
 
     if verbose:
-        print(f"Low-x region: x <= {x_cutoff:.4f} ({n_low_x} points, {100*n_low_x/len(df):.1f}%)")
+        print(
+            f"Low-x region: x <= {x_cutoff:.4f} ({n_low_x} points, {100*n_low_x/len(df):.1f}%)"
+        )
 
     # Start with all points as inliers
     inlier_mask = np.ones(len(df_clean), dtype=bool)
 
-    if method == 'iqr':
+    if method == "iqr":
         # Apply IQR only to y values in low-x region
         if n_low_x > 0:
             y_low = y[low_x_mask]
@@ -212,10 +238,12 @@ def remove_low_x_outliers(df, x_col='x', y_col='y', x_percentile=25, method='iqr
 
             if verbose:
                 n_removed = np.sum(low_x_outliers)
-                print(f"  IQR on low-x y values: y in [{lower_bound:.4f}, {upper_bound:.4f}]")
+                print(
+                    f"  IQR on low-x y values: y in [{lower_bound:.4f}, {upper_bound:.4f}]"
+                )
                 print(f"  Removed {n_removed} outliers from low-x region")
 
-    elif method == 'zscore':
+    elif method == "zscore":
         # Apply z-score only to y values in low-x region
         if n_low_x > 0:
             y_low = y[low_x_mask]
@@ -237,7 +265,7 @@ def remove_low_x_outliers(df, x_col='x', y_col='y', x_percentile=25, method='iqr
                     print(f"  Z-score on low-x y values (threshold={threshold})")
                     print(f"  Removed {n_removed} outliers from low-x region")
 
-    elif method == 'both_dims':
+    elif method == "both_dims":
         # Apply IQR to both x and y in low-x region
         if n_low_x > 0:
             x_low = x[low_x_mask]
@@ -258,13 +286,14 @@ def remove_low_x_outliers(df, x_col='x', y_col='y', x_percentile=25, method='iqr
             y_upper = Q3_y + threshold * IQR_y
 
             # Mark outliers
-            low_x_outliers = low_x_mask & \
-                            ((x < x_lower) | (x > x_upper) | (y < y_lower) | (y > y_upper))
+            low_x_outliers = low_x_mask & (
+                (x < x_lower) | (x > x_upper) | (y < y_lower) | (y > y_upper)
+            )
             inlier_mask = ~low_x_outliers
 
             if verbose:
                 n_removed = np.sum(low_x_outliers)
-                print(f"  IQR on low-x region (both dims):")
+                print("  IQR on low-x region (both dims):")
                 print(f"    x in [{x_lower:.4f}, {x_upper:.4f}]")
                 print(f"    y in [{y_lower:.4f}, {y_upper:.4f}]")
                 print(f"  Removed {n_removed} outliers from low-x region")
@@ -275,8 +304,15 @@ def remove_low_x_outliers(df, x_col='x', y_col='y', x_percentile=25, method='iqr
     return df_clean[inlier_mask].reset_index(drop=True)
 
 
-def remove_x_region_outliers(df, x_col='x', y_col='y', x_threshold=None,
-                             method='iqr', threshold=1.5, verbose=False):
+def remove_x_region_outliers(
+    df,
+    x_col="x",
+    y_col="y",
+    x_threshold=None,
+    method="iqr",
+    threshold=1.5,
+    verbose=False,
+):
     """
     Remove outliers in a specific x region (e.g., x < -0.8).
 
@@ -317,7 +353,7 @@ def remove_x_region_outliers(df, x_col='x', y_col='y', x_threshold=None,
 
     inlier_mask = np.ones(len(df_clean), dtype=bool)
 
-    if method == 'iqr':
+    if method == "iqr":
         if n_region > 0:
             y_region = y[region_mask]
             Q1 = np.percentile(y_region, 25)
@@ -331,10 +367,12 @@ def remove_x_region_outliers(df, x_col='x', y_col='y', x_threshold=None,
 
             if verbose:
                 n_removed = np.sum(region_outliers)
-                print(f"  IQR on y in region: y in [{lower_bound:.4f}, {upper_bound:.4f}]")
+                print(
+                    f"  IQR on y in region: y in [{lower_bound:.4f}, {upper_bound:.4f}]"
+                )
                 print(f"  Removed {n_removed} outliers")
 
-    elif method == 'zscore':
+    elif method == "zscore":
         if n_region > 0:
             y_region = y[region_mask]
             mean_y = np.mean(y_region)
@@ -360,7 +398,9 @@ def remove_x_region_outliers(df, x_col='x', y_col='y', x_threshold=None,
     return df_clean[inlier_mask].reset_index(drop=True)
 
 
-def estimate_hysteresis_parameters(df, x_col='x', y_col='y', n_levels=None, verbose=False):
+def estimate_hysteresis_parameters(
+    df, x_col="x", y_col="y", n_levels=None, verbose=False
+):
     """
     Estimate multi-level hysteresis parameters from empirical x,y data.
 
@@ -398,13 +438,16 @@ def estimate_hysteresis_parameters(df, x_col='x', y_col='y', n_levels=None, verb
     if n_levels is not None:
         try:
             from sklearn.cluster import KMeans
+
             km = KMeans(n_clusters=n_levels, random_state=42)
             y_clusters = km.fit_predict(y.reshape(-1, 1))
             y = km.cluster_centers_[y_clusters].flatten()
             if verbose:
                 print(f"Clustered y into {n_levels} levels")
         except ImportError:
-            print("Warning: sklearn not available. Using data-driven level detection instead.")
+            print(
+                "Warning: sklearn not available. Using data-driven level detection instead."
+            )
 
     # Compute derivatives to identify direction of x change
     dx = np.diff(x, prepend=np.nan)
@@ -418,7 +461,9 @@ def estimate_hysteresis_parameters(df, x_col='x', y_col='y', n_levels=None, verb
     transitions = np.where(np.abs(dy[1:]) > 1e-10)[0] + 1
 
     # Auto-detect distinct output levels
-    unique_y = sorted(set(np.round(y, decimals=8)))  # Round to handle floating point errors
+    unique_y = sorted(
+        set(np.round(y, decimals=8))
+    )  # Round to handle floating point errors
     n_levels_found = len(unique_y)
 
     if verbose:
@@ -476,7 +521,9 @@ def estimate_hysteresis_parameters(df, x_col='x', y_col='y', n_levels=None, verb
         if verbose:
             asc_str = f"{asc_threshold:.4f}" if asc_threshold is not None else "N/A"
             desc_str = f"{desc_threshold:.4f}" if desc_threshold is not None else "N/A"
-            print(f"Level {i} (y={unique_y[i]:g}): asc_threshold={asc_str}, desc_threshold={desc_str}")
+            print(
+                f"Level {i} (y={unique_y[i]:g}): asc_threshold={asc_str}, desc_threshold={desc_str}"
+            )
 
     # Build thresholds list - pair ascending/descending for each level
     # Filter out levels with missing thresholds
@@ -489,7 +536,7 @@ def estimate_hysteresis_parameters(df, x_col='x', y_col='y', n_levels=None, verb
 
     # Extract corresponding output values for valid indices (convert to pure Python floats)
     high_values = [float(unique_y[i]) for i in valid_indices]
-    low_values = [float(unique_y[max(0, i-1)]) for i in valid_indices]
+    low_values = [float(unique_y[max(0, i - 1)]) for i in valid_indices]
 
     # Sort all lists together by low_values to ensure ascending order
     sorted_items = sorted(zip(low_values, high_values, thresholds))
@@ -499,18 +546,18 @@ def estimate_hysteresis_parameters(df, x_col='x', y_col='y', n_levels=None, verb
 
     # Diagnostics
     diagnostics = {
-        'n_transitions': len(transitions),
-        'n_levels_found': len(thresholds),
-        'n_valid_levels': len(valid_indices),
-        'ascending_obs': {k: len(v) for k, v in ascending_observations.items()},
-        'descending_obs': {k: len(v) for k, v in descending_observations.items()},
+        "n_transitions": len(transitions),
+        "n_levels_found": len(thresholds),
+        "n_valid_levels": len(valid_indices),
+        "ascending_obs": {k: len(v) for k, v in ascending_observations.items()},
+        "descending_obs": {k: len(v) for k, v in descending_observations.items()},
     }
 
     return {
-        'thresholds': thresholds,
-        'low_values': low_values,
-        'high_values': high_values,
-        'diagnostics': diagnostics,
+        "thresholds": thresholds,
+        "low_values": low_values,
+        "high_values": high_values,
+        "diagnostics": diagnostics,
     }
 
 
@@ -520,7 +567,7 @@ if __name__ == "__main__":
     np.random.seed(42)
 
     # Create input signal with multiple cycles
-    t = np.linspace(0, 4*np.pi, 500)
+    t = np.linspace(0, 4 * np.pi, 500)
     x_base = np.sin(t)
 
     # Create multi-level hysteresis output with THREE discrete levels
@@ -529,10 +576,10 @@ if __name__ == "__main__":
     state = 0
 
     # Define hysteresis thresholds
-    asc_threshold_1 = 0.7      # Transition from level 0->1 when x increases
-    desc_threshold_1 = -0.7    # Transition from level 1->0 when x decreases
-    asc_threshold_2 = 0.3      # Transition from level 1->2 when x increases
-    desc_threshold_2 = -0.3    # Transition from level 2->1 when x decreases
+    asc_threshold_1 = 0.7  # Transition from level 0->1 when x increases
+    desc_threshold_1 = -0.7  # Transition from level 1->0 when x decreases
+    asc_threshold_2 = 0.3  # Transition from level 1->2 when x increases
+    desc_threshold_2 = -0.3  # Transition from level 2->1 when x decreases
 
     y_levels = [0.0, 1.0, 2.0]
 
@@ -555,7 +602,7 @@ if __name__ == "__main__":
     y_noisy = y + np.random.normal(0, 0.05, len(y))
 
     # Create DataFrame
-    df = pd.DataFrame({'x': x_base, 'y': y_noisy})
+    df = pd.DataFrame({"x": x_base, "y": y_noisy})
 
     print("=== Original Data ===")
     print(f"Number of points: {len(df)}")
@@ -564,7 +611,7 @@ if __name__ == "__main__":
 
     # Option 1: Remove outliers specifically at LOW x values (bottom 25%)
     print("\n=== Removing Low-X Outliers (bottom 25% of x) ===")
-    df_clean = remove_low_x_outliers(df, method='iqr', threshold=1.5, verbose=True)
+    df_clean = remove_low_x_outliers(df, method="iqr", threshold=1.5, verbose=True)
     print(f"Points after cleaning: {len(df_clean)}")
 
     # Option 2: Remove outliers in a specific x region (e.g., x < -0.8)
@@ -582,7 +629,7 @@ if __name__ == "__main__":
     result = estimate_hysteresis_parameters(df_clean, n_levels=3, verbose=True)
 
     print("\n=== Estimated Parameters ===")
-    if result['thresholds']:
+    if result["thresholds"]:
         print(f"Thresholds (list of tuples): {result['thresholds']}")
         print(f"Type of first threshold: {type(result['thresholds'][0])}")
         print(f"Type of first element in threshold: {type(result['thresholds'][0][0])}")
@@ -597,7 +644,8 @@ if __name__ == "__main__":
 
     print(f"\nDiagnostics: {result['diagnostics']}")
 
-def refine_thresholds_with_hysteresis_loop(df, x_col='x', y_col='y'):
+
+def refine_thresholds_with_hysteresis_loop(df, x_col="x", y_col="y"):
     """
     Alternative method: Analyze the hysteresis loop directly.
 
@@ -623,11 +671,13 @@ def refine_thresholds_with_hysteresis_loop(df, x_col='x', y_col='y'):
     # In reality, you'd use the turning points more carefully
     if len(turning_points) > 0:
         for i in range(len(turning_points) - 1):
-            t1, t2 = turning_points[i], turning_points[i+1]
-            if np.sum(np.diff(x[t1:t2+1]) > 0) > np.sum(np.diff(x[t1:t2+1]) < 0):
-                ascending_mask[t1:t2+1] = True
+            t1, t2 = turning_points[i], turning_points[i + 1]
+            if np.sum(np.diff(x[t1 : t2 + 1]) > 0) > np.sum(
+                np.diff(x[t1 : t2 + 1]) < 0
+            ):
+                ascending_mask[t1 : t2 + 1] = True
             else:
-                descending_mask[t1:t2+1] = True
+                descending_mask[t1 : t2 + 1] = True
 
     # For each unique y level, find min and max x on ascending and descending paths
     unique_y = sorted(set(y))
@@ -645,11 +695,12 @@ def refine_thresholds_with_hysteresis_loop(df, x_col='x', y_col='y'):
             desc_threshold = np.max(descending_x) if len(descending_x) > 0 else -np.inf
 
             thresholds_by_level[y_level] = {
-                'ascending': asc_threshold,
-                'descending': desc_threshold,
+                "ascending": asc_threshold,
+                "descending": desc_threshold,
             }
 
     return thresholds_by_level
+
 
 def hysteresis_model(
     x, ascending_threshold, descending_threshold, low_value=0, high_value=1
@@ -684,9 +735,9 @@ def hysteresis_model(
     state = False  # Initial state (False = low, True = high)
 
     for i in range(len(x)):
-        if state == False and x[i] > ascending_threshold:
+        if not state and x[i] > ascending_threshold:
             state = True
-        elif state == True and x[i] < descending_threshold:
+        elif state and x[i] < descending_threshold:
             state = False
 
         output[i] = high_value if state else low_value
