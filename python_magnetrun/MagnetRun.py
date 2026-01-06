@@ -3,6 +3,7 @@
 import re
 import pandas as pd
 from natsort import natsorted
+from datetime import datetime
 
 from .magnetdata import MagnetData
 
@@ -19,7 +20,9 @@ def prepareData(data: MagnetData, housing: str, debug: bool = False):
     """
     # get start/end
     (start_date, start_time, end_date, end_time) = data.getStartDate()
-    # print(f'start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}')
+    print(
+        f"prepareData: start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}"
+    )
 
     # add timestamp
     data.addTime()
@@ -54,7 +57,7 @@ def prepareData(data: MagnetData, housing: str, debug: bool = False):
             )
     # what about M1, M5 and M7???
 
-    data.removeData(["Idcct1", "Idcct2", "Idcct3", "Idcct4"])
+    # data.removeData(["Idcct1", "Idcct2", "Idcct3", "Idcct4"])
 
     data.cleanupData(debug)
     Ikey = natsorted([_key for _key in data.getKeys() if re.match(r"Icoil\d+", _key)])
@@ -82,11 +85,13 @@ class MagnetRun:
         housing: str = "unknown",
         site: str = "",
         data: MagnetData | None = None,
+        start_time: datetime | None = None,
     ):
         """default constructor"""
         self.Housing = housing
         self.Site = site
         self.MagnetData = data
+        self.StartTime = start_time
 
     @classmethod
     def fromtdms(cls, site, insert, filename):
@@ -96,21 +101,42 @@ class MagnetRun:
         data = MagnetData.fromtdms(filename)
         data.Units()
 
-        # print("magnetrun.fromtxt: data=", data)
-        return cls(site, insert, data)
+        group = list(data.Groups.keys())[0]
+        channel = list(data.Groups[group].keys())[0]
+        start_t = pd.Timestamp(data.Groups[group][channel]["wf_start_time"])
+        offset_t = pd.Timedelta(data.Groups[group][channel]["wf_start_offset"])
+        start_time = (start_t + offset_t).to_pydatetime()
+        print(
+            f"magnetrun.fromtdms: start_time={start_time}, type={type(start_time)}",
+            flush=True,
+        )
+        return cls(site, insert, data, start_time=start_time)
 
     @classmethod
     def fromtxt(cls, housing: str, site: str, filename: str, debug: bool = False):
         """create from a txt file"""
-        # print(f"MagnetRun/fromtxt: housing={housing}, site={site}, filename={filename}")
+        print(
+            f"MagnetRun/fromtxt: housing={housing}, site={site}, filename={filename}",
+            flush=True,
+        )
         # with open(filename, "r") as f:
         # insert = f.readline().split()[-1]
         data = MagnetData.fromtxt(filename)
+        print("data:", data, flush=True)
+        res = data.getStartDate()
         prepareData(data, housing, debug=debug)
+        print("res:", res, flush=True)
         data.Units()
+        (start_date, start_time, end_date, end_time) = res
 
         # print("magnetrun.fromtxt: data=", data)
-        return cls(housing, site, data)
+        # Combine start_date (YYYY.MM.DD) and start_time (HH:MM:SS) into datetime
+        start_t = datetime.strptime(f"{start_date} {start_time}", "%Y.%m.%d %H:%M:%S")
+        print(
+            f"magnetrun.fromtxt: start_t={start_t}, type={type(start_t)}",
+            flush=True,
+        )
+        return cls(housing, site, data, start_time=start_t)
 
     @classmethod
     def fromcsv(cls, housing: str, site: str, filename: str, debug: bool = False):

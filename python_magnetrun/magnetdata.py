@@ -870,7 +870,13 @@ class MagnetData:
                 end_time = self.Data["Time"].iloc[-1]
                 res = (start_date, start_time, end_date, end_time)
         elif self.Type == 1:
-            start_t = self.Data[group]["timestamp"].iloc[0]
+            channel = list(self.Groups[group].keys())[0]
+            start_t = self.Groups[group][channel]["wf_start_time"].astype(datetime)
+            offset_t = self.Groups[group][channel]["wf_start_offset"]
+            print(
+                f"getStartDate: tdms start_t={start_t} (type={type(start_t)}), offset_t={offset_t} (type={type(offset_t)})"
+            )
+            # start_t = self.Data[group]["timestamp"].iloc[0]
             # end_t = self.Data[group]["timestamp"].iloc[-1]
 
             dformat = "%Y.%m.%d"
@@ -974,6 +980,17 @@ class MagnetData:
             else:
                 raise RuntimeError(
                     f"MagnetData/AddTime {self.FileName}: cannot add t[s] columnn: no Date or Time columns"
+                )
+        return 0
+
+    def shiftTime(self, dt: float):
+        """shift time column by dt seconds"""
+        if self.Type == 0:  # isinstance(self.Data, pd.DataFrame):
+            if "t" in self.Keys:
+                self.Data["t"] = self.Data["t"] + dt
+            else:
+                raise RuntimeError(
+                    f"MagnetData/shiftTime {self.FileName}: cannot shift t[s] columnn: no t column"
                 )
         return 0
 
@@ -1098,6 +1115,7 @@ class MagnetData:
         alpha: float = 1,
         label: str = None,
         normalize: bool = False,
+        offset: float = 0,
     ):
         """plot x vs y
 
@@ -1111,6 +1129,8 @@ class MagnetData:
         :type label: str, optional
         :param normalize: _description_, defaults to False
         :type normalize: bool, optional
+        :param offset: _description_, defaults to 0
+        :type offset: float, optional
         :raises RuntimeError: _description_
         :raises RuntimeError: _description_
         :raises Exception: _description_
@@ -1166,7 +1186,7 @@ class MagnetData:
                     t_offset = self.Groups[ygroup][ychannel]["wf_start_offset"]
 
                     if xchannel == "t":
-                        df[xchannel] = df.index * dt + t_offset
+                        df[xchannel] = df.index * dt + t_offset + offset
                     elif xchannel == "timestamp":
                         t0 = self.Groups[ygroup][ychannel]["wf_start_time"]
                         # print(f"plotData ({self.FileName}: t0={t0})")

@@ -815,7 +815,9 @@ def plot_vs_time(input_files, inputs, extensions, args):
         title = f"{'-'.join(klabels)}"
 
     legends = []
-    for file in input_files:
+    t0 = []
+    symbol, unit = None, None
+    for i, file in enumerate(input_files):
         # print(f"file={file}")
         f_extension = os.path.splitext(file)[-1]
         plot_args = items[list(extensions.keys()).index(f_extension)]
@@ -825,14 +827,23 @@ def plot_vs_time(input_files, inputs, extensions, args):
                 f"plot_args: {plot_args}, f_extension:{f_extension}, {extensions[f_extension]}"
             )
         mrun: MagnetRun = inputs[file]["data"]
+        t0.append(mrun.StartTime)
         mdata = mrun.getMData()
+        delta_t = 0.0
+        if i >= 1:
+            # align time axis
+            delta_t = (mrun.StartTime - t0[0]).total_seconds()
+            print(f"align time axis: delta_t={delta_t} s")
+            mdata.shiftTime(delta_t)
+
         for key in plot_args:
             try:
-                # print(f"plot key={key}, type={type(key)}", flush=True)
                 (symbol, unit) = mdata.getUnitKey(key)
                 print(f"plot {key} [{symbol} {unit:~P}]")
 
-                mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
+                mdata.plotData(
+                    x="t", y=key, ax=my_ax, normalize=args.normalize, offset=delta_t
+                )
                 legends.append(
                     f'{os.path.basename(file).replace(f_extension,"")}: {key}'
                 )
@@ -959,19 +970,22 @@ def main():
             )
 
         filename = os.path.basename(file)
-        result = filename.startswith("M")
         insert = "tututu"
         site = "tttt"
-        if result:
-            try:
-                index = filename.index("_")
-                site = filename[0:index]
-                # print(f"site detected: {site}")
-            except Exception as error:
-                print(f"{file}: no site detected - use args.site argument instead")
-                continue
-            if args.debug:
-                print(f"site={site}")
+        if args.site:
+            site = args.site
+        else:
+            result = filename.startswith("M")
+            if result:
+                try:
+                    index = filename.index("_")
+                    site = filename[0:index]
+                    # print(f"site detected: {site}")
+                except Exception as error:
+                    print(f"{file}: no site detected - use args.site argument instead")
+                    continue
+                if args.debug:
+                    print(f"site={site}")
 
         try:
             match f_extension:
@@ -1118,3 +1132,7 @@ def main():
         # save df to csv
         print("head:", df.head())
         df.to_csv(f"{output}.csv")
+
+
+if __name__ == "__main__":
+    main()
