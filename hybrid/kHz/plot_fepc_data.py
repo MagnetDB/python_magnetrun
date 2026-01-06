@@ -5,20 +5,16 @@ This tool reads FEPC binary data files and plots specific variables.
 Example: python plot_fepc_data.py -c HOST_2_DATA.CFG -v ALIM1_J1 -s 4
 """
 
-import sys
 import argparse
 import re
 from pathlib import Path
 from typing import Optional, Tuple
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.dates import DateFormatter
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from cfg_analyzer import extract_host_number, analyze_cfg_file
 from fepc_reader import (
-    read_analog_block,
-    read_digital_block,
     apply_calibration,
     read_hour_file,
 )
@@ -157,12 +153,9 @@ def read_variable_from_files(
 
     # Get sampling frequency
     sampling_freq = 10000
-    if config and len(config.cards) > slot:
-        print(f"Getting sampling frequency for slot {slot}...")
-        sampling_freq = config.cards[slot].sampling_freq
-    print(f" Sampling frequency: {sampling_freq} Hz")
 
     # Setup debug plot if requested
+    fig, ax, line = None, None, None
     if debug:
         plt.ion()  # Interactive mode
         fig, ax = plt.subplots(figsize=(14, 6))
@@ -173,12 +166,14 @@ def read_variable_from_files(
         (line,) = ax.plot([], [], linewidth=0.5, alpha=0.8)
         plt.show(block=False)
 
-    print(f"Reading {len(bin_files)} files... (endian={endian})", flush=True)
+    if debug:
+        print(f"Reading {len(bin_files)} files... (endian={endian})", flush=True)
 
     for file_idx, file_path in enumerate(bin_files):
         try:
             # Read complete hour file
-            print(f"Reading file: {file_path.name}", flush=True)
+            if debug:
+                print(f"Reading file: {file_path.name}", flush=True)
             hour_data = read_hour_file(
                 str(file_path),
                 card_type,
@@ -194,14 +189,18 @@ def read_variable_from_files(
             if debug:
                 current_data = np.concatenate(all_data)
                 current_time = np.arange(len(current_data)) / sampling_freq
-                line.set_data(current_time, current_data)
-                ax.relim()
-                ax.autoscale_view()
-                ax.set_title(
-                    f"Debug: {var_name} (Slot {slot}) - File {file_idx + 1}/{len(bin_files)}"
-                )
-                fig.canvas.draw()
-                fig.canvas.flush_events()
+                if line is not None:
+                    line.set_data(current_time, current_data)
+                if ax is not None:
+                    ax.relim()
+                    ax.autoscale_view()
+                    ax.set_title(
+                        f"Debug: {var_name} (Slot {slot}) - File {file_idx + 1}/{len(bin_files)}"
+                    )
+                if fig is not None:
+                    fig.canvas.draw()
+                if fig is not None:
+                    fig.canvas.flush_events()
                 plt.pause(1)
 
         except Exception as e:
@@ -312,7 +311,7 @@ def plot_variable(
     fig, ax = plt.subplots(figsize=(14, 6))
 
     # Convert time to hours
-    time_hours = time / 3600
+    # time_hours = time / 3600
 
     ax.plot(time, data, linewidth=0.5, alpha=0.8)
     ax.set_xlabel("Time (s)")

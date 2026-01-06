@@ -69,13 +69,6 @@ print(f"Digital slots: {config.get_digital_slots()}")
 # Get info for a specific slot
 card = config.get_card_by_slot(0)
 print(f"Slot 0 variables: {card.variable_names}")
-
-# Check calibration info
-for i, (var, calib) in enumerate(zip(card.variable_names, card.calibrations)):
-    if calib.cnv_file:
-        print(f"  {var}: Piecewise calibration ({calib.cnv_file})")
-    else:
-        print(f"  {var}: Linear calibration (A={calib.a:.3e}, B={calib.b:.3f})")
 ```
 
 ### 2. Read Data from a File
@@ -92,29 +85,7 @@ data = read_hour_file("00HOST_1_LIST_0.bin", "ANA", num_blocks=100)
 # Returns: numpy array, shape (5,000, 16) - 5 seconds of data
 ```
 
-### 3. Apply Calibration (Convert to Physical Units)
-
-```python
-from fepc_reader import calibrate_channel
-
-# Read raw data
-raw_data = read_hour_file("00HOST_1_LIST_0.bin", "ANA", num_blocks=100)
-
-# Get card info
-card = config.get_card_by_slot(0)
-
-# Calibrate a specific channel (e.g., channel 0)
-channel_idx = 0
-raw_channel = raw_data[:, channel_idx]
-
-# Apply calibration (automatically uses correct method)
-calibrated = calibrate_channel(raw_channel, card, channel_idx, cnv_directory=".")
-
-print(f"Raw range: [{raw_channel.min()}, {raw_channel.max()}]")
-print(f"Calibrated range: [{calibrated.min():.3f}, {calibrated.max():.3f}]")
-```
-
-### 4. Extract Specific Variable
+### 3. Extract Specific Variable
 
 ```python
 # Find which slot contains your variable
@@ -125,91 +96,14 @@ for card in config.cards:
         slot = card.slot
         channel = card.variable_names.index(target_var)
         print(f"Found in slot {slot}, channel {channel}")
-        
+
         # Read the data
         filepath = f"00HOST_1_LIST_{slot}.bin"
         data = read_hour_file(filepath, card.card_type)
-        
+
         # Extract the specific channel
         variable_data = data[:, channel]
         break
-```
-
-## Calibration
-
-Analog channels use calibration to convert raw ADC values (16-bit integers) to physical units. Two calibration methods are supported:
-
-### Linear Calibration
-
-Formula: **Signal = A × (COEF_A × N + COEF_B) + B**
-
-Where:
-- N = raw ADC value (0-65535)
-- COEF_A, COEF_B, A, B = calibration parameters from CFG file
-
-**Example from documentation:**
-```python
-# Parameters: COEF_A=1, COEF_B=0, A=3.0518044E-4, B=-10
-# N=0 → Signal = -10V
-# N=65535 → Signal = +10V
-```
-
-### Piecewise Linear Calibration
-
-Uses lookup table from .CNV files with linear interpolation between points.
-
-**CNV file format:**
-```
-24578;250,0     # N=24578 → 250.0 mV
-32123;20,0      # N=32123 → 20.0 mV
-33435;-20,0     # N=33435 → -20.0 mV
-40981;-250,0    # N=40981 → -250.0 mV
-```
-
-### Using Calibration
-
-**Automatic calibration (recommended):**
-```python
-from fepc_reader import calibrate_channel
-
-# This automatically selects the right calibration method
-calibrated = calibrate_channel(
-    raw_data=raw_channel,
-    card=card,
-    channel_idx=0,
-    cnv_directory="."  # Directory containing .CNV files
-)
-```
-
-**Manual calibration:**
-```python
-from fepc_reader import apply_calibration, load_calibration
-
-# Linear calibration
-calib_info = card.calibrations[channel_idx]
-calibrated = apply_calibration(raw_data, calib_info=calib_info)
-
-# Piecewise calibration
-cnv_dict = load_calibration("variable_name.CNV")
-calibrated = apply_calibration(raw_data, cnv_dict=cnv_dict)
-```
-
-### Calibration Information
-
-Calibration parameters are stored in the `CardInfo.calibrations` list:
-
-```python
-card = config.get_card_by_slot(0)
-
-for i, (var_name, calib) in enumerate(zip(card.variable_names, card.calibrations)):
-    print(f"Channel {i}: {var_name}")
-    
-    if calib.cnv_file:
-        print(f"  Type: Piecewise")
-        print(f"  CNV file: {calib.cnv_file}")
-    else:
-        print(f"  Type: Linear")
-        print(f"  Parameters: A={calib.a}, B={calib.b}, Ca={calib.coef_a}, Cb={calib.coef_b}")
 ```
 
 ### 4. Analyze CFG File
@@ -228,6 +122,35 @@ This will:
 
 ## Example Scripts
 
+### `plot_fepc_data.py`
+Plot specific variables from FEPC binary data files.
+
+```bash
+# Plot a variable with automatic slot detection
+python plot_fepc_data.py -c HOST_2_DATA.CFG -v ALIM1_J1
+
+# Specify slot explicitly
+python plot_fepc_data.py -c HOST_2_DATA.CFG -v ALIM1_J1 -s 4
+
+# Save plot to file
+python plot_fepc_data.py -c HOST_2_DATA.CFG -v ALIM1_J1 -o output.png
+
+# Debug mode with live plotting
+python plot_fepc_data.py -c HOST_2_DATA.CFG -v ALIM1_J1 --debug
+
+# Specify endianness and CNV directory
+python plot_fepc_data.py -c HOST_2_DATA.CFG -v ALIM1_J1 -e little --cnv-dir /path/to/cnv
+```
+
+**Options:**
+- `-c, --cfg`: Path to HOST_X_DATA.CFG file (required)
+- `-v, --variable`: Variable name to plot (required)
+- `-s, --slot`: Card slot number (optional, auto-detected)
+- `-o, --output`: Output file for plot (PNG, PDF, etc.)
+- `-e, --endian`: Endianness ('big' or 'little', default: big)
+- `--debug`: Show live plot while loading data
+- `--cnv-dir`: Directory containing CNV calibration files
+
 ### `cfg_analyzer.py`
 Dedicated tool to analyze CFG files and display slot configuration.
 
@@ -242,30 +165,8 @@ python cfg_analyzer.py /path/to/HOST_1_DATA.CFG
 **Output:**
 - Complete slot information
 - Variable lists for each slot
-- Calibration parameters for analog channels
 - File naming patterns
 - Exported CSV file with all variables
-
-### `calibration_demo.py`
-Comprehensive calibration demonstration and analysis tool.
-
-```bash
-python calibration_demo.py
-```
-
-**Features:**
-- Display all calibration parameters from CFG file
-- Demonstrate linear calibration with examples
-- Load and analyze CNV files (piecewise calibration)
-- Apply calibration to real data
-- Plot raw vs calibrated data comparison
-- Export calibration info to CSV
-
-**Output:**
-- Calibration parameter tables
-- Example calculations
-- Visualization plots (if data files present)
-- `calibration_info.csv` with all parameters
 
 ### `example_fepc_usage.py`
 Comprehensive examples demonstrating all features:
@@ -274,7 +175,6 @@ Comprehensive examples demonstrating all features:
 - Reading complete hour files
 - Extracting specific variables
 - Plotting data
-- Applying calibration
 
 ```bash
 python example_fepc_usage.py
@@ -292,11 +192,12 @@ Main module with all core functionality.
 ```python
 @dataclass
 class CalibrationInfo:
-    coef_a: float = 1.0      # Linear coefficient A
-    coef_b: float = 0.0      # Linear coefficient B  
-    a: float = 1.0           # Scale factor
-    b: float = 0.0           # Offset
-    cnv_file: str = None     # CNV filename for piecewise calibration
+    coef_a: float = 1.0    # Coefficient A for linear calibration
+    coef_b: float = 0.0    # Coefficient B for linear calibration
+    a: float = 1.0         # Scale factor A
+    b: float = 0.0         # Offset B
+    cnv_file: str = None   # Path to CNV file for piecewise calibration
+    unit: str = None       # Physical unit (e.g., 'A', 'V', 'bar')
 ```
 
 **`CardInfo`**
@@ -305,12 +206,14 @@ class CalibrationInfo:
 class CardInfo:
     slot: int              # Slot number (0-7)
     card_type: str         # 'ANA' or 'DIG'
-    sampling_freq: int     # Sampling frequency (Hz)
+    buffer_freq: int     # Buffer Sampling frequency (Hz)
     buffer_pre: int        # Pre-quench buffer (s)
     buffer_post: int       # Post-quench buffer (s)
     num_channels: int      # Number of channels (16 or 32)
-    variable_names: List[str]      # Variable names
-    calibrations: List[CalibrationInfo]  # Calibration for each channel (analog only)
+    variable_names: List[str]  # Variable names from CFG lines
+    calibrations: List[CalibrationInfo]  # Calibration for each analog channel
+    digital_info: List[Dict]   # Additional info for digital variables
+    analog_info: List[Dict]    # Additional info for analog variables
 ```
 
 **`FEPCConfig`**
@@ -320,7 +223,10 @@ class FEPCConfig:
     fepc_name: str         # FEPC identifier
     num_cards: int         # Total number of cards
     cards: List[CardInfo]  # List of card configurations
-    
+    host_number: str       # HOST number from CFG filename
+    digital_variables: Dict[int, List[str]]  # Slot -> variable names
+    analog_variables: Dict[int, List[str]]   # Slot -> variable names
+
     # Methods
     get_card_by_slot(slot)    # Get card info by slot number
     get_analog_slots()        # Get list of analog card slots
@@ -341,27 +247,26 @@ class FEPCConfig:
 - Read one digital block (50 samples, 32 channels)
 - Returns: `(data, header)` where data is shape (50, 32)
 
-**`read_hour_file(filepath, card_type, num_blocks=72000)`**
+**`read_hour_file(filepath, card_type, num_blocks=72000, endian='big', debug=False)`**
 - Read complete hour file (or specified number of blocks)
+- `endian`: Byte order ('big' or 'little')
+- `debug`: If True, shows live plot while reading
 - Returns: numpy array
   - Analog: shape (N×50, 16), dtype=int16
   - Digital: shape (N×50, 32), dtype=bool
 
-**Calibration Functions:**
+**`apply_calibration(raw_data, calib_info=None, cnv_dict=None)`**
+- Apply calibration to convert raw values to physical units
+- Linear: `Signal = A * (COEF_A * N + COEF_B) + B`
+- Piecewise: Uses CNV file lookup table with interpolation
 
 **`load_calibration(cnv_path)`**
-- Load piecewise calibration from .CNV file
+- Load CNV file for piecewise linear calibration
 - Returns: dict with 'n_values' and 'physical_values' arrays
 
-**`apply_calibration(raw_data, calib_info=None, cnv_dict=None)`**
-- Apply calibration to raw analog data
-- Supports both linear and piecewise methods
-- Returns: calibrated data as float array
-
-**`calibrate_channel(raw_data, card, channel_idx, cnv_directory=".")`**
+**`calibrate_channel(raw_data, card, channel_idx, cnv_directory='.')`**
 - Convenience function to calibrate a single channel
-- Automatically selects appropriate calibration method
-- Returns: calibrated data as float array
+- Automatically selects calibration method
 
 ## Data Organization Example
 
@@ -408,10 +313,10 @@ For large files, read block by block:
 with open("00HOST_1_LIST_0.bin", 'rb') as f:
     for block_idx in range(72000):  # All blocks in hour
         data, header = read_analog_block(f, block_idx)
-        
+
         # Process block (50 samples)
         # ... your processing code ...
-        
+
         if block_idx % 1000 == 0:
             print(f"Processed {block_idx}/72000 blocks")
 ```
@@ -468,4 +373,4 @@ for slot in analog_slots:
 For questions or issues, refer to the original documentation from DRF/Irfu/DIS.
 
 ---
-*Last updated: December 2025*
+*Last updated: January 2026*

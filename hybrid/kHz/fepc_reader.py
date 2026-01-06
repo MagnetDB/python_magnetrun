@@ -29,7 +29,7 @@ class CardInfo:
 
     slot: int
     card_type: str  # 'ANA' or 'DIG'
-    sampling_freq: int
+    buffer_freq: int
     buffer_pre: int
     buffer_post: int
     num_channels: int
@@ -80,7 +80,7 @@ class FEPCConfig:
         return [card.slot for card in self.cards if card.card_type == "DIG"]
 
 
-def parse_cfg_file(cfg_path: str) -> FEPCConfig:
+def parse_cfg_file(cfg_path: str, debug: bool = False) -> FEPCConfig:
     """
     Parse HOST_X_DATA.CFG file to extract FEPC configuration
 
@@ -96,7 +96,7 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
     Header format:
     FEPC_NAME;num_cards;freq1;pre1;post1;type1;nchannels1;freq2;pre2;post2;type2;nchannels2;...
     Where:
-        - freq: sampling frequency in Hz
+        - freq: buffer frequency in Hz
         - pre: pre-trigger buffer in seconds
         - post: post-trigger buffer in seconds
         - type: card type (0=ANA, 1=DIG)
@@ -114,11 +114,13 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
 
     # Extract FEPC name (usually first element before numbers)
     fepc_name = parts[0].split("|")[0] if "|" in parts[0] else parts[0]
-    print(f"FEPC NAME extracted: {fepc_name}", flush=True)
+    if debug:
+        print(f"FEPC Name: {fepc_name}", flush=True)
 
     # Extract number of cards from parts[1]
     num_cards = int(parts[1]) if len(parts) > 1 else len(lines) - 1
-    print(f"Number of cards: {num_cards}", flush=True)
+    if debug:
+        print(f"Number of cards: {num_cards}", flush=True)
 
     # Parse card descriptions from header
     # Each card has 5 fields: freq, pre, post, type, nchannels
@@ -141,10 +143,11 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
                     "nchannels": nchannels,
                 }
             )
-            print(
-                f"Card {card_idx}: freq={freq}, pre={pre}, post={post}, type={card_type}, nchannels={nchannels}",
-                flush=True,
-            )
+            if debug:
+                print(
+                    f"Card {card_idx}: freq={freq}, pre={pre}, post={post}, type={card_type}, nchannels={nchannels}",
+                    flush=True,
+                )
             header_idx += 5
         else:
             # Fallback defaults if header doesn't have enough info
@@ -175,7 +178,7 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
         slot = card_idx
         card_type = card_desc.get("card_type", "ANA" if line_idx <= 6 else "DIG")
         num_channels = card_desc.get("nchannels", 16 if card_type == "ANA" else 32)
-        sampling_freq = card_desc.get("freq", 10000)
+        buffer_freq = card_desc.get("freq", 10000)
         buffer_pre = card_desc.get("pre", 20)
         buffer_post = card_desc.get("post", 50)
 
@@ -193,17 +196,18 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
         card = CardInfo(
             slot=slot,
             card_type=card_type,
-            sampling_freq=sampling_freq,
+            buffer_freq=buffer_freq,
             buffer_pre=buffer_pre,
             buffer_post=buffer_post,
             num_channels=num_channels,
             variable_names=variable_names,
             calibrations=calibrations,
         )
-        print(
-            f"Parsed Card Slot {slot}: Type={card_type}, Channels={num_channels}, variables={variable_names}",
-            flush=True,
-        )
+        if debug:
+            print(
+                f"Parsed Card Slot {slot}: Type={card_type}, Channels={num_channels}, variables={variable_names}",
+                flush=True,
+            )
         cards.append(card)
 
     # Parse additional lines for DIGITAL and ANALOG variable definitions
@@ -275,7 +279,6 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
             # Extract unit string if present
             unit = line_dict.get("UNIT", "")
 
-            
             # Create calibration info
             calib = CalibrationInfo(
                 coef_a=coef_a,
@@ -549,6 +552,7 @@ def read_hour_file(
     )
 
     # Setup debug plot if requested
+    fig, ax, line = None, None, None
     if debug:
         plt.ion()  # Interactive mode
         fig, ax = plt.subplots(figsize=(14, 6))
@@ -576,14 +580,17 @@ def read_hour_file(
                 current_end = end_idx
                 x_data = np.arange(current_end)
                 y_data = data[:current_end, debug_channel]
-                line.set_data(x_data, y_data)
-                ax.relim()
-                ax.autoscale_view()
-                ax.set_title(
-                    f"Debug: Reading {Path(filepath).name} - Block {block_idx+1}/{num_blocks}"
-                )
-                fig.canvas.draw()
-                fig.canvas.flush_events()
+                if line is not None:
+                    line.set_data(x_data, y_data)
+                if ax is not None:
+                    ax.relim()
+                    ax.autoscale_view()
+                    ax.set_title(
+                        f"Debug: Reading {Path(filepath).name} - Block {block_idx+1}/{num_blocks}"
+                    )
+                if fig is not None:
+                    fig.canvas.draw()
+                    fig.canvas.flush_events()
                 plt.pause(0.01)
 
             if block_idx == 71980:
@@ -593,12 +600,17 @@ def read_hour_file(
 
     if debug:
         # Final update
-        line.set_data(np.arange(total_samples), data[:, debug_channel])
-        ax.relim()
-        ax.autoscale_view()
-        ax.set_title(f"Debug: {Path(filepath).name} - Complete ({num_blocks} blocks)")
-        fig.canvas.draw()
-        fig.canvas.flush_events()
+        if line is not None:
+            line.set_data(np.arange(total_samples), data[:, debug_channel])
+        if ax is not None:
+            ax.relim()
+            ax.autoscale_view()
+            ax.set_title(
+                f"Debug: {Path(filepath).name} - Complete ({num_blocks} blocks)"
+            )
+        if fig is not None:
+            fig.canvas.draw()
+            fig.canvas.flush_events()
         plt.ioff()
         plt.show()  # Keep final plot open
 
@@ -689,10 +701,18 @@ def apply_calibration(
         Calibrated data in physical units (float)
     """
     if cnv_dict is not None and cnv_dict["type"] == "piecewise":
+        print(
+            f"apply piecewise calibration using CNV data (cvn_dict={cnv_dict})",
+            flush=True,
+        )
         # Piecewise linear calibration
         return _apply_piecewise_calibration(raw_data, cnv_dict)
 
     elif calib_info is not None:
+        print(
+            f"apply linear calibration: COEF_A={calib_info.coef_a}, COEF_B={calib_info.coef_b}, A={calib_info.a}, B={calib_info.b}",
+            flush=True,
+        )
         # Linear calibration: Signal = A * (COEF_A * N + COEF_B) + B
         return _apply_linear_calibration(raw_data, calib_info)
 
@@ -784,8 +804,8 @@ def calibrate_channel(
     return apply_calibration(raw_data, calib_info=calib)
 
 
-# Example usage
-if __name__ == "__main__":
+def main():
+    """Main function for CLI usage"""
     parser = argparse.ArgumentParser(
         description="Read FEPC kHz acquisition data files",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -823,6 +843,27 @@ if __name__ == "__main__":
         help="Endianness of binary data: big or little (default: big)",
     )
 
+    parser.add_argument(
+        "--kHz-datadir",
+        type=str,
+        default="~/LNCMIG-Data/CEA/kHz/",
+        help="Directory containing kHz binary data files (default: current directory)",
+    )
+
+    parser.add_argument(
+        "--trigger-datadir",
+        type=str,
+        default="~/LNCMIG-Data/CEA/trigger/",
+        help="Directory containing trigger data files (default: current directory)",
+    )
+
+    parser.add_argument(
+        "--rms-datadir",
+        type=str,
+        default="~/LNCMIG-Data/CEA/rms",
+        help="Directory containing RMS data files (default: current directory)",
+    )
+
     args = parser.parse_args()
 
     # Parse configuration if provided
@@ -833,7 +874,7 @@ if __name__ == "__main__":
 
         for card in config.cards:
             print(f"\nSlot {card.slot}: {card.card_type} card")
-            print(f"  Sampling frequency: {card.sampling_freq} Hz")
+            print("  Sampling frequency: 1000 Hz")
             print(f"  Number of channels: {card.num_channels}")
             print(
                 f"  Variables: {', '.join(card.variable_names[:5])}{', ...' if len(card.variable_names) > 5 else ''}"
@@ -867,3 +908,9 @@ if __name__ == "__main__":
             "  Full example:  python fepc_reader.py -c HOST_2_DATA.CFG -d data.bin -t ANA -n 1000 -e big"
         )
         parser.print_help()
+
+    return args
+
+
+if __name__ == "__main__":
+    main()
