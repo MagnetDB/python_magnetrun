@@ -9,6 +9,15 @@ This module provides a unified interface for reading and accessing three types o
 - **RMS**: Root Mean Square data at lower frequency (typically 10 Hz)
 - **Trigger**: Event-triggered data
 
+## Features
+
+- **Unified API**: Single `HybridData` class to access all data types
+- **MagnetData-compatible**: Interface similar to the existing `MagnetData` class
+- **Built-in plotting**: Plot kHz, RMS, or combined data with a single method call
+- **Outlier removal**: Multiple methods for detecting and removing outliers (IQR, Z-score, MAD, percentile)
+- **Calibration support**: Automatic calibration using CNV files
+- **CLI interface**: Command-line tools for quick data exploration
+
 ## Directory Structure
 
 The data is expected to be organized as follows:
@@ -30,9 +39,13 @@ base_dir/
 ├── rms/
 │   └── YYYY-MM-DD/
 │       ├── FEPC-LNCMI/
-│       │   └── *.rms
+│       |   └── FEPC-LNCMI_YYYY-MM-DD_0000—YYYY-MM-DD_0100.rms
+|       |   └── ...
+|       |   └── FEPC-LNCMI_YYYY-MM-DD_0000—YYYY-MM-DD+1_0000.rms
 │       └── FEPC-AUX-LNCMI/
-│           └── *.rms
+│           └── FEPC-AUX-LNCMI_YYYY-MM-DD_0000—YYYY-MM-DD_0100.rms
+|           └── ...
+|           └── FEPC-AUX-LNCMI_YYYY-MM-DD_0000—YYYY-MM-DD+1_0000.rms
 └── trigger/
     └── TRIGGER__YYYY-MM-DD__HH-MM/
         ├── FEPC-LNCMI/
@@ -118,19 +131,66 @@ print(data.getKeys())
 
 ## Command Line Interface
 
+### Basic Commands
+
 ```bash
 # List available dates
-python hybrid_data.py --base-dir /data/hybrid --list-dates
+python -m hybrid.hybrid_data --base-dir /data/hybrid --list-dates
 
 # Show summary for a specific date
-python hybrid_data.py --base-dir /data/hybrid --date 2025-01-06
+python -m hybrid.hybrid_data --base-dir /data/hybrid --date 2025-01-06
 
 # Show kHz variables for a system
-python hybrid_data.py --base-dir /data/hybrid --date 2025-01-06 --khz-vars FEPC-LNCMI
+python -m hybrid.hybrid_data -d 2025-01-06 --khz-vars FEPC-LNCMI
 
 # Show RMS variables for a system
-python hybrid_data.py --base-dir /data/hybrid --date 2025-01-06 --rms-vars FEPC-AUX-LNCMI
+python -m hybrid.hybrid_data -d 2025-01-06 --rms-vars FEPC-AUX-LNCMI
 ```
+
+### Plotting Commands
+
+```bash
+# Plot a kHz variable
+python -m hybrid.hybrid_data -d 2025-01-06 -s FEPC-LNCMI --plot-khz ALIM1_J1
+
+# Plot specific hours without calibration
+python -m hybrid.hybrid_data -d 2025-01-06 -s FEPC-LNCMI --plot-khz ALIM1_J1 --hours 0,1,2 --no-calib
+
+# Plot an RMS variable
+python -m hybrid.hybrid_data -d 2025-01-06 -s FEPC-LNCMI --plot-rms ALIM1_J1
+
+# Plot kHz and RMS together
+python -m hybrid.hybrid_data -d 2025-01-06 -s FEPC-LNCMI --plot-both ALIM1_J1
+
+# Save plot to file
+python -m hybrid.hybrid_data -d 2025-01-06 -s FEPC-LNCMI --plot-khz ALIM1_J1 --save output.png
+```
+
+### Outlier Removal
+
+The module supports multiple outlier detection methods:
+
+| Method | Description | Default Threshold |
+|--------|-------------|-------------------|
+| `iqr` | Interquartile Range | 1.5 (use 3.0 for extreme outliers) |
+| `zscore` | Z-score based | 3.0 |
+| `mad` | Median Absolute Deviation | 3.5 |
+| `percentile` | Percentile-based clipping | 1.0 (clips 1% from each end) |
+
+```bash
+# Plot with IQR outlier removal (default threshold 1.5)
+python -m hybrid.hybrid_data -d 2025-01-06 -s FEPC-LNCMI --plot-khz ALIM1_J1 --remove-outliers iqr
+
+# Plot with Z-score method and custom threshold
+python -m hybrid.hybrid_data -d 2025-01-06 -s FEPC-LNCMI --plot-khz ALIM1_J1 --remove-outliers zscore --outlier-threshold 3.0
+
+# Plot with rolling window outlier removal (local detection)
+python -m hybrid.hybrid_data -d 2025-01-06 -s FEPC-LNCMI --plot-khz ALIM1_J1 --remove-outliers mad --outlier-window 1000
+```
+
+When outlier removal is enabled, a side-by-side comparison plot is generated showing:
+- Original data (left)
+- Cleaned data with outliers removed (right)
 
 ## API Reference
 
@@ -174,6 +234,7 @@ class HybridData:
 | `load_khz_config(system)` | Load kHz configuration |
 | `get_khz_variables(system)` | Get available variables |
 | `read_khz_variable(system, variable, ...)` | Read variable data |
+| `plot_khz_variable(system, variable, ...)` | Plot kHz data with optional outlier removal |
 
 #### RMS Methods
 
@@ -181,12 +242,75 @@ class HybridData:
 |--------|-------------|
 | `load_rms_data(system, file_idx)` | Load RMS data as DataFrame |
 | `get_rms_variables(system, file_idx)` | Get variable information |
+| `plot_rms_variable(system, variable, ...)` | Plot RMS data |
+
+#### Combined Plotting
+
+| Method | Description |
+|--------|-------------|
+| `plot_khz_with_rms(system, khz_variable, ...)` | Plot kHz and RMS data together |
 
 #### Trigger Methods
 
 | Method | Description |
 |--------|-------------|
 | `list_trigger_files(system)` | List available trigger files |
+
+### Plotting Methods
+
+```python
+# Plot kHz variable
+fig, ax = data.plot_khz_variable(
+    system="FEPC-LNCMI",
+    variable="ALIM1_J1",
+    hours=[0, 1, 2],           # Optional: specific hours
+    apply_calib=True,          # Apply calibration
+    save="output.png",         # Save to file
+    show=True                  # Display plot
+)
+
+# Plot with outlier removal
+fig, ax = data.plot_khz_variable(
+    system="FEPC-LNCMI",
+    variable="ALIM1_J1",
+    remove_outliers_method="iqr",  # 'iqr', 'zscore', 'mad', 'percentile'
+    outlier_threshold=1.5,         # Threshold for detection
+    outlier_window=None            # Optional: rolling window size
+)
+
+# Plot RMS variable
+fig, ax = data.plot_rms_variable(
+    system="FEPC-LNCMI",
+    variable="ALIM1_J1",
+    save="rms_output.png"
+)
+
+# Plot kHz and RMS together
+fig, axes = data.plot_khz_with_rms(
+    system="FEPC-LNCMI",
+    khz_variable="ALIM1_J1",
+    rms_variable="ALIM1_J1",  # Defaults to khz_variable
+    hours=[0, 1, 2],
+    save="combined.png"
+)
+```
+
+### Outlier Removal Function
+
+```python
+from hybrid.hybrid_data import remove_outliers
+
+# Remove outliers from data
+clean_data, clean_time, n_outliers = remove_outliers(
+    data=values,
+    time=time_array,
+    method="iqr",        # 'iqr', 'zscore', 'mad', 'percentile'
+    threshold=1.5,       # Method-specific threshold
+    window_size=None     # Optional: rolling window for local detection
+)
+
+print(f"Removed {n_outliers} outliers")
+```
 
 ### Utility Functions
 
@@ -220,9 +344,31 @@ hybrid_data = HybridData("/data/hybrid", "2025-01-06")
 
 - numpy
 - pandas
-- matplotlib (for plotting examples)
+- matplotlib (for plotting)
 - fepc_reader (from hybrid/kHz)
 - rms_reader (from hybrid/rms)
+
+## CLI Options Reference
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--base-dir` | `-b` | Base directory with kHz, rms, trigger subdirectories |
+| `--date` | `-d` | Date in YYYY-MM-DD format |
+| `--fepc-system` | `-s` | FEPC system (FEPC-LNCMI or FEPC-AUX-LNCMI) |
+| `--endian` | `-e` | Endianness of binary data (big/little) |
+| `--list-dates` | | List available dates |
+| `--khz-vars` | | Show kHz variables for a system |
+| `--rms-vars` | | Show RMS variables for a system |
+| `--plot-khz` | | Plot a kHz variable |
+| `--plot-rms` | | Plot an RMS variable |
+| `--plot-both` | | Plot kHz and RMS together |
+| `--rms-var` | | RMS variable name for --plot-both |
+| `--hours` | | Hours to plot (comma-separated) |
+| `--no-calib` | | Skip calibration |
+| `--save` | | Save plot to file |
+| `--remove-outliers` | | Outlier removal method (iqr, zscore, mad, percentile) |
+| `--outlier-threshold` | | Threshold for outlier detection |
+| `--outlier-window` | | Rolling window size for local outlier detection |
 
 ## See Also
 
@@ -231,4 +377,4 @@ hybrid_data = HybridData("/data/hybrid", "2025-01-06")
 - [MagnetData](../python_magnetrun/magnetdata.py) - Main MagnetData class
 
 ---
-*Last updated: January 2026*
+*Last updated: January 6, 2026*

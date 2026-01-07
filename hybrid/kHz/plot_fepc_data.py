@@ -282,6 +282,159 @@ def apply_variable_calibration(
     return data.astype(np.float64)
 
 
+def remove_outliers(
+    data: np.ndarray,
+    time: np.ndarray,
+    method: str = "iqr",
+    threshold: float = 1.5,
+    window_size: int = None,
+) -> Tuple[np.ndarray, np.ndarray, int]:
+    """
+    Remove outliers from data
+
+    Parameters:
+    -----------
+    data : np.ndarray
+        Input data array
+    time : np.ndarray
+        Time array corresponding to data
+    method : str
+        Outlier detection method:
+        - 'iqr': Interquartile Range (default)
+        - 'zscore': Z-score based
+        - 'mad': Median Absolute Deviation
+        - 'percentile': Percentile-based clipping
+    threshold : float
+        Threshold for outlier detection:
+        - For 'iqr': IQR multiplier (default: 1.5, use 3.0 for extreme outliers)
+        - For 'zscore': Number of standard deviations (default: 3.0)
+        - For 'mad': MAD multiplier (default: 3.5)
+        - For 'percentile': Percentile to clip (e.g., 1.0 clips 1% from each end)
+    window_size : int, optional
+        If provided, use rolling window for local outlier detection
+
+    Returns:
+    --------
+    clean_data : np.ndarray
+        Data with outliers removed (replaced with NaN or interpolated)
+    clean_time : np.ndarray
+        Corresponding time array
+    n_outliers : int
+        Number of outliers detected
+    """
+    data = data.copy().astype(np.float64)
+
+    if window_size is not None and window_size > 0:
+        # Rolling window outlier detection
+        mask = _rolling_outlier_mask(data, window_size, method, threshold)
+    else:
+        # Global outlier detection
+        mask = _global_outlier_mask(data, method, threshold)
+
+    n_outliers = np.sum(mask)
+
+    if n_outliers > 0:
+        # Replace outliers with NaN, then interpolate
+        data[mask] = np.nan
+
+        # Interpolate NaN values
+        valid_idx = ~np.isnan(data)
+        if np.sum(valid_idx) > 2:
+            data = np.interp(
+                np.arange(len(data)), np.arange(len(data))[valid_idx], data[valid_idx]
+            )
+
+    return data, time, n_outliers
+
+
+def _global_outlier_mask(data: np.ndarray, method: str, threshold: float) -> np.ndarray:
+    """
+    Create mask for global outliers
+
+    Returns boolean array where True indicates outlier
+    """
+    if method == "iqr":
+        q1 = np.nanpercentile(data, 25)
+        q3 = np.nanpercentile(data, 75)
+        iqr = q3 - q1
+        lower_bound = q1 - threshold * iqr
+        upper_bound = q3 + threshold * iqr
+        mask = (data < lower_bound) | (data > upper_bound)
+
+    elif method == "zscore":
+        mean = np.nanmean(data)
+        std = np.nanstd(data)
+        if std > 0:
+            z_scores = np.abs((data - mean) / std)
+            mask = z_scores > threshold
+        else:
+            mask = np.zeros(len(data), dtype=bool)
+
+    elif method == "mad":
+        median = np.nanmedian(data)
+        mad = np.nanmedian(np.abs(data - median))
+        if mad > 0:
+            modified_z = 0.6745 * (data - median) / mad
+            mask = np.abs(modified_z) > threshold
+        else:
+            mask = np.zeros(len(data), dtype=bool)
+
+    elif method == "percentile":
+        lower_bound = np.nanpercentile(data, threshold)
+        upper_bound = np.nanpercentile(data, 100 - threshold)
+        mask = (data < lower_bound) | (data > upper_bound)
+
+    else:
+        raise ValueError(
+            f"Unknown method: {method}. Use 'iqr', 'zscore', 'mad', or 'percentile'"
+        )
+
+    return mask
+
+
+def _rolling_outlier_mask(
+    data: np.ndarray, window_size: int, method: str, threshold: float
+) -> np.ndarray:
+    """
+    Create mask for rolling window outliers
+
+    Returns boolean array where True indicates outlier
+    """
+    n = len(data)
+    mask = np.zeros(n, dtype=bool)
+    half_window = window_size // 2
+
+    for i in range(n):
+        start = max(0, i - half_window)
+        end = min(n, i + half_window + 1)
+        window_data = data[start:end]
+
+        if method == "iqr":
+            q1 = np.nanpercentile(window_data, 25)
+            q3 = np.nanpercentile(window_data, 75)
+            iqr = q3 - q1
+            if iqr > 0:
+                lower = q1 - threshold * iqr
+                upper = q3 + threshold * iqr
+                mask[i] = data[i] < lower or data[i] > upper
+
+        elif method == "zscore":
+            mean = np.nanmean(window_data)
+            std = np.nanstd(window_data)
+            if std > 0:
+                z = abs((data[i] - mean) / std)
+                mask[i] = z > threshold
+
+        elif method == "mad":
+            median = np.nanmedian(window_data)
+            mad = np.nanmedian(np.abs(window_data - median))
+            if mad > 0:
+                modified_z = 0.6745 * abs(data[i] - median) / mad
+                mask[i] = modified_z > threshold
+
+    return mask
+
+
 def plot_variable(
     data: np.ndarray,
     time: np.ndarray,
@@ -289,6 +442,9 @@ def plot_variable(
     slot: int,
     output_file: Optional[str] = None,
     unit: Optional[str] = None,
+    raw_data: Optional[np.ndarray] = None,
+    raw_time: Optional[np.ndarray] = None,
+    n_outliers: int = 0,
 ):
     """
     Plot variable data
@@ -296,7 +452,7 @@ def plot_variable(
     Parameters:
     -----------
     data : np.ndarray
-        Variable data
+        Variable data (cleaned if outliers removed)
     time : np.ndarray
         Time array in seconds
     var_name : str
@@ -307,32 +463,75 @@ def plot_variable(
         If provided, save plot to this file
     unit : str, optional
         Physical unit for y-axis label
+    raw_data : np.ndarray, optional
+        Original data before outlier removal (for comparison plot)
+    raw_time : np.ndarray, optional
+        Original time array
+    n_outliers : int
+        Number of outliers removed
     """
-    fig, ax = plt.subplots(figsize=(14, 6))
-
-    # Convert time to hours
-    # time_hours = time / 3600
-
-    ax.plot(time, data, linewidth=0.5, alpha=0.8)
-    ax.set_xlabel("Time (s)")
-
     # Use unit if provided, otherwise generic label
     ylabel = f"{var_name} ({unit})" if unit else f"{var_name} (Physical Units)"
-    ax.set_ylabel(ylabel)
-    ax.set_title(f"Variable: {var_name} (Slot {slot})")
-    ax.grid(True, alpha=0.3)
 
-    # Add statistics
-    ax.text(
-        0.02,
-        0.98,
-        f"Min: {np.min(data):.2f}\nMax: {np.max(data):.2f}\nMean: {np.mean(data):.2f}",
-        transform=ax.transAxes,
-        verticalalignment="top",
-        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
-    )
+    # If raw_data is provided, create comparison plot
+    if raw_data is not None:
+        fig, axes = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
 
-    plt.tight_layout()
+        # Top plot: Original data with outliers
+        axes[0].plot(raw_time, raw_data, linewidth=0.5, alpha=0.8, color="blue")
+        axes[0].set_ylabel(ylabel)
+        axes[0].set_title(f"Original Data: {var_name} (Slot {slot})")
+        axes[0].grid(True, alpha=0.3)
+        axes[0].text(
+            0.02,
+            0.98,
+            f"Min: {np.nanmin(raw_data):.2f}\nMax: {np.nanmax(raw_data):.2f}\nMean: {np.nanmean(raw_data):.2f}",
+            transform=axes[0].transAxes,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+        )
+
+        # Bottom plot: Cleaned data without outliers
+        axes[1].plot(time, data, linewidth=0.5, alpha=0.8, color="green")
+        axes[1].set_xlabel("Time (s)")
+        axes[1].set_ylabel(ylabel)
+        pct = 100 * n_outliers / len(raw_data) if len(raw_data) > 0 else 0
+        axes[1].set_title(
+            f"Cleaned Data: {var_name} (Slot {slot}) - {n_outliers:,} outliers removed ({pct:.2f}%)"
+        )
+        axes[1].grid(True, alpha=0.3)
+        axes[1].text(
+            0.02,
+            0.98,
+            f"Min: {np.nanmin(data):.2f}\nMax: {np.nanmax(data):.2f}\nMean: {np.nanmean(data):.2f}",
+            transform=axes[1].transAxes,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="lightgreen", alpha=0.5),
+        )
+
+        plt.tight_layout()
+
+    else:
+        # Single plot (no outlier removal)
+        fig, ax = plt.subplots(figsize=(14, 6))
+
+        ax.plot(time, data, linewidth=0.5, alpha=0.8)
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel(ylabel)
+        ax.set_title(f"Variable: {var_name} (Slot {slot})")
+        ax.grid(True, alpha=0.3)
+
+        # Add statistics
+        ax.text(
+            0.02,
+            0.98,
+            f"Min: {np.min(data):.2f}\nMax: {np.max(data):.2f}\nMean: {np.mean(data):.2f}",
+            transform=ax.transAxes,
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+        )
+
+        plt.tight_layout()
 
     if output_file:
         plt.savefig(output_file, dpi=150)
@@ -389,6 +588,22 @@ def main():
         "--cnv-dir",
         default=".",
         help="Directory containing CNV calibration files (default: current directory)",
+    )
+    parser.add_argument(
+        "--remove-outliers",
+        choices=["iqr", "zscore", "mad", "percentile"],
+        help="Remove outliers using specified method",
+    )
+    parser.add_argument(
+        "--outlier-threshold",
+        type=float,
+        default=1.5,
+        help="Threshold for outlier detection (default: 1.5 for IQR, 3.0 for zscore/mad)",
+    )
+    parser.add_argument(
+        "--outlier-window",
+        type=int,
+        help="Window size for rolling outlier detection (optional)",
     )
 
     args = parser.parse_args()
@@ -458,9 +673,37 @@ def main():
 
         print(f"✓ Loaded {len(data):,} samples over {time[-1]:.1f} seconds")
 
+        # Remove outliers if requested
+        raw_data, raw_time, n_outliers = None, None, 0
+        if args.remove_outliers:
+            # Keep original data for comparison plot
+            raw_data = data.copy()
+            raw_time = time.copy()
+
+            print(f"\nRemoving outliers using {args.remove_outliers} method...")
+            data, time, n_outliers = remove_outliers(
+                data,
+                time,
+                method=args.remove_outliers,
+                threshold=args.outlier_threshold,
+                window_size=args.outlier_window,
+            )
+            pct = 100 * n_outliers / len(raw_data)
+            print(f"✓ Removed {n_outliers:,} outliers ({pct:.2f}%)")
+
         # Plot
         print("\nPlotting...")
-        plot_variable(data, time, args.variable, slot, args.output, unit=unit)
+        plot_variable(
+            data,
+            time,
+            args.variable,
+            slot,
+            args.output,
+            unit=unit,
+            raw_data=raw_data,
+            raw_time=raw_time,
+            n_outliers=n_outliers,
+        )
 
         return config
 
