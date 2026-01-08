@@ -930,7 +930,7 @@ class HybridData:
                 data,
                 method=remove_outliers_method,
                 threshold=outlier_threshold,
-                window=outlier_window,
+                window_size=outlier_window,
             )
 
         return plotting.plot_khz_variable(
@@ -1017,7 +1017,7 @@ class HybridData:
                     data,
                     method=remove_outliers_method,
                     threshold=outlier_threshold,
-                    window=outlier_window,
+                    window_size=outlier_window,
                 )
 
         return plotting.plot_khz_variables(
@@ -1098,7 +1098,7 @@ class HybridData:
                 data,
                 method=remove_outliers_method,
                 threshold=outlier_threshold,
-                window=outlier_window,
+                window_size=outlier_window,
             )
 
         return plotting.plot_rms_variable(
@@ -1181,7 +1181,7 @@ class HybridData:
                     data,
                     method=remove_outliers_method,
                     threshold=outlier_threshold,
-                    window=outlier_window,
+                    window_size=outlier_window,
                 )
 
         return plotting.plot_rms_variables(
