@@ -971,10 +971,14 @@ def main():
 
     # Configure logging level
     log_level = getattr(logging, args.log_level.upper(), logging.WARNING)
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+    logging_config = {
+        "level": log_level,
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    }
+    if args.log_file:
+        logging_config["filename"] = args.log_file
+        logging_config["filemode"] = "a"
+    logging.basicConfig(**logging_config)
     logger.setLevel(log_level)
 
     logger.debug(f"args: {args}")

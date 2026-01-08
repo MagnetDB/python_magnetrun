@@ -1,10 +1,7 @@
 """Command-line argument parsers for MagnetRun tools."""
 
-import logging
 import argparse
 import os
-
-logger = logging.getLogger(__name__)
 
 
 def validate_file_extension(allowed_extensions):
@@ -133,6 +130,12 @@ def create_base_parser(allowed_extensions=None):
         type=str,
         default="WARNING",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+    )
+    parser.add_argument(
+        "--log-file",
+        help="path to log file (if not specified, logs to console)",
+        type=str,
+        default=None,
     )
     return parser
 

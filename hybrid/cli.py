@@ -122,6 +122,12 @@ Examples:
     )
 
     parser.add_argument(
+        "--log-file",
+        type=str,
+        help="Path to log file (if not specified, logs to console)",
+    )
+
+    parser.add_argument(
         "--list-dates",
         action="store_true",
         help="List available dates",
@@ -306,10 +312,14 @@ def main() -> None:
 
     # Configure logging level
     log_level = getattr(logging, args.log_level.upper(), logging.WARNING)
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+    logging_config = {
+        "level": log_level,
+        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    }
+    if args.log_file:
+        logging_config["filename"] = args.log_file
+        logging_config["filemode"] = "a"
+    logging.basicConfig(**logging_config)
     logger.setLevel(log_level)
 
     # List dates
