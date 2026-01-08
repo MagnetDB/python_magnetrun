@@ -8,8 +8,9 @@ Check record consistency
 """
 
 import sys
-import requests
-import requests.exceptions
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def createSession(s, url_logging: str, payload: dict, debug: bool | None = False):
@@ -17,8 +18,7 @@ def createSession(s, url_logging: str, payload: dict, debug: bool | None = False
 
     p = s.post(url=url_logging, data=payload, verify=True)
     # print the html returned or something more intelligent to see if it's a successful login page.
-    if debug:
-        print(f"connect: {p.url}, status={p.status_code}")
+    logger.debug(f"connect: {p.url}, status={p.status_code}")
     # check return status: if not ok stop
     if p.status_code != 200:
         print(f"error {p.status_code} logging to {url_logging}")
@@ -28,13 +28,12 @@ def createSession(s, url_logging: str, payload: dict, debug: bool | None = False
 
 
 def download(
-        session, url_data, param, link: str | None = None, debug: bool | None = False
+    session, url_data, param, link: str | None = None, debug: bool | None = False
 ):
-    """download """
+    """download"""
 
     d = session.get(url=url_data, params=param, verify=True)
-    if debug:
-        print(f"downloads: {d.url}, status={d.status_code}")
+    logger.debug(f"downloads: {d.url}, status={d.status_code}")
     if d.status_code != 200:
         print(f"error {d.status_code} dowmload {url_data}")
         sys.exit(1)

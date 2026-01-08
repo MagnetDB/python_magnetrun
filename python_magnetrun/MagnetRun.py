@@ -1,9 +1,12 @@
 """Main module."""
 
+import logging
 import re
 import pandas as pd
 from natsort import natsorted
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from .magnetdata import MagnetData
 
@@ -61,14 +64,12 @@ def prepareData(data: MagnetData, housing: str, debug: bool = False):
 
     data.cleanupData(debug)
     Ikey = natsorted([_key for _key in data.getKeys() if re.match(r"Icoil\d+", _key)])
-    if debug:
-        print(f"MagnetRun/prepareData: housing={housing}, Ikey={Ikey}")
+    logger.debug(f"MagnetRun/prepareData: housing={housing}, Ikey={Ikey}")
 
     data.renameData(columns={f"{Ikey[0]}": "IH"})
     data.renameData(columns={f"{Ikey[-1]}": "IB"})
 
-    if debug:
-        print(f"MagnetRun.prepareData: data.keys={data.getKeys()}")
+    logger.debug(f"MagnetRun.prepareData: data.keys={data.getKeys()}")
 
 
 class MagnetRun:

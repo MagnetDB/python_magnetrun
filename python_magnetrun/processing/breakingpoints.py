@@ -6,8 +6,11 @@ Use kernelCPD algo for performance
 ex: python ./test-ruptures.py M9_Overview_240509-1634.tdms --group Tensions_Aimant --channel Interne6 --detect --algo kernelCPD --model rbf --pen 512 --min_size=200
 """
 
+import logging
 import pandas as pd
 import ruptures as rpt
+
+logger = logging.getLogger(__name__)
 
 import matplotlib.pyplot as plt
 

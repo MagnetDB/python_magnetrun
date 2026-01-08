@@ -1,5 +1,6 @@
 """MagnetData"""
 
+import logging
 import keyword
 from natsort import natsorted
 from datetime import datetime
@@ -9,6 +10,8 @@ import sys
 
 import pandas as pd
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 class MagnetData:
@@ -336,8 +339,7 @@ class MagnetData:
     def PigBrotherUnits(self, key: str, debug: bool = False) -> tuple:
         from pint import UnitRegistry
 
-        if debug:
-            print(f"PigBrotherUnits: key={key}")
+        logger.debug(f"PigBrotherUnits: key={key}")
         ureg = UnitRegistry()
 
         PigBrotherUnits = {
@@ -425,11 +427,11 @@ class MagnetData:
         # if self.Type == 1 # aka data from tdms
         # load units from tdms but check if coherent
         if debug:
-            print(f"Units: {self.Keys}")
+            logger.debug(f"Units: {self.Keys}")
             for key, values in self.units.items():
                 symbol = values[0]
                 unit = values[1]
-                print(f"{key}: symbol={symbol}, unit={unit:~P}", flush=True)
+                logger.debug(f"{key}: symbol={symbol}, unit={unit:~P}")
 
     def getUnitKey(self, key: str) -> tuple:
         # print(f"getUnitKey: {key}", flush=True)
@@ -476,10 +478,7 @@ class MagnetData:
         :rtype: _type_
         """
 
-        if debug:
-            print(
-                f"Clean up Data: filename={self.FileName}, keys={self.Keys}", flush=True
-            )
+        logger.debug(f"Clean up Data: filename={self.FileName}, keys={self.Keys}")
         if self.Type == 0:  # isinstance(self.Data, pd.DataFrame):
             import re
 
@@ -487,8 +486,7 @@ class MagnetData:
             init_Ikeys = natsorted(
                 [_key for _key in self.Keys if re.match(r"Icoil\d+", _key)]
             )
-            if debug:
-                print(f"init_Ikeys: {init_Ikeys}")
+            logger.debug(f"init_Ikeys: {init_Ikeys}")
             Fkeys = [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
             Fkeys += [_key for _key in self.Keys if re.match(r"Rpm\w+", _key)]
             Fkeys += [_key for _key in self.Keys if re.match(r"HP\w+", _key)]
@@ -518,11 +516,9 @@ class MagnetData:
                 # Return list of unique column names whose contents are duplicates.
                 return list(duplicateColumnNames)
 
-            if debug:
-                print(
-                    f"zero columns: {natsorted(self.Data.columns[(self.Data == 0).all()].values.tolist())}",
-                    flush=True,
-                )
+            logger.debug(
+                f"zero columns: {natsorted(self.Data.columns[(self.Data == 0).all()].values.tolist())}",
+            )
 
             # TODO remove empty column except that with a name that starts with Icoil*
             empty_cols = [
@@ -591,13 +587,11 @@ class MagnetData:
 
             UH = [f"Ucoil{i}" for i in Uprobes[0]]
             _df["UH"] = _df[UH].sum(axis=1)
-            if debug:
-                print(f"UH: {UH}")
+            logger.debug(f"UH: {UH}")
             if len(Uprobes) > 1:
                 UB = [f"Ucoil{i}" for i in Uprobes[1]]
                 _df["UB"] = _df[UB].sum(axis=1)
-                if debug:
-                    print(f"UB: {UB}")
+                logger.debug(f"UB: {UB}")
 
             # Always add latest Ikeys if not already in _df
             Ikeys = natsorted(
@@ -607,17 +601,15 @@ class MagnetData:
                     if re.match(r"Icoil\d+", _key)
                 ]
             )
-            if debug:
-                print(f"IKeys = {Ikeys} ({len(Ikeys)})")
+            logger.debug(f"IKeys = {Ikeys} ({len(Ikeys)})")
             if Ikeys:
                 # print(
                 #     f"nonnull Ikeys: {natsorted(set(init_Ikeys).difference(set(empty_Ikeys)))}"
                 # )
                 if len(Ikeys) == 1:
-                    if debug:
-                        print(
-                            f"{self.FileName}: check if {init_Ikeys[-1]} or {init_Ikeys[-2]} in _df"
-                        )
+                    logger.debug(
+                        f"{self.FileName}: check if {init_Ikeys[-1]} or {init_Ikeys[-2]} in _df"
+                    )
                     if init_Ikeys[-1] not in Ikeys and init_Ikeys[-2] not in Ikeys:
                         # IH only
                         # print(f"add {init_Ikeys[-2]}")
@@ -636,15 +628,12 @@ class MagnetData:
                     )
 
                 elif len(Ikeys) == 2:
-                    if debug:
-                        print("need to check consistancy")
+                    logger.debug("need to check consistancy")
 
                 else:
-                    if debug:
-                        print(
-                            f"{self.FileName}:try to cure dataset - got {Ikeys} expect at most 2 values",
-                            flush=True,
-                        )
+                    logger.debug(
+                        f"{self.FileName}:try to cure dataset - got {Ikeys} expect at most 2 values",
+                    )
                     ikeys = self.Data[Ikeys]
                     """
                     print(
@@ -659,16 +648,14 @@ class MagnetData:
                             diff = ikeys[Ikeys[i]] - ikeys[Ikeys[j]]
                             error = diff.mean()
                             stderror = diff.std()
-                            if debug:
-                                print(
-                                    f"diff[{Ikeys[i]}_{Ikeys[j]}: mean={error}, std={stderror}"
-                                )
+                            logger.debug(
+                                f"diff[{Ikeys[i]}_{Ikeys[j]}: mean={error}, std={stderror}"
+                            )
                             if abs(error) <= 1.0e-2:
                                 remove_Ikeys.append(Ikeys[j])
                                 # print(f"remove_Ikeys({Ikeys[j]})")
 
-                    if debug:
-                        print(f"remove_Ikeys: {remove_Ikeys}")
+                    logger.debug(f"remove_Ikeys: {remove_Ikeys}")
                     if remove_Ikeys:
                         """
                         print(
@@ -688,10 +675,9 @@ class MagnetData:
                     )
 
                     if len(Ikeys) == 1:
-                        if debug:
-                            print(
-                                f"{self.FileName}: check if {init_Ikeys[-1]} or {init_Ikeys[-2]} in _df"
-                            )
+                        logger.debug(
+                            f"{self.FileName}: check if {init_Ikeys[-1]} or {init_Ikeys[-2]} in _df"
+                        )
                         if (
                             init_Ikeys[-1] not in _df.columns.values.tolist()
                             and init_Ikeys[-2] not in _df.columns.values.tolist()
@@ -735,8 +721,9 @@ class MagnetData:
 
             self.Data = _df
             self.Keys = self.Data.columns.values.tolist()
-            if debug:
-                print(f"--> self.Keys = {self.Keys}")  # Data.columns.values.tolist()}')
+            logger.debug(
+                f"--> self.Keys = {self.Keys}"
+            )  # Data.columns.values.tolist()}')
         return 0
 
     def removeData(self, keys: list):
@@ -828,8 +815,7 @@ class MagnetData:
         """
         compute new column
         """
-        if debug:
-            print(f"computeData: Key={key}", end=" ")
+        logger.debug(f"computeData: Key={key}")
 
         if key in self.Keys:
             print(f"Key {key} already exists in DataFrame")
@@ -849,8 +835,7 @@ class MagnetData:
             else:
                 self.Units(debug)
 
-            if debug:
-                print("done")
+            logger.debug("done")
 
         elif self.Type == 1:
             raise RuntimeError(

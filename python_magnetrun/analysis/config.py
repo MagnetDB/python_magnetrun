@@ -28,9 +28,13 @@ Example usage::
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
+
+# Module logger
+logger = logging.getLogger("magnetrun.analysis.config")
 
 
 # =============================================================================
@@ -232,6 +236,11 @@ class ChannelMapping:
             "Référence_GR2": self.reference_gr2,
         }
         if reference_key not in mapping:
+            logger.error(
+                "Unknown reference key: %s. Valid keys: %s",
+                reference_key,
+                list(mapping.keys()),
+            )
             raise KeyError(
                 f"Unknown reference key: {reference_key}. "
                 f"Valid keys: {list(mapping.keys())}"
@@ -510,9 +519,11 @@ def get_site_config(site: str) -> SiteConfig:
     'IH'
     """
     if site not in SITE_CONFIGS:
+        logger.error("Unknown site: %s. Available: %s", site, list(SITE_CONFIGS.keys()))
         raise ValueError(
             f"Unknown site: {site}. Available: {list(SITE_CONFIGS.keys())}"
         )
+    logger.debug("Loading site configuration for %s", site)
     return SITE_CONFIGS[site]
 
 

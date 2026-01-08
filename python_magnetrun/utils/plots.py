@@ -1,10 +1,13 @@
 from __future__ import unicode_literals
 
+import logging
 import sys
 
 import matplotlib
 import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
@@ -142,8 +145,7 @@ def plot_files(
     debug: bool = False,
     wd: str | None = None,
 ):
-    if debug:
-        print(f"plot_files: input_files={input_files}, key1={key1}, key2={key2}")
+    logger.debug(f"plot_files: input_files={input_files}, key1={key1}, key2={key2}")
 
     # Import Dataset
     ax = plt.gca()

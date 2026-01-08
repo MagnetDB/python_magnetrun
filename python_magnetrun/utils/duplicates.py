@@ -1,6 +1,9 @@
+import logging
 import numpy as np
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False):

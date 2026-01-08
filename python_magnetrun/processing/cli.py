@@ -5,8 +5,11 @@ see:
 https://xavierbourretsicotte.github.io/loess.html
 """
 
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 from math import ceil
 import numpy as np

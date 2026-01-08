@@ -11,8 +11,10 @@ from scipy import stats
 
 from tabulate import tabulate
 
-# import logging
+import logging
 from natsort import natsorted
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd

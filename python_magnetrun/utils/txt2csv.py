@@ -1,10 +1,13 @@
 from __future__ import unicode_literals
+import logging
 import sys
 import argparse
 import datetime
 import pandas as pd
 import numpy as np
 import matplotlib
+
+logger = logging.getLogger(__name__)
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True
@@ -22,14 +25,12 @@ from ..cooling import water
 def concat_files(
     input_files: list, keys: list = [], debug: bool = False
 ) -> pd.DataFrame:
-    if debug:
-        print(f"concat_files: input_files={input_files}, keys={keys}")
+    logger.debug(f"concat_files: input_files={input_files}, keys={keys}")
 
     df_f = []
     for i, f in enumerate(input_files):
         _df = pd.DataFrame()
-        if debug:
-            print(f"concat_files: process {f}")
+        logger.debug(f"concat_files: process {f}")
         try:
             if f.endswith(".txt"):
                 _df = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=1)

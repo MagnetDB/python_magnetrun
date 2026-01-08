@@ -1,7 +1,9 @@
 """Main module."""
 
 import os
+import sys
 import traceback
+import logging
 
 from matplotlib.cbook import flatten
 
@@ -11,11 +13,13 @@ from scipy.signal import find_peaks
 
 from tabulate import tabulate
 
-# import logging
 from natsort import natsorted
 from .utils.files import expand_input_files
 
 import numpy as np
+
+# Setup logger
+logger = logging.getLogger(__name__)
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
@@ -24,6 +28,20 @@ from matplotlib import gridspec
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
+
+
+def format_exception_location() -> str:
+    """Get a concise string with file:line:function where exception occurred"""
+    exc_type, exc_value, exc_tb = sys.exc_info()
+    if exc_tb is not None:
+        tb = traceback.extract_tb(exc_tb)
+        if tb:
+            frame = tb[-1]
+            from pathlib import Path
+
+            filename = Path(frame.filename).name
+            return f"{filename}:{frame.lineno}:{frame.name}"
+    return "unknown:?:?"
 
 
 def plot_bkpts(
@@ -39,6 +57,8 @@ def plot_bkpts(
     peaks: np.ndarray,
     ignore_peaks: list[int],
     anomalies: list[int],
+    level: int,
+    window: int,
     save: bool = False,
 ):
     """_summary_
@@ -74,23 +94,23 @@ def plot_bkpts(
     gs = gridspec.GridSpec(3, 1)
 
     ax0 = plt.subplot(gs[0])
-    ax0.plot(ts.to_numpy(), label=key, color="blue", marker="o", linestyle="None")
+    ax0.plot(ts.to_numpy(), label=channel, color="blue", marker="o", linestyle="None")
     ax0.plot(smoothed, label="smoothed", color="red")
     ax0.legend()
     ax0.grid()
     # ax0.set_xlabel('t [s]')
     ax0.set_ylabel(f"{symbol} [{unit:~P}]")
-    ax0.set_title(f"{file}: {key}")
+    ax0.set_title(f"{file}: {channel}")
 
     ax1 = plt.subplot(gs[1], sharex=ax0)
-    ax1.plot(smoothed_der2, label=key, color="red")
+    ax1.plot(smoothed_der2, label=channel, color="red")
     ax1.legend()
     ax1.grid()
     # ax1.set_xlabel('t [s]')
     ax1.set_title(f"Savgo filter [2nd order der]: ({level}%: {quantiles_der:.3e})")
 
     ax2 = plt.subplot(gs[2], sharex=ax0)
-    std_ts = ts.rolling(window=args.window).std()
+    std_ts = ts.rolling(window=window).std()
     ax2.plot(std_ts.to_numpy(), label="rolling std", color="blue")
     ax2.legend()
     ax2.grid()
@@ -119,6 +139,7 @@ def plot_bkpts(
         ax1.legend()
 
     if save:
+        f_extension = os.path.splitext(file)[-1]
         plt.savefig(
             f'{file.replace(f_extension,"")}-{channel}-detect_bkpts.png', dpi=300
         )
@@ -146,7 +167,7 @@ def output_keys(file, inputs, extensions, args):
     # print(f"selected_keys[{file}]: {selected_keys}")
     if "t" not in selected_keys:
         selected_keys.insert(0, "t")
-    print(f"selected keys: {selected_keys}")
+    logger.info(f"selected keys: {selected_keys}")
 
     file_name = file.replace(f_extension, "")
     for key in selected_keys:
@@ -167,7 +188,7 @@ def output_keys(file, inputs, extensions, args):
 
             for key in selected_keys:
                 if key != "t":
-                    print(f"smooth {key}")
+                    logger.debug(f"smooth {key}")
 
                     y = selected_df[key].to_numpy()
                     x = selected_df["t"].to_numpy()
@@ -200,9 +221,9 @@ def output_keys(file, inputs, extensions, args):
                                 iter=args.smoothing_iter,
                             )
                         case _:
-                            print(f"{key}: unknow smoother {smoother}")
+                            logger.error(f"{key}: unknow smoother {smoother}")
 
-                    if args.debug:
+                    if args.log_level == "DEBUG":
                         selected_df[f"{key}_smoothed"] = y_smoothed
                         ax = selected_df.plot("t", key)
                         selected_df.plot("t", f"{key}_smoothed", ax=ax)
@@ -312,7 +333,7 @@ def add_field(mrun, args):
     :type args: argparse.Namespace
     """
     mdata = mrun.getMData()
-    print(mdata.getKeys())
+    logger.debug(mdata.getKeys())
 
     if args.compute:
         from .cooling import water
@@ -325,7 +346,7 @@ def add_field(mrun, args):
         nkey_method = water.getRho
 
         mdata.computeData(nkey_method, nkey, nkey_params, nkey_unit)
-        print(mdata.getKeys())
+        logger.debug(mdata.getKeys())
         print(mdata.getData("rho").describe())
 
         if args.plot:
@@ -338,35 +359,35 @@ def add_field(mrun, args):
                 plt.show()
             else:
                 imagefile = nkey
-                print(f"saveto: {imagefile}_vs_time.png", flush=True)
+                logger.info(f"saveto: {imagefile}_vs_time.png")
                 plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
             plt.close()
 
     if args.formula:
-        print(f"add {args.formula}, plot={args.plot}")
+        logger.debug(f"add {args.formula}, plot={args.plot}")
 
         nkey = args.formula.split(" = ")[0]
         nunit = str()
 
         # self.units[key] = ("U", ureg.volt)
-        print(f"try to add nkey={nkey} (formula={args.formula[1:]})")
+        logger.debug(f"try to add nkey={nkey} (formula={args.formula[1:]})")
         mdata.addData(key=nkey, formula=args.formula, unit=nunit)
-        print(mdata.getKeys())
+        logger.debug(mdata.getKeys())
         if args.plot:
             my_ax = plt.gca()
             mdata.plotData(x="t", y=nkey, ax=my_ax, normalize=args.normalize)
 
-            print(f"args.vs_time: {args.vs_time}")
+            logger.debug(f"args.vs_time: {args.vs_time}")
             if args.vs_time:
                 for key in args.vs_time[0]:
-                    print(key)
+                    logger.debug(key)
                     mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize)
 
             if not args.save:
                 plt.show()
             else:
                 imagefile = nkey
-                print(f"saveto: {imagefile}_vs_time.png", flush=True)
+                logger.info(f"saveto: {imagefile}_vs_time.png")
                 plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
             plt.close()
 
@@ -452,7 +473,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
             multiindex[1] = args.keys
             for key in args.keys:
                 if mdata.Type == 0:
-                    print(f"pupitre: stats for {key}", flush=True)
+                    logger.info(f"pupitre: stats for {key}")
                     (symbol, unit) = mdata.getUnitKey(key)
 
                     period = 1
@@ -460,7 +481,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                     tkey = "t"
                     channel = key
                 elif mdata.Type == 1:
-                    print(f"pigbrother: stats for {key}", flush=True)
+                    logger.info(f"pigbrother: stats for {key}")
                     (symbol, unit) = mdata.getUnitKey(key)
 
                     # compute num_points_threshold from dthresold
@@ -470,7 +491,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
 
                     tkey = f"{group}/t"
 
-                print(f"num_points_threshold: {num_points_threshold}")
+                logger.debug(f"num_points_threshold: {num_points_threshold}")
 
                 if args.localmax:
                     # find local maximum
@@ -505,7 +526,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                 if args.plateau:
                     from .processing.plateaux import nplateaus
 
-                    print(f"display plateaus for {key}")
+                    logger.info(f"display plateaus for {key}")
                     pdata = nplateaus(
                         mdata,
                         xField=("t", "t", "s"),
@@ -524,7 +545,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
 
                     # print only if plateaux
                     (nrows, ncols) = df_plateaux.shape
-                    print(f"df_plateaux: {df_plateaux.shape}")
+                    logger.debug(f"df_plateaux: {df_plateaux.shape}")
                     if nrows != 0:
                         data.append(
                             df_plateaux.loc[df_plateaux["duration"].idxmax()]
@@ -572,11 +593,11 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                     if mdata.Type == 0:
                         ts = mdata.Data[key]
                         freq = 1
-                        print(f"{key}: freq={freq} Hz", flush=True)
+                        logger.info(f"{key}: freq={freq} Hz")
                     elif mdata.Type == 1:
                         ts = mdata.Data[group][channel]
                         freq = 1 / mdata.Groups[group][channel]["wf_increment"]
-                        print(f"{group}/{channel}: freq={freq} Hz", flush=True)
+                        logger.info(f"{group}/{channel}: freq={freq} Hz")
 
                     #
                     smoothed = savgol(
@@ -585,11 +606,11 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                         polyorder=3,
                         deriv=0,
                     )
-                    print(f"{file}: stats for smoothed")
-                    print(f"min: {abs(smoothed).min()}")
-                    print(f"mean: {abs(smoothed).mean()}")
-                    print(f"max: {abs(smoothed).max()}")
-                    print(f"std: {abs(smoothed).std()}")
+                    logger.debug(f"{file}: stats for smoothed")
+                    logger.debug(f"min: {abs(smoothed).min()}")
+                    logger.debug(f"mean: {abs(smoothed).mean()}")
+                    logger.debug(f"max: {abs(smoothed).max()}")
+                    logger.debug(f"std: {abs(smoothed).std()}")
                     quantiles = {}
                     for level in range(5, 100, 5):
                         quantiles[str(level)] = np.quantile(
@@ -603,30 +624,32 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                     max_level_75 = (
                         abs(1 - abs(smoothed).max() / quantiles["75"]) * 100.0
                     )
-                    print(f"max_level_50={max_level_50}, max_level_75={max_level_75}")
+                    logger.debug(
+                        f"max_level_50={max_level_50}, max_level_75={max_level_75}"
+                    )
                     if max_level_75 >= 5000:
-                        print(f"overwrite level: {level} -> 40")
+                        logger.debug(f"overwrite level: {level} -> 40")
                         level = 40
                     if max_level_75 >= 1000:
-                        print(f"overwrite level: {level} -> 80")
+                        logger.debug(f"overwrite level: {level} -> 80")
                         level = 80
                     if max_level_75 <= 500:
-                        print(f"overwrite level: {level} -> 95")
+                        logger.debug(f"overwrite level: {level} -> 95")
                         level = 95
                     if max_level_75 <= 60:
-                        print(f"overwrite level: {level} -> 96")
+                        logger.debug(f"overwrite level: {level} -> 96")
                         level = 96
                     if max_level_75 <= 20:
-                        print(f"overwrite level: {level} -> 97")
+                        logger.debug(f"overwrite level: {level} -> 97")
                         level = 97
                     if max_level_75 <= 10:
-                        print(f"overwrite level: {level} -> 98")
+                        logger.debug(f"overwrite level: {level} -> 98")
                         level = 98
                     if max_level_75 <= 0.1:
-                        print(f"overwrite level: {level} -> 99")
+                        logger.debug(f"overwrite level: {level} -> 99")
                         level = 99
                     if max_level_75 <= 0.02:
-                        print(f"overwrite level: {level} -> 99.7")
+                        logger.debug(f"overwrite level: {level} -> 99.7")
                         level = 99.7
                     # print(f'{file}: {max_level}%', flush=True)
 
@@ -642,11 +665,11 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                         polyorder=3,
                         deriv=2,
                     )
-                    print(f"{file}: stats for smoother 2nd order derivate")
-                    print(f"min: {abs(smoothed_der2).min()}")
-                    print(f"mean: {abs(smoothed_der2).mean()}")
-                    print(f"max: {abs(smoothed_der2).max()}")
-                    print(f"std: {abs(smoothed_der2).std()}")
+                    logger.debug(f"{file}: stats for smoother 2nd order derivate")
+                    logger.debug(f"min: {abs(smoothed_der2).min()}")
+                    logger.debug(f"mean: {abs(smoothed_der2).mean()}")
+                    logger.debug(f"max: {abs(smoothed_der2).max()}")
+                    logger.debug(f"std: {abs(smoothed_der2).std()}")
                     quantiles_der = np.quantile(abs(smoothed_der2), level / 100.0)
 
                     # find peak of der2
@@ -688,6 +711,8 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                         peaks,
                         ignore_peaks,
                         [],
+                        level,
+                        args.window,
                         args.save,
                     )
 
@@ -698,7 +723,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                             for t in mdata.Keys
                             if t.startswith("Tensions_Aimant/Interne")
                         ]
-                        print(f"selected: {selected}")
+                        logger.debug(f"selected: {selected}")
                         for key in selected:
                             (symbol, unit) = mdata.getUnitKey(key)
 
@@ -762,7 +787,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                                             ):
                                                 msg += " **"
                                                 real_anomalies.append(cpeaks[i])
-                                            print(f"{msg}")
+                                            logger.debug(f"{msg}")
 
                                 print(
                                     f"anomalies: {len(anomalies)} - likely {len(real_anomalies)}"
@@ -783,11 +808,13 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                                         cpeaks,
                                         [],
                                         real_anomalies,
+                                        level,
+                                        args.window,
                                         args.save,
                                     )
 
     except Exception:
-        print(traceback.format_exc())
+        logger.error(traceback.format_exc())
         pass
 
     return columns, data
@@ -808,7 +835,7 @@ def plot_vs_time(input_files, inputs, extensions, args):
     my_ax = plt.gca()
 
     items = args.vs_time
-    print(f"items={items}", flush=True)
+    logger.debug(f"items={items}")
     title = os.path.basename(input_files[0])
     if len(input_files) > 1:
         klabels = flatten(items)
@@ -821,9 +848,11 @@ def plot_vs_time(input_files, inputs, extensions, args):
         # print(f"file={file}")
         f_extension = os.path.splitext(file)[-1]
         plot_args = items[list(extensions.keys()).index(f_extension)]
-        print(f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}")
-        if args.debug:
-            print(
+        logger.debug(
+            f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}"
+        )
+        if args.log_level == "DEBUG":
+            logger.debug(
                 f"plot_args: {plot_args}, f_extension:{f_extension}, {extensions[f_extension]}"
             )
         mrun: MagnetRun = inputs[file]["data"]
@@ -833,13 +862,13 @@ def plot_vs_time(input_files, inputs, extensions, args):
         if i >= 1:
             # align time axis
             delta_t = (mrun.StartTime - t0[0]).total_seconds()
-            print(f"align time axis: delta_t={delta_t} s")
+            logger.info(f"align time axis: delta_t={delta_t} s")
             mdata.shiftTime(delta_t)
 
         for key in plot_args:
             try:
                 (symbol, unit) = mdata.getUnitKey(key)
-                print(f"plot {key} [{symbol} {unit:~P}]")
+                logger.debug(f"plot {key} [{symbol} {unit:~P}]")
 
                 mdata.plotData(
                     x="t", y=key, ax=my_ax, normalize=args.normalize, offset=delta_t
@@ -851,10 +880,10 @@ def plot_vs_time(input_files, inputs, extensions, args):
                     legends[
                         -1
                     ] += f" max={float(mdata.getData([key]).max().iloc[0]):.3f} [{unit:~P}]"
-                    print("normalize")
+                    logger.debug("normalize")
             except RuntimeError:
-                print(f"key: {key} not found in {file}")
-                print(f"available keys: {mdata.getKeys()}")
+                logger.error(f"key: {key} not found in {file}")
+                logger.info(f"available keys: {mdata.getKeys()}")
                 continue
 
     plt.ylabel(f"{symbol} [{unit:~P}]")
@@ -872,7 +901,7 @@ def plot_vs_time(input_files, inputs, extensions, args):
         plt.show()
     else:
         imagefile = f"{file.replace(f_extension,'')}-{key}"
-        print(f"saveto: {imagefile}_vs_time.png", flush=True)
+        logger.info(f"saveto: {imagefile}_vs_time.png")
         plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
     plt.close()
 
@@ -905,7 +934,9 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
         f_extension = os.path.splitext(file)[-1]
         legends.append(os.path.basename(file).replace(f_extension, ""))
         plot_args = pairs[list(extensions.keys()).index(f_extension)]
-        print(f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}")
+        logger.debug(
+            f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}"
+        )
         mrun: MagnetRun = inputs[file]["data"]
         mdata = mrun.getMData()
 
@@ -927,7 +958,7 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
         plt.show()
     else:
         imagefilename = f"{file.replace(f_extension,'')}-{'_'.join(items)}"
-        print(f"saveto: {imagefilename}.png", flush=True)
+        logger.info(f"saveto: {imagefilename}.png")
         plt.savefig(f"{imagefilename}.png", dpi=300)
     plt.close()
 
@@ -937,7 +968,16 @@ def main():
 
     parser = create_main_parser()
     args = parser.parse_args()
-    print(f"args: {args}", flush=True)
+
+    # Configure logging level
+    log_level = getattr(logging, args.log_level.upper(), logging.WARNING)
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logger.setLevel(log_level)
+
+    logger.debug(f"args: {args}")
 
     # load df pandas from input_file
     # check extension
@@ -949,7 +989,7 @@ def main():
     # Expand glob patterns in input_file arguments
     expanded_files = expand_input_files(args.input_file, datadir)
     input_files = natsorted(expanded_files)
-    print(f"input_files: {input_files}", flush=True)
+    logger.debug(f"input_files: {input_files}")
 
     inputs = {}
     extensions = {}
@@ -982,10 +1022,12 @@ def main():
                     site = filename[0:index]
                     # print(f"site detected: {site}")
                 except Exception as error:
-                    print(f"{file}: no site detected - use args.site argument instead")
+                    logger.warning(
+                        f"{file}: no site detected - use args.site argument instead"
+                    )
                     continue
-                if args.debug:
-                    print(f"site={site}")
+                if args.log_level == "DEBUG":
+                    logger.debug(f"site={site}")
 
         try:
             match f_extension:
@@ -1000,7 +1042,13 @@ def main():
                         f"so far file with extension in {supported_formats} are implemented"
                     )
         except Exception as error:
-            print(f"{file}: an error occurred when loading:", error)
+            # Print detailed error information with traceback
+            tb_str = "".join(traceback.format_exception(*sys.exc_info()))
+            print(
+                f"{file}: an error occurred when loading at {format_exception_location()}"
+            )
+            logger.error(f"Error: {error}")
+            logger.error(f"Traceback:\n{tb_str}")
             continue
 
         inputs[file] = {"data": mrun}
@@ -1011,7 +1059,7 @@ def main():
         if args.command == "info":
             mdata = mrun.getMData()
             if args.list:
-                print(f"{file}: valid keys")
+                logger.info(f"{file}: valid keys")
                 mdata.info()
 
             if args.convert:
@@ -1021,13 +1069,13 @@ def main():
                     data.to_csv(csvfile, sep=str("\t"), index=True, header=True)
                 elif mdata.Type == 1:
                     for key, df in data.items():
-                        print(f"convert: key={key}", flush=True)
+                        logger.debug(f"convert: key={key}")
                         csvfile = file.replace(f_extension, f"-{key}.csv")
                         df.to_csv(csvfile, sep=str("\t"), index=True, header=True)
 
     # perform operations defined by options
     if args.command == "plot":
-        print("subcommands: plot")
+        logger.info("subcommands: plot")
         if args.vs_time:
             assert len(args.vs_time) == len(
                 extensions.keys()
@@ -1050,7 +1098,7 @@ def main():
             ), f"expected {len(extensions.keys())} output_time arguments - got {len(args.output_time)} "
 
             times = args.output_time.split(";")
-            print(f"Select data at {times}")
+            logger.info(f"Select data at {times}")
             for file in inputs:
                 output_time(file, inputs, extensions, times)
 
@@ -1088,7 +1136,7 @@ def main():
         if args.plateau:
             from .processing.plateaux import nplateaus
 
-        print("Stats:", flush=True)
+        logger.info("Stats:")
 
         # to display stats
         multiindex = [[], []]
@@ -1118,9 +1166,9 @@ def main():
             f"columns={len(columns)}",
             f"data={len(data)}",
         )
-        print(f"multiindex: {multiindex}")
-        print(f"columns: {columns}")
-        print(f"data: {data}")
+        logger.debug(f"multiindex: {multiindex}")
+        logger.debug(f"columns: {columns}")
+        logger.debug(f"data: {data}")
 
         df = pd.DataFrame(
             data,

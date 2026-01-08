@@ -1,6 +1,9 @@
+import logging
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
 
 from python_magnetrun.magnetdata import MagnetData
 
@@ -72,16 +75,14 @@ def trends_df(
     from statsmodels.tsa.seasonal import seasonal_decompose
 
     print(f"trends_df: key={key}, window={window}, threshold={threshold}", flush=True)
-    if debug:
-        print(f"{key}: data({df[tkey].shape})")
-        print(df.head())
-        print(df.tail())
+    logger.debug(f"{key}: data({df[tkey].shape})")
+    logger.debug(df.head())
+    logger.debug(df.tail())
 
     stats = df[key].describe()
     describe_list = stats.reset_index().to_dict(orient="records")
-    if debug:
-        print(f"stats for {key}:")
-        print(tabulate(describe_list, headers="keys", tablefmt="psql"))
+    logger.debug(f"stats for {key}:")
+    logger.debug(tabulate(describe_list, headers="keys", tablefmt="psql"))
 
     # Perform piecewise linear approximation
     # !! use index and not 'key' column !!
@@ -128,10 +129,9 @@ def trends_df(
     times = [float(df[tkey].iloc[i]) for i in changes]
     values = [float(df[key].iloc[i]) for i in changes]
 
-    if debug:
-        print(f"regimes: {regimes}")
-        print(f"{tkey}: {times}")
-        print(f"{key}: {values}")
+    logger.debug(f"regimes: {regimes}")
+    logger.debug(f"{tkey}: {times}")
+    logger.debug(f"{key}: {values}")
 
     return (changes, regimes, times, values, trend_series)
 

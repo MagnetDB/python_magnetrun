@@ -1,17 +1,21 @@
 """Command-line argument parsers for MagnetRun tools."""
 
+import logging
 import argparse
 import os
+
+logger = logging.getLogger(__name__)
 
 
 def validate_file_extension(allowed_extensions):
     """Create a validator function for file extensions.
-    
+
     :param allowed_extensions: List of allowed extensions (e.g., ['.tdms', '.txt'])
     :type allowed_extensions: list
     :return: Validator function for argparse type parameter
     :rtype: function
     """
+
     def validator(filepath):
         ext = os.path.splitext(filepath)[-1]
         if ext not in allowed_extensions:
@@ -19,12 +23,13 @@ def validate_file_extension(allowed_extensions):
                 f"Invalid file extension '{ext}'. Allowed: {', '.join(allowed_extensions)}"
             )
         return filepath
+
     return validator
 
 
 def get_datadir_mapping(args):
     """Get the directory mapping for different file extensions.
-    
+
     :param args: Parsed command line arguments
     :type args: argparse.Namespace
     :return: Dictionary mapping file extensions to their data directories
@@ -96,18 +101,18 @@ def create_base_parser(allowed_extensions=None):
     :rtype: argparse.ArgumentParser
     """
     parser = argparse.ArgumentParser(add_help=False)
-    
+
     # Add input_file with optional extension validation
     if allowed_extensions:
         parser.add_argument(
-            "input_file", 
-            nargs="+", 
+            "input_file",
+            nargs="+",
             type=validate_file_extension(allowed_extensions),
-            help=f"enter input file (allowed: {', '.join(allowed_extensions)})"
+            help=f"enter input file (allowed: {', '.join(allowed_extensions)})",
         )
     else:
         parser.add_argument("input_file", nargs="+", help="enter input file")
-    
+
     parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9")
     parser.add_argument("--insert", help="specify an insert", default="notdefined")
     parser.add_argument(
@@ -122,7 +127,13 @@ def create_base_parser(allowed_extensions=None):
         type=str,
         default="/home/LNCMI-G/christophe.trophime/github/python_magnetrun/pigbrotherdata/Fichiers_Data",
     )
-    parser.add_argument("--debug", help="activate debug", action="store_true")
+    parser.add_argument(
+        "--log-level",
+        help="set logging level",
+        type=str,
+        default="WARNING",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+    )
     return parser
 
 

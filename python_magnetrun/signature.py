@@ -1,7 +1,10 @@
+import logging
 from datetime import datetime
 from typing import List
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from python_magnetrun.magnetdata import MagnetData
 import pint

@@ -1,15 +1,16 @@
 #! /usr/bin/python3
 
+import logging
 import pandas as pd
 import numpy as np
-import matplotlib
 import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
 
 from ..magnetdata import MagnetData
 from ..utils.sequence import list_duplicates_of, list_sequence
 
 from datetime import timedelta
-from tabulate import tabulate
 
 
 def tuple_type(strings: str) -> tuple:
@@ -221,8 +222,7 @@ def plateaus(
     # pass b_thresold as input param
     # b_threshold = 1.e-3
 
-    if debug:
-        print("Search for plateaux:", "Type:", Data.Type)
+    logger.debug("Search for plateaux:", "Type:", Data.Type)
 
     Bz = df[ykey]
     B_min = float(Bz.min())
@@ -239,8 +239,7 @@ def plateaus(
 
     ndiff = np.where(abs(diff) >= threshold, diff, 0)
     df_["ndiff"] = pd.Series(ndiff)
-    if debug:
-        print("gradient: ", df_)
+    logger.debug("gradient: ", df_)
 
     # TODO:
     # check gradient:
@@ -298,9 +297,8 @@ def plateaus(
     from functools import partial
 
     regimes_in_source = partial(list_duplicates_of, B_list)
-    if debug:
-        for c in [1, 0, -1]:
-            print(c, regimes_in_source(c))
+    for c in [1, 0, -1]:
+        logger.debug(f"{c}: {regimes_in_source(c)}")
 
     # # To get timedelta in mm or millseconds
     # time_d_min = time_d / datetime.timedelta(minutes=1)
@@ -325,9 +323,8 @@ def plateaus(
         start_time = t0.strftime(tformat)
         end_time = t1.strftime(tformat)
 
-        if debug:
-            msg = f"\t{start_time}\t{end_time}"
-            print(f"{msg}\t{dt.total_seconds():8.6g}\t{b0:8.4g}\t{b1:8.4g}")
+        msg = f"\t{start_time}\t{end_time}"
+        logger.debug(f"{msg}\t{dt.total_seconds():8.6g}\t{b0:8.4g}\t{b1:8.4g}")
 
         # if (b1-b0)/b1 > b_thresold: reject plateau
         # if abs(b1) < b_thresold and abs(b0) < b_thresold: reject plateau
@@ -362,8 +359,7 @@ def plateaus(
     import itertools
 
     B_ = [x[0] for x in itertools.groupby(B_list)]
-    if debug:
-        print("B_=", B_, B_.count(0))
+    logger.debug(f"B_={B_}, count(0)={B_.count(0)}")
     print(
         "Field commisionning ? (aka sequence [1.0,0,-1.0,0.0,-1.0]): %d"
         % len(list_sequence(B_, [1.0, 0, -1.0, 0.0, -1.0]))

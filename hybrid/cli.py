@@ -13,7 +13,7 @@ import argparse
 import logging
 
 from .hybrid_data import HybridData, FEPC_SYSTEMS
-from .utils import list_available_dates
+from .utils import list_available_dates, log_exception, format_exception_location
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -271,7 +271,10 @@ def run_show_rms_vars(data: HybridData, system: str) -> None:
         if len(vars_info["digital"]) > 10:
             print(f"    ... and {len(vars_info['digital']) - 10} more")
     except Exception as e:
-        print(f"  Error: {e}")
+        log_exception(
+            "Error showing kHz variables", e, use_print=True, include_traceback=False
+        )
+        print(f"  Error at {format_exception_location()}: {e}")
 
 
 def parse_hours(hours_str: str) -> list:
@@ -328,7 +331,9 @@ def main() -> None:
             endian=args.endian,
         )
     except Exception as e:
-        print(f"Error creating HybridData: {e}")
+        log_exception(
+            "Error creating HybridData", e, use_print=True, include_traceback=True
+        )
         return
 
     # Show summary
@@ -392,10 +397,14 @@ def main() -> None:
                     layout=args.layout,
                 )
         except ValueError as e:
-            print(f"Value error plotting kHz variable: {e}")
+            print(
+                f"Value error plotting kHz variable at {format_exception_location()}: {e}"
+            )
             return
         except Exception as e:
-            print(f"Error plotting kHz variable: {e}")
+            log_exception(
+                "Error plotting kHz variable", e, use_print=True, include_traceback=True
+            )
             return
 
     # Plot RMS variable(s)
@@ -427,7 +436,9 @@ def main() -> None:
                     layout=args.layout,
                 )
         except Exception as e:
-            print(f"Error plotting RMS variable: {e}")
+            log_exception(
+                "Error plotting RMS variable", e, use_print=True, include_traceback=True
+            )
 
     # Plot both kHz and RMS
     if args.plot_both:
@@ -446,10 +457,14 @@ def main() -> None:
                 save=args.save,
             )
         except ValueError as e:
-            print(f"Value error plotting kHz variable: {e}")
+            print(
+                f"Value error plotting kHz variable at {format_exception_location()}: {e}"
+            )
             return
         except Exception as e:
-            print(f"Error plotting: {e}")
+            log_exception(
+                "Error plotting kHz with RMS", e, use_print=True, include_traceback=True
+            )
 
 
 if __name__ == "__main__":

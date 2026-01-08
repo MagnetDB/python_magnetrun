@@ -1,4 +1,8 @@
+import logging
 import os
+
+logger = logging.getLogger(__name__)
+
 from .MagnetRun import MagnetRun
 
 import matplotlib.pyplot as plt

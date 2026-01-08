@@ -13,6 +13,7 @@ import os
 import sys
 import re
 import datetime
+import logging
 import requests
 import requests.exceptions
 from io import StringIO
@@ -36,6 +37,10 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from collections import OrderedDict
 
+# Setup logger
+logger = logging.getLogger(__name__)
+
+
 def cleanup(remove_site: list, msg: str, site_names: dict, Sites: dict):
     print(f"Remove Site in {remove_site}: {msg}")
     for item in remove_site:
@@ -50,7 +55,7 @@ def cleanup(remove_site: list, msg: str, site_names: dict, Sites: dict):
         else:
             for name in site_names:
                 if item in site_names[name]:
-                    # print(f'remove {item} from site_names[{name}]')
+                    logger.debug(f"remove {item} from site_names[{name}]")
                     site_names[name].remove(item)
 
 
@@ -68,8 +73,28 @@ def main():
     parser.add_argument("--check", help="sanity check for records", action="store_true")
     parser.add_argument("--save", help="save files", action="store_true")
     parser.add_argument("--datadir", help="specify data dir", type=str, default=".")
-    parser.add_argument("--debug", help="activate debug mode", action="store_true")
+    parser.add_argument(
+        "--log-level",
+        help="set logging level",
+        type=str,
+        default="WARNING",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+    )
     args = parser.parse_args()
+
+    # Configure logging level
+    log_level = getattr(logging, args.log_level.upper(), logging.WARNING)
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    logger.setLevel(log_level)
+
+    # Infer debug mode from log level
+    debug = log_level == logging.DEBUG
+
+    logger.debug(f"args: {args}")
+    logger.debug(f"debug mode: {debug}")
 
     if sys.stdin.isatty():
         password = getpass.getpass("Using getpass: ")
@@ -84,7 +109,7 @@ def main():
         if not os.path.exists(args.datadir):
             os.mkdir(args.datadir)
 
-    # print( 'Read: ', password )
+    logger.debug(f'Read password: {"***" if password else "empty"}')
 
     # shall check if host ip up and running
     base_url = args.server
@@ -110,11 +135,10 @@ def main():
     SiteRecords = dict()
     Magnets = dict()
     Mats = dict()
-    debug = args.debug
 
     # Use 'with' to ensure the session context is closed after use.
     with requests.Session() as s:
-        p = createSession(s, url_logging, payload, args.debug)
+        p = createSession(s, url_logging, payload, debug)
         # test connection
         r = s.get(url=url_status, verify=True)
         if r.url == url_logging:
@@ -130,24 +154,24 @@ def main():
         (_data, jid) = getTable(s, url_status, 2, [1, 3, 4], debug=args.debug)
         if args.debug:
             for item in _data:
-                print(f"{item}: status={_data[item]}, jid={jid[item]}")
+                logger.debug(f"{item}: status={_data[item]}, jid={jid[item]}")
 
-        print("ordered site data bt time")
+        logger.info("ordered site data bt time")
         from collections import OrderedDict
 
         ordered_data = OrderedDict(sorted(_data.items(), key=lambda x: x[1][0]))
-        # print(f"ordered_data: {ordered_data}")
+        logger.debug(f"ordered_data: {ordered_data}")
         """
         import csv
 
         _data = {}
         _counter = {}
-        print("load site history from M9_M10-history.csv", flush=True)
+        logger.info("load site history from M9_M10-history.csv")
         with open("M9_M10-history.csv") as f:
             _raw = csv.reader(f)
 
             for row in _raw:
-                print(row)
+                logger.debug(row)
                 try:
                     name = row[1]
                     _magnets = [name]
@@ -155,7 +179,7 @@ def main():
                         status = row[2]
                         housing = row[3]
                         bitter = row[4]
-                        
+
                         tformat = "%Y-%m-%d"
                         created_at = None
                         stopped_at = None
@@ -167,7 +191,7 @@ def main():
 
                         created_at = None
                         stopped_at = None
-                        print(f'status={status}, date={row[0]}', flush=True)
+                        logger.debug(f"status={status}, date={row[0]}")
                         if status.lower() == "en service":
                             created_at = datetime.datetime.strptime(row[0], tformat)
                             if site in db_Sites:
@@ -207,42 +231,41 @@ def main():
                                     "bitter": bitter,
                                 }
                 except:
-                    print(f'problem loading: {row} -skipped')
+                    logger.warning(f"problem loading: {row} -skipped")
                     pass
 
-        print('db_Sites: definition')
+        logger.info("db_Sites: definition")
         for item, values in db_Sites.items():
             housing = values["housing"]
             name = values["name"]
             if "Bitters" not in item:
-                if values['bitter'] == "":
+                if values["bitter"] == "":
                     values["magnets"].append(f"{housing}Bitters")
                 else:
-                    values["magnets"].append(values['bitter'])
+                    values["magnets"].append(values["bitter"])
             values["name"] = f"{housing}_{name}"
-            print(f"site={item}: {values}")
+            logger.debug(f"site={item}: {values}")
 
         for item in db_Sites:
-            del db_Sites[item]['bitter']
+            del db_Sites[item]["bitter"]
         for item, values in db_Sites.items():
-            print(f"site={item}: {values}")
+            logger.debug(f"site={item}: {values}")
         # TODO rename site with housing
 
         for site, values in db_Sites.items():
             status = values["status"]
             for magnet in values["magnets"]:
                 Magnets[magnet] = HMagnet.HMagnet(magnet, "", status, parts=[])
-        print("Magnets:")
+        logger.info("Magnets:")
         for magnet in Magnets:
-            print(f"{magnet}: {Magnets[magnet]}")
+            logger.debug(f"{magnet}: {Magnets[magnet]}")
 
         Parts = {}
         Confs = {}
         for magnet in Magnets:
-            print(f'magnet: {magnet}')
+            logger.debug(f"magnet: {magnet}")
             if "Bitter" not in magnet:
-                # if debug:
-                print(f"loading helices for: {magnet}", flush=True)
+                logger.info(f"loading helices for: {magnet}")
                 getMagnetPart(
                     s,
                     magnet,
@@ -255,40 +278,40 @@ def main():
                     Confs,
                     datadir=args.datadir,
                     save=args.save,
-                    debug=args.debug,
+                    debug=debug,
                 )
 
         for conf, values in Confs.items():
-            print(f"Confs[{conf}]: {values}", flush=True)
+            logger.debug(f"Confs[{conf}]: {values}")
 
         # Get CAD ref for Parts
         PartsCAD = {}
-        getPartCADref(s, url_helicescad, PartsCAD, debug=args.debug)
+        getPartCADref(s, url_helicescad, PartsCAD, debug=debug)
         if debug:
-            print("\ngetPartCADref:")
+            logger.debug("\ngetPartCADref:")
             for key in PartsCAD:
-                print(f"{key}: {PartsCAD[key]}")
+                logger.debug(f"{key}: {PartsCAD[key]}")
 
         """
         # Try to get rings like Helices - not working
         getPartCADref(s, url_ringscad, PartsCAD, params={"REF": ""}, debug=True)
         if debug:
-            print(f"\ngetPartCADref:")
+            logger.debug(f"\ngetPartCADref:")
             for key in PartsCAD:
-                print(f"{key}: {PartsCAD[key]}")
+                logger.debug(f"{key}: {PartsCAD[key]}")
         """
 
         PartMagnet = {}
         for magnet in Parts:
             for i, part in Parts[magnet]:
-                # print(i, part)
+                logger.debug(f"{i}, {part}")
                 if part not in PartMagnet:
                     PartMagnet[part] = []
                 PartMagnet[part].append(magnet)
 
         # Create Parts from Magnets
         diameter = {14: 34, 12: 50, 6: 170}
-        print(f"\nMagnets ({len(Magnets)}):", flush=True)
+        logger.info(f"\nMagnets ({len(Magnets)}):")
         PartName = {}
         db_Magnets = {}
         for magnet in Magnets:
@@ -329,7 +352,7 @@ def main():
                     db_Magnets[magnet][
                         "description"
                     ] = f"{nhelices} Helices, Phi = {diameter[nhelices]} mm"
-                print(
+                logger.info(
                     f"{magnet}: {db_Magnets[magnet]} - should add {nhelices-1} rings "
                 )
             else:
@@ -338,7 +361,7 @@ def main():
         # Create Parts from Materials because in control/monitoring part==mat
         # TODO once Parts is complete no longer necessary
         # ['name', 'description', 'status', 'type', 'design_office_reference', 'material_id'
-        print(f"\nMParts ({len(PartsCAD)}):")
+        logger.info(f"\nMParts ({len(PartsCAD)}):")
         db_Parts = {}
         cad_Parts = {}
         for part in PartsCAD:
@@ -361,18 +384,17 @@ def main():
                         cad_Parts[cad].append(part)
                 else:
                     cad_Parts[cad] = [part]
-            print(f"{part}: {carac}")
+            logger.debug(f"{part}: {carac}")
             db_Parts[part] = carac
 
-        print(f"\ncad/Parts ({len(cad_Parts)}):")
-
+        logger.info(f"\ncad/Parts ({len(cad_Parts)}):")
 
         ordered_data = OrderedDict(sorted(cad_Parts.items(), key=lambda x: x))
         for cad, values in ordered_data.items():
-            print(f"{cad} parts={values}")
+            logger.debug(f"{cad} parts={values}")
 
-        getMaterial(s, None, url_materials, Mats, debug=args.debug)
-        print(f"\nMaterials ({len(Mats)}):")
+        getMaterial(s, None, url_materials, Mats, debug=debug)
+        logger.info(f"\nMaterials ({len(Mats)}):")
         db_Materials = {}
         for mat in Mats:
             carac = {
@@ -395,36 +417,36 @@ def main():
             }
             if "nuance" in Mats[mat].material:
                 carac["nuance"] = Mats[mat].material["nuance"]
-            print(f"{mat}: {carac}")
+            logger.debug(f"{mat}: {carac}")
             db_Materials[Mats[mat].name] = carac
 
         # Try to read and make some stats on records
-        print("\nRecords:")
+        logger.info("\nRecords:")
         page = s.get(url=url_records, verify=True)
 
         housing_names = []
         doc = lh.document_fromstring(page.content)
-        # print(f"doc: {lh.tostring(doc)}")
+        logger.debug(f"doc: {lh.tostring(doc)}")
         tr_elements = doc.xpath("//*[@class='example']")
         for i, t in enumerate(tr_elements):
             content = t.text_content().rsplit()  # replace(' dmesg','')
-            # print(f"name[{i}]: content={content[0]}")
+            logger.debug(f"name[{i}]: content={content[0]}")
             housing_names.append(content[0])
-        print(f'housing_names: {housing_names}')
-        
+        logger.debug(f"housing_names: {housing_names}")
+
         record_names = []
         record_timestamps = []
         tformat = "%Y.%m.%d-%H:%M:%S"
 
         for name in housing_names:
             url_housing = base_url + "/" + name
-            print(f'records: {url_housing}', flush=True)
+            logger.info(f"records: {url_housing}")
             page = s.get(url=url_housing, verify=True)
             doc = lh.document_fromstring(page.content)
             tr_elements = doc.xpath("//a")  # [@href='example']")
             for i, t in enumerate(tr_elements):
                 link = t.get("href")
-                # print(f'link={link}', end=": ", flush=True)
+                logger.debug(f"link={link}")
                 if link.endswith(".txt") and "dmesg" not in link:
                     nlink = ""
                     if link.startswith("./"):
@@ -443,34 +465,36 @@ def main():
                             datetime.datetime.strptime(timestamp, tformat)
                         )
                     except:
-                        print(f"trouble with record={link}, name={name}, nlink={nlink}, timestamp={timestamp} -record ignored")
+                        logger.warning(
+                            f"trouble with record={link}, name={name}, nlink={nlink}, timestamp={timestamp} -record ignored"
+                        )
 
-                    #print(f'nlink={nlink}', flush=True)
+                    logger.debug(f"nlink={nlink}")
 
         # Assign records to site from timestamps
         # Create a panda datafram with ['link','timestamp']
         df_records = pd.DataFrame(
             list(zip(record_names, record_timestamps)), columns=["name", "timestamp"]
         )
-        df_records.to_csv('df_records.csv')
-        
+        df_records.to_csv("df_records.csv")
+
         # for each site
         #     get record with a timestamp in between site.commisionned_at and site.decommisioned_at
         for site, values in db_Sites.items():
             housing = values["housing"]
             t0 = values["commissioned_at"]
             t1 = values["decommissioned_at"]
-            print(f'site={site}, housing="{housing}, t0={t0}, t1={t1}', flush=True)
-            
+            logger.info(f'site={site}, housing="{housing}, t0={t0}, t1={t1}')
+
             selected_df = None
             if t1 is not None:
                 selected = df_records[
                     df_records["timestamp"].between(t0, t1, inclusive="left")
                 ]
-                print(f"{site}: records={len(selected.index)}")
+                logger.info(f"{site}: records={len(selected.index)}")
             else:
                 selected = df_records[df_records["timestamp"] >= t0]
-                print(f"{site}: records={len(selected.index)} **")
+                logger.info(f"{site}: records={len(selected.index)} **")
 
             for link, timestamp in zip(
                 selected["name"].tolist(), selected["timestamp"].tolist()
@@ -489,7 +513,7 @@ def main():
                     if len(headers) >= 2:
                         insert = headers[1]
                         if not sname.startswith(insert):
-                            print(
+                            logger.warning(
                                 f"{site}: {record} - expected site={sname} got {insert}"
                             )
 
@@ -505,20 +529,19 @@ def main():
         # Get orphan records
         # How to get all records even those attached to experiments with Bitters only ??
         """
-        print("\nOrphaned records:", flush=True)
+        logger.info("\nOrphaned records:")
         record_sites = [db_Sites[site]["records"] for site in db_Sites]
         # print(f"record_names: {record_names[-1]}")
         record_name_sites = [record.getLink() for record in flatten(record_sites)]
-        # print(f"record_name_sites: {record_name_sites[-1]}")
+        logger.debug(f"record_name_sites: {record_name_sites[-1]}")
         orphan_records = list(
             set(record_names).symmetric_difference(set(flatten(record_name_sites)))
         )
 
-        print(
+        logger.info(
             f"orphan_records={len(orphan_records)} / {len(record_name_sites)} registered / {len(record_names)} records"
         )
-                    
-            
+
         for housing in ["M1", "M3", "M5", "M7", "M8", "M9", "M10"]:
             record_sites = [
                 db_Sites[site]["records"]
@@ -526,7 +549,7 @@ def main():
                 if housing == db_Sites[site]["housing"]
             ]
             record_name_sites = [record.getLink() for record in flatten(record_sites)]
-            search_housing = f'/{housing}/'
+            search_housing = f"/{housing}/"
             record_names_housing = [
                 record for record in record_names if search_housing in record
             ]
@@ -536,30 +559,27 @@ def main():
                 )
             )
 
-            print(
+            logger.info(
                 f"{housing}: orphan_records={len(orphan_records)} / {len(record_name_sites)} registered / {len(record_names_housing)} records"
             )
 
-            print(f'{housing}: Saved Orphaned records {len(orphan_records)}', flush=True)
+            logger.info(f"{housing}: Saved Orphaned records {len(orphan_records)}")
             for orphan in orphan_records:
-                # print(f'{orphan} ({type(orphan)})', end="")
+                logger.debug(f"{orphan} ({type(orphan)})")
                 site = "unknown"
-                link = orphan 
-                timestamp = (
-                            link.split("/")[-1].replace("%20", "").replace(".txt", "")
-                        )
+                link = orphan
+                timestamp = link.split("/")[-1].replace("%20", "").replace(".txt", "")
                 orecord = MRecord.MRecord(timestamp, housing, site, link)
-                print(orecord, end="")
+                logger.debug(f"{orecord}")
                 data = orecord.getData(s, url_downloads)
                 iodata = StringIO(data)
                 if args.save:
                     orecord.saveData(data, args.datadir)
-                    print('saved', end="")
-                print(flush=True)
+                    logger.debug("saved")
 
         # Display site history per site for M9 and M10 only
 
-        print("\nSite History per Housing:", flush=True)
+        logger.info("\nSite History per Housing:")
 
         history = {}
         for housing in housing_names:
@@ -572,7 +592,7 @@ def main():
         for site in db_Sites:
             data = db_Sites[site]
             housing = data["housing"]
-            print(f"site={site}, housing={housing}")
+            logger.debug(f"site={site}, housing={housing}")
 
             hdata = history[housing]
             hdata["site"].append(site.replace("_", "-"))
@@ -599,8 +619,8 @@ def main():
             plt.show()
 
         # Get orphan part/material
-        print(
-            "\nOrphaned magnet/part/material - Generate files for import in MagnetDB:", flush=True
+        logger.info(
+            "\nOrphaned magnet/part/material - Generate files for import in MagnetDB:"
         )
         magnet_names = [db_Magnets[magnet]["name"] for magnet in db_Magnets]
         site_magnets = [
@@ -628,17 +648,17 @@ def main():
             set(material_names).symmetric_difference(set(part_materials))
         )
 
-        # print(f"orphan_materials={orphan_materials}")
+        logger.debug(f"orphan_materials={orphan_materials}")
         for mat in orphan_materials:
             values = db_Materials[mat]
             filename = f'{values["name"]}.json'
             if args.datadir != ".":
                 filename = f"{args.datadir}/{filename}"
             with open(filename, "w") as f:
-                print(f"Orphan_Materials/write_to_json: {filename}")
+                logger.info(f"Orphan_Materials/write_to_json: {filename}")
                 f.write(json.dumps(values, indent=4))
 
-        # print(f"orphan_parts={orphan_parts}")
+        logger.debug(f"orphan_parts={orphan_parts}")
         for part in orphan_parts:
             values = db_Parts[part]
 
@@ -650,16 +670,16 @@ def main():
             if args.datadir != ".":
                 filename = f"{args.datadir}/{filename}"
             with open(filename, "w") as f:
-                print(f"Orphan_Parts/write_to_json: {filename}")
+                logger.info(f"Orphan_Parts/write_to_json: {filename}")
                 f.write(json.dumps(values, indent=4))
 
-        print(f"orphan_magnets={orphan_magnets}")
+        logger.debug(f"orphan_magnets={orphan_magnets}")
         for magnet in orphan_magnets:
             values = db_Magnets[magnet]
 
         # For MagnetDB
         magnet_status = {"en service": "in_operation", "en stock": "in_stock"}
-        print("\nGenerate files for import in MagnetDB:")
+        logger.info("\nGenerate files for import in MagnetDB:")
         for magnet, mvalues in db_Magnets.items():
             if "sites" in mvalues:
                 del mvalues["sites"]
@@ -669,7 +689,7 @@ def main():
             if "parts" in mvalues:
                 for part in mvalues["parts"]:
                     data_part = db_Parts[part].copy()
-                    # print(f"parts[{part}]: {part}, data_part={data_part}")
+                    logger.debug(f"parts[{part}]: {part}, data_part={data_part}")
                     if "magnets" in data_part:
                         del data_part["magnets"]
 
@@ -680,7 +700,7 @@ def main():
 
                 del mvalues["parts"]
             else:
-                print(f"db_Magnets[{magnet}]: {mvalues} - no parts")
+                logger.warning(f"db_Magnets[{magnet}]: {mvalues} - no parts")
 
             mvalues["parts"] = mvalues["db_parts"]
             del mvalues["db_parts"]
@@ -689,7 +709,7 @@ def main():
             if args.datadir != ".":
                 filename = f"{args.datadir}/{filename}"
             with open(filename, "w") as f:
-                print(f"db_Magnets/write_to_json: {filename}")
+                logger.info(f"db_Magnets/write_to_json: {filename}")
                 f.write(json.dumps(mvalues, indent=4))
 
         site_status = {"en service": "in_operation", "en stock": "decommisioned"}
@@ -701,7 +721,9 @@ def main():
             svalues["status"] = site_status[svalues["status"].lower()]
             svalues["commissioned_at"] = str(svalues["commissioned_at"])
             svalues["decommissioned_at"] = str(svalues["decommissioned_at"])
-            print(f"db_Sites[{site}]: housing={housing}, magnet={svalues['magnets']}, status={svalues['status']}, commissioned_at={svalues['commissioned_at']}, decommissioned_at={svalues['decommissioned_at']}, records={len(svalues['records'])}", flush=True)
+            logger.info(
+                f"db_Sites[{site}]: housing={housing}, magnet={svalues['magnets']}, status={svalues['status']}, commissioned_at={svalues['commissioned_at']}, decommissioned_at={svalues['decommissioned_at']}, records={len(svalues['records'])}"
+            )
 
             svalues["data_records"] = []
             for record in svalues["records"]:
@@ -721,13 +743,13 @@ def main():
             del svalues["data_records"]
 
             for magnet in svalues["magnets"]:
-                print(f"magnets[{site}]: {magnet}", flush=True)
+                logger.debug(f"magnets[{site}]: {magnet}")
 
             filename = f'{svalues["name"]}.json'
             if args.datadir != ".":
                 filename = f"{args.datadir}/{filename}"
             with open(filename, "w") as f:
-                print(f"db_Sites/write_to_json: {filename}", flush=True)
+                logger.info(f"db_Sites/write_to_json: {filename}")
                 f.write(json.dumps(svalues, indent=4))
 
 

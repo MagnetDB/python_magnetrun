@@ -4,6 +4,8 @@ Command-line interface and logging infrastructure for magnetrun analysis.
 This module provides:
 - Comprehensive logging configuration with console and file handlers
 - Colored console output (optional)
+- Detailed error logging with file, line, and function information
+- Exception logging utilities (log_exception, format_exception_location)
 - JSON structured logging (optional)
 - Progress tracking utilities
 - Timing context managers
@@ -24,6 +26,8 @@ Example programmatic usage::
 
     from python_magnetrun.analysis.cli import (
         setup_logging,
+        log_exception,
+        format_exception_location,
         LogContext,
         timed_operation,
         ProgressTracker,
@@ -31,6 +35,15 @@ Example programmatic usage::
 
     # Setup logging
     logger = setup_logging(debug=True, log_file="analysis.log")
+
+    # Exception handling with detailed logging
+    try:
+        risky_operation()
+    except Exception as e:
+        log_exception("Operation failed", e, logger)
+        # Or get just the location
+        location = format_exception_location()
+        logger.error(f"Error at {location}: {e}")
 
     # Use timing context
     with timed_operation("Loading data"):
@@ -73,6 +86,9 @@ from .config import (
 # Root logger for the analysis module
 ROOT_LOGGER_NAME = "magnetrun.analysis"
 
+# Setup logger
+logger = logging.getLogger(__name__)
+
 # Default log format
 DEFAULT_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
 DEFAULT_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
@@ -102,6 +118,7 @@ class ColoredFormatter(logging.Formatter):
     Formatter that adds ANSI colors to log levels.
 
     Only applies colors when output is a terminal.
+    For ERROR and CRITICAL levels, includes file, line, and function information.
     """
 
     def __init__(
@@ -109,12 +126,36 @@ class ColoredFormatter(logging.Formatter):
         fmt: str = DEFAULT_FORMAT,
         datefmt: str = DEFAULT_DATE_FORMAT,
         use_colors: bool = True,
+        detailed_errors: bool = True,
     ):
         super().__init__(fmt=fmt, datefmt=datefmt)
         self.use_colors = use_colors and sys.stdout.isatty()
+        self.detailed_errors = detailed_errors
+        # Detailed format for errors and critical messages
+        self.detailed_fmt = (
+            "%(asctime)s | %(levelname)-8s | %(name)s | "
+            "%(filename)s:%(lineno)d:%(funcName)s | %(message)s"
+        )
 
     def format(self, record: logging.LogRecord) -> str:
-        # Make a copy to avoid modifying the original
+        # Use detailed format for ERROR and CRITICAL levels if enabled
+        if self.detailed_errors and record.levelno >= logging.ERROR:
+            # Create a temporary formatter with detailed format
+            detailed_formatter = logging.Formatter(
+                fmt=self.detailed_fmt, datefmt=DEFAULT_DATE_FORMAT
+            )
+            # Format with detailed info
+            if self.use_colors and record.levelname in COLORS:
+                original_levelname = record.levelname
+                record.levelname = (
+                    f"{COLORS[record.levelname]}{record.levelname}{COLORS['RESET']}"
+                )
+                result = detailed_formatter.format(record)
+                record.levelname = original_levelname
+                return result
+            return detailed_formatter.format(record)
+
+        # Regular formatting for other levels
         if self.use_colors and record.levelname in COLORS:
             # Store original levelname
             original_levelname = record.levelname
@@ -348,6 +389,114 @@ def set_log_level(level: Union[int, str]) -> None:
 
     for handler in logger.handlers:
         handler.setLevel(level)
+
+
+# =============================================================================
+# Exception logging utilities
+# =============================================================================
+
+
+def log_exception(
+    message: str,
+    exception: Exception,
+    logger_instance: Optional[logging.Logger] = None,
+    use_print: bool = False,
+    include_traceback: bool = True,
+) -> None:
+    """
+    Log exception with traceback information
+
+    Parameters
+    ----------
+    message : str
+        Custom error message to display
+    exception : Exception
+        The exception that was caught
+    logger_instance : logging.Logger, optional
+        Logger instance to use. If None, uses print or module logger
+    use_print : bool
+        If True and logger_instance is None, uses print instead of logger
+    include_traceback : bool
+        If True, includes full traceback. Otherwise just file, line, and function
+
+    Examples
+    --------
+    >>> try:
+    ...     risky_operation()
+    ... except Exception as e:
+    ...     log_exception("Failed to perform operation", e)
+    """
+    import traceback
+
+    # Get exception information
+    exc_type, exc_value, exc_tb = sys.exc_info()
+
+    # Format the error message
+    if include_traceback:
+        # Full traceback
+        tb_lines = traceback.format_exception(exc_type, exc_value, exc_tb)
+        error_msg = f"{message}: {exception}\n{''.join(tb_lines)}"
+    else:
+        # Just file, line, and function where error occurred
+        if exc_tb is not None:
+            tb = traceback.extract_tb(exc_tb)
+            if tb:
+                # Get the last frame (where the error actually occurred)
+                frame = tb[-1]
+                error_msg = (
+                    f"{message}: {exception}\n"
+                    f"  File: {frame.filename}\n"
+                    f"  Line: {frame.lineno}\n"
+                    f"  Function: {frame.name}"
+                )
+            else:
+                error_msg = f"{message}: {exception}"
+        else:
+            error_msg = f"{message}: {exception}"
+
+    # Log or print the error
+    if logger_instance:
+        logger_instance.error(error_msg)
+    elif use_print:
+        print(error_msg)
+    else:
+        logger.error(error_msg)
+
+
+def format_exception_location(exception: Optional[Exception] = None) -> str:
+    """
+    Get a concise string with file:line:function where exception occurred
+
+    Parameters
+    ----------
+    exception : Exception, optional
+        The exception (not used, but kept for API consistency)
+
+    Returns
+    -------
+    str
+        Formatted string like "file.py:123:function_name"
+
+    Examples
+    --------
+    >>> try:
+    ...     risky_operation()
+    ... except Exception as e:
+    ...     location = format_exception_location()
+    ...     print(f"Error at {location}: {e}")
+    """
+    import traceback
+
+    exc_type, exc_value, exc_tb = sys.exc_info()
+
+    if exc_tb is not None:
+        tb = traceback.extract_tb(exc_tb)
+        if tb:
+            frame = tb[-1]
+            filename = Path(frame.filename).name
+            return f"{filename}:{frame.lineno}:{frame.name}"
+
+    return "unknown:?:?"
 
 
 # =============================================================================

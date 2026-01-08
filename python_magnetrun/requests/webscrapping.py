@@ -7,14 +7,13 @@ For each MagnetID list of attached record
 Check record consistency
 """
 
-import getpass
 import sys
-import os
 import re
 import datetime
-import requests
-import requests.exceptions
 import lxml.html as lh
+import logging
+
+logger = logging.getLogger(__name__)
 
 # import jsonpickle
 from .. import MRecord
@@ -47,10 +46,10 @@ def getTable(
         sys.exit(1)
     page.raise_for_status()
     if debug:
-        print("connect:", page.url, page.status_code, page.text)
-        print("index:", index)
-        print("indices:", indices)
-        print("params:", param)
+        logger.debug(f"connect: {page.url}, {page.status_code}, {page.text}")
+        logger.debug(f"index: {index}")
+        logger.debug(f"indices: {indices}")
+        logger.debug(f"params: {param}")
         # print(f"page.text={page.text} **")
 
     # Store the contents of the website under doc
@@ -72,11 +71,13 @@ def getTable(
         return (Mdata, Mjid)
 
     if debug:
-        print(f"detected tables[delimiter={delimiter}]: {tr_elements}")
+        logger.debug(f"detected tables[delimiter={delimiter}]: {tr_elements}")
         for i, t in enumerate(tr_elements[0]):
-            print(f"{i}: content={t.text_content()}, type={type(t.text_content())}")
+            logger.debug(
+                f"{i}: content={t.text_content()}, type={type(t.text_content())}"
+            )
             for j, d in enumerate(t):
-                print(f"\t{j}:{d.text_content()}")
+                logger.debug(f"\t{j}:{d.text_content()}")
 
     # For each row, store each first element (header) and an empty list
     for i, t in enumerate(tr_elements[0]):
@@ -86,8 +87,7 @@ def getTable(
         data = []
         for j, d in enumerate(t):
             jname = d.text_content()
-            if debug:
-                print(f"\t{j}:{name}")
+            logger.debug(f"\t{j}:{name}")
             if j + 1 == index:
                 if param:
                     jid = jname[jname.find("(") + 1 : jname.find(")")]
@@ -109,8 +109,7 @@ def getTable(
             Mjid[Mid] = jid
 
     # Mids = sorted(set(Mids)) #uniq only: list(set(Mids))
-    if debug:
-        print(f"Data found: Mdata={Mdata}, jid={Mjid}")
+    logger.debug(f"Data found: Mdata={Mdata}, jid={Mjid}")
     return (Mdata, Mjid)
 
 
@@ -133,13 +132,14 @@ def getMaterial(
         nuances = html.xpath('//input[@name="NUANCE"]/@value')
         if debug:
             if len(Mats.keys()) != len(refs) - 1:
-                print("Materials in main list:", len(refs) - 1)
+                logger.debug("Materials in main list:", len(refs) - 1)
 
         for i, ref in enumerate(refs):
             # ref is lxml.etree._ElementUnicodeResult
             if not ref in Mats and not "finir" in ref:
-                if debug:
-                    print("ref:", ref, type(ref), sigmas[i], elasticlimits[i])
+                logger.debug(
+                    f"ref: {ref}, type: {type(ref)}, sigma: {sigmas[i]}, elasticlimit: {elasticlimits[i]}"
+                )
                 Mats[ref] = GObject.GObject(
                     str(ref),
                     "",
@@ -187,8 +187,7 @@ def getPartCADref(session, url_data, Parts, debug: bool = False):
     if res.status_code != 200:
         print(f"getPartCADref: cannot logging to {url_data}")
         res.raise_for_status()
-    if debug:
-        print(f"getPartCADref: status={res.status_code}, res={res.text}")
+    logger.debug(f"getPartCADref: status={res.status_code}, res={res.text}")
 
     doc = lh.fromstring(res.content)
 
@@ -198,14 +197,12 @@ def getPartCADref(session, url_data, Parts, debug: bool = False):
         name = []
         for j, d in enumerate(t):
             name.append(d.text_content())
-            if debug:
-                print(f"\t{j}:{name[-1]}")
+            logger.debug(f"\t{j}:{name[-1]}")
         Parts[name[0]] = [name[1], name[-1].split()[0]]  # Ebauche
 
-    if debug:
-        print(f"getPartCADref:")
-        for key in Parts:
-            print(f"{key}: {Parts[key]}")
+    logger.debug(f"getPartCADref:")
+    for key in Parts:
+        logger.debug(f"{key}: {Parts[key]}")
     return True
 
 
@@ -224,9 +221,7 @@ def getMagnetPart(
     debug: bool = False,
 ):
     """get parts for a given magnet"""
-    if debug:
-        print(f"getMagnetPart({magnet})")
-
+    logger.debug(f"getMagnetPart({magnet})")
     params_helix = (("ref", magnet),)
 
     hindices = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
@@ -237,14 +232,11 @@ def getMagnetPart(
     if res:
         helices = res[0]
         jid = res[1]
-    if debug:
-        print(f'getMagnetPart: helices={helices}')
+    logger.debug(f"getMagnetPart: helices={helices}")
 
     if not magnet in Parts:
         Parts[magnet] = []
-    if debug:
-        # print(f"{magnet}: jid={jid}, index={Magnets[magnet].getIndex()}")
-        print(f"{magnet}: jid={jid}")
+    logger.debug(f"{magnet}: jid={jid}")
     for data in helices:
         # print(f"data: {data}")
         # print(f"helices: {len(helices[data])}")
@@ -256,36 +248,34 @@ def getMagnetPart(
                 Parts[magnet].append([i, partID])
                 Magnets[magnet].addPart(partID)
                 getMaterial(session, materialID, url_materials, Mats, debug)
-                if debug:
-                    print(f"{partID}: {materialID}")
+                logger.debug(f"{partID}: {materialID}")
 
     # get MagConfFile
     hindices = [19]
     res = getTable(session, url_helices, 1, hindices, param=params_helix, debug=False)
-    print(f'res={res}', flush=True)
+    print(f"res={res}", flush=True)
     data = res[0][magnet]
-    print(f'data={data}', flush=True)
+    print(f"data={data}", flush=True)
     id = res[1][magnet]
-    print(f'id={id}', flush=True)
+    print(f"id={id}", flush=True)
     data = data[0].replace("\t", "")
-    print(f'data={data}', flush=True)
+    print(f"data={data}", flush=True)
     files = data.split()
-    print(f'ID: {id}, files={files}', flush=True)
-    if files == ['Pas', 'de', 'fichiers']:
+    print(f"ID: {id}, files={files}", flush=True)
+    if files == ["Pas", "de", "fichiers"]:
         files = []
-        
+
     Confs[magnet] = files
     if save:
         for file in files:
-            print(f'file={file}')
+            print(f"file={file}")
             r = download(
                 session,
                 url_data=url_confs,
                 param={"ID": id, "NAME": file},
                 debug=debug,
             )
-            if debug:
-                print(f"conf[{magnet}]: {file}, r={r}")
+            logger.debug(f"conf[{magnet}]: {file}, r={r}")
 
             filename = f"{magnet}_{file}"
             if datadir != ".":
@@ -304,10 +294,9 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
     params_links = (("ref", re.sub("_\\d+", "", ID)), ("link", ""))
 
     r = session.get(url=url_data, params=params_links, verify=True)
-    if debug:
-        print(
-            f"data: url={r.url}, status={r.status_code}, encoding={r.encoding}, text={r.text}"
-        )
+    logger.debug(
+        f"data: url={r.url}, status={r.status_code}, encoding={r.encoding}, text={r.text}"
+    )
     if r.status_code != 200:
         print(f"error {r.status_code} loading {url_data}")
         sys.exit(1)
@@ -331,8 +320,7 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
 
             housing = link.replace("../../../", "").split("/")[0]
             # print(f"link={link}, site={site}, housing={housing}")
-            if debug:
-                print(f"data={data}, link={link}, site={site}, housing={housing}")
+            logger.debug(f"data={data}, link={link}, site={site}, housing={housing}")
 
             tformat = "%Y.%m.%d - %H:%M:%S"
             timestamp = datetime.datetime.strptime(data[1].replace(".txt", ""), tformat)
@@ -348,23 +336,20 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
             # actual_id = None
             # if len(lines_items) >= 2:
             #     actual_id = lines_items[1]
-            # if debug:
-            #     print(f'{magnetID}: actual_id={actual_id}, site={site} link={link}, param={params_downloads}')
+            # logger.debug(f'{magnetID}: actual_id={actual_id}, site={site} link={link}, param={params_downloads}')
 
             # if not actual_id:
-            #     if debug: print("%s: no name defined for Magnet" % link)
+            #     logger.debug("%s: no name defined for Magnet" % link)
 
             # else:
             record = MRecord.MRecord(timestamp, housing, ID, link)
             created_at = Sites[ID]["commissioned_at"]
             stopped_at = Sites[ID]["decommissioned_at"]
             if record.timestamp < created_at or record.timestamp > stopped_at:
-                if debug:
-                    print(f"{ID}: {record} dropped")
+                logger.debug(f"{ID}: {record} dropped")
             else:
                 Sites[ID]["records"].append(record)
-            if debug:
-                print(f"{ID}: site={site} link={link}")
+            logger.debug(f"{ID}: site={site} link={link}")
             # data = record.getData(session, url_downloads, save)
 
             # if actual_id != magnetID:
@@ -381,5 +366,4 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
             #         fo.close()
 
         else:
-            if debug:
-                print(f"getSiteRecords({ID}): f={f}")
+            logger.debug(f"getSiteRecords({ID}): f={f}")

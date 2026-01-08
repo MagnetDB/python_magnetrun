@@ -1,6 +1,9 @@
+import logging
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 
 def remove_outliers(

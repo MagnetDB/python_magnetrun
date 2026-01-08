@@ -2,11 +2,14 @@
 Extract flow params from records using a fit
 """
 
+import logging
 import os
 
 import json
 import pandas as pd
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 import matplotlib.pyplot as plt
 from tabulate import tabulate

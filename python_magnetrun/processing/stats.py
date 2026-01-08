@@ -1,7 +1,10 @@
 """Main module."""
 
+import logging
 import pandas as pd
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 numpy_version = np.__version__.split(".")
 if numpy_version[0] == 1:
@@ -64,9 +67,8 @@ def stats(
             if f in Data.getKeys():
                 fname, unit = Data.getUnitKey(f)
                 df = Data.Data[f]
-                if debug:
-                    print(f"get stats for {f} ({Data.getKeys()})", flush=True)
-                    print(f"{f}: {df.head()}", flush=True)
+                logger.debug(f"get stats for {f} ({Data.getKeys()})")
+                logger.debug(f"{f}: {df.head()}")
                 v_min = float(df.min())
                 v_max = float(df.max())
                 v_mean = float(df.mean())
@@ -76,8 +78,7 @@ def stats(
                 try:
                     v_mode = float(df.mode().iloc[0])
                 except Exception as e:
-                    if debug:
-                        print(f"{f}: failed to compute df.mode() - {e}")
+                    logger.debug(f"{f}: failed to compute df.mode() - {e}")
                     pass
                 table = [
                     f"{f}[{unit:~P}]",

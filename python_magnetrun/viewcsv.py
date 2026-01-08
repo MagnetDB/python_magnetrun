@@ -1,8 +1,12 @@
+import logging
 import os
 import pandas as np
+
+logger = logging.getLogger(__name__)
+
 from .magnetdata import MagnetData as mdata
 
-#import matplotlib
+# import matplotlib
 import matplotlib.pyplot as plt
 
 import argparse
@@ -35,10 +39,10 @@ for file in args.input_file:
     if args.info:
         print(mdata.getKeys())
     mdata.Units()
-    
+
     filename = os.path.basename(file)
     f_extension = os.path.splitext(file)[-1]
-    label=filename.replace(f_extension,'')
+    label = filename.replace(f_extension, "")
 
     mdata.plotData(xkey, ykey, ax=my_ax, label=label)
     plt.show()

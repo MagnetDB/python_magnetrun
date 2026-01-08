@@ -3,8 +3,12 @@
 
 """Magnet Record Object"""
 
+import logging
 import json
 import datetime
+
+logger = logging.getLogger(__name__)
+
 from .requests.connect import download
 
 

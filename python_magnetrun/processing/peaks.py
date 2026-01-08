@@ -2,7 +2,10 @@
 Find peaks
 """
 
+import logging
 import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
 
 # from: https://github.com/sztistvan/change_detection/blob/main/change_point_detection_chatgpt.ipynb
 # https://stackoverflow.com/questions/47519626/using-numpy-scipy-to-identify-slope-changes-in-digital-signals

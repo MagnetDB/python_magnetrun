@@ -1,6 +1,9 @@
+import logging
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
+logger = logging.getLogger(__name__)
 
 from ..magnetdata import MagnetData
 
@@ -149,8 +152,7 @@ def compute_lag(
     otend = ts1_index[-1]
     if iend1 is not None:
         otend = ts1_index[iend1]
-    if debug:
-        print(f"ts1 range: [{istart1}, {iend1}]-> [{otstart}, {otend}]")
+    logger.debug(f"ts1 range: [{istart1}, {iend1}]-> [{otstart}, {otend}]")
 
     ts2 = df2_data["df"].copy()
     key2 = df2_data["field"]
@@ -191,8 +193,7 @@ def compute_lag(
 
     ptstart = ts2_resampled.index[pstart[0]]
     ptend = ts2_resampled.index[pend[0]]
-    if debug:
-        print(f"ts2 range: [{istart2}, {iend2}]-> [{ptstart}, {ptend}]")
+    logger.debug(f"ts2 range: [{istart2}, {iend2}]-> [{ptstart}, {ptend}]")
 
     # pupitre data
     ts2_data = {

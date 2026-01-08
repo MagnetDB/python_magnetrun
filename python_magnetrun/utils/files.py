@@ -1,4 +1,5 @@
 from __future__ import unicode_literals
+import logging
 import os
 import glob
 from datetime import datetime, timedelta
@@ -6,6 +7,8 @@ from numpy.random import f
 import pandas as pd
 import numpy as np
 from natsort import natsorted
+
+logger = logging.getLogger(__name__)
 
 from ..MagnetRun import MagnetRun
 from .convert import convert_to_timestamp

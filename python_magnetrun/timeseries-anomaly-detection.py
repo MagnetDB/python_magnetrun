@@ -1,9 +1,12 @@
+import logging
 import numpy as np
 from scipy import stats
 import pandas as pd
 from seaborn import reset_defaults
 from sklearn.ensemble import IsolationForest
 from typing import Union, Tuple, List
+
+logger = logging.getLogger(__name__)
 
 from .MagnetRun import MagnetRun
 

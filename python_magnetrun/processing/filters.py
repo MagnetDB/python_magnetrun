@@ -5,7 +5,10 @@ see:
 https://xavierbourretsicotte.github.io/loess.html
 """
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 

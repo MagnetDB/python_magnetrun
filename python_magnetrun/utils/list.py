@@ -1,3 +1,8 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def flatten(S: list) -> list:
     """
     flatten list of list
