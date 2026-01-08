@@ -1,11 +1,5 @@
 # Python3 `MagnetRun`
 
-[![image](https://img.shields.io/pypi/v/python_magnetrun.svg)](https://pypi.python.org/pypi/python_magnetrun)
-
-[![image](https://img.shields.io/travis/Trophime/python_magnetrun.svg)](https://travis-ci.com/Trophime/python_magnetrun)
-
-[![Documentation Status](https://readthedocs.org/projects/python-magnetrun/badge/?version=latest)](https://python-magnetrun.readthedocs.io/en/latest/?badge=latest)
-
 Python `MagnetRun` contains utilities to view and analyze Magnet runs
 
 -   Free software: MIT license
@@ -50,6 +44,7 @@ You can:
 ```bash
 sshfs -o uid=uid,gid=gid -o IdentityFile=/home/LNCMI-G/$USER/.ssh/id_ecdsa $SRVDATA_SERVER:$SRVDATA_DIR ~/LNCMIG-Data/
 ```
+
 ## `PigBrother`
 
 To mount `pigbrother` data, you have to:
