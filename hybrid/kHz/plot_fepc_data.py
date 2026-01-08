@@ -7,6 +7,7 @@ Example: python plot_fepc_data.py -c HOST_2_DATA.CFG -v ALIM1_J1 -s 4
 
 import argparse
 import re
+import sys
 from pathlib import Path
 from typing import Optional, Tuple
 import numpy as np
@@ -18,6 +19,11 @@ from fepc_reader import (
     apply_calibration,
     read_hour_file,
 )
+
+# Import remove_outliers from parent utils module
+# Add parent directory to path for relative import when running as script
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils import remove_outliers
 
 
 def find_bin_files(
@@ -280,159 +286,6 @@ def apply_variable_calibration(
         print(f"  Warning: Could not apply calibration: {e}")
 
     return data.astype(np.float64)
-
-
-def remove_outliers(
-    data: np.ndarray,
-    time: np.ndarray,
-    method: str = "iqr",
-    threshold: float = 1.5,
-    window_size: int = None,
-) -> Tuple[np.ndarray, np.ndarray, int]:
-    """
-    Remove outliers from data
-
-    Parameters:
-    -----------
-    data : np.ndarray
-        Input data array
-    time : np.ndarray
-        Time array corresponding to data
-    method : str
-        Outlier detection method:
-        - 'iqr': Interquartile Range (default)
-        - 'zscore': Z-score based
-        - 'mad': Median Absolute Deviation
-        - 'percentile': Percentile-based clipping
-    threshold : float
-        Threshold for outlier detection:
-        - For 'iqr': IQR multiplier (default: 1.5, use 3.0 for extreme outliers)
-        - For 'zscore': Number of standard deviations (default: 3.0)
-        - For 'mad': MAD multiplier (default: 3.5)
-        - For 'percentile': Percentile to clip (e.g., 1.0 clips 1% from each end)
-    window_size : int, optional
-        If provided, use rolling window for local outlier detection
-
-    Returns:
-    --------
-    clean_data : np.ndarray
-        Data with outliers removed (replaced with NaN or interpolated)
-    clean_time : np.ndarray
-        Corresponding time array
-    n_outliers : int
-        Number of outliers detected
-    """
-    data = data.copy().astype(np.float64)
-
-    if window_size is not None and window_size > 0:
-        # Rolling window outlier detection
-        mask = _rolling_outlier_mask(data, window_size, method, threshold)
-    else:
-        # Global outlier detection
-        mask = _global_outlier_mask(data, method, threshold)
-
-    n_outliers = np.sum(mask)
-
-    if n_outliers > 0:
-        # Replace outliers with NaN, then interpolate
-        data[mask] = np.nan
-
-        # Interpolate NaN values
-        valid_idx = ~np.isnan(data)
-        if np.sum(valid_idx) > 2:
-            data = np.interp(
-                np.arange(len(data)), np.arange(len(data))[valid_idx], data[valid_idx]
-            )
-
-    return data, time, n_outliers
-
-
-def _global_outlier_mask(data: np.ndarray, method: str, threshold: float) -> np.ndarray:
-    """
-    Create mask for global outliers
-
-    Returns boolean array where True indicates outlier
-    """
-    if method == "iqr":
-        q1 = np.nanpercentile(data, 25)
-        q3 = np.nanpercentile(data, 75)
-        iqr = q3 - q1
-        lower_bound = q1 - threshold * iqr
-        upper_bound = q3 + threshold * iqr
-        mask = (data < lower_bound) | (data > upper_bound)
-
-    elif method == "zscore":
-        mean = np.nanmean(data)
-        std = np.nanstd(data)
-        if std > 0:
-            z_scores = np.abs((data - mean) / std)
-            mask = z_scores > threshold
-        else:
-            mask = np.zeros(len(data), dtype=bool)
-
-    elif method == "mad":
-        median = np.nanmedian(data)
-        mad = np.nanmedian(np.abs(data - median))
-        if mad > 0:
-            modified_z = 0.6745 * (data - median) / mad
-            mask = np.abs(modified_z) > threshold
-        else:
-            mask = np.zeros(len(data), dtype=bool)
-
-    elif method == "percentile":
-        lower_bound = np.nanpercentile(data, threshold)
-        upper_bound = np.nanpercentile(data, 100 - threshold)
-        mask = (data < lower_bound) | (data > upper_bound)
-
-    else:
-        raise ValueError(
-            f"Unknown method: {method}. Use 'iqr', 'zscore', 'mad', or 'percentile'"
-        )
-
-    return mask
-
-
-def _rolling_outlier_mask(
-    data: np.ndarray, window_size: int, method: str, threshold: float
-) -> np.ndarray:
-    """
-    Create mask for rolling window outliers
-
-    Returns boolean array where True indicates outlier
-    """
-    n = len(data)
-    mask = np.zeros(n, dtype=bool)
-    half_window = window_size // 2
-
-    for i in range(n):
-        start = max(0, i - half_window)
-        end = min(n, i + half_window + 1)
-        window_data = data[start:end]
-
-        if method == "iqr":
-            q1 = np.nanpercentile(window_data, 25)
-            q3 = np.nanpercentile(window_data, 75)
-            iqr = q3 - q1
-            if iqr > 0:
-                lower = q1 - threshold * iqr
-                upper = q3 + threshold * iqr
-                mask[i] = data[i] < lower or data[i] > upper
-
-        elif method == "zscore":
-            mean = np.nanmean(window_data)
-            std = np.nanstd(window_data)
-            if std > 0:
-                z = abs((data[i] - mean) / std)
-                mask[i] = z > threshold
-
-        elif method == "mad":
-            median = np.nanmedian(window_data)
-            mad = np.nanmedian(np.abs(window_data - median))
-            if mad > 0:
-                modified_z = 0.6745 * abs(data[i] - median) / mad
-                mask[i] = modified_z > threshold
-
-    return mask
 
 
 def plot_variable(

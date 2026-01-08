@@ -552,6 +552,22 @@ def read_hour_file(
         f"read_hour_file: file={filepath}, card_type={card_type}, num_blocks={num_blocks}, num_channels={num_channels}, total_samples={total_samples}, endian={endian}"
     )
 
+    # Estimate actual block numbers based on file size
+    from pathlib import Path
+
+    block_size = 1614 if card_type == "ANA" else 212
+    file_path = Path(filepath)
+
+    file_size = file_path.stat().st_size
+    actual_num_blocks = file_size // block_size
+    remainder = file_size % block_size
+
+    print(f"Number of actual blocks: {actual_num_blocks}")
+    if remainder != 0:
+        print(
+            f"Warning: {filepath} - file size {file_size} is not a multiple of block size {block_size}, ignoring last {remainder} bytes"
+        )
+
     # Pre-allocate array
     data = np.zeros(
         (total_samples, num_channels), dtype=np.uint16 if card_type == "ANA" else bool

@@ -28,8 +28,13 @@ from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Tuple, Union
 from dataclasses import dataclass, field
 import logging
+import struct
+
 import numpy as np
 import pandas as pd
+
+# Local imports
+from .utils import list_available_dates, remove_outliers
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -416,7 +421,6 @@ class HybridData:
             (data_array, time_array)
         """
         logger.debug(f"read_khz_variable: system={system}, variable={variable}")
-        debug = logger.isEnabledFor(logging.DEBUG)
 
         if read_hour_file is None or calibrate_channel is None:
             raise ImportError("fepc_reader module not available")
@@ -466,6 +470,7 @@ class HybridData:
 
         # Read data from all files
         all_data = []
+        debug = logger.isEnabledFor(logging.DEBUG)
         for bin_file in bin_files:
             logger.debug(f"Reading {bin_file.name}...")
             hour_data = read_hour_file(
@@ -856,7 +861,7 @@ class HybridData:
         return self.units.get(key, ())
 
     # -------------------------------------------------------------------------
-    # Plotting Methods
+    # Plotting Methods (delegating to plotting module)
     # -------------------------------------------------------------------------
 
     def plot_khz_variable(
@@ -875,7 +880,9 @@ class HybridData:
         **plot_kwargs,
     ):
         """
-        Plot kHz data for a specific variable
+        Plot kHz data for a specific variable.
+
+        This method delegates to hybrid.plotting.plot_khz_variable().
 
         Parameters
         ----------
@@ -909,100 +916,124 @@ class HybridData:
         tuple
             (fig, ax) matplotlib figure and axes
         """
-        import matplotlib.pyplot as plt
+        from . import plotting
+        from .outliers import detect_outliers
 
-        logger.debug(f"plot_khz_variable: system={system}, variable={variable}")
-        debug = logger.isEnabledFor(logging.DEBUG)
+        # Perform outlier detection if method specified
+        outlier_result = None
+        if remove_outliers_method:
+            # Read data for outlier detection
+            data, _ = self.read_khz_variable(
+                system, variable, hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir
+            )
+            outlier_result = detect_outliers(
+                data,
+                method=remove_outliers_method,
+                threshold=outlier_threshold,
+                window=outlier_window,
+            )
 
-        # Read data
-        data, time = self.read_khz_variable(
-            system, variable, hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir
+        return plotting.plot_khz_variable(
+            self,
+            system,
+            variable,
+            hours=hours,
+            apply_calib=apply_calib,
+            cnv_dir=cnv_dir,
+            ax=ax,
+            show=show,
+            save=save,
+            outlier_result=outlier_result,
+            **plot_kwargs,
         )
 
-        # Get unit if available
-        config = self.load_khz_config(system)
-        if config is None:
-            raise ValueError(f"No configuration found for {system}")
+    def plot_khz_variables(
+        self,
+        system: str,
+        variables: List[str],
+        hours: Optional[List[int]] = None,
+        apply_calib: bool = True,
+        cnv_dir: Optional[str] = None,
+        layout: str = "subplots",
+        share_x: bool = True,
+        show: bool = True,
+        save: Optional[str] = None,
+        remove_outliers_method: Optional[str] = None,
+        outlier_threshold: float = 1.5,
+        outlier_window: Optional[int] = None,
+        **plot_kwargs,
+    ):
+        """
+        Plot multiple kHz variables.
 
-        unit = ""
-        if config:
-            for card in config.cards:
-                if variable in card.variable_names:
-                    idx = card.variable_names.index(variable)
-                    if idx < len(card.calibrations) and card.calibrations[idx]:
-                        unit = card.calibrations[idx].unit or ""
-                    break
+        This method delegates to hybrid.plotting.plot_khz_variables().
 
-        ylabel = f"{variable}"
-        if unit:
-            ylabel += f" [{unit}]"
+        Parameters
+        ----------
+        system : str
+            FEPC system name
+        variables : list of str
+            List of variable names to plot
+        hours : list of int, optional
+            Hours to read (default: all available)
+        apply_calib : bool, optional
+            Apply calibration (default: True)
+        cnv_dir : str, optional
+            Directory for CNV calibration files
+        layout : str, optional
+            Plot layout: 'subplots' (default) or 'overlay'
+        share_x : bool, optional
+            Share x-axis in subplots layout (default: True)
+        show : bool, optional
+            Show plot (default: True)
+        save : str, optional
+            Save plot to file
+        remove_outliers_method : str, optional
+            Outlier detection method
+        outlier_threshold : float, optional
+            Threshold for outlier detection (default: 1.5)
+        outlier_window : int, optional
+            Rolling window size for local outlier detection
+        **plot_kwargs : dict
+            Additional arguments passed to plt.plot()
 
-        # Handle outlier removal with comparison plot
+        Returns
+        -------
+        tuple
+            (fig, axes) matplotlib figure and axes
+        """
+        from . import plotting
+        from .outliers import detect_outliers
+
+        # Perform outlier detection for each variable if method specified
+        outlier_results = None
         if remove_outliers_method:
-            clean_data, clean_time, n_outliers = remove_outliers(
-                data, time, remove_outliers_method, outlier_threshold, outlier_window
-            )
-            outlier_pct = n_outliers / len(data) * 100 if len(data) > 0 else 0
+            outlier_results = {}
+            for var in variables:
+                data, _ = self.read_khz_variable(
+                    system, var, hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir
+                )
+                outlier_results[var] = detect_outliers(
+                    data,
+                    method=remove_outliers_method,
+                    threshold=outlier_threshold,
+                    window=outlier_window,
+                )
 
-            # Create side-by-side comparison plot
-            if ax is None:
-                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-            else:
-                # If ax is provided, use it for cleaned data only
-                fig = ax.get_figure()
-                ax2 = ax
-                ax1 = None
-
-            # Plot original data
-            if ax1 is not None:
-                ax1.plot(time, data, **plot_kwargs)
-                ax1.set_xlabel("Time (s)")
-                ax1.set_ylabel(ylabel)
-                ax1.set_title(f"Original Data\n{system} - {variable} ({self.date_str})")
-                ax1.grid(True, alpha=0.3)
-
-            # Plot cleaned data
-            label = plot_kwargs.pop("label", f"{variable} (cleaned)")
-            ax2.plot(clean_time, clean_data, label=label, **plot_kwargs)
-            ax2.set_xlabel("Time (s)")
-            ax2.set_ylabel(ylabel)
-            title = f"Outliers Removed ({remove_outliers_method}, threshold={outlier_threshold})"
-            if outlier_window:
-                title += f", window={outlier_window}"
-            title += f"\nRemoved {n_outliers:,} outliers ({outlier_pct:.2f}%)"
-            ax2.set_title(title)
-            ax2.grid(True, alpha=0.3)
-            ax2.legend()
-
-            logger.info(
-                f"Removed {n_outliers:,} outliers ({outlier_pct:.2f}%) using {remove_outliers_method} method"
-            )
-
-            ax = ax2  # For return value
-        else:
-            # Create figure if needed
-            if ax is None:
-                fig, ax = plt.subplots(figsize=(12, 6))
-            else:
-                fig = ax.get_figure()
-
-            # Plot
-            label = plot_kwargs.pop("label", f"{variable}")
-            ax.plot(time, data, label=label, **plot_kwargs)
-            ax.set_xlabel("Time (s)")
-            ax.set_ylabel(ylabel)
-            ax.set_title(f"{system} - {variable} ({self.date_str})")
-            ax.grid(True, alpha=0.3)
-            ax.legend()
-
-        if save:
-            fig.savefig(save, dpi=150, bbox_inches="tight")
-            logger.info(f"Saved plot to {save}")
-
-        if show:
-            plt.show()
-
-        return fig, ax
+        return plotting.plot_khz_variables(
+            self,
+            system,
+            variables,
+            hours=hours,
+            apply_calib=apply_calib,
+            cnv_dir=cnv_dir,
+            layout=layout,
+            share_x=share_x,
+            show=show,
+            save=save,
+            outlier_results=outlier_results,
+            **plot_kwargs,
+        )
 
     def plot_rms_variable(
         self,
@@ -1019,7 +1050,9 @@ class HybridData:
         **plot_kwargs,
     ):
         """
-        Plot RMS data for a specific variable
+        Plot RMS data for a specific variable.
+
+        This method delegates to hybrid.plotting.plot_rms_variable().
 
         Parameters
         ----------
@@ -1051,101 +1084,119 @@ class HybridData:
         tuple
             (fig, ax) matplotlib figure and axes
         """
-        import matplotlib.pyplot as plt
+        from . import plotting
+        from .outliers import detect_outliers
 
-        logger.debug(
-            f"plot_rms_variable: system={system}, variable={variable}, hours={hours}"
-        )
-
-        # Read data using read_rms_variable (same pattern as kHz)
-        data, time = self.read_rms_variable(
-            system, variable, file_idx=file_idx, hours=hours
-        )
-
-        # Get unit if available from variable info
-        unit = ""
-        try:
-            # Use file_idx=0 for variable info if hours specified
-            info_idx = file_idx if file_idx is not None else 0
-            var_info = self.get_rms_variable_info(system, file_idx=info_idx)
-            var_row = var_info[var_info["name"] == variable]
-            if not var_row.empty and var_row.iloc[0]["unit"]:
-                unit = var_row.iloc[0]["unit"]
-        except Exception:
-            pass  # No unit available
-
-        ylabel = f"{variable}"
-        if unit:
-            ylabel += f" [{unit}]"
-
-        # Handle outlier removal with comparison plot
+        # Perform outlier detection if method specified
+        outlier_result = None
         if remove_outliers_method:
-            clean_data, clean_time, n_outliers = remove_outliers(
-                data, time, remove_outliers_method, outlier_threshold, outlier_window
+            # Read data for outlier detection
+            data, _ = self.read_rms_variable(
+                system, variable, file_idx=file_idx, hours=hours
             )
-            outlier_pct = n_outliers / len(data) * 100 if len(data) > 0 else 0
+            outlier_result = detect_outliers(
+                data,
+                method=remove_outliers_method,
+                threshold=outlier_threshold,
+                window=outlier_window,
+            )
 
-            # Create side-by-side comparison plot
-            if ax is None:
-                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-            else:
-                # If ax is provided, use it for cleaned data only
-                fig = ax.get_figure()
-                ax2 = ax
-                ax1 = None
+        return plotting.plot_rms_variable(
+            self,
+            system,
+            variable,
+            file_idx=file_idx,
+            hours=hours,
+            ax=ax,
+            show=show,
+            save=save,
+            outlier_result=outlier_result,
+            **plot_kwargs,
+        )
 
-            # Plot original data
-            if ax1 is not None:
-                ax1.plot(time, data, **plot_kwargs)
-                ax1.set_xlabel("Time (s)")
-                ax1.set_ylabel(ylabel)
-                ax1.set_title(
-                    f"Original Data\n{system} RMS - {variable} ({self.date_str})"
+    def plot_rms_variables(
+        self,
+        system: str,
+        variables: List[str],
+        file_idx: Optional[int] = None,
+        hours: Optional[List[int]] = None,
+        layout: str = "subplots",
+        share_x: bool = True,
+        show: bool = True,
+        save: Optional[str] = None,
+        remove_outliers_method: Optional[str] = None,
+        outlier_threshold: float = 1.5,
+        outlier_window: Optional[int] = None,
+        **plot_kwargs,
+    ):
+        """
+        Plot multiple RMS variables.
+
+        This method delegates to hybrid.plotting.plot_rms_variables().
+
+        Parameters
+        ----------
+        system : str
+            FEPC system name
+        variables : list of str
+            List of variable names to plot
+        file_idx : int, optional
+            Index of RMS file to load
+        hours : list of int, optional
+            List of hours to load (0-23)
+        layout : str, optional
+            Plot layout: 'subplots' (default) or 'overlay'
+        share_x : bool, optional
+            Share x-axis in subplots layout (default: True)
+        show : bool, optional
+            Show plot (default: True)
+        save : str, optional
+            Save plot to file
+        remove_outliers_method : str, optional
+            Outlier detection method
+        outlier_threshold : float, optional
+            Threshold for outlier detection (default: 1.5)
+        outlier_window : int, optional
+            Rolling window size for local outlier detection
+        **plot_kwargs : dict
+            Additional arguments passed to plt.plot()
+
+        Returns
+        -------
+        tuple
+            (fig, axes) matplotlib figure and axes
+        """
+        from . import plotting
+        from .outliers import detect_outliers
+
+        # Perform outlier detection for each variable if method specified
+        outlier_results = None
+        if remove_outliers_method:
+            outlier_results = {}
+            for var in variables:
+                data, _ = self.read_rms_variable(
+                    system, var, file_idx=file_idx, hours=hours
                 )
-                ax1.grid(True, alpha=0.3)
+                outlier_results[var] = detect_outliers(
+                    data,
+                    method=remove_outliers_method,
+                    threshold=outlier_threshold,
+                    window=outlier_window,
+                )
 
-            # Plot cleaned data
-            label = plot_kwargs.pop("label", f"{variable} (cleaned)")
-            ax2.plot(clean_time, clean_data, label=label, **plot_kwargs)
-            ax2.set_xlabel("Time (s)")
-            ax2.set_ylabel(ylabel)
-            title = f"Outliers Removed ({remove_outliers_method}, threshold={outlier_threshold})"
-            if outlier_window:
-                title += f", window={outlier_window}"
-            title += f"\nRemoved {n_outliers:,} outliers ({outlier_pct:.2f}%)"
-            ax2.set_title(title)
-            ax2.grid(True, alpha=0.3)
-            ax2.legend()
-
-            logger.info(
-                f"Removed {n_outliers:,} outliers ({outlier_pct:.2f}%) using {remove_outliers_method} method"
-            )
-
-            ax = ax2  # For return value
-        else:
-            # Create figure if needed
-            if ax is None:
-                fig, ax = plt.subplots(figsize=(12, 6))
-            else:
-                fig = ax.get_figure()
-
-            # Plot
-            label = plot_kwargs.pop("label", f"{variable} (RMS)")
-            ax.plot(time, data, label=label, **plot_kwargs)
-            ax.set_xlabel("Time (s)")
-            ax.set_ylabel(ylabel)
-            ax.set_title(f"{system} RMS - {variable} ({self.date_str})")
-            ax.grid(True, alpha=0.3)
-            ax.legend()
-
-        if save:
-            fig.savefig(save, dpi=150, bbox_inches="tight")
-            logger.info(f"Saved plot to {save}")
-
-        if show:
-            plt.show()
-
-        return fig, ax
+        return plotting.plot_rms_variables(
+            self,
+            system,
+            variables,
+            file_idx=file_idx,
+            hours=hours,
+            layout=layout,
+            share_x=share_x,
+            show=show,
+            save=save,
+            outlier_results=outlier_results,
+            **plot_kwargs,
+        )
 
     def plot_khz_with_rms(
         self,
@@ -1160,7 +1211,9 @@ class HybridData:
         save: Optional[str] = None,
     ):
         """
-        Plot kHz and RMS data together for comparison
+        Plot kHz and RMS data together for comparison.
+
+        This method delegates to hybrid.plotting.plot_khz_with_rms().
 
         Parameters
         ----------
@@ -1188,644 +1241,17 @@ class HybridData:
         tuple
             (fig, axes) matplotlib figure and axes array
         """
-        import matplotlib.pyplot as plt
+        from . import plotting
 
-        logger.debug(
-            f"plot_khz_with_rms: system={system}, khz={khz_variable}, rms={rms_variable}"
+        return plotting.plot_khz_with_rms(
+            self,
+            system,
+            khz_variable,
+            rms_variable=rms_variable,
+            hours=hours,
+            apply_calib=apply_calib,
+            rms_file_idx=rms_file_idx,
+            rms_hours=rms_hours,
+            show=show,
+            save=save,
         )
-
-        if rms_variable is None:
-            rms_variable = khz_variable
-
-        # Use same hours for RMS if rms_hours not specified
-        if rms_hours is None and hours is not None:
-            rms_hours = hours
-
-        fig, axes = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
-
-        # Plot kHz data
-        try:
-            khz_data, khz_time = self.read_khz_variable(
-                system, khz_variable, hours=hours, apply_calib=apply_calib
-            )
-            axes[0].plot(
-                khz_time, khz_data, "b-", linewidth=0.5, label=f"{khz_variable} (kHz)"
-            )
-            axes[0].set_xlabel("Time (s)")
-            axes[0].set_ylabel(khz_variable)
-            axes[0].set_title(f"kHz Data: {khz_variable}")
-            axes[0].grid(True, alpha=0.3)
-            axes[0].legend()
-        except ValueError as e:
-            logger.error(f"Value error plotting kHz variable: {e}")
-            axes[0].text(
-                0.5,
-                0.5,
-                f"Error loading kHz data:\n{e}",
-                ha="center",
-                va="center",
-                transform=axes[0].transAxes,
-            )
-            axes[0].set_title(f"kHz Data: {khz_variable} (ERROR)")
-        except struct.error as e:
-            logger.critical(f"Struct error plotting kHz variable: {e}")
-        except Exception as e:
-            logger.error(f"Error plotting kHz variable: {e}")
-            axes[0].text(
-                0.5,
-                0.5,
-                f"Error loading kHz data:\n{e}",
-                ha="center",
-                va="center",
-                transform=axes[0].transAxes,
-            )
-            axes[0].set_title(f"kHz Data: {khz_variable} (ERROR)")
-
-        # Plot RMS data (using read_rms_variable for consistency)
-        try:
-            rms_data, rms_time = self.read_rms_variable(
-                system, rms_variable, file_idx=rms_file_idx, hours=rms_hours
-            )
-            axes[1].plot(
-                rms_time,
-                rms_data,
-                "r-",
-                marker=".",
-                markersize=2,
-                label=f"{rms_variable} (RMS)",
-            )
-            axes[1].set_xlabel("Time (s)")
-            axes[1].set_ylabel(rms_variable)
-            axes[1].set_title(f"RMS Data: {rms_variable}")
-            axes[1].grid(True, alpha=0.3)
-            axes[1].legend()
-        except ValueError as e:
-            logger.error(f"Value error plotting RMS variable: {e}")
-            axes[1].text(
-                0.5,
-                0.5,
-                f"Error loading RMS data:\n{e}",
-                ha="center",
-                va="center",
-                transform=axes[1].transAxes,
-            )
-            axes[1].set_title(f"RMS Data: {rms_variable} (ERROR)")
-        except Exception as e:
-            logger.error(f"Error plotting RMS variable: {e}")
-            axes[1].text(
-                0.5,
-                0.5,
-                f"Error loading RMS data:\n{e}",
-                ha="center",
-                va="center",
-                transform=axes[1].transAxes,
-            )
-            axes[1].set_title(f"RMS Data: {rms_variable} (ERROR)")
-
-        fig.suptitle(f"{system} - {self.date_str}", fontsize=14, fontweight="bold")
-        plt.tight_layout()
-
-        if save:
-            fig.savefig(save, dpi=150, bbox_inches="tight")
-            logger.info(f"Saved plot to {save}")
-
-        if show:
-            plt.show()
-
-        return fig, axes
-
-
-def list_available_dates(
-    base_dir: Union[str, Path], data_type: str = "kHz"
-) -> List[str]:
-    """
-    List available dates for a given data type
-
-    Parameters
-    ----------
-    base_dir : str or Path
-        Base directory
-    data_type : str
-        Data type: 'kHz', 'rms', or 'trigger'
-
-    Returns
-    -------
-    list of str
-        List of date strings in YYYY-MM-DD format
-    """
-    base_path = Path(base_dir) / data_type
-    if not base_path.exists():
-        return []
-
-    dates = set()
-    for item in base_path.iterdir():
-        if item.is_dir():
-            if data_type == "trigger":
-                # Trigger directories are named TRIGGER__YYYY-MM-DD__HH-MM
-                if item.name.startswith("TRIGGER__"):
-                    parts = item.name.split("__")
-                    if len(parts) >= 2:
-                        date_str = parts[1]
-                        try:
-                            datetime.strptime(date_str, "%Y-%m-%d")
-                            dates.add(date_str)
-                        except ValueError:
-                            pass
-            else:
-                # kHz and rms directories are named YYYY-MM-DD
-                try:
-                    datetime.strptime(item.name, "%Y-%m-%d")
-                    dates.add(item.name)
-                except ValueError:
-                    pass
-
-    return sorted(dates)
-
-
-def remove_outliers(
-    data: np.ndarray,
-    time: np.ndarray,
-    method: str = "iqr",
-    threshold: float = 1.5,
-    window_size: Optional[int] = None,
-) -> Tuple[np.ndarray, np.ndarray, int]:
-    """
-    Remove outliers from data
-
-    Parameters
-    ----------
-    data : np.ndarray
-        Input data array
-    time : np.ndarray
-        Time array corresponding to data
-    method : str
-        Outlier detection method:
-        - 'iqr': Interquartile Range (default)
-        - 'zscore': Z-score based
-        - 'mad': Median Absolute Deviation
-        - 'percentile': Percentile-based clipping
-    threshold : float
-        Threshold for outlier detection:
-        - For 'iqr': IQR multiplier (default: 1.5, use 3.0 for extreme outliers)
-        - For 'zscore': Number of standard deviations (default: 3.0)
-        - For 'mad': MAD multiplier (default: 3.5)
-        - For 'percentile': Percentile to clip (e.g., 1.0 clips 1% from each end)
-    window_size : int, optional
-        If provided, use rolling window for local outlier detection
-
-    Returns
-    -------
-    clean_data : np.ndarray
-        Data with outliers removed (replaced with interpolated values)
-    clean_time : np.ndarray
-        Corresponding time array
-    n_outliers : int
-        Number of outliers detected
-    """
-    data = data.copy().astype(np.float64)
-
-    if window_size is not None and window_size > 0:
-        # Rolling window outlier detection
-        mask = _rolling_outlier_mask(data, window_size, method, threshold)
-    else:
-        # Global outlier detection
-        mask = _global_outlier_mask(data, method, threshold)
-
-    n_outliers = np.sum(mask)
-
-    if n_outliers > 0:
-        # Replace outliers with NaN, then interpolate
-        data[mask] = np.nan
-
-        # Interpolate NaN values
-        valid_idx = ~np.isnan(data)
-        if np.sum(valid_idx) > 2:
-            data = np.interp(
-                np.arange(len(data)), np.arange(len(data))[valid_idx], data[valid_idx]
-            )
-
-    return data, time, n_outliers
-
-
-def _global_outlier_mask(data: np.ndarray, method: str, threshold: float) -> np.ndarray:
-    """
-    Create mask for global outliers
-
-    Returns boolean array where True indicates outlier
-    """
-    if method == "iqr":
-        q1 = np.nanpercentile(data, 25)
-        q3 = np.nanpercentile(data, 75)
-        iqr = q3 - q1
-        lower_bound = q1 - threshold * iqr
-        upper_bound = q3 + threshold * iqr
-        mask = (data < lower_bound) | (data > upper_bound)
-
-    elif method == "zscore":
-        mean = np.nanmean(data)
-        std = np.nanstd(data)
-        if std > 0:
-            z_scores = np.abs((data - mean) / std)
-            mask = z_scores > threshold
-        else:
-            mask = np.zeros(len(data), dtype=bool)
-
-    elif method == "mad":
-        median = np.nanmedian(data)
-        mad = np.nanmedian(np.abs(data - median))
-        if mad > 0:
-            modified_z = 0.6745 * (data - median) / mad
-            mask = np.abs(modified_z) > threshold
-        else:
-            mask = np.zeros(len(data), dtype=bool)
-
-    elif method == "percentile":
-        lower_bound = np.nanpercentile(data, threshold)
-        upper_bound = np.nanpercentile(data, 100 - threshold)
-        mask = (data < lower_bound) | (data > upper_bound)
-
-    else:
-        raise ValueError(
-            f"Unknown method: {method}. Use 'iqr', 'zscore', 'mad', or 'percentile'"
-        )
-
-    return mask
-
-
-def _rolling_outlier_mask(
-    data: np.ndarray, window_size: int, method: str, threshold: float
-) -> np.ndarray:
-    """
-    Create mask for rolling window outliers
-
-    Returns boolean array where True indicates outlier
-    """
-    n = len(data)
-    mask = np.zeros(n, dtype=bool)
-    half_window = window_size // 2
-
-    for i in range(n):
-        start = max(0, i - half_window)
-        end = min(n, i + half_window + 1)
-        window_data = data[start:end]
-
-        if method == "iqr":
-            q1 = np.nanpercentile(window_data, 25)
-            q3 = np.nanpercentile(window_data, 75)
-            iqr = q3 - q1
-            if iqr > 0:
-                lower = q1 - threshold * iqr
-                upper = q3 + threshold * iqr
-                mask[i] = data[i] < lower or data[i] > upper
-
-        elif method == "zscore":
-            mean = np.nanmean(window_data)
-            std = np.nanstd(window_data)
-            if std > 0:
-                z = abs((data[i] - mean) / std)
-                mask[i] = z > threshold
-
-        elif method == "mad":
-            median = np.nanmedian(window_data)
-            mad = np.nanmedian(np.abs(window_data - median))
-            if mad > 0:
-                modified_z = 0.6745 * abs(data[i] - median) / mad
-                mask[i] = modified_z > threshold
-
-    return mask
-
-
-def main():
-    """Main function for CLI usage"""
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Read hybrid magnet data (kHz, RMS, Trigger)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-    # List available dates
-    python hybrid_data.py --base-dir /data/hybrid --list-dates
-
-    # Show summary for a specific date
-    python hybrid_data.py --base-dir /data/hybrid --date 2025-01-06
-
-    # Show kHz variables
-    python hybrid_data.py --base-dir /data/hybrid --date 2025-01-06 --khz-vars FEPC-LNCMI
-
-    # Show RMS variables
-    python hybrid_data.py --base-dir /data/hybrid --date 2025-01-06 --rms-vars FEPC-LNCMI
-
-    # Plot a kHz variable
-    python hybrid_data.py -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1
-
-    # Plot a kHz variable for specific hours without calibration
-    python hybrid_data.py -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1 --hours 0,1,2 --no-calib
-
-    # Plot an RMS variable
-    python hybrid_data.py -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-rms ALIM1_J1
-
-    # Plot kHz and RMS together
-    python hybrid_data.py -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-both ALIM1_J1
-
-    # Save plot to file
-    python hybrid_data.py -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1 --save output.png
-
-    # Plot with outlier removal (IQR method)
-    python hybrid_data.py -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1 --remove-outliers iqr
-
-    # Plot with outlier removal (zscore method, custom threshold)
-    python hybrid_data.py -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1 --remove-outliers zscore --outlier-threshold 3.0
-
-    # Plot with rolling window outlier removal
-    python hybrid_data.py -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1 --remove-outliers mad --outlier-window 1000
-        """,
-    )
-
-    parser.add_argument(
-        "--base-dir",
-        "-b",
-        type=str,
-        default="/home/LNCMI-G/christophe.trophime/LNCMIG-Data/CEA/",
-        help="Base directory containing kHz, rms, trigger subdirectories",
-    )
-
-    parser.add_argument(
-        "--date",
-        "-d",
-        type=str,
-        help="Date in YYYY-MM-DD format",
-    )
-
-    parser.add_argument(
-        "--fepc-system",
-        "-s",
-        type=str,
-        choices=FEPC_SYSTEMS,
-        help="FEPC system to use",
-    )
-
-    parser.add_argument(
-        "--endian",
-        "-e",
-        type=str,
-        choices=["big", "little"],
-        default="big",
-        help="Endianness of binary data (default: big)",
-    )
-
-    parser.add_argument(
-        "--log-level",
-        "-l",
-        type=str,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        default="WARNING",
-        help="Set logging level (default: WARNING)",
-    )
-
-    parser.add_argument(
-        "--list-dates",
-        action="store_true",
-        help="List available dates",
-    )
-
-    parser.add_argument(
-        "--khz-vars",
-        type=str,
-        metavar="SYSTEM",
-        help="Show kHz variables for a FEPC system",
-    )
-
-    parser.add_argument(
-        "--rms-vars",
-        type=str,
-        metavar="SYSTEM",
-        help="Show RMS variables for a FEPC system",
-    )
-
-    # Plotting arguments
-    parser.add_argument(
-        "--plot-khz",
-        type=str,
-        metavar="VARIABLE",
-        help="Plot a kHz variable (requires --fepc-system)",
-    )
-
-    parser.add_argument(
-        "--plot-rms",
-        type=str,
-        metavar="VARIABLE",
-        help="Plot an RMS variable (requires --fepc-system)",
-    )
-
-    parser.add_argument(
-        "--plot-both",
-        type=str,
-        metavar="VARIABLE",
-        help="Plot kHz and RMS data together (requires --fepc-system)",
-    )
-
-    parser.add_argument(
-        "--rms-var",
-        type=str,
-        metavar="VARIABLE",
-        help="RMS variable name for --plot-both (defaults to kHz variable name)",
-    )
-
-    parser.add_argument(
-        "--hours",
-        type=str,
-        metavar="HOURS",
-        help="Hours to plot for kHz data (comma-separated, e.g., '0,1,2')",
-    )
-
-    parser.add_argument(
-        "--no-calib",
-        action="store_true",
-        help="Do not apply calibration to kHz data",
-    )
-
-    parser.add_argument(
-        "--save",
-        type=str,
-        metavar="FILE",
-        help="Save plot to file",
-    )
-
-    # Outlier removal arguments
-    parser.add_argument(
-        "--remove-outliers",
-        type=str,
-        metavar="METHOD",
-        choices=["iqr", "zscore", "mad", "percentile"],
-        help="Remove outliers using specified method (iqr, zscore, mad, percentile)",
-    )
-
-    parser.add_argument(
-        "--outlier-threshold",
-        type=float,
-        default=1.5,
-        metavar="THRESHOLD",
-        help="Threshold for outlier detection (default: 1.5 for IQR, 3.0 for zscore)",
-    )
-
-    parser.add_argument(
-        "--outlier-window",
-        type=int,
-        metavar="SIZE",
-        help="Rolling window size for local outlier detection (optional)",
-    )
-
-    args = parser.parse_args()
-
-    # Configure logging level
-    log_level = getattr(logging, args.log_level.upper(), logging.WARNING)
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-    logger.setLevel(log_level)
-
-    # Set debug flag for debug-specific behaviors (e.g., debug plotting)
-    debug = log_level == logging.DEBUG
-
-    # List dates
-    if args.list_dates:
-        print("Available dates:")
-        for data_type in ["kHz", "rms", "trigger"]:
-            dates = list_available_dates(args.base_dir, data_type)
-            if dates:
-                print(
-                    f"  {data_type}: {', '.join(dates[:5])}"
-                    + (f" ... ({len(dates)} total)" if len(dates) > 5 else "")
-                )
-        return
-
-    # Require date for other operations
-    if not args.date:
-        parser.print_help()
-        return
-
-    # Create HybridData instance
-    try:
-        data = HybridData(
-            args.base_dir,
-            args.date,
-            fepc_system=args.fepc_system,
-            endian=args.endian,
-        )
-    except Exception as e:
-        print(f"Error creating HybridData: {e}")
-        return
-
-    # Show summary
-    data.print_summary()
-
-    # Show kHz variables
-    if args.khz_vars:
-        print(f"\nkHz Variables for {args.khz_vars}:")
-        vars_info = data.get_khz_variables(args.khz_vars)
-        print(f"  Analog ({len(vars_info['analog'])}):")
-        for var in vars_info["analog"][:10]:
-            print(f"    {var}")
-        if len(vars_info["analog"]) > 10:
-            print(f"    ... and {len(vars_info['analog']) - 10} more")
-        print(f"  Digital ({len(vars_info['digital'])}):")
-        for var in vars_info["digital"][:10]:
-            print(f"    {var}")
-        if len(vars_info["digital"]) > 10:
-            print(f"    ... and {len(vars_info['digital']) - 10} more")
-
-    # Show RMS variables
-    if args.rms_vars:
-        print(f"\nRMS Variables for {args.rms_vars}:")
-        try:
-            vars_info = data.get_rms_variables(args.rms_vars)
-            print(f"  Analog ({len(vars_info['analog'])}):")
-            for var in vars_info["analog"][:10]:
-                print(f"    {var}")
-            if len(vars_info["analog"]) > 10:
-                print(f"    ... and {len(vars_info['analog']) - 10} more")
-            print(f"  Digital ({len(vars_info['digital'])}):")
-            for var in vars_info["digital"][:10]:
-                print(f"    {var}")
-            if len(vars_info["digital"]) > 10:
-                print(f"    ... and {len(vars_info['digital']) - 10} more")
-        except Exception as e:
-            print(f"  Error: {e}")
-
-    # Parse hours if provided
-    hours = None
-    if args.hours:
-        try:
-            hours = [int(h.strip()) for h in args.hours.split(",")]
-        except ValueError:
-            print(
-                f"Error: Invalid hours format '{args.hours}'. Use comma-separated integers."
-            )
-            return
-
-    # Plot kHz variable
-    if args.plot_khz:
-        if not args.fepc_system:
-            print("Error: --fepc-system is required for plotting")
-            return
-        try:
-            print(f"\nPlotting kHz variable: {args.plot_khz}")
-            data.plot_khz_variable(
-                args.fepc_system,
-                args.plot_khz,
-                hours=hours,
-                apply_calib=not args.no_calib,
-                save=args.save,
-                remove_outliers_method=args.remove_outliers,
-                outlier_threshold=args.outlier_threshold,
-                outlier_window=args.outlier_window,
-            )
-        except ValueError as e:
-            print(f"Value error plotting kHz variable: {e}")
-            return
-        except Exception as e:
-            print(f"Error plotting kHz variable: {e}")
-            return
-
-    # Plot RMS variable
-    if args.plot_rms:
-        if not args.fepc_system:
-            print("Error: --fepc-system is required for plotting")
-            return
-        try:
-            print(f"\nPlotting RMS variable: {args.plot_rms}")
-            data.plot_rms_variable(
-                args.fepc_system,
-                args.plot_rms,
-                save=args.save,
-            )
-        except Exception as e:
-            print(f"Error plotting RMS variable: {e}")
-
-    # Plot both kHz and RMS
-    if args.plot_both:
-        if not args.fepc_system:
-            print("Error: --fepc-system is required for plotting")
-            return
-        try:
-            rms_var = args.rms_var if args.rms_var else args.plot_both
-            print(f"\nPlotting kHz ({args.plot_both}) and RMS ({rms_var})")
-            data.plot_khz_with_rms(
-                args.fepc_system,
-                args.plot_both,
-                rms_variable=rms_var,
-                hours=hours,
-                apply_calib=not args.no_calib,
-                save=args.save,
-            )
-        except ValueError as e:
-            print(f"Value error plotting kHz variable: {e}")
-            return
-        except Exception as e:
-            print(f"Error plotting: {e}")
-
-
-if __name__ == "__main__":
-    main()
