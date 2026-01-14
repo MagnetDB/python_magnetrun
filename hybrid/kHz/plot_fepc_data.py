@@ -18,6 +18,7 @@ from cfg_analyzer import extract_host_number, analyze_cfg_file
 from fepc_reader import (
     apply_calibration,
     read_hour_file,
+    KHZ_SAMPLING_FREQUENCY,
 )
 
 # Import remove_outliers from parent utils module
@@ -158,7 +159,7 @@ def read_variable_from_files(
     total_samples = 0
 
     # Get sampling frequency
-    sampling_freq = 10000
+    sampling_freq = KHZ_SAMPLING_FREQUENCY
 
     # Setup debug plot if requested
     fig, ax, line = None, None, None

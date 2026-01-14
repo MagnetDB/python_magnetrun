@@ -3,6 +3,7 @@ FEPC kHz Data Reader
 Reads configuration and binary data files from FEPC acquisition system
 """
 
+from datetime import timedelta
 import logging
 import numpy as np
 import struct
@@ -11,8 +12,28 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
 
+from requests import head
+
+from hybrid.data_protocol import datetime
+
 # Setup logger
 logger = logging.getLogger(__name__)
+
+# FEPC kHz format constants
+SAMPLES_PER_BLOCK = 50  # Number of samples in each data block
+KHZ_SAMPLING_FREQUENCY = 1000.0  # Sampling frequency in Hz for kHz files
+
+# Analog card constants
+ANALOG_CHANNELS = 16
+ANALOG_HEADER_SIZE = 14  # bytes (7 × 16 bits)
+ANALOG_DATA_SIZE = 1600  # bytes (50 samples × 16 channels × 16 bits)
+ANALOG_BLOCK_SIZE = 1614  # bytes (header + data)
+
+# Digital card constants
+DIGITAL_CHANNELS = 32
+DIGITAL_HEADER_SIZE = 12  # bytes (6 × 16 bits)
+DIGITAL_DATA_SIZE = 200  # bytes (50 samples × 32 bits)
+DIGITAL_BLOCK_SIZE = 212  # bytes (header + data)
 
 
 @dataclass
@@ -157,7 +178,7 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
                     "pre": 20,
                     "post": 50,
                     "card_type": "ANA" if card_idx < 6 else "DIG",
-                    "nchannels": 16 if card_idx < 6 else 32,
+                    "nchannels": ANALOG_CHANNELS if card_idx < 6 else DIGITAL_CHANNELS,
                 }
             )
 
@@ -177,7 +198,9 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
 
         slot = card_idx
         card_type = card_desc.get("card_type", "ANA" if line_idx <= 6 else "DIG")
-        num_channels = card_desc.get("nchannels", 16 if card_type == "ANA" else 32)
+        num_channels = card_desc.get(
+            "nchannels", ANALOG_CHANNELS if card_type == "ANA" else DIGITAL_CHANNELS
+        )
         buffer_freq = card_desc.get("freq", 10000)
         buffer_pre = card_desc.get("pre", 20)
         buffer_post = card_desc.get("post", 50)
@@ -392,8 +415,8 @@ def _extract_calibration(var_dict: dict) -> CalibrationInfo:
 
 
 def read_analog_block(
-    file, block_idx: int, endian: str = "big"
-) -> Tuple[np.ndarray, Dict]:
+    file, block_idx: int, endian: str = "big", verbose: bool = False
+) -> Tuple[np.ndarray, float]:
     """
     Read one analog data block (1614 bytes)
 
@@ -414,28 +437,42 @@ def read_analog_block(
     --------
     data : np.ndarray
         Shape (50, 16) - 50 samples, 16 channels, int16 values
-    header : dict
-        Header information
+    t : float
+        Timestamp in seconds
     """
-    HEADER_SIZE = 14  # bytes
-    DATA_SIZE = 1600  # bytes
-    BLOCK_SIZE = 1614  # bytes
 
     # Seek to block position
-    file.seek(block_idx * BLOCK_SIZE)
+    file.seek(block_idx * ANALOG_BLOCK_SIZE)
 
-    # Read header (7 × uint16)
+    # Read header (14 bytes total)
+    # Header structure:
+    #   Bytes 0-3:   Integer value (uint32)
+    #   Bytes 4-7:   Timestamp in seconds (uint32)
+    #   Bytes 8-9:   Timestamp in milliseconds (uint16)
+    #   Bytes 10-13: Unused (4 bytes)
     endian_char = ">" if endian == "big" else "<"
-    header_bytes = file.read(HEADER_SIZE)
-    header_data = struct.unpack(f"{endian_char}7H", header_bytes)
+    header_bytes = file.read(ANALOG_HEADER_SIZE)
+    # Unpack as: uint32 (integer), uint32 (seconds), uint16 (milliseconds), 2×uint16 (unused)
+    header_data = struct.unpack(f"{endian_char}IIH2H", header_bytes)
+    actual_block_idx = header_data[0]
+    t_seconds = header_data[1]
+    t_milliseconds = header_data[2]
+    # Reconstruct timestamp: seconds + milliseconds converted to seconds
+    t = t_seconds + (t_milliseconds / 1000.0)
 
     header = {"values": header_data}
-    # print(f"read_analog_block: header={header}", flush=True)
+    if verbose:
+        # try to reverse engineer header data (see claude "decoding numeric timestamp" chat)
+        logger.warning(
+            f"read_analog_block: block[{block_idx}] header={header}, t={t}, actual_block_idx={actual_block_idx}"
+        )
 
     # Read data (50 samples × 16 channels)
-    data_bytes = file.read(DATA_SIZE)
+    data_bytes = file.read(ANALOG_DATA_SIZE)
     dtype = np.dtype(np.uint16).newbyteorder(">" if endian == "big" else "<")
-    data = np.frombuffer(data_bytes, dtype=dtype).reshape(50, 16)
+    data = np.frombuffer(data_bytes, dtype=dtype).reshape(
+        SAMPLES_PER_BLOCK, ANALOG_CHANNELS
+    )
     # print(f"read_analog_block: data shape={data.shape}")
     """
     import pandas as pd
@@ -443,12 +480,12 @@ def read_analog_block(
     df = pd.DataFrame(data, columns=[f"CH{i}" for i in range(data.shape[1])])
     print(df.to_string())
     """
-    return data, header
+    return data, t  # header
 
 
 def read_digital_block(
-    file, block_idx: int, endian: str = "big"
-) -> Tuple[np.ndarray, Dict]:
+    file, block_idx: int, endian: str = "big", verbose: bool = False
+) -> Tuple[np.ndarray, float]:
     """
     Read one digital data block (212 bytes)
 
@@ -469,44 +506,53 @@ def read_digital_block(
     --------
     data : np.ndarray
         Shape (50, 32) - 50 samples, 32 channels, boolean values
-    header : dict
-        Header information
+    t : float
+        Timestamp in seconds
     """
-    HEADER_SIZE = 12  # bytes
-    DATA_SIZE = 200  # bytes
-    BLOCK_SIZE = 212  # bytes
 
     # Seek to block position
-    file.seek(block_idx * BLOCK_SIZE)
+    file.seek(block_idx * DIGITAL_BLOCK_SIZE)
 
-    # Read header (6 × uint16)
+    # Read header (12 bytes total)
+    # Header structure:
+    #   Bytes 0-3:  Integer value (uint32)
+    #   Bytes 4-7:  Timestamp in seconds (uint32)
+    #   Bytes 8-9:  Timestamp in milliseconds (uint16)
+    #   Bytes 10-11: Unused (2 bytes)
     endian_char = ">" if endian == "big" else "<"
-    header_bytes = file.read(HEADER_SIZE)
-    header_data = struct.unpack(f"{endian_char}6H", header_bytes)
+    header_bytes = file.read(DIGITAL_HEADER_SIZE)
+    # Unpack as: uint32 (integer), uint32 (seconds), uint16 (milliseconds), uint16 (unused)
+    header_data = struct.unpack(f"{endian_char}IIH H", header_bytes)
+    int_value = header_data[0]
+    t_seconds = header_data[1]
+    t_milliseconds = header_data[2]
+    # Reconstruct timestamp: seconds + milliseconds converted to seconds
+    t = t_seconds + (t_milliseconds / 1000.0)
 
     header = {"values": header_data}
+    if verbose:
+        # try to reverse engineer header data (see claude "decoding numeric timestamp" chat)
+        logger.warning(
+            f"read_analog_block: block[{block_idx}] header={header}, t={t}, actual_block_idx={int_value}"
+        )
 
-    # Read data (50 samples × 32 bits)
-    # Each sample is stored as 2 × 16 bits
-    data_bytes = file.read(DATA_SIZE)
+    # Read data (50 samples × 32 bits per sample)
+    # Each sample contains 32 digital bits (one per channel)
+    data_bytes = file.read(DIGITAL_DATA_SIZE)
     dtype = np.dtype(np.uint16).newbyteorder(">" if endian == "big" else "<")
-    data_uint16 = np.frombuffer(data_bytes, dtype=dtype).reshape(50, 2)
+    data_uint16 = np.frombuffer(data_bytes, dtype=dtype).reshape(SAMPLES_PER_BLOCK, 2)
 
-    # Convert to individual bits (32 channels per sample)
-    data = np.zeros((50, 32), dtype=bool)
-    for sample_idx in range(50):
-        # First 16 bits (channels 0-15)
-        word1 = data_uint16[sample_idx, 0]
-        for bit in range(16):
-            data[sample_idx, bit] = bool((word1 >> bit) & 1)
-
-        # Second 16 bits (channels 16-31)
-        word2 = data_uint16[sample_idx, 1]
-        for bit in range(16):
-            data[sample_idx, 16 + bit] = bool((word2 >> bit) & 1)
+    # Convert to individual boolean bits (32 channels per sample)
+    # Extract bits using vectorized numpy operations for efficiency
+    data = np.zeros((SAMPLES_PER_BLOCK, DIGITAL_CHANNELS), dtype=bool)
+    for bit in range(16):
+        # Extract bit position from word1 (channels 0-15)
+        data[:, bit] = ((data_uint16[:, 0] >> bit) & 1).astype(bool)
+        # Extract bit position from word2 (channels 16-31)
+        data[:, 16 + bit] = ((data_uint16[:, 1] >> bit) & 1).astype(bool)
 
     logger.debug(f"read_digital_block: data shape = {data.shape}")
-    return data, header
+    return data, t  # header
 
 
 def read_hour_file(
@@ -546,8 +592,8 @@ def read_hour_file(
     """
     import matplotlib.pyplot as plt
 
-    num_channels = 16 if card_type == "ANA" else 32
-    total_samples = num_blocks * 50
+    num_channels = ANALOG_CHANNELS if card_type == "ANA" else DIGITAL_CHANNELS
+    total_samples = num_blocks * SAMPLES_PER_BLOCK
     logger.info(
         f"read_hour_file: file={filepath}, card_type={card_type}, num_blocks={num_blocks}, num_channels={num_channels}, total_samples={total_samples}, endian={endian}"
     )
@@ -555,23 +601,33 @@ def read_hour_file(
     # Estimate actual block numbers based on file size
     from pathlib import Path
 
-    block_size = 1614 if card_type == "ANA" else 212
+    block_size = ANALOG_BLOCK_SIZE if card_type == "ANA" else DIGITAL_BLOCK_SIZE
     file_path = Path(filepath)
 
     file_size = file_path.stat().st_size
     actual_num_blocks = file_size // block_size
     remainder = file_size % block_size
 
-    print(f"Number of actual blocks: {actual_num_blocks}")
     if remainder != 0:
-        print(
-            f"Warning: {filepath} - file size {file_size} is not a multiple of block size {block_size}, ignoring last {remainder} bytes"
+        logger.critical(
+            f"{filepath} - file size {file_size} is not a multiple of block size {block_size}, ignoring last {remainder} bytes"
+        )
+        raise
+
+    verbose = False
+    if num_blocks != actual_num_blocks:
+        verbose = True
+        logger.warning(
+            f"{filepath}: expected {num_blocks} blocks got {actual_num_blocks}"
         )
 
     # Pre-allocate array
     data = np.zeros(
         (total_samples, num_channels), dtype=np.uint16 if card_type == "ANA" else bool
     )
+    # TODO set NaN instead of zero
+    data = np.empty((total_samples, num_channels))
+    data.fill(np.nan)
     logger.info(
         f"read_hour_file: file={filepath}, Allocated data array of shape {data.shape} for card type {card_type}"
     )
@@ -588,17 +644,29 @@ def read_hour_file(
         (line,) = ax.plot([], [], linewidth=0.5, alpha=0.8)
         plt.show(block=False)
 
+    t, t0 = 0, 0
     with open(filepath, "rb") as f:
         for block_idx in range(num_blocks):
             try:
                 if card_type == "ANA":
-                    block_data, _ = read_analog_block(f, block_idx, endian)
+                    block_data, t = read_analog_block(f, block_idx, endian, verbose)
                 else:
-                    block_data, _ = read_digital_block(f, block_idx, endian)
+                    block_data, t = read_digital_block(f, block_idx, endian, verbose)
+
+                # check t has been increased by 50 ms
+                if block_idx == 0:
+                    t0 = t
+                else:
+                    dt = t - t0
+                    if abs(1 - dt / 50.0e-3) > 3.0e-1:
+                        logger.warning(
+                            f"block[{block_idx}]: dt={dt}, t={t}, err={abs(1 - dt / 50.0e-3)}, t0={t0}, (card_type={card_type})"
+                        )
+                    t0 = t
 
                 # Store in output array
-                start_idx = block_idx * 50
-                end_idx = start_idx + 50
+                start_idx = block_idx * SAMPLES_PER_BLOCK
+                end_idx = start_idx + SAMPLES_PER_BLOCK
                 data[start_idx:end_idx, :] = block_data
                 logger.debug(
                     f"read_hour_file: file={filepath}, block_idx={block_idx}/{num_blocks}, start_idx={start_idx}, end_idx={end_idx} stored, block_data shape={block_data.shape}"
@@ -622,11 +690,11 @@ def read_hour_file(
                         fig.canvas.flush_events()
                     plt.pause(0.01)
             except struct.error as e:
-                print(
+                logger.warning(
                     f"read_hour_file: Error reading block {block_idx}/{num_blocks} in {filepath}: {e}"
                 )
 
-        print(f"\nReading complete from {filepath}, data shape: {data.shape}")
+        print(f"Reading complete from {filepath}, data shape: {data.shape}\n")
 
     if debug:
         # Final update
@@ -907,7 +975,7 @@ def main():
 
         for card in config.cards:
             print(f"\nSlot {card.slot}: {card.card_type} card")
-            print("  Sampling frequency: 1000 Hz")
+            print(f"  Sampling frequency: {KHZ_SAMPLING_FREQUENCY:.0f} Hz")
             print(f"  Number of channels: {card.num_channels}")
             print(
                 f"  Variables: {', '.join(card.variable_names[:5])}{', ...' if len(card.variable_names) > 5 else ''}"

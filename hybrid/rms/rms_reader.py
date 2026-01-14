@@ -17,6 +17,13 @@ import pandas as pd
 # Setup logger
 logger = logging.getLogger(__name__)
 
+# RMS format constants
+FLOAT32_SIZE = 4  # bytes - size of float32 analog values
+DIGITAL_SIZE = 1  # bytes - size of digital/bit values
+TIMESTAMP_SIZE = 8  # bytes - size of timestamp (double precision)
+DEFAULT_SAMPLE_WIDTH = 257  # bytes - default width of each sample record
+DEFAULT_DATA_OFFSET = 0  # bytes - default offset to start of binary data
+
 
 class RMSVariable:
     """Represents a variable in the RMS file."""
@@ -37,7 +44,7 @@ class RMSVariable:
         self.max_val = max_val
         self.display_format = display_format
         self.is_analog = var_type == "float32"
-        self.byte_size = 4 if self.is_analog else 1
+        self.byte_size = FLOAT32_SIZE if self.is_analog else DIGITAL_SIZE
 
     def __repr__(self):
         return f"RMSVariable({self.name}, {self.var_type}, {self.unit})"
@@ -188,9 +195,9 @@ class RMSFileReader:
             raise ValueError("Header must be parsed before reading binary data")
 
         # Calculate the expected byte positions for each variable
-        timestamp_size = self.metadata.get("timestamp_bytes", 8)
-        sample_width = self.metadata.get("sample_width", 257)
-        data_offset = self.metadata.get("data_offset", 0)
+        timestamp_size = self.metadata.get("timestamp_bytes", TIMESTAMP_SIZE)
+        sample_width = self.metadata.get("sample_width", DEFAULT_SAMPLE_WIDTH)
+        data_offset = self.metadata.get("data_offset", DEFAULT_DATA_OFFSET)
 
         # Open file and seek to data start
         with open(self.filepath, "rb") as f:
@@ -233,17 +240,18 @@ class RMSFileReader:
                 if var.is_analog:
                     # Read 4 bytes as float32
                     value = struct.unpack(
-                        f"{self.endian}f", sample_data[byte_offset : byte_offset + 4]
+                        f"{self.endian}f",
+                        sample_data[byte_offset : byte_offset + FLOAT32_SIZE],
                     )[0]
                     # print(f'Read variable {var.name}[{i}]: {value} (ANALOG)', flush=True)
-                    byte_offset += 4
+                    byte_offset += FLOAT32_SIZE
                 else:
                     # Read 1 byte as unsigned char (endianness not applicable)
                     value = struct.unpack(
-                        "B", sample_data[byte_offset : byte_offset + 1]
+                        "B", sample_data[byte_offset : byte_offset + DIGITAL_SIZE]
                     )[0]
                     # print(f'Read variable {var.name}[{i}]: {value} (DIG)', flush=True)
-                    byte_offset += 1
+                    byte_offset += DIGITAL_SIZE
 
                 data_arrays[var.name].append(value)
 
