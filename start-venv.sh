@@ -16,7 +16,7 @@ if [ ! -d $VENVDIR ]; then
       pip install black
    fi
    . $VENVDIR/bin/activate
-   python -m pip install -r requirements.txt
+   python -m pip install -e .
    deactivate
 fi
 
