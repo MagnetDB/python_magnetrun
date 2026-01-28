@@ -141,3 +141,10 @@ M*.conf
 *orig
 *new
 
+*.bin
+*.rms
+*.CNV
+*.CFG
+*.xml
+
+*.pdf

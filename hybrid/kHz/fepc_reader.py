@@ -3,7 +3,6 @@ FEPC kHz Data Reader
 Reads configuration and binary data files from FEPC acquisition system
 """
 
-from datetime import timedelta
 import logging
 import numpy as np
 import struct
@@ -12,9 +11,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
 
-from requests import head
 
-from hybrid.data_protocol import datetime
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -22,6 +19,9 @@ logger = logging.getLogger(__name__)
 # FEPC kHz format constants
 SAMPLES_PER_BLOCK = 50  # Number of samples in each data block
 KHZ_SAMPLING_FREQUENCY = 1000.0  # Sampling frequency in Hz for kHz files
+SAMPLE_INTERVAL = (
+    1.0 / KHZ_SAMPLING_FREQUENCY
+)  # Time interval between samples in seconds
 
 # Analog card constants
 ANALOG_CHANNELS = 16
@@ -416,7 +416,7 @@ def _extract_calibration(var_dict: dict) -> CalibrationInfo:
 
 def read_analog_block(
     file, block_idx: int, endian: str = "big", verbose: bool = False
-) -> Tuple[np.ndarray, float]:
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Read one analog data block (1614 bytes)
 
@@ -437,8 +437,10 @@ def read_analog_block(
     --------
     data : np.ndarray
         Shape (50, 16) - 50 samples, 16 channels, int16 values
-    t : float
-        Timestamp in seconds
+    timestamps : np.ndarray
+        Shape (50,) - timestamp for each sample in seconds
+        Note: header timestamp corresponds to last sample (index 49),
+              so each previous sample has 1 ms subtracted
     """
 
     # Seek to block position
@@ -458,13 +460,14 @@ def read_analog_block(
     t_seconds = header_data[1]
     t_milliseconds = header_data[2]
     # Reconstruct timestamp: seconds + milliseconds converted to seconds
-    t = t_seconds + (t_milliseconds / 1000.0)
+    # This timestamp corresponds to the LAST sample (index 49) in the block
+    t_last = t_seconds + (t_milliseconds / KHZ_SAMPLING_FREQUENCY)
 
     header = {"values": header_data}
     if verbose:
         # try to reverse engineer header data (see claude "decoding numeric timestamp" chat)
         logger.warning(
-            f"read_analog_block: block[{block_idx}] header={header}, t={t}, actual_block_idx={actual_block_idx}"
+            f"read_analog_block: block[{block_idx}] header={header}, t_last={t_last}, actual_block_idx={actual_block_idx}"
         )
 
     # Read data (50 samples × 16 channels)
@@ -474,18 +477,22 @@ def read_analog_block(
         SAMPLES_PER_BLOCK, ANALOG_CHANNELS
     )
     # print(f"read_analog_block: data shape={data.shape}")
-    """
-    import pandas as pd
 
-    df = pd.DataFrame(data, columns=[f"CH{i}" for i in range(data.shape[1])])
-    print(df.to_string())
-    """
-    return data, t  # header
+    # Create timestamp array: header timestamp is for last sample (index 49)
+    # Each previous sample is one sample interval earlier
+    timestamps = np.array(
+        [
+            t_last - (SAMPLES_PER_BLOCK - 1 - i) * SAMPLE_INTERVAL
+            for i in range(SAMPLES_PER_BLOCK)
+        ]
+    )
+
+    return data, timestamps
 
 
 def read_digital_block(
     file, block_idx: int, endian: str = "big", verbose: bool = False
-) -> Tuple[np.ndarray, float]:
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Read one digital data block (212 bytes)
 
@@ -506,8 +513,10 @@ def read_digital_block(
     --------
     data : np.ndarray
         Shape (50, 32) - 50 samples, 32 channels, boolean values
-    t : float
-        Timestamp in seconds
+    timestamps : np.ndarray
+        Shape (50,) - timestamp for each sample in seconds
+        Note: header timestamp corresponds to last sample (index 49),
+              so each previous sample has 1 ms subtracted
     """
 
     # Seek to block position
@@ -527,13 +536,14 @@ def read_digital_block(
     t_seconds = header_data[1]
     t_milliseconds = header_data[2]
     # Reconstruct timestamp: seconds + milliseconds converted to seconds
-    t = t_seconds + (t_milliseconds / 1000.0)
+    # This timestamp corresponds to the LAST sample (index 49) in the block
+    t_last = t_seconds + (t_milliseconds / KHZ_SAMPLING_FREQUENCY)
 
     header = {"values": header_data}
     if verbose:
         # try to reverse engineer header data (see claude "decoding numeric timestamp" chat)
         logger.warning(
-            f"read_analog_block: block[{block_idx}] header={header}, t={t}, actual_block_idx={int_value}"
+            f"read_digital_block: block[{block_idx}] header={header}, t_last={t_last}, actual_block_idx={int_value}"
         )
 
     # Read data (50 samples × 32 bits per sample)
@@ -551,8 +561,17 @@ def read_digital_block(
         # Extract bit position from word2 (channels 16-31)
         data[:, 16 + bit] = ((data_uint16[:, 1] >> bit) & 1).astype(bool)
 
+    # Create timestamp array: header timestamp is for last sample (index 49)
+    # Each previous sample is one sample interval earlier
+    timestamps = np.array(
+        [
+            t_last - (SAMPLES_PER_BLOCK - 1 - i) * SAMPLE_INTERVAL
+            for i in range(SAMPLES_PER_BLOCK)
+        ]
+    )
+
     logger.debug(f"read_digital_block: data shape = {data.shape}")
-    return data, t  # header
+    return data, timestamps
 
 
 def read_hour_file(
@@ -644,25 +663,17 @@ def read_hour_file(
         (line,) = ax.plot([], [], linewidth=0.5, alpha=0.8)
         plt.show(block=False)
 
-    t, t0 = 0, 0
     with open(filepath, "rb") as f:
         for block_idx in range(num_blocks):
             try:
                 if card_type == "ANA":
-                    block_data, t = read_analog_block(f, block_idx, endian, verbose)
+                    block_data, timestamps = read_analog_block(
+                        f, block_idx, endian, verbose
+                    )
                 else:
-                    block_data, t = read_digital_block(f, block_idx, endian, verbose)
-
-                # check t has been increased by 50 ms
-                if block_idx == 0:
-                    t0 = t
-                else:
-                    dt = t - t0
-                    if abs(1 - dt / 50.0e-3) > 3.0e-1:
-                        logger.warning(
-                            f"block[{block_idx}]: dt={dt}, t={t}, err={abs(1 - dt / 50.0e-3)}, t0={t0}, (card_type={card_type})"
-                        )
-                    t0 = t
+                    block_data, timestamps = read_digital_block(
+                        f, block_idx, endian, verbose
+                    )
 
                 # Store in output array
                 start_idx = block_idx * SAMPLES_PER_BLOCK

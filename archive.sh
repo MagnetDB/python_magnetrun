@@ -1,7 +1,7 @@
 #! /bin/bash
 
-# set -x # force debug
-set -eo pipefail # add flag to stop when command returns an error
+set -x # force debug
+#set -eo pipefail # add flag to stop when command returns an error
 
 SRCDIR=python_magnetrun
 PACKAGE=python-magnetrun
@@ -37,7 +37,7 @@ shift $((OPTIND - 1))
 : ${DIST:="bookworm"}
 
 # cleanup source
-find . -type d -name __pycache__ | xargs rm -rf
+find . \( -path "./magnetrun-env/*" -o -path "./pigbrotherdata/*" -o -path "./pigbrother_colddata/*" \) -prune -o -type d -name __pycache__ -print | xargs rm -rf
 
 # create archive
 
@@ -61,8 +61,11 @@ tar \
     --exclude=python_magnetrun/*.json \
     --exclude=python_magnetrun/*.png \
     --exclude=*env \
-    --exclude=*data \
-    --exclude=*.tdms \
+    --exclude=data \
+    --exclude=srvdata \
+    --exclude=pigbrotherdata \
+    --exclude=pigbrother_colddata \
+    --exclude=outputs \
     --exclude=tmp \
     --exclude=python_magnetrun/*output* \
     --exclude=python_magnetrun/json \
