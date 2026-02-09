@@ -116,6 +116,7 @@ docs/source/_templates
 
 # Log files from installation
 log*
+!log*.py
 python_magnetrun/_output/
 
 *.png
@@ -137,6 +138,7 @@ H*.json
 M*.conf
 
 *log
+!*.log.py
 *old
 *orig
 *new
@@ -153,3 +155,4 @@ M*.conf
 *.zip
 *.tar.*
 *.tgz
+
