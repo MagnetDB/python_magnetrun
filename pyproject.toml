@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "python_magnetrun"
 version = "0.1.0"
 description = "Python MagnetRun contains utils to view and analyse Magnet runs"
-license = {text = "MIT"}
+license = "MIT"
 keywords = ["python_magnetrun"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -75,3 +75,4 @@ srvdata-to-magnetrun = "python_magnetrun.requests.cli:main"
 magnetrun-analysis = "python_magnetrun.analysis:main"
 hybrid-magnetrun = "python_magnetrun.hybrid.cli:main"
 magnetrun-alimconfig = "python_magnetrun.configAlims.convertxml:main"
+magnetrun-pigbrother-logparser = "python_magnetrun.tdms.log_parser:main"
