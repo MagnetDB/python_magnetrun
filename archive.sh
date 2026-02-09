@@ -33,8 +33,8 @@ done
 shift $((OPTIND - 1))
 
 # add parameters
-: ${VERSION:="0.0.7"}
-: ${DIST:="bookworm"}
+: ${VERSION:="0.1.0"}
+: ${DIST:="trixie"}
 
 # cleanup source
 find . \( -path "./magnetrun-env/*" -o -path "./pigbrotherdata/*" -o -path "./pigbrother_colddata/*" \) -prune -o -type d -name __pycache__ -print | xargs rm -rf
@@ -58,6 +58,12 @@ tar \
     --exclude=*.orig \
     --exclude=*.new \
     --exclude=*.rej \
+    --exclude=*.zip \
+    --exclude=*.tgz \
+    --exclude=*.bin \
+    --exclude=*.pdf \
+    --exclude=*.CFG \
+    --exclude=*.CNV \
     --exclude=python_magnetrun/*.json \
     --exclude=python_magnetrun/*.png \
     --exclude=*env \
@@ -72,7 +78,6 @@ tar \
     --exclude=python_magnetrun/png \
     --exclude=*~ \
     --exclude=\#*\# \
-    --exclude=pyproject.toml \
     --exclude=poetry.lock \
     -zcvf ${PACKAGE}_${VERSION}.orig.tar.gz ${SRCDIR}
 

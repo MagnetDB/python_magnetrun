@@ -5,8 +5,8 @@ This module provides CLI tools for reading and plotting hybrid magnet data
 from FEPC acquisition systems.
 
 Usage:
-    python -m hybrid.cli --help
-    python -m hybrid.cli --base-dir /data/hybrid --date 2025-01-06
+    python -m python_magnetrun.hybrid.cli --help
+    python -m python_magnetrun.hybrid.cli --base-dir /data/hybrid --date 2025-01-06
 """
 
 import argparse

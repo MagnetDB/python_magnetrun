@@ -9,7 +9,7 @@ This allows writing code that works with any data source without coupling
 to a specific implementation.
 
 Example:
-    from hybrid.data_protocol import DataLoader, load_and_compare
+    from python_magnetrun.hybrid.data_protocol import DataLoader, load_and_compare
 
     # Both MagnetRun and HybridRun implement DataLoader protocol
     mrun: DataLoader = MagnetRun.fromtdms(site, insert, file)

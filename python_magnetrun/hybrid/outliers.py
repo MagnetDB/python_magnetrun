@@ -12,7 +12,7 @@ Design principles:
 - Multiple detection algorithms with configurable thresholds
 
 Example usage:
-    from hybrid.outliers import OutlierDetector, detect_outliers, get_outlier_summary
+    from python_magnetrun.hybrid.outliers import OutlierDetector, detect_outliers, get_outlier_summary
 
     # Simple API
     mask = detect_outliers(data, method='iqr', threshold=1.5)

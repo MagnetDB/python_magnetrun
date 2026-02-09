@@ -6,7 +6,7 @@ This implementation adds comprehensive error logging capabilities to the `python
 
 ## What Was Added
 
-### 1. Utility Functions in `hybrid/utils.py`
+### 1. Utility Functions in `python_magnetrun/hybrid/utils.py`
 
 Two new utility functions for better error reporting:
 
@@ -25,7 +25,7 @@ Two new utility functions for better error reporting:
 
 The following files have been updated with enhanced error handling:
 
-#### `hybrid/cli.py`
+#### `python_magnetrun/hybrid/cli.py`
 - All exception handlers now use `log_exception()` or `format_exception_location()`
 - Critical errors show full traceback
 - Warnings show concise location
@@ -105,8 +105,8 @@ This will demonstrate:
 
 ## Files Modified
 
-1. `hybrid/utils.py` - Added error logging utilities
-2. `hybrid/cli.py` - Updated 5 exception handlers
+1. `python_magnetrun/hybrid/utils.py` - Added error logging utilities
+2. `python_magnetrun/hybrid/cli.py` - Updated 5 exception handlers
 3. `examples/plot_hybrid_minimal.py` - Updated 3 exception handlers
 4. `examples/plot_hybrid_with_pupitre_tdms.py` - Updated 6 exception handlers
 5. `python_magnetrun/python_magnetrun.py` - Updated 1 exception handler
@@ -123,11 +123,11 @@ This will demonstrate:
 ```
 Error creating HybridData: FileNotFoundError: [Errno 2] No such file or directory: 'config.cfg'
 Traceback (most recent call last):
-  File "/path/to/hybrid/cli.py", line 327, in main
+  File "/path/to/python_magnetrun/hybrid/cli.py", line 327, in main
     data = HybridData(
-  File "/path/to/hybrid/hybrid_data.py", line 150, in __init__
+  File "/path/to/python_magnetrun/hybrid/hybrid_data.py", line 150, in __init__
     self._load_fepc_data()
-  File "/path/to/hybrid/hybrid_data.py", line 342, in _load_fepc_data
+  File "/path/to/python_magnetrun/hybrid/hybrid_data.py", line 342, in _load_fepc_data
     with open(cfg_path) as f:
 FileNotFoundError: [Errno 2] No such file or directory: 'config.cfg'
 ```

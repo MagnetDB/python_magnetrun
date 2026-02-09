@@ -1,10 +1,10 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: python-magnetrun
-Upstream-Contact: <preferred name and address to reach the upstream project>
-Source: https://github.com/Trophime/python_magnetrun
+Upstream-Contact: Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>
+Source: https://github.com/MagnetDB/python_magnetrun
 
 Files: *
-Copyright: 2020-2021 <christophe.trophime@lncmi.cnrs.fr>
+Copyright: 2020-2026 Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>
 License: MIT
 
 Files: debian/*

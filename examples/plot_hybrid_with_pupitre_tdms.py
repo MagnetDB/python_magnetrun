@@ -28,11 +28,8 @@ from python_magnetrun.analysis.config import (
 from python_magnetrun.analysis.loaders import FileDiscovery
 
 # Import from hybrid module
-import sys
-
-sys.path.insert(0, str(Path(__file__).parent.parent / "hybrid"))
-from hybrid.hybrid_run import HybridRun
-from hybrid.utils import log_exception, format_exception_location
+from python_magnetrun.hybrid.hybrid_run import HybridRun
+from python_magnetrun.hybrid.utils import log_exception, format_exception_location
 
 
 # =============================================================================

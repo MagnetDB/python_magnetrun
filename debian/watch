@@ -8,6 +8,6 @@ version=4
 
 # GitHub hosted projects
 opts="filenamemangle=s%(?:.*?)?v?(\d[\d.]*)\.tar\.gz%python_magnetrun-$1.tar.gz%" \
-  https://github.com/trophime/python-magnetrun/tags \
+  https://github.com/MagnetDB/python_magnetrun/tags \
   (?:.*?/)?v?(\d[\d.]*)\.tar\.gz debian uupdate
 

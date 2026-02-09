@@ -172,7 +172,7 @@ Each sample in the binary section contains:
 The VProcess reader can be integrated into the HybridRun interface:
 
 ```python
-from hybrid.hybrid_run import HybridRun
+from python_magnetrun.hybrid.hybrid_run import HybridRun
 
 # Load hybrid data including vprocess
 hrun = HybridRun.fromdir("/data/hybrid", "2025-01-06")

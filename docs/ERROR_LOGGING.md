@@ -14,7 +14,7 @@ The codebase now includes utilities for better error reporting that show:
 
 ### `log_exception()`
 
-Located in `hybrid/utils.py`, this function provides comprehensive error logging:
+Located in `python_magnetrun/hybrid/utils.py`, this function provides comprehensive error logging:
 
 ```python
 def log_exception(
@@ -65,7 +65,7 @@ def format_exception_location(exception: Exception = None) -> str:
 For critical errors where you want to see the complete stack trace:
 
 ```python
-from hybrid.utils import log_exception
+from python_magnetrun.hybrid.utils import log_exception
 
 try:
     # Some risky operation
@@ -79,11 +79,11 @@ Output:
 ```
 Failed to process data: FileNotFoundError: [Errno 2] No such file or directory: 'data.txt'
 Traceback (most recent call last):
-  File "/path/to/hybrid/cli.py", line 327, in main
+  File "/path/to/python_magnetrun/hybrid/cli.py", line 327, in main
     data = HybridData(
-  File "/path/to/hybrid/hybrid_data.py", line 150, in __init__
+  File "/path/to/python_magnetrun/hybrid/hybrid_data.py", line 150, in __init__
     self._load_fepc_data()
-  File "/path/to/hybrid/hybrid_data.py", line 342, in _load_fepc_data
+  File "/path/to/python_magnetrun/hybrid/hybrid_data.py", line 342, in _load_fepc_data
     with open(cfg_path) as f:
 FileNotFoundError: [Errno 2] No such file or directory: 'data.txt'
 ```
@@ -93,7 +93,7 @@ FileNotFoundError: [Errno 2] No such file or directory: 'data.txt'
 For warnings or non-critical errors where full traceback is too verbose:
 
 ```python
-from hybrid.utils import log_exception, format_exception_location
+from python_magnetrun.hybrid.utils import log_exception, format_exception_location
 
 try:
     # Some operation
@@ -118,7 +118,7 @@ For production code with proper logging setup:
 
 ```python
 import logging
-from hybrid.utils import log_exception
+from python_magnetrun.hybrid.utils import log_exception
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +134,7 @@ except Exception as e:
 For quick inline error messages:
 
 ```python
-from hybrid.utils import format_exception_location
+from python_magnetrun.hybrid.utils import format_exception_location
 
 try:
     # Some operation
@@ -177,8 +177,8 @@ except Exception as e:
 
 The following files have been updated with enhanced error logging:
 
-1. **hybrid/utils.py** - Added utility functions
-2. **hybrid/cli.py** - Updated all exception handlers
+1. **python_magnetrun/hybrid/utils.py** - Added utility functions
+2. **python_magnetrun/hybrid/cli.py** - Updated all exception handlers
 3. **examples/plot_hybrid_minimal.py** - Updated all exception handlers
 4. **examples/plot_hybrid_with_pupitre_tdms.py** - Updated all exception handlers
 5. **python_magnetrun/python_magnetrun.py** - Updated file loading error handler

@@ -8,10 +8,8 @@ This script shows different error logging patterns and their output.
 import sys
 from pathlib import Path
 
-# Add parent directory to path so we can import hybrid module
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from hybrid.utils import log_exception, format_exception_location
+# Import from python_magnetrun.hybrid module
+from python_magnetrun.hybrid.utils import log_exception, format_exception_location
 
 
 def test_full_traceback():

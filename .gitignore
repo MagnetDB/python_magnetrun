@@ -148,3 +148,8 @@ M*.conf
 *.xml
 
 *.pdf
+
+# Archive tarballs
+*.zip
+*.tar.*
+*.tgz

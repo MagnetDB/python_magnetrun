@@ -64,7 +64,7 @@ Two FEPC systems are supported:
 ### Basic Usage
 
 ```python
-from hybrid_data import HybridData
+from python_magnetrun.hybrid.hybrid_data import HybridData
 
 # Create instance for a specific date
 data = HybridData(
@@ -336,7 +336,7 @@ fig, axes = data.plot_rms_variables(
 ### Outlier Removal Function
 
 ```python
-from hybrid.utils import remove_outliers
+from python_magnetrun.hybrid.utils import remove_outliers
 
 # Remove outliers from data
 clean_data, clean_time, n_outliers = remove_outliers(
@@ -354,7 +354,7 @@ print(f"Removed {n_outliers} outliers")
 
 ```python
 # List available dates
-from hybrid.utils import list_available_dates
+from python_magnetrun.hybrid.utils import list_available_dates
 
 dates = list_available_dates("/data/hybrid", "kHz")
 print(dates)  # ['2025-01-05', '2025-01-06', ...]
@@ -366,7 +366,7 @@ The `HybridData` class can be used alongside `MagnetData`:
 
 ```python
 from python_magnetrun.magnetdata import MagnetData
-from hybrid.hybrid_data import HybridData
+from python_magnetrun.hybrid.hybrid_data import HybridData
 
 # Load pupitre/pigbrother data
 magnet_data = MagnetData.fromtdms("M9_Overview.tdms")
@@ -383,8 +383,8 @@ hybrid_data = HybridData("/data/hybrid", "2025-01-06")
 - numpy
 - pandas
 - matplotlib (for plotting)
-- fepc_reader (from hybrid/kHz)
-- rms_reader (from hybrid/rms)
+- fepc_reader (from python_magnetrun/hybrid/kHz)
+- rms_reader (from python_magnetrun/hybrid/rms)
 
 ## CLI Options Reference
 

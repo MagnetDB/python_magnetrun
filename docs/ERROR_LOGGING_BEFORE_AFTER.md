@@ -22,7 +22,7 @@ Error creating HybridData: [Errno 2] No such file or directory: '/data/hybrid/kH
 
 ### After
 ```python
-from hybrid.utils import log_exception
+from python_magnetrun.hybrid.utils import log_exception
 
 try:
     data = HybridData(base_dir, date, fepc_system="FEPC-LNCMI")
@@ -80,7 +80,7 @@ Could not plot pupitre data: 'NoneType' object has no attribute 'getData'
 
 ### After
 ```python
-from hybrid.utils import log_exception, format_exception_location
+from python_magnetrun.hybrid.utils import log_exception, format_exception_location
 
 try:
     mdata = pupitre_data.getMData()
@@ -130,7 +130,7 @@ Validation error: Value must be between 0 and 100
 
 ### After
 ```python
-from hybrid.utils import format_exception_location
+from python_magnetrun.hybrid.utils import format_exception_location
 
 try:
     result = validate_input(value)
@@ -179,7 +179,7 @@ Error: invalid literal for int() with base 10: 'abc'
 
 ### After
 ```python
-from hybrid.utils import log_exception
+from python_magnetrun.hybrid.utils import log_exception
 
 def load_data():
     return process_file(path)

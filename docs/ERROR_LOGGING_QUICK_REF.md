@@ -3,7 +3,7 @@
 ## Import the utilities
 
 ```python
-from hybrid.utils import log_exception, format_exception_location
+from python_magnetrun.hybrid.utils import log_exception, format_exception_location
 ```
 
 ## Common Patterns
@@ -74,7 +74,7 @@ Use in library code with proper logging:
 
 ```python
 import logging
-from hybrid.utils import log_exception
+from python_magnetrun.hybrid.utils import log_exception
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +139,6 @@ python examples/test_error_logging.py
 ## Examples in Codebase
 
 See these files for real-world usage:
-- `hybrid/cli.py` - CLI error handling
+- `python_magnetrun/hybrid/cli.py` - CLI error handling
 - `examples/plot_hybrid_minimal.py` - Script error handling
 - `python_magnetrun/python_magnetrun.py` - File loading errors

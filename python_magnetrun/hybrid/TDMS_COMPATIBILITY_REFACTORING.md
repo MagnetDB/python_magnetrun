@@ -643,8 +643,8 @@ def info(self):
 #!/usr/bin/env python3
 """Test HybridData TDMS compatibility"""
 
-from hybrid.hybrid_data import HybridData
-from hybrid.hybrid_run import HybridRun
+from python_magnetrun.hybrid.hybrid_data import HybridData
+from python_magnetrun.hybrid.hybrid_run import HybridRun
 from python_magnetrun.MagnetRun import MagnetRun
 import pandas as pd
 

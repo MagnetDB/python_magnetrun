@@ -19,7 +19,7 @@ Two main interfaces:
 - HybridRun: MagnetRun-compatible interface for comparison with pupitre/tdms data
 
 Example usage:
-    from hybrid import HybridData, HybridRun
+    from python_magnetrun.hybrid import HybridData, HybridRun
 
     # Low-level access
     data = HybridData("/data/hybrid", "2025-01-06")
@@ -31,12 +31,12 @@ Example usage:
     values, time = hrun.getData("kHz/FEPC-LNCMI/I_H1", downsample=10000)
 
     # Outlier detection (separate from plotting)
-    from hybrid.outliers import detect_outliers, OutlierDetector
+    from python_magnetrun.hybrid.outliers import detect_outliers, OutlierDetector
     result = detect_outliers(values, method='iqr', threshold=1.5)
     clean_values = result.apply_to_data(values, strategy='interpolate')
 
     # Plot with pre-computed outliers
-    from hybrid import plotting
+    from python_magnetrun.hybrid import plotting
     plotting.plot_khz_variable(
         data, "FEPC-LNCMI", "I_H1",
         outlier_result=result,
@@ -45,7 +45,7 @@ Example usage:
     )
 
     # Compare with MagnetRun data
-    from hybrid.data_protocol import compare_loaders
+    from python_magnetrun.hybrid.data_protocol import compare_loaders
     result = compare_loaders(hrun, mrun, "kHz/FEPC-LNCMI/I_H1", "IH")
 
 CLI usage:
@@ -76,8 +76,8 @@ from .outliers import (
 )
 
 # Sub-modules available via attribute access
-# e.g., from hybrid import plotting
-# or: import hybrid; hybrid.plotting.plot_khz_variable(...)
+# e.g., from python_magnetrun.hybrid import plotting
+# or: import python_magnetrun.hybrid as hybrid; hybrid.plotting.plot_khz_variable(...)
 
 __all__ = [
     # Data classes

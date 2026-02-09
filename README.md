@@ -42,7 +42,7 @@ You can:
 * Or, mount `Pupitre`, using for instance:
 
 ```bash
-sshfs -o uid=uid,gid=gid -o IdentityFile=/home/LNCMI-G/$USER/.ssh/id_ecdsa $SRVDATA_SERVER:$SRVDATA_DIR ~/LNCMIG-Data/
+sshfs -o uid=$(uid -u),gid=$(gid -g) -o IdentityFile=/home/LNCMI-G/$USER/.ssh/id_ecdsa $SRVDATA_SERVER:$SRVDATA_DIR ~/LNCMIG-Data/
 ```
 
 ## `PigBrother`

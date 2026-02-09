@@ -283,7 +283,7 @@ python examples/plot_hybrid_with_pupitre_tdms.py ...
 
 ## Related Documentation
 
-- [Hybrid Module README](../hybrid/README.md)
+- [Hybrid Module README](../python_magnetrun/hybrid/README.md)
 - [Analysis Configuration](../python_magnetrun/analysis/config.py)
 - [File Discovery](../python_magnetrun/analysis/loaders.py)
 

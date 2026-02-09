@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 from .. import MRecord
 from .. import GObject
 
-from .connect import createSession, download
+from .connect import download
 
 # for M1:
 # table fileTreeDemo_1, ul, <li  class="file ext_txt">, <a href=.., rel="filename" /a> </li>
@@ -42,7 +42,7 @@ def getTable(
     else:
         page = session.get(url=url_data, params=param, verify=True)
     if page.status_code != 200:
-        print("cannot logging to %s" % url_data)
+        logger.error(f"cannot logging to {url_data}")
         sys.exit(1)
     page.raise_for_status()
     if debug:
@@ -50,7 +50,7 @@ def getTable(
         logger.debug(f"index: {index}")
         logger.debug(f"indices: {indices}")
         logger.debug(f"params: {param}")
-        # print(f"page.text={page.text} **")
+        # logger.debug(f"page.text={page.text} **")
 
     # Store the contents of the website under doc
     doc = lh.fromstring(page.content)
@@ -97,7 +97,7 @@ def getTable(
                 data.append(jname)
         # shall check wether key is already defined for sanity
         if Mid == "-":
-            print(f"{name} index: no entry")
+            logger.warning(f"{name} index: no entry")
         else:
             if Mid in Mdata:
                 Found[Mid] = Found[Mid] + 1
@@ -117,7 +117,7 @@ def getMaterial(
     session, materialID: int | None, url_materials, Mats: dict, debug=False
 ):
     """get material"""
-    # print(f'getMaterial({materialID})')
+    # logger.info(f'getMaterial({materialID})')
 
     if materialID is None:
         r = session.post(
@@ -136,7 +136,7 @@ def getMaterial(
 
         for i, ref in enumerate(refs):
             # ref is lxml.etree._ElementUnicodeResult
-            if not ref in Mats and not "finir" in ref:
+            if ref not in Mats and "finir" not in ref:
                 logger.debug(
                     f"ref: {ref}, type: {type(ref)}, sigma: {sigmas[i]}, elasticlimit: {elasticlimits[i]}"
                 )
@@ -164,7 +164,7 @@ def getMaterial(
         elasticlimit = html.xpath('//input[@name="LE"]/@value')[-1]
         nuance = html.xpath('//input[@name="NUANCE"]/@value')[-1]
         # print(materialID, nuance)
-        if not materialID in Mats:
+        if materialID not in Mats:
             Mats[materialID] = GObject.GObject(
                 str(materialID),
                 "",
@@ -185,7 +185,7 @@ def getPartCADref(session, url_data, Parts, debug: bool = False):
     params = {"REF": "", "compact": "on", "formsubmit": "OK"}
     res = session.post(url=url_data, data=params, verify=True)
     if res.status_code != 200:
-        print(f"getPartCADref: cannot logging to {url_data}")
+        logger.error(f"getPartCADref: cannot logging to {url_data}")
         res.raise_for_status()
     logger.debug(f"getPartCADref: status={res.status_code}, res={res.text}")
 
@@ -198,9 +198,9 @@ def getPartCADref(session, url_data, Parts, debug: bool = False):
         for j, d in enumerate(t):
             name.append(d.text_content())
             logger.debug(f"\t{j}:{name[-1]}")
-        Parts[name[0]] = [name[1], name[-1].split()[0]]  # Ebauche
+        Parts[name[0]] = [name[1], name[-1].split()[0], name[2]]  # Ebauche
 
-    logger.debug(f"getPartCADref:")
+    logger.debug("getPartCADref:")
     for key in Parts:
         logger.debug(f"{key}: {Parts[key]}")
     return True
@@ -221,12 +221,15 @@ def getMagnetPart(
     debug: bool = False,
 ):
     """get parts for a given magnet"""
-    logger.debug(f"getMagnetPart({magnet})")
+    logger.info(f"getMagnetPart({magnet})")
     params_helix = (("ref", magnet),)
 
     hindices = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    logger.debug(
+        f"getTable for : magnet={magnet}, hindices={hindices}, params={params_helix}"
+    )
     res = getTable(session, url_helices, 1, hindices, param=params_helix, debug=False)
-    # print(f'getMagnetPart: res={res}')
+    logger.debug(f"getMagnetPart: res={res}")
     helices = ()
     jid = None
     if res:
@@ -234,7 +237,7 @@ def getMagnetPart(
         jid = res[1]
     logger.debug(f"getMagnetPart: helices={helices}")
 
-    if not magnet in Parts:
+    if magnet not in Parts:
         Parts[magnet] = []
     logger.debug(f"{magnet}: jid={jid}")
     for data in helices:
@@ -252,16 +255,15 @@ def getMagnetPart(
 
     # get MagConfFile
     hindices = [19]
+    logger.debug(
+        f"getTable for conf files: magnet={magnet}, hindices={hindices}, params={params_helix}"
+    )
     res = getTable(session, url_helices, 1, hindices, param=params_helix, debug=False)
-    print(f"res={res}", flush=True)
+    logger.debug(f"res={res}")
     data = res[0][magnet]
-    print(f"data={data}", flush=True)
     id = res[1][magnet]
-    print(f"id={id}", flush=True)
     data = data[0].replace("\t", "")
-    print(f"data={data}", flush=True)
     files = data.split()
-    print(f"ID: {id}, files={files}", flush=True)
     if files == ["Pas", "de", "fichiers"]:
         files = []
 
@@ -288,7 +290,7 @@ def getMagnetPart(
 
 def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
     """get records for a given ID"""
-    # print(f'getSiteRecord({ID})')
+    # looger.info(f'getSiteRecord({ID})')
 
     # To get files for ID
     params_links = (("ref", re.sub("_\\d+", "", ID)), ("link", ""))
@@ -298,13 +300,13 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
         f"data: url={r.url}, status={r.status_code}, encoding={r.encoding}, text={r.text}"
     )
     if r.status_code != 200:
-        print(f"error {r.status_code} loading {url_data}")
+        logger.error(f"error {r.status_code} loading {url_data}")
         sys.exit(1)
     r.raise_for_status()
 
     # Get list of records attached to ID
     for f in r.text.split("<br>"):
-        if f and not "~" in f:
+        if f and "~" not in f:
             replace_str = "<a href=" + "'" + url_downloads + "?file="
 
             data = (

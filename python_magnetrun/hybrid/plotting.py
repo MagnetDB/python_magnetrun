@@ -19,8 +19,8 @@ Performance features:
 - Set downsample parameter to target number of points for plotting
 
 Note:
-- Outlier detection is now handled by the separate `hybrid.outliers` module
-- For outlier analysis, use `from hybrid.outliers import OutlierDetector, detect_outliers`
+- Outlier detection is now handled by the separate `python_magnetrun.hybrid.outliers` module
+- For outlier analysis, use `from python_magnetrun.hybrid.outliers import OutlierDetector, detect_outliers`
 - Plotting functions accept pre-computed outlier masks via `outlier_mask` parameter
 """
 
@@ -253,7 +253,7 @@ def plot_khz_variables(
 
     Example
     -------
-    >>> from hybrid.outliers import detect_outliers
+    >>> from python_magnetrun.hybrid.outliers import detect_outliers
     >>> # Pre-compute outliers for each variable
     >>> outlier_results = {}
     >>> for var in ['U1', 'U2', 'I1']:
@@ -664,9 +664,9 @@ def plot_khz_variable(
     save : str, optional
         Save plot to file
     outlier_result : OutlierResult, optional
-        Pre-computed outlier detection result from hybrid.outliers module.
+        Pre-computed outlier detection result from python_magnetrun.hybrid.outliers module.
         If provided, outliers will be handled according to outlier_strategy.
-        Use `from hybrid.outliers import OutlierDetector` to detect outliers separately.
+        Use `from python_magnetrun.hybrid.outliers import OutlierDetector` to detect outliers separately.
     outlier_strategy : str, optional
         How to handle outliers when outlier_result is provided:
         - 'remove': Remove outlier points
@@ -692,7 +692,7 @@ def plot_khz_variable(
     >>> fig, ax = plot_khz_variable(data, "FEPC-LNCMI", "I_H1")
 
     >>> # With pre-computed outlier detection
-    >>> from hybrid.outliers import OutlierDetector
+    >>> from python_magnetrun.hybrid.outliers import OutlierDetector
     >>> detector = OutlierDetector(method='iqr', threshold=1.5)
     >>> result = detector.detect(raw_data)
     >>> fig, ax = plot_khz_variable(data, "FEPC-LNCMI", "I_H1",
@@ -847,9 +847,9 @@ def plot_rms_variable(
     save : str, optional
         Save plot to file
     outlier_result : OutlierResult, optional
-        Pre-computed outlier detection result from hybrid.outliers module.
+        Pre-computed outlier detection result from python_magnetrun.hybrid.outliers module.
         If provided, outliers will be handled according to outlier_strategy.
-        Use `from hybrid.outliers import OutlierDetector` to detect outliers separately.
+        Use `from python_magnetrun.hybrid.outliers import OutlierDetector` to detect outliers separately.
     outlier_strategy : str, optional
         How to handle outliers when outlier_result is provided:
         - 'remove': Remove outlier points
@@ -872,7 +872,7 @@ def plot_rms_variable(
 
     Example
     -------
-    >>> from hybrid.outliers import detect_outliers
+    >>> from python_magnetrun.hybrid.outliers import detect_outliers
     >>> # Read data and detect outliers separately
     >>> data, time = hybrid_data.read_rms_variable(system, 'U1')
     >>> outlier_result = detect_outliers(data, method='iqr', threshold=1.5)

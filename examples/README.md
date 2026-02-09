@@ -193,7 +193,7 @@ python examples/plot_hybrid_minimal.py
 
 ## Further Reading
 
-- [Hybrid Module Documentation](../hybrid/README.md)
+- [Hybrid Module Documentation](../python_magnetrun/hybrid/README.md)
 - [Analysis Configuration](../python_magnetrun/analysis/config.py)
 - [File Discovery](../python_magnetrun/analysis/loaders.py)
 - [Main README](../README.md)

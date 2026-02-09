@@ -31,7 +31,7 @@
 When writing new error handlers:
 
 ```python
-from hybrid.utils import log_exception, format_exception_location
+from python_magnetrun.hybrid.utils import log_exception, format_exception_location
 
 # Critical errors
 try:
@@ -61,7 +61,7 @@ Gradually update existing error handlers:
 
 #### Step 1: Add imports
 ```python
-from hybrid.utils import log_exception, format_exception_location
+from python_magnetrun.hybrid.utils import log_exception, format_exception_location
 ```
 
 #### Step 2: Replace simple error handlers
@@ -189,14 +189,11 @@ log_exception("Something went wrong", e, ...)  # Unhelpful
 
 **Solution:** 
 ```python
-# If in hybrid/ or subdir
-from hybrid.utils import log_exception, format_exception_location
+# From anywhere in the project (after hybrid is in python_magnetrun/)
+from python_magnetrun.hybrid.utils import log_exception, format_exception_location
 
-# If in examples/ or external
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent / "hybrid"))
-from hybrid.utils import log_exception, format_exception_location
+# If in hybrid/ module itself (using relative imports)
+from .utils import log_exception, format_exception_location
 ```
 
 ## 📞 Questions or Issues?

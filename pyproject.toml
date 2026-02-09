@@ -1,12 +1,12 @@
 [build-system]
-requires = ["poetry-core>=2.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "python_magnetrun"
 version = "0.1.0"
 description = "Python MagnetRun contains utils to view and analyse Magnet runs"
-license = "MIT"
+license = {text = "MIT"}
 keywords = ["python_magnetrun"]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
@@ -54,6 +54,7 @@ signal = [
     "dtaidistance>=2.3.12",
     "pyextremes>=2.3.3",
     "visidata>=3.1.1",
+    "xmltodict>=0.12.0",
 ]
 dev = [
     "pytest>=6.2",
@@ -68,4 +69,9 @@ doc = [
 [project.urls]
 Homepage = "https://github.com/MagnetDB/python_magnetrun"
 
-
+[project.scripts]
+python-magnetrun = "python_magnetrun.python_magnetrun:main"
+srvdata-to-magnetrun = "python_magnetrun.requests.cli:main"
+magnetrun-analysis = "python_magnetrun.analysis:main"
+hybrid-magnetrun = "python_magnetrun.hybrid.cli:main"
+magnetrun-alimconfig = "python_magnetrun.configAlims.convertxml:main"

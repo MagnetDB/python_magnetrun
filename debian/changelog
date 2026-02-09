@@ -1,7 +1,21 @@
+python-magnetrun (0.1.0-1) unstable; urgency=medium
+
+  * New upstream release
+  * Migrate to modern Python packaging with PEP 517/518/621
+  * Use setuptools build backend instead of poetry-core
+  * Update to debhelper-compat 13
+  * Update Standards-Version to 4.7.0
+  * Update repository references to MagnetDB organization
+  * Add pybuild-plugin-pyproject for modern build support
+  * Update Section to python
+  * Add missing build dependencies (scipy, numpy, tz)
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Thu, 06 Feb 2026 14:00:00 +0100
+
 python-magnetrun (0.0.7-1) unstable; urgency=medium
 
   * fix signature for eco-mode
-  * add smother option when extracting key 
+  * add smother option when extracting key
 
  -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Mon, 15 Sep 2025 16:16:48 +0200
 
@@ -37,7 +51,7 @@ python-magnetrun (0.0.2-1) unstable; urgency=medium
 
 python-magnetrun (0.0.1-1.1) unstable; urgency=medium
 
-  * update to git rev fe339bedec 
+  * update to git rev fe339bedec
   * init.patch
 
  -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Thu, 20 Jan 2022 11:55:38 +0100

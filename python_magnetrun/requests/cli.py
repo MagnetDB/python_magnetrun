@@ -77,13 +77,13 @@ def main():
         "--log-level",
         help="set logging level",
         type=str,
-        default="WARNING",
+        default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
     )
     args = parser.parse_args()
 
     # Configure logging level
-    log_level = getattr(logging, args.log_level.upper(), logging.WARNING)
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -176,8 +176,8 @@ def main():
                     name = row[1]
                     _magnets = [name]
                     if "??" not in name:
-                        status = row[2]
-                        housing = row[3]
+                        status = row[2] if row[2] != "HS" else "En stock"
+                        housing = row[3] if row[3] != "HS" else ""
                         bitter = row[4]
 
                         tformat = "%Y-%m-%d"
@@ -230,8 +230,8 @@ def main():
                                     "housing": housing,
                                     "bitter": bitter,
                                 }
-                except:
-                    logger.warning(f"problem loading: {row} -skipped")
+                except Exception as e:
+                    logger.warning(f"problem loading: {row} - {str(e)} - skipped")
                     pass
 
         logger.info("db_Sites: definition")
@@ -372,10 +372,11 @@ def main():
                 "type": "helix",  # Mats[part].category,
                 "design_office_reference": PartsCAD[part][0],
                 "material": PartsCAD[part][1],
+                "geometry": PartsCAD[part][2][:-2],
             }
             # TODO geometry field must be consistant with magnetapi -
             if part in PartName:
-                carac["geometry"] = PartName[part][0]
+                carac["geometry"] = PartsCAD[part][2][:-2]
                 carac["status"] = PartName[part][1]
                 carac["magnets"] = PartName[part][2]
                 cad = re.sub("-[a-zA-Z]", "", PartsCAD[part][0])
@@ -486,7 +487,12 @@ def main():
             t1 = values["decommissioned_at"]
             logger.info(f'site={site}, housing="{housing}, t0={t0}, t1={t1}')
 
-            selected_df = None
+            # Skip sites with invalid timestamps
+            if t0 is None:
+                logger.warning(f"{site}: skipping - commissioned_at is None")
+                continue
+
+            selected = None
             if t1 is not None:
                 selected = df_records[
                     df_records["timestamp"].between(t0, t1, inclusive="left")
@@ -594,6 +600,7 @@ def main():
             housing = data["housing"]
             logger.debug(f"site={site}, housing={housing}")
 
+            logger.debug(f"site={site}, housing={housing}, data={data}")
             hdata = history[housing]
             hdata["site"].append(site.replace("_", "-"))
             hdata["commissioned_at"].append(data["commissioned_at"])

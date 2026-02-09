@@ -24,7 +24,7 @@ def parse_arguments():
 def main():
     import os
     import json
-    import xml2dict
+    import xmltodict
 
     args = parse_arguments()
 
@@ -40,9 +40,9 @@ def main():
         print(file)
         with open(file, "r") as f:
             xml = f.read()
-            config_dict = xml2dict.parse(xml)
+            config_dict = xmltodict.parse(xml)
             if args.debug:
-                print(json.dumps(config_dict.parse(xml), indent=4))
+                print(json.dumps(config_dict, indent=4))
 
         # @version_config
         # @date
@@ -56,12 +56,10 @@ def main():
         date = config_dict["configuration"]["@date"]
         print(f"Version: {version}, Date: {date}")
 
-        config_regs = config_dict["configuration"]["CIRRUS_CP"]["analogique"][
-            "regs"
-        ]
+        config_regs = config_dict["configuration"]["CIRRUS_CP"]["analogique"]["regs"]
         for i, reg_value in enumerate(config_regs["regulateur"]):
-            #print(f'value[{i}]={reg_value}, type={type(reg_value)}')
-            #for key, values in reg_value.items():
+            # print(f'value[{i}]={reg_value}, type={type(reg_value)}')
+            # for key, values in reg_value.items():
             #    print(key, values)
 
             numero = reg_value.get("@numero", "unknown")
@@ -71,10 +69,10 @@ def main():
             Kp = reg_value.get("@Kp", -1)
             Kd = reg_value.get("@Kd", -1)
             rapport_entre_boucle = reg_value.get("@rapport_entre_boucle", "unknown")
-            #print(f'looking for numero={numero} (type={type(numero)})')
-            
+            # print(f'looking for numero={numero} (type={type(numero)})')
+
             if numero == str(1):
-                #print(f'looking for numero_jeu={numero_jeu}, site_dict={site_dict}')
+                # print(f'looking for numero_jeu={numero_jeu}, site_dict={site_dict}')
                 if numero_jeu in site_dict:
                     print(
                         f"Current PID {site_dict[numero_jeu]}: Numero Seuil: {numero_seuil}, Ki: {Ki}, Kp: {Kp}, Kd: {Kd}, Rapport Entre Boucle: {rapport_entre_boucle}"
