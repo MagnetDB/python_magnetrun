@@ -28,6 +28,8 @@ from .webscrapping import (
     getMagnetPart,
     getMaterial,
     getPartCADref,
+    getRingCADref,
+    getCirrusFiles,
 )
 from ..MagnetRun import MagnetRun
 from ..utils.list import flatten
@@ -73,6 +75,29 @@ def main():
     parser.add_argument("--check", help="sanity check for records", action="store_true")
     parser.add_argument("--save", help="save files", action="store_true")
     parser.add_argument("--datadir", help="specify data dir", type=str, default=".")
+    parser.add_argument(
+        "--load-cirrus",
+        help="load logs and XMLs from cirrus.php",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--cirrus-feed",
+        help="specify cirrus feed (A1, A2, A3, A4, etc.)",
+        type=str,
+        default="A1",
+    )
+    parser.add_argument(
+        "--list-parts",
+        help="list all parts (helices and/or rings) from srv-data",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--part-type",
+        help="filter parts by type when using --list-parts",
+        type=str,
+        choices=["helix", "ring", "all"],
+        default="all",
+    )
     parser.add_argument(
         "--log-level",
         help="set logging level",
@@ -123,6 +148,7 @@ def main():
     url_records = base_url + "site/sba/pages/" + "courbes.php"
     url_materials = base_url + "site/sba/pages/" + "Mat.php"
     url_confs = base_url + "site/sba/pages/downloadM.php"
+    url_cirrus = base_url + "site/sba/pages/" + "cirrus.php"
     url_query = (
         base_url + "site/sba/vendor/jqueryFileTree/connectors/jqueryFileTree.php"
     )
@@ -144,6 +170,30 @@ def main():
         if r.url == url_logging:
             print("check connection failed: Wrong credentials")
             sys.exit(1)
+
+        # Load cirrus logs and XMLs if requested
+        if args.load_cirrus:
+            logger.info(f"\nLoading cirrus files for feed: {args.cirrus_feed}")
+            cirrus_data = getCirrusFiles(
+                s,
+                url_cirrus,
+                feed=args.cirrus_feed,
+                datadir=args.datadir,
+                save=args.save,
+                debug=debug,
+            )
+            logger.info(
+                f"Loaded {len(cirrus_data['logs'])} log files and {len(cirrus_data['xmls'])} XML files"
+            )
+            for log in cirrus_data["logs"]:
+                logger.info(f"  Log: {log['name']} - {log['url']}")
+            for xml in cirrus_data["xmls"]:
+                logger.info(f"  XML: {xml['name']} - {xml['url']}")
+
+            # If only loading cirrus files, exit here
+            if args.load_cirrus and not args.check:
+                logger.info("Cirrus files loaded successfully.")
+                return
 
         """
         since data from url_status are broken
@@ -294,13 +344,67 @@ def main():
 
         # Get CAD ref for Rings from Bague.php
         logger.info("loading rings CAD data from Bague.php")
-        getPartCADref(
-            s, url_ringscad, PartsCAD, params={"REF": ""}, part_type="ring", debug=debug
-        )
+        getRingCADref(s, url_ringscad, PartsCAD, debug=debug)
         if debug:
-            logger.debug("\ngetPartCADref (Rings):")
+            logger.debug("\ngetRingCADref (Rings):")
             for key in PartsCAD:
-                logger.debug(f"{key}: {PartsCAD[key]}")
+                if len(PartsCAD[key]) > 3 and PartsCAD[key][3] == "ring":
+                    logger.debug(f"{key}: {PartsCAD[key]}")
+
+        # List parts if requested
+        if args.list_parts:
+            print("\n" + "=" * 80)
+            print(f"Parts from srv-data server: {args.server}")
+            print("=" * 80)
+
+            # Separate parts by type
+            helices = {
+                k: v for k, v in PartsCAD.items() if len(v) > 3 and v[3] == "helix"
+            }
+            rings = {k: v for k, v in PartsCAD.items() if len(v) > 3 and v[3] == "ring"}
+
+            # Display based on filter
+            if args.part_type in ["helix", "all"]:
+                print(f"\n{'='*80}")
+                print(f"HELICES ({len(helices)} found)")
+                print(f"{'='*80}")
+                print(f"{'Name':<20} {'CAD Ref':<20} {'Material':<15} {'Geometry':<20}")
+                print("-" * 80)
+                for name, data in sorted(helices.items()):
+                    cad_ref = data[0] if len(data) > 0 else "N/A"
+                    material = data[1] if len(data) > 1 else "N/A"
+                    # Geometry is derived from CAD Ref by removing suffix letter
+                    # Remove 2 chars if ends with "-X" (e.g., "HL-27-031-C" → "HL-27-031")
+                    # Remove 1 char if ends with "X" only (e.g., "HL-27-034C" → "HL-27-034")
+                    if re.search(r"-[A-Za-z]$", data[2]):
+                        geometry = cad_ref[:-2]  # Remove "-X"
+                    elif re.search(r"[A-Za-z]$", data[2]):
+                        geometry = data[2][:-1]  # Remove "X"
+                    else:
+                        geometry = (
+                            data[2] if len(data) > 2 else "N/A"
+                        )  # No suffix letter
+                    print(f"{name:<20} {cad_ref:<20} {material:<15} {geometry:<20}")
+
+            if args.part_type in ["ring", "all"]:
+                print(f"\n{'='*80}")
+                print(f"RINGS ({len(rings)} found)")
+                print(f"{'='*80}")
+                print(f"{'Name':<20} {'CAD Ref':<20} {'Material':<15} {'Geometry':<20}")
+                print("-" * 80)
+                for name, data in sorted(rings.items()):
+                    cad_ref = data[0] if len(data) > 0 else "N/A"
+                    material = data[1] if len(data) > 1 else "N/A"
+                    geometry = data[2] if len(data) > 2 else "N/A"
+                    print(f"{name:<20} {cad_ref:<20} {material:<15} {geometry:<20}")
+
+            print(f"\n{'='*80}")
+            print(f"Total: {len(helices)} helices, {len(rings)} rings")
+            print(f"{'='*80}\n")
+
+            # Exit after listing if no other operations requested
+            if not args.check and not args.save:
+                sys.exit(0)
 
         PartMagnet = {}
         for magnet in Parts:
