@@ -179,10 +179,24 @@ def getMaterial(
             )
 
 
-def getPartCADref(session, url_data, Parts, debug: bool = False):
-    """get cadref and material for parts"""
+def getPartCADref(session, url_data, Parts, params: dict | None = None, part_type: str = "helix", debug: bool = False):
+    """get cadref and material for parts
+    
+    Args:
+        session: requests session
+        url_data: URL to fetch data from
+        Parts: dictionary to store part data
+        params: optional parameters dict for the POST request
+        part_type: type of part ("helix" or "ring"), defaults to "helix"
+        debug: enable debug logging
+    
+    Returns:
+        True if successful
+    """
 
-    params = {"REF": "", "compact": "on", "formsubmit": "OK"}
+    if params is None:
+        params = {"REF": "", "compact": "on", "formsubmit": "OK"}
+    
     res = session.post(url=url_data, data=params, verify=True)
     if res.status_code != 200:
         logger.error(f"getPartCADref: cannot logging to {url_data}")
@@ -198,7 +212,8 @@ def getPartCADref(session, url_data, Parts, debug: bool = False):
         for j, d in enumerate(t):
             name.append(d.text_content())
             logger.debug(f"\t{j}:{name[-1]}")
-        Parts[name[0]] = [name[1], name[-1].split()[0], name[2]]  # Ebauche
+        # Store part data with part_type metadata
+        Parts[name[0]] = [name[1], name[-1].split()[0], name[2], part_type]  # Ebauche
 
     logger.debug("getPartCADref:")
     for key in Parts:

@@ -286,20 +286,21 @@ def main():
 
         # Get CAD ref for Parts
         PartsCAD = {}
-        getPartCADref(s, url_helicescad, PartsCAD, debug=debug)
+        getPartCADref(s, url_helicescad, PartsCAD, part_type="helix", debug=debug)
         if debug:
-            logger.debug("\ngetPartCADref:")
+            logger.debug("\ngetPartCADref (Helices):")
             for key in PartsCAD:
                 logger.debug(f"{key}: {PartsCAD[key]}")
 
-        """
-        # Try to get rings like Helices - not working
-        getPartCADref(s, url_ringscad, PartsCAD, params={"REF": ""}, debug=True)
+        # Get CAD ref for Rings from Bague.php
+        logger.info("loading rings CAD data from Bague.php")
+        getPartCADref(
+            s, url_ringscad, PartsCAD, params={"REF": ""}, part_type="ring", debug=debug
+        )
         if debug:
-            logger.debug(f"\ngetPartCADref:")
+            logger.debug("\ngetPartCADref (Rings):")
             for key in PartsCAD:
                 logger.debug(f"{key}: {PartsCAD[key]}")
-        """
 
         PartMagnet = {}
         for magnet in Parts:
@@ -365,11 +366,13 @@ def main():
         db_Parts = {}
         cad_Parts = {}
         for part in PartsCAD:
+            # PartsCAD[part] = [cad_ref, material, geometry, part_type]
+            part_type = PartsCAD[part][3] if len(PartsCAD[part]) > 3 else "helix"
             carac = {
                 "name": part,
                 "description": "",
                 "status": "unknown",
-                "type": "helix",  # Mats[part].category,
+                "type": part_type,  # Use the part_type from PartsCAD (helix or ring)
                 "design_office_reference": PartsCAD[part][0],
                 "material": PartsCAD[part][1],
                 "geometry": PartsCAD[part][2][:-2],
