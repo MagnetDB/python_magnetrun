@@ -7,7 +7,7 @@ from .MagnetRun import MagnetRun
 
 import matplotlib.pyplot as plt
 
-from .cooling import water
+from python_magnetcooling.water_properties import get_rho, get_cp
 from pint import UnitRegistry
 
 import argparse
@@ -201,11 +201,11 @@ ureg = UnitRegistry()
 nkey = "rho"
 nkey_unit = ("rho", ureg.kilogram / ureg.meter**3)
 nkey_params = ["HPH", "TinH"]
-nkey_method = water.getRho
+nkey_method = get_rho
 pupitre_data.computeData(nkey_method, nkey, nkey_params, nkey_unit)
 
 nkey = "Cp"  # [kJ / kg·K]
 nkey_unit = ("Cp", ureg.joule / ureg.kilogram / ureg.kelvin)
 nkey_params = ["HPH", "TinH"]
-nkey_method = water.getCp
+nkey_method = get_cp
 pupitre_data.computeData(nkey_method, nkey, nkey_params, nkey_unit)

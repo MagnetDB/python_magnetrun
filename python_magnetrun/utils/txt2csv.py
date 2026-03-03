@@ -19,7 +19,7 @@ import matplotlib.colors as colors
 from .plots import plot_vs_time
 from .plots import plot_key_vs_key
 
-from ..cooling import water
+from python_magnetcooling.water_properties import get_rho, get_cp
 
 
 def concat_files(
@@ -164,8 +164,8 @@ def main():
         df["DP1"] = df["HP1"] - df["BP"]
 
         # Get Water property
-        df["rho1"] = df.apply(lambda row: water.getRho(row.BP, row.Tin1), axis=1)
-        df["cp1"] = df.apply(lambda row: water.getCp(row.BP, row.Tin1), axis=1)
+        df["rho1"] = df.apply(lambda row: get_rho(row.BP, row.Tin1), axis=1)
+        df["cp1"] = df.apply(lambda row: get_cp(row.BP, row.Tin1), axis=1)
 
         for i in range(1, 6):
             df["DT1"] = df.apply(
@@ -179,13 +179,13 @@ def main():
 
             # Water Property at BP bar, Tin+DT1
             df["rho1"] = df.apply(
-                lambda row: water.getRho(
+                lambda row: get_rho(
                     (row.BP + row.DP1 / 2.0), (row.Tin1 + row.DT1 / 2.0)
                 ),
                 axis=1,
             )
             df["cp1"] = df.apply(
-                lambda row: water.getCp(
+                lambda row: get_cp(
                     (row.BP + row.DP1 / 2.0), (row.Tin1 + row.DT1 / 2.0)
                 ),
                 axis=1,
@@ -203,8 +203,8 @@ def main():
             df["Pe2"] = df.apply(lambda row: row.Ub * row.Icoil15 / 1.0e6, axis=1)
 
             # Water Property at BP bar, Tin+DT1/2.
-            df["rho2"] = df.apply(lambda row: water.getRho(row.BP, row.Tin2), axis=1)
-            df["cp2"] = df.apply(lambda row: water.getCp(row.BP, row.Tin2), axis=1)
+            df["rho2"] = df.apply(lambda row: get_rho(row.BP, row.Tin2), axis=1)
+            df["cp2"] = df.apply(lambda row: get_cp(row.BP, row.Tin2), axis=1)
 
             df["DP2"] = df["HP2"] - df["BP"]
             for i in range(1, 6):
@@ -217,14 +217,14 @@ def main():
                     axis=1,
                 )
                 df["rho2"] = df.apply(
-                    lambda row: water.getRho(
+                    lambda row: get_rho(
                         (row.BP + row.DP2 / 2.0),
                         (row.Tin2 + row.DT2 / 2.0),
                     ),
                     axis=1,
                 )
                 df["cp2"] = df.apply(
-                    lambda row: water.getCp(
+                    lambda row: get_cp(
                         (row.BP + row.DP2 / 2.0),
                         (row.Tin2 + row.DT2 / 2.0),
                     ),
@@ -253,8 +253,8 @@ def main():
 
     df["Power"] = df["Pe1"] + df["Pe2"]
 
-    df["rho"] = df.apply(lambda row: water.getRho(row.BP, row.Tout), axis=1)
-    df["cp"] = df.apply(lambda row: water.getCp(row.BP, row.Tout), axis=1)
+    df["rho"] = df.apply(lambda row: get_rho(row.BP, row.Tout), axis=1)
+    df["cp"] = df.apply(lambda row: get_cp(row.BP, row.Tout), axis=1)
     df["DT"] = df.apply(
         lambda row: (
             row.Pmagnet * 1.0e6 / (row.rho * row.cp * (row.Flow1 + row.Flow2) * 1.0e-3)
