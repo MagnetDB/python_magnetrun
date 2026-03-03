@@ -336,14 +336,14 @@ def add_field(mrun, args):
     logger.debug(mdata.getKeys())
 
     if args.compute:
-        from .cooling import water
+        from python_magnetcooling.water_properties import get_rho, get_cp
         from pint import UnitRegistry
 
         ureg = UnitRegistry()
         nkey = "rho"
         nkey_unit = ("rho", ureg.kilogram / ureg.meter**3)
         nkey_params = ["HPH", "TinH"]
-        nkey_method = water.getRho
+        nkey_method = get_rho
 
         mdata.computeData(nkey_method, nkey, nkey_params, nkey_unit)
         logger.debug(mdata.getKeys())
