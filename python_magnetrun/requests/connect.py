@@ -7,7 +7,6 @@ For each MagnetID list of attached record
 Check record consistency
 """
 
-import sys
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,9 +20,7 @@ def createSession(s, url_logging: str, payload: dict, debug: bool | None = False
     logger.debug(f"connect: {p.url}, status={p.status_code}")
     # check return status: if not ok stop
     if p.status_code != 200:
-        print(f"error {p.status_code} logging to {url_logging}")
-        sys.exit(1)
-    p.raise_for_status()
+        raise RuntimeError(f"login failed: HTTP {p.status_code} at {url_logging}")
     return p
 
 
@@ -35,8 +32,6 @@ def download(
     d = session.get(url=url_data, params=param, verify=True)
     logger.debug(f"downloads: {d.url}, status={d.status_code}")
     if d.status_code != 200:
-        print(f"error {d.status_code} dowmload {url_data}")
-        sys.exit(1)
-    d.raise_for_status()
+        raise RuntimeError(f"download failed: HTTP {d.status_code} from {url_data}")
 
     return d.text
