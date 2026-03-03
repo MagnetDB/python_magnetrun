@@ -132,7 +132,7 @@ pigbrotherdata
 *.tdms
 
 M*.csv
-M*.txt
+#M*.txt
 M*.json
 H*.json
 M*.conf
