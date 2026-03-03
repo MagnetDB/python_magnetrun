@@ -36,6 +36,7 @@ dependencies = [
     "natsort>=7.1.1",
     "nlopt>=2.7.0",
     "pytz>=2024.1",
+    "python_magnetcooling",
 ]
 
 [project.optional-dependencies]

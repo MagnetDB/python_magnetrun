@@ -18,7 +18,10 @@ For Linux/Mac OS X:
 ```bash
 $ python3 -m venv [--system-site-packages] magnetrun-env
 $ source ./magnetrun-env/bin/activate
-$ python3 -m pip install -r requirements.txt
+$ cd python_magnetcooling
+$ python3 -m pip install -e ".[dev]"
+$ cd ..
+$ python3 -m pip install -e ".[dev]"
 ```
 
 For windows
@@ -28,7 +31,6 @@ c:\>C:\Python35\python -m venv c:\path\to\magnetrun-env
 C:\> C:\path\to\magnetrun-env\Scripts\activate.bat
 c:\>C:\Python35\python -m pip install -r requirements.txt
 ```
-
 
 To quit the virtual env, run `deactivate`.
 
