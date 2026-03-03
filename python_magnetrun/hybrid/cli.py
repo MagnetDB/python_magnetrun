@@ -30,7 +30,7 @@ def create_base_parser():
         "--base-dir",
         "-b",
         type=str,
-        default="/home/LNCMI-G/christophe.trophime/LNCMIG-Data/CEA/",
+        default=None,
         help="Base directory containing kHz, rms, trigger subdirectories",
     )
     parser.add_argument(

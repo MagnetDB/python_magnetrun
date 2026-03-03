@@ -12,18 +12,21 @@ from .magnetdata import MagnetData
 
 
 def prepareData(data: MagnetData, housing: str, debug: bool = False):
-    """_summary_
+    """Prepare magnet run data by adding computed fields and renaming columns.
 
-    :param data: _description_
+    Adds IH_ref/IB_ref computed currents and renames Flow/Rpm/Tin/HP columns
+    with H/B suffixes appropriate for the given housing configuration.
+
+    :param data: MagnetData object to prepare in-place
     :type data: MagnetData
-    :param housing: _description_
+    :param housing: Housing name (e.g. "M8", "M9", "M10")
     :type housing: str
-    :param debug: _description_, defaults to False
+    :param debug: Enable debug output, defaults to False
     :type debug: bool, optional
     """
     # get start/end
     (start_date, start_time, end_date, end_time) = data.getStartDate()
-    print(
+    logger.debug(
         f"prepareData: start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}"
     )
 
@@ -107,36 +110,27 @@ class MagnetRun:
         start_t = pd.Timestamp(data.Groups[group][channel]["wf_start_time"])
         offset_t = pd.Timedelta(data.Groups[group][channel]["wf_start_offset"])
         start_time = (start_t + offset_t).to_pydatetime()
-        print(
-            f"magnetrun.fromtdms: start_time={start_time}, type={type(start_time)}",
-            flush=True,
-        )
+        logger.debug(f"magnetrun.fromtdms: start_time={start_time}, type={type(start_time)}")
         return cls(site, insert, data, start_time=start_time)
 
     @classmethod
     def fromtxt(cls, housing: str, site: str, filename: str, debug: bool = False):
         """create from a txt file"""
-        print(
-            f"MagnetRun/fromtxt: housing={housing}, site={site}, filename={filename}",
-            flush=True,
-        )
+        logger.debug(f"MagnetRun/fromtxt: housing={housing}, site={site}, filename={filename}")
         # with open(filename, "r") as f:
         # insert = f.readline().split()[-1]
         data = MagnetData.fromtxt(filename)
-        print("data:", data, flush=True)
+        logger.debug(f"data: {data}")
         res = data.getStartDate()
         prepareData(data, housing, debug=debug)
-        print("res:", res, flush=True)
+        logger.debug(f"res: {res}")
         data.Units()
         (start_date, start_time, end_date, end_time) = res
 
         # print("magnetrun.fromtxt: data=", data)
         # Combine start_date (YYYY.MM.DD) and start_time (HH:MM:SS) into datetime
         start_t = datetime.strptime(f"{start_date} {start_time}", "%Y.%m.%d %H:%M:%S")
-        print(
-            f"magnetrun.fromtxt: start_t={start_t}, type={type(start_t)}",
-            flush=True,
-        )
+        logger.debug(f"magnetrun.fromtxt: start_t={start_t}, type={type(start_t)}")
         return cls(housing, site, data, start_time=start_t)
 
     @classmethod
@@ -160,17 +154,17 @@ class MagnetRun:
             if len(headers) >= 2:
                 insert = headers[1]
             if not site.startswith(insert):
-                print(f"MagnetRun:fromStringIO: site={site}, insert={insert}")
+                logger.debug(f"MagnetRun:fromStringIO: site={site}, insert={insert}")
             data = MagnetData.fromStringIO(name)
             # print(f'data keys({len(data.getKeys())}): {data.getKeys()}')
             prepareData(data, housing, debug=debug)
             # print(f'prepareData: data keys({len(data.getKeys())}): {data.getKeys()}')
 
-        except Exception:
-            with open("wrongdata.txt", "w", newline="\n") as fo:
-                fo.write(name)
-            print(f'cannot load data for {housing}, {insert} insert, {site} site"')
-            # raise RuntimeError(f'cannot load data for {housing}, {insert} insert, {site} site"')
+        except Exception as e:
+            logger.error(f"cannot load data for {housing}, {insert} insert, {site} site: {e}")
+            raise RuntimeError(
+                f"cannot load data for {housing}, {insert} insert, {site} site"
+            ) from e
 
         data.Units()
         return cls(housing, site, data)

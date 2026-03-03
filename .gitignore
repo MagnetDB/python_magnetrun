@@ -111,8 +111,7 @@ ENV/
 
 # Sphinx
 docs/build
-docs/source/_static
-docs/source/_templates
+docs/source/generated
 
 # Log files from installation
 log*

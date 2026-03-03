@@ -54,13 +54,14 @@ class MagnetData:
         """
         from nptdms import TdmsFile
 
-        print(f"magnetdata.fromtdms: {name}")
+        logger.debug(f"magnetdata.fromtdms: {name}")
 
         Keys = []
         Groups = {}
         Data = {}
-        with open(name, "r"):
-            f_extension = os.path.splitext(name)[-1]
+        if not os.path.exists(name):
+            raise FileNotFoundError(f"fromtdms: file not found: {name}")
+        f_extension = os.path.splitext(name)[-1]
             # print("f_extension: % s" % f_extension)
 
             if f_extension != ".tdms":

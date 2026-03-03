@@ -26,7 +26,7 @@ def filterpikes(mrun, key, inplace, threshold, twindows, debug, show, input_file
     # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
     """
 
-    print("type(mrun):", type(mrun))
+    logger.debug(f"type(mrun): {type(mrun)}")
     df = mrun.getData()  # .extractData(keys)
 
     kw = dict(marker="o", linestyle="none", color="r", alpha=0.3)
@@ -40,8 +40,8 @@ def filterpikes(mrun, key, inplace, threshold, twindows, debug, show, input_file
             df[key]
             .rolling(window=twindows, center=True)
             .median()
-            .fillna(method="bfill")
-            .fillna(method="ffill")
+            .bfill()
+            .ffill()
         )
         filteredkey = "filtered%s" % key
         # print("** ", filteredkey, type(filtered))
@@ -60,14 +60,14 @@ def filterpikes(mrun, key, inplace, threshold, twindows, debug, show, input_file
             df[key][outlier_idx].plot(**kw)
 
             ax.legend()
-            plt.grid(b=True)
+            plt.grid(True)
             plt.title(mrun.getInsert().replace(r"_", r"\_") + ": Filtered %s" % key)
             if show:
                 plt.show()
             else:
                 f_extension = os.path.splitext(input_file)[-1]
                 imagefile = input_file.replace(f_extension, "-filtered%s.png" % key)
-                print("save to %s" % imagefile)
+                logger.debug(f"save to {imagefile}")
                 plt.savefig(imagefile, dpi=300)
             plt.close()
 
