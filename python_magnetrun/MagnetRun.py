@@ -12,13 +12,16 @@ from .magnetdata import MagnetData
 
 
 def prepareData(data: MagnetData, housing: str, debug: bool = False):
-    """_summary_
+    """Prepare magnet run data by adding computed fields and renaming columns.
 
-    :param data: _description_
+    Adds IH_ref/IB_ref computed currents and renames Flow/Rpm/Tin/HP columns
+    with H/B suffixes appropriate for the given housing configuration.
+
+    :param data: MagnetData object to prepare in-place
     :type data: MagnetData
-    :param housing: _description_
+    :param housing: Housing name (e.g. "M8", "M9", "M10")
     :type housing: str
-    :param debug: _description_, defaults to False
+    :param debug: Enable debug output, defaults to False
     :type debug: bool, optional
     """
     # get start/end
