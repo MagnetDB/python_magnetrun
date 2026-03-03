@@ -13,7 +13,13 @@ if [ ! -d $VENVDIR ]; then
       python -m venv --system-site-packages $VENVDIR
    else
       python -m venv $VENVDIR
+      . $VENVDIR/bin/activate
       pip install black
+      cd python_magnetcooling
+      pip install -e .
+      cd ..
+      deactivate
+      
    fi
    . $VENVDIR/bin/activate
    python -m pip install -e .
