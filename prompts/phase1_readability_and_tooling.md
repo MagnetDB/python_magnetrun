@@ -1,5 +1,25 @@
 # Phase 1 – Readability & Tooling (Weeks 1–3)
 
+## Software Stack Decisions (locked for all phases)
+
+| Concern | Choice | Rationale |
+|---------|--------|-----------|
+| **Target platform** | Ubuntu 24.04 LTS (Noble) | Ships Python 3.12; this is the minimum supported version. |
+| **Python version floor** | **≥ 3.12** | `tomllib` is stdlib, improved type generics (`list[str]` without `from __future__`), better error messages. |
+| **Linting + formatting** | **`ruff`** | Single tool replacing `flake8` + `isort` + `pyupgrade`; fast, zero config to start. |
+| **Static type checking** | **`mypy`** | Dev/CI only — never shipped. Catches type mismatches before runtime. |
+| **Config file format** | **TOML via `tomllib`** (stdlib) | Avoids dependency on `pyyaml`; prevents conflict with `python_magnetgeo` which already owns a YAML setup. |
+| **Data validation** | **`pydantic` v2** (deferred to Phase 3) | Already used transitively via `fastapi` in `python_magnetdb` — consistent choice across the stack. |
+| **CLI framework** | **`typer`** (deferred to Phase 4) | Consistent with `fastapi` ecosystem; upgrade from `argparse` deferred until CLI is split. |
+| **Dashboard framework** | Deferred to Phase 4 | Decided when dashboard work starts. |
+| **HTTP client** | Deferred to Phase 3 | Decided when `api/` module is built. |
+
+> **Note on `tomllib`:** Python 3.11+ includes `tomllib` in the standard library (read-only TOML parser).
+> For writing TOML (if ever needed) use `tomli-w`. Site configs in Phase 3 will use `.toml` files
+> instead of `.yaml` to stay consistent with `pyproject.toml` and avoid the `pyyaml` dependency.
+
+---
+
 ## Goal
 
 Lay the groundwork for all subsequent phases without moving or deleting any
@@ -186,7 +206,7 @@ Add:
 
 ```toml
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = false
 ignore_missing_imports = true
 warn_unused_ignores = true
@@ -194,7 +214,7 @@ warn_return_any = false
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

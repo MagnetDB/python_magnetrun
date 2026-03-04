@@ -82,34 +82,40 @@ editing Python code.
 **Target:** Load site config from a YAML file; `prepareData()` reads from the
 loaded dict.
 
-#### 3.2.1 Create `data/sites.yaml`
+#### 3.2.1 Create `data/sites.toml`
 
-```yaml
-# data/sites.yaml
+```toml
+# data/sites.toml
 # Site-specific channel mappings for prepareData()
-M8:
-  IH_channels: [Idcct3, Idcct4]
-  IB_channels: [Idcct1, Idcct2]
-  flow_mapping:
-    Flow1: FlowB
-    Flow2: FlowH
+# Loaded via tomllib (Python 3.12 stdlib — no extra dependency).
 
-M9:
-  IH_channels: [Idcct1, Idcct2]
-  IB_channels: [Idcct3, Idcct4]
-  flow_mapping:
-    Flow1: FlowH
-    Flow2: FlowB
+[M8]
+IH_channels = ["Idcct3", "Idcct4"]
+IB_channels = ["Idcct1", "Idcct2"]
 
-M10:
-  IH_channels: [Idcct1, Idcct2]
-  IB_channels: [Idcct3, Idcct4]
-  flow_mapping:
-    Flow1: FlowH
-    Flow2: FlowB
+[M8.flow_mapping]
+Flow1 = "FlowB"
+Flow2 = "FlowH"
+
+[M9]
+IH_channels = ["Idcct1", "Idcct2"]
+IB_channels = ["Idcct3", "Idcct4"]
+
+[M9.flow_mapping]
+Flow1 = "FlowH"
+Flow2 = "FlowB"
+
+[M10]
+IH_channels = ["Idcct1", "Idcct2"]
+IB_channels = ["Idcct3", "Idcct4"]
+
+[M10.flow_mapping]
+Flow1 = "FlowH"
+Flow2 = "FlowB"
 ```
 
-Add `pyyaml>=6.0` to dependencies (or use `tomllib` if a TOML format is preferred — check existing team conventions).
+Use `tomllib` (Python 3.12 stdlib — no extra dependency) with a `.toml` file instead of YAML.
+This avoids a `pyyaml` dependency and prevents conflicts with `python_magnetgeo`, which owns its own YAML configuration.
 
 #### 3.2.2 Create a `SiteConfig` dataclass
 
@@ -134,11 +140,12 @@ class SiteConfig:
 
 _SITES: dict[str, SiteConfig] = {}
 
-def load_sites(yaml_path: Path | None = None) -> dict[str, SiteConfig]:
-    if yaml_path is None:
-        yaml_path = Path(__file__).parent.parent.parent / "data" / "sites.yaml"
-    with yaml_path.open() as f:
-        raw = yaml.safe_load(f)
+def load_sites(toml_path: Path | None = None) -> dict[str, SiteConfig]:
+    import tomllib
+    if toml_path is None:
+        toml_path = Path(__file__).parent.parent.parent / "data" / "sites.toml"
+    with toml_path.open("rb") as f:
+        raw = tomllib.load(f)
     return {
         name: SiteConfig(
             name=name,
@@ -517,7 +524,7 @@ def test_mrecord_model_dump():
 | `python_magnetrun/deserialize.py` | Simplify / remove |
 | `python_magnetrun/MagnetRun.py` | `prepareData()` reads from YAML config |
 | `python_magnetrun/analysis/config.py` | `SiteConfig` + `ChannelMapping`, env-var paths |
-| `data/sites.yaml` | New |
+| `data/sites.toml` | New (TOML, loaded via stdlib `tomllib`) |
 | `python_magnetrun/api/__init__.py` | New |
 | `python_magnetrun/api/client.py` | New |
 | `python_magnetrun/api/models.py` | New |
@@ -536,7 +543,7 @@ def test_mrecord_model_dump():
 - [ ] `magnetrun-api --help` works.
 - [ ] `MRecord.to_json()` produces valid JSON; `MRecord.from_json(...)` round-trips correctly.
 - [ ] `prepareData()` for M8, M9, M10 works from YAML.
-- [ ] Adding a new site to `data/sites.yaml` alone makes it usable — no code changes.
+- [ ] Adding a new site to `data/sites.toml` alone makes it usable — no code changes.
 - [ ] No `/home/LNCMI-G/...` absolute paths anywhere in source.
 - [ ] `pytest tests/ -x` passes.
 - [ ] `ruff check python_magnetrun/` exits 0.
