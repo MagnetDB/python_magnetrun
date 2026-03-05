@@ -62,60 +62,59 @@ class MagnetData:
         if not os.path.exists(name):
             raise FileNotFoundError(f"fromtdms: file not found: {name}")
         f_extension = os.path.splitext(name)[-1]
-            # print("f_extension: % s" % f_extension)
+        # print("f_extension: % s" % f_extension)
 
-            if f_extension != ".tdms":
-                raise RuntimeError(f"fromtdms: expect a tdms filename - got {name}")
+        if f_extension != ".tdms":
+            raise RuntimeError(f"fromtdms: expect a tdms filename - got {name}")
 
-            # add t_offset to account for tdms downsampled data
-            t_offset = 0
-            if "Overview" in name:
-                t_offset = (1) / 2.0
-            elif "Archive" in name:
-                t_offset = (1 / 120.0) / 2.0
+        # add t_offset to account for tdms downsampled data
+        t_offset = 0
+        if "Overview" in name:
+            t_offset = (1) / 2.0
+        elif "Archive" in name:
+            t_offset = (1 / 120.0) / 2.0
 
-            rawData = TdmsFile.open(name)
-            # print(f"rawData: groups={rawData.groups()}, properties={rawData.properties}", flush=True)
-            for group in rawData.groups():
-                gname = group.name.replace(" ", "_")
-                gname = gname.replace("_et_Ref.", "")
-                Groups[gname] = {}
-                if gname != "Infos":
-                    Data[gname] = {}
+        rawData = TdmsFile.open(name)
+        # print(f"rawData: groups={rawData.groups()}, properties={rawData.properties}", flush=True)
+        for group in rawData.groups():
+            gname = group.name.replace(" ", "_")
+            gname = gname.replace("_et_Ref.", "")
+            Groups[gname] = {}
+            if gname != "Infos":
+                Data[gname] = {}
 
-                    # print(group.channels, type(group.channels))
-                    for channel in group.channels():
-                        cname = channel.name.replace(" ", "_")
-                        Keys.append(f"{gname}/{cname}")
-                        Groups[gname][cname] = channel.properties
-                        # print(f"properties: {channel.properties}", flush=True)
-                        # update wf_start_offset to account for downsampled data
-                        if "wf_start_offset" in Groups[gname][cname]:
-                            Groups[gname][cname]["wf_start_offset"] = t_offset
-                        # print(f"* properties: {channel.properties}", flush=True)
+                # print(group.channels, type(group.channels))
+                for channel in group.channels():
+                    cname = channel.name.replace(" ", "_")
+                    Keys.append(f"{gname}/{cname}")
+                    Groups[gname][cname] = channel.properties
+                    # print(f"properties: {channel.properties}", flush=True)
+                    # update wf_start_offset to account for downsampled data
+                    if "wf_start_offset" in Groups[gname][cname]:
+                        Groups[gname][cname]["wf_start_offset"] = t_offset
+                    # print(f"* properties: {channel.properties}", flush=True)
 
-                    Data[gname] = group.as_dataframe(
-                        time_index=False,
-                        absolute_time=False,
-                        scaled_data=True,
-                    )
+                Data[gname] = group.as_dataframe(
+                    time_index=False,
+                    absolute_time=False,
+                    scaled_data=True,
+                )
 
-                    # rename columns to avoid space in columns name
-                    Data[gname].rename(
-                        columns={
-                            col: col.replace(" ", "_") for col in Data[gname].columns
-                        },
-                        inplace=True,
-                    )
+                # rename columns to avoid space in columns name
+                Data[gname].rename(
+                    columns={
+                        col: col.replace(" ", "_") for col in Data[gname].columns
+                    },
+                    inplace=True,
+                )
 
-                    # print(f"Data[{gname}]\n{Data[gname].head()}")
-                else:
-                    Groups[gname] = group
-                    # print(f"Groups[{gname}]: {group}", flush=True)
-                    # for channel in group.channels():
-                    #    print(f"properties: {channel.properties}", flush=True)
-            # print(f"keys: {Keys}")
-
+                # print(f"Data[{gname}]\n{Data[gname].head()}")
+            else:
+                Groups[gname] = group
+                # print(f"Groups[{gname}]: {group}", flush=True)
+                # for channel in group.channels():
+                #    print(f"properties: {channel.properties}", flush=True)
+        # print(f"keys: {Keys}")
         # print(f"Data groups: {list(Data.keys())}", flush=True)
         # print(f"Data: { {k: v.shape for k, v in Data.items()} }", flush=True)
 
