@@ -4,11 +4,24 @@
 
 `python_magnetrun` currently has two non-importable scripts in `panels/`. This prompt
 covers **Phase 4** of the improvement plan: replacing those scripts with a proper
-`dashboards/` subpackage containing importable, composable Panel + hvplot dashboards,
-a `magnetrun-dashboard` CLI, and a Jupyter notebook auto-generator.
+`dashboards/` subpackage built on **Plotly + Dash + plotly-resampler**.
 
-**Prerequisite:** Phases 1, 2, 3, and 3b must be complete. `panel`, `hvplot`, and
-`nbformat` must be added to the optional dependencies.
+**Why Plotly/Dash instead of Panel/hvplot?**
+Magnet run data spans two very different scale regimes:
+- **Pupitre data** — ~1 Hz sampling, tens of thousands of rows → any stack works.
+- **FEPC hybrid data** — 10 kHz sampling, 10 M+ rows per acquisition → requires
+  *dynamic, viewport-aware downsampling*. `plotly-resampler` applies MinMaxLTTB
+  server-side on every pan/zoom so the browser only ever receives ~1 000 points,
+  regardless of the underlying dataset size. Panel/hvplot have no equivalent mechanism
+  without bespoke pre-aggregation.
+
+`plotly-resampler` provides two integration classes:
+- **`FigureResampler`** — wraps a Plotly figure and runs a Dash server; resampling
+  happens via Dash callbacks. Used by the `magnetrun-dashboard` CLI.
+- **`FigureWidgetResampler`** — uses IPython widget events; works directly in Jupyter
+  notebooks without a separate server process.
+
+**Prerequisite:** Phases 1, 2, 3, and 3b must be complete.
 
 Reference document: `IMPROVEMENT_PLAN.md` §Phase 4.
 
@@ -18,7 +31,7 @@ Reference document: `IMPROVEMENT_PLAN.md` §Phase 4.
 
 1. Create `python_magnetrun/dashboards/` as an importable, testable subpackage.
 2. Implement `run_overview`, `field_analysis`, `comparison`, and `hybrid_monitor`
-   dashboards.
+   dashboards using `FigureResampler` (Dash) and `FigureWidgetResampler` (notebook).
 3. Add a `magnetrun-dashboard` CLI that serves dashboards in a browser.
 4. Add `magnetrun-to-notebook` CLI that generates pre-filled Jupyter notebooks.
 5. (Optional) Wire the comparison dashboard to the `MagnetAPIClient` for multi-run
@@ -31,14 +44,15 @@ Reference document: `IMPROVEMENT_PLAN.md` §Phase 4.
 ```toml
 [project.optional-dependencies]
 dashboard = [
-    "panel>=1.4",
-    "hvplot>=0.10",
-    "bokeh>=3.4",       # required by panel/hvplot
-    "holoviews>=1.19",
+    "plotly>=5.22",
+    "dash>=2.17",
+    "plotly-resampler>=0.10",   # dynamic resampling — core of Phase 4
+    "tsdownsample>=0.1.3",      # MinMaxLTTB backend for plotly-resampler
 ]
 notebook = [
     "nbformat>=5.10",
-    "jupyter_client>=8.0",   # for notebook validation
+    "jupyter_client>=8.0",
+    "plotly-resampler>=0.10",   # FigureWidgetResampler for notebook use
 ]
 ```
 
@@ -77,108 +91,134 @@ pip install -e ".[dashboard,notebook,dev]"
 
 ---
 
-## Task 4.2 — Shared widgets in `dashboards/widgets.py`
+## Task 4.2 — Shared figure helpers in `dashboards/figures.py`
 
-These widgets are reused across all dashboard modules.
+These helpers produce `plotly.graph_objects.Figure` objects that are then wrapped in
+either `FigureResampler` (Dash) or `FigureWidgetResampler` (notebook).
+The resampling wrapper is applied by the dashboard layer, not here — keeping figure
+construction testable without a Dash server.
 
 ```python
 """
-Shared Panel widgets for python_magnetrun dashboards.
+Shared Plotly figure builders for python_magnetrun dashboards.
 
-All widgets follow the same pattern: a factory function that returns
-a configured Panel widget, and a helper to link it to a plot.
+Each function returns a plain plotly.graph_objects.Figure.
+The caller wraps it in FigureResampler or FigureWidgetResampler as needed.
+
+Usage::
+
+    from plotly_resampler import FigureResampler
+    from python_magnetrun.dashboards.figures import make_time_series_figure
+
+    fig = make_time_series_figure(df, y_cols=["IH", "IB"], title="Currents")
+    fig_r = FigureResampler(fig)        # Dash mode
+    fig_r.show_dash(mode="inline")      # or: pn.serve(fig_r) with panel integration
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import panel as pn
+import plotly.graph_objects as go
 
 if TYPE_CHECKING:
     import pandas as pd
 
 
-def time_range_slider(
+def make_time_series_figure(
     df: "pd.DataFrame",
+    y_cols: list[str],
     time_col: str = "t",
-    name: str = "Time range",
-) -> pn.widgets.RangeSlider:
+    title: str = "",
+    y_label: str = "",
+    colors: list[str] | None = None,
+) -> go.Figure:
     """
-    Build a time range slider bound to the data's time axis.
+    Build a multi-trace time-series figure.
 
     Parameters
     ----------
     df : pd.DataFrame
-        Source DataFrame with a time column.
+        Source data.
+    y_cols : list[str]
+        Column names to plot as separate traces.
     time_col : str
-        Name of the time column (default "t").
-    name : str
-        Widget label.
+        Name of the time (x) column.
+    title : str
+        Figure title.
+    y_label : str
+        Y-axis label.
+    colors : list[str], optional
+        Per-trace colour strings. If shorter than y_cols, cycles.
 
     Returns
     -------
-    pn.widgets.RangeSlider
+    go.Figure
+        Plain Plotly figure — wrap in FigureResampler before serving.
+
+    Notes
+    -----
+    Use ``go.Scattergl`` (WebGL) for traces with >10 000 points rendered
+    statically; ``go.Scatter`` otherwise. When wrapped in FigureResampler
+    the downsampling removes the need for WebGL at the browser level.
     """
-    t_min = float(df[time_col].min())
-    t_max = float(df[time_col].max())
-    return pn.widgets.RangeSlider(
-        name=name,
-        start=t_min,
-        end=t_max,
-        value=(t_min, t_max),
-        step=(t_max - t_min) / 1000,
+    fig = go.Figure()
+    _colors = colors or []
+    for i, col in enumerate(y_cols):
+        if col not in df.columns:
+            continue
+        color = _colors[i % len(_colors)] if _colors else None
+        fig.add_trace(go.Scatter(
+            x=df[time_col],
+            y=df[col],
+            name=col,
+            mode="lines",
+            line=dict(color=color) if color else {},
+        ))
+    fig.update_layout(
+        title=title,
+        xaxis_title=time_col,
+        yaxis_title=y_label,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        margin=dict(l=60, r=20, t=60, b=60),
+        height=320,
     )
+    return fig
 
 
-def key_selector(
-    keys: list[str],
-    value: list[str] | None = None,
-    name: str = "Channels",
-) -> pn.widgets.CheckBoxGroup:
+def make_scatter_figure(
+    df: "pd.DataFrame",
+    x_col: str,
+    y_col: str,
+    color_col: str | None = None,
+    title: str = "",
+) -> go.Figure:
     """
-    Multi-select checkbox for choosing which channels to display.
-
-    Parameters
-    ----------
-    keys : list[str]
-        All available channel names.
-    value : list[str], optional
-        Initially selected channels (defaults to all).
-    name : str
-        Widget label.
+    Build a scatter figure (B vs I, etc.), optionally coloured by a third column.
 
     Returns
     -------
-    pn.widgets.CheckBoxGroup
+    go.Figure
+        Plain Plotly figure.
     """
-    return pn.widgets.CheckBoxGroup(
-        name=name,
-        options=keys,
-        value=value if value is not None else keys,
+    marker: dict = {}
+    if color_col and color_col in df.columns:
+        marker = dict(color=df[color_col], colorscale="Viridis",
+                      showscale=True, colorbar=dict(title=color_col))
+
+    fig = go.Figure(go.Scatter(
+        x=df.get(x_col, []),
+        y=df.get(y_col, []),
+        mode="markers",
+        marker=marker or dict(size=3),
+        name=f"{y_col} vs {x_col}",
+    ))
+    fig.update_layout(
+        title=title,
+        xaxis_title=x_col,
+        yaxis_title=y_col,
+        height=380,
     )
-
-
-def smoothing_toggle(name: str = "Apply smoothing") -> pn.widgets.Checkbox:
-    """Toggle for enabling/disabling signal smoothing."""
-    return pn.widgets.Checkbox(name=name, value=False)
-
-
-def smoother_selector(
-    available: list[str] | None = None,
-) -> pn.widgets.Select:
-    """Drop-down selector for the smoothing algorithm."""
-    from python_magnetrun.processing.registry import _SMOOTHERS
-    options = available or list(_SMOOTHERS.keys()) or ["savgol", "lowess"]
-    return pn.widgets.Select(name="Smoother", options=options)
-
-
-def site_selector(sites: list[str] | None = None) -> pn.widgets.Select:
-    """Drop-down selector for measurement site."""
-    return pn.widgets.Select(
-        name="Site",
-        options=sites or ["M8", "M9", "M10"],
-        value="M9",
-    )
+    return fig
 ```
 
 ---
@@ -187,186 +227,167 @@ def site_selector(sites: list[str] | None = None) -> pn.widgets.Select:
 
 **File:** `python_magnetrun/dashboards/run_overview.py`
 
-This is the primary dashboard — the first thing a user opens after loading a run.
+This is the primary dashboard. It uses `FigureResampler` so that Pupitre runs with
+tens of thousands of rows and FEPC runs with millions of rows are handled identically.
 
 ```python
 """
-Run overview dashboard.
+Run overview dashboard — Plotly + plotly-resampler.
 
-Shows field, currents, flow, and temperature vs time with
-regime annotations from the Signature object.
+Shows field, currents, flow, and temperature vs time.
+Resampling is dynamic: only the points visible in the current viewport
+are sent to the browser (MinMaxLTTB algorithm).
 
-Usage::
+Usage — Dash web app (magnetrun-dashboard CLI)::
 
     from python_magnetrun import MagnetRun
-    from python_magnetrun.dashboards.run_overview import run_overview_dashboard
-    import panel as pn
+    from python_magnetrun.dashboards.run_overview import run_overview_app
 
     run = MagnetRun.fromtxt("run_20240315.txt")
-    dashboard = run_overview_dashboard(run)
-    dashboard.servable()           # in a notebook
-    # or:
-    pn.serve(dashboard)            # standalone server
+    app = run_overview_app(run)
+    app.run(debug=False, port=5006)
+
+Usage — Jupyter notebook::
+
+    from python_magnetrun.dashboards.run_overview import run_overview_widget
+    fig = run_overview_widget(run)   # returns FigureWidgetResampler; display inline
 """
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
 
-import panel as pn
-import param
+import plotly.graph_objects as go
 
 if TYPE_CHECKING:
     from python_magnetrun import MagnetRun
 
 logger = logging.getLogger(__name__)
 
-# Channels displayed by default in the overview
 _DEFAULT_CURRENT_KEYS = ["IH", "IB"]
 _DEFAULT_FLOW_KEYS    = ["FlowH", "FlowB"]
 _DEFAULT_TEMP_KEYS    = ["teb", "tsb"]
 
 
-def run_overview_dashboard(
-    run: "MagnetRun",
-    title: str | None = None,
-    height: int = 300,
-    width: int = 900,
-) -> pn.viewable.Viewable:
+def _build_overview_traces(run: "MagnetRun") -> go.Figure:
     """
-    Build a Panel dashboard for a single experimental run.
+    Build a multi-subplot Plotly figure with one subplot per channel group.
+
+    Returns a plain go.Figure — caller wraps in FigureResampler or
+    FigureWidgetResampler.
+    """
+    from plotly.subplots import make_subplots
+
+    df = run.getData()
+    time_col = "t" if "t" in df.columns else df.columns[0]
+
+    subplot_titles = ["Field (T)", "Currents (A)", "Flow (l/s)", "Temperature (°C)"]
+    fig = make_subplots(
+        rows=4, cols=1,
+        shared_xaxes=True,
+        subplot_titles=subplot_titles,
+        vertical_spacing=0.06,
+    )
+    fig.update_layout(
+        height=900,
+        margin=dict(l=60, r=20, t=80, b=60),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+    )
+
+    # Row 1 — Field
+    if "Field" in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df[time_col], y=df["Field"], name="Field", mode="lines",
+                       line=dict(color="navy")),
+            row=1, col=1,
+        )
+
+    # Row 2 — Currents
+    colors = ["royalblue", "tomato"]
+    for i, key in enumerate([k for k in _DEFAULT_CURRENT_KEYS if k in df.columns]):
+        fig.add_trace(
+            go.Scatter(x=df[time_col], y=df[key], name=key, mode="lines",
+                       line=dict(color=colors[i % len(colors)])),
+            row=2, col=1,
+        )
+
+    # Row 3 — Flow rates
+    colors = ["seagreen", "darkorange"]
+    for i, key in enumerate([k for k in _DEFAULT_FLOW_KEYS if k in df.columns]):
+        fig.add_trace(
+            go.Scatter(x=df[time_col], y=df[key], name=key, mode="lines",
+                       line=dict(color=colors[i % len(colors)])),
+            row=3, col=1,
+        )
+
+    # Row 4 — Temperatures
+    colors = ["orchid", "peru"]
+    for i, key in enumerate([k for k in _DEFAULT_TEMP_KEYS if k in df.columns]):
+        fig.add_trace(
+            go.Scatter(x=df[time_col], y=df[key], name=key, mode="lines",
+                       line=dict(color=colors[i % len(colors)])),
+            row=4, col=1,
+        )
+
+    fig.update_xaxes(title_text=f"Time ({time_col})", row=4, col=1)
+    return fig
+
+
+def run_overview_app(run: "MagnetRun", port: int = 5006, debug: bool = False):
+    """
+    Build and return a Dash app with live resampling for a single run.
+
+    The app is NOT started — call app.run() or pass it to the CLI.
 
     Parameters
     ----------
     run : MagnetRun
-        Loaded run object.
-    title : str, optional
-        Dashboard title. Defaults to the run filename.
-    height : int
-        Height of each plot in pixels.
-    width : int
-        Width of each plot in pixels.
+    port : int
+    debug : bool
 
     Returns
     -------
-    pn.viewable.Viewable
-        A Panel Column layout containing all plots and controls.
-
-    Examples
-    --------
-    >>> run = MagnetRun.fromtxt("run_20240315.txt")
-    >>> dashboard = run_overview_dashboard(run)
-    >>> dashboard.show()   # open in browser
+    dash.Dash
+        Configured Dash application with FigureResampler.
     """
-    import hvplot.pandas  # noqa: F401  (registers hvplot accessor)
+    from plotly_resampler import FigureResampler
+    import dash
+    from dash import dcc, html
+    from plotly_resampler.callbacks import construct_update_data
 
-    pn.extension()
+    fig = FigureResampler(_build_overview_traces(run))
+    title = getattr(run.getMData(), "FileName", "Run Overview")
 
-    df = run.getData()
-    keys = run.getKeys()
-    title = title or f"Run: {run.getMData().FileName}"
-    time_col = "t" if "t" in df.columns else df.columns[0]
+    app = dash.Dash(__name__)
+    app.layout = html.Div([
+        html.H2(title),
+        dcc.Graph(id="overview-graph", figure=fig),
+        dcc.Loading(dcc.Store(id="overview-store")),
+    ])
 
-    # --- Widgets ---
-    from python_magnetrun.dashboards.widgets import (
-        time_range_slider, smoothing_toggle, smoother_selector
-    )
-    t_slider   = time_range_slider(df, time_col)
-    smooth_tog = smoothing_toggle()
-    smoother   = smoother_selector()
+    fig.register_update_graph_callback(app, "overview-graph", "overview-store")
 
-    # --- Reactive plots ---
-    @pn.depends(t_slider, smooth_tog, smoother)
-    def field_plot(t_range, apply_smooth, smoother_name):
-        if "Field" not in df.columns:
-            return pn.pane.Str("No 'Field' column available")
-        sub = df[(df[time_col] >= t_range[0]) & (df[time_col] <= t_range[1])]
-        y = sub["Field"]
-        if apply_smooth:
-            try:
-                from python_magnetrun.processing.registry import get_smoother
-                fn = get_smoother(smoother_name)
-                y = fn(y)
-            except (KeyError, Exception) as e:
-                logger.warning("Smoother failed: %s", e)
-        return sub.assign(Field=y).hvplot.line(
-            x=time_col, y="Field",
-            title="Magnetic Field (T)",
-            height=height, width=width,
-            color="navy",
-        )
+    logger.info("Run overview app built for: %s", title)
+    return app
 
-    @pn.depends(t_slider, smooth_tog, smoother)
-    def current_plot(t_range, apply_smooth, smoother_name):
-        available = [k for k in _DEFAULT_CURRENT_KEYS if k in df.columns]
-        if not available:
-            return pn.pane.Str("No current columns available")
-        sub = df[(df[time_col] >= t_range[0]) & (df[time_col] <= t_range[1])]
-        return sub.hvplot.line(
-            x=time_col, y=available,
-            title="Currents (A)",
-            height=height, width=width,
-        )
 
-    @pn.depends(t_slider)
-    def flow_plot(t_range):
-        available = [k for k in _DEFAULT_FLOW_KEYS if k in df.columns]
-        if not available:
-            return pn.pane.Str("No flow columns available")
-        sub = df[(df[time_col] >= t_range[0]) & (df[time_col] <= t_range[1])]
-        return sub.hvplot.line(
-            x=time_col, y=available,
-            title="Flow Rates (l/s)",
-            height=height, width=width,
-        )
+def run_overview_widget(run: "MagnetRun"):
+    """
+    Return a FigureWidgetResampler for Jupyter notebook use.
 
-    @pn.depends(t_slider)
-    def temperature_plot(t_range):
-        available = [k for k in _DEFAULT_TEMP_KEYS if k in df.columns]
-        if not available:
-            return pn.pane.Str("No temperature columns available")
-        sub = df[(df[time_col] >= t_range[0]) & (df[time_col] <= t_range[1])]
-        return sub.hvplot.line(
-            x=time_col, y=available,
-            title="Temperatures (°C)",
-            height=height, width=width,
-        )
+    Display it directly in a cell: just evaluate the returned object
+    as the last expression in a cell, or call ``display(fig)``.
 
-    # --- Stats table ---
-    def _stats_table() -> pn.pane.DataFrame:
-        rows = []
-        for key in ["Field", "IH", "IB", "FlowH", "FlowB"]:
-            if key in df.columns:
-                rows.append({
-                    "Channel": key,
-                    "Mean": f"{df[key].mean():.3f}",
-                    "Min":  f"{df[key].min():.3f}",
-                    "Max":  f"{df[key].max():.3f}",
-                    "Std":  f"{df[key].std():.3f}",
-                })
-        import pandas as pd
-        return pn.pane.DataFrame(pd.DataFrame(rows), index=False)
+    Parameters
+    ----------
+    run : MagnetRun
 
-    # --- Layout ---
-    controls = pn.Column(
-        pn.pane.Markdown(f"## {title}"),
-        t_slider,
-        pn.Row(smooth_tog, smoother),
-    )
-
-    plots = pn.Column(
-        pn.panel(field_plot),
-        pn.panel(current_plot),
-        pn.panel(flow_plot),
-        pn.panel(temperature_plot),
-    )
-
-    stats = pn.Column(
-        pn.pane.Markdown("### Summary statistics"),
-        _stats_table(),
-    )
-
-    return pn.Column(controls, plots, stats)
+    Returns
+    -------
+    FigureWidgetResampler
+    """
+    from plotly_resampler import FigureWidgetResampler
+    return FigureWidgetResampler(_build_overview_traces(run))
 ```
 
 ---
@@ -609,18 +630,39 @@ def comparison_dashboard_from_api(
 
 **File:** `python_magnetrun/dashboards/hybrid_monitor.py`
 
+This is the dashboard where `plotly-resampler` matters most. FEPC data at 10 kHz
+with acquisition windows of hundreds of seconds results in tens of millions of rows.
+`FigureResampler` handles this natively: the full dataset stays on the server and only
+the ~1 000 points relevant to the current viewport are sent to the browser.
+
 ```python
 """
-Hybrid FEPC data monitor dashboard.
+Hybrid FEPC data monitor — Plotly + plotly-resampler.
 
-Displays kHz, RMS, and trigger channel data from HybridRun objects.
+The full kHz/RMS dataset is kept server-side. Dynamic MinMaxLTTB
+aggregation is triggered on every pan or zoom via Dash callbacks.
+
+Usage — Dash web app::
+
+    from python_magnetrun.hybrid.hybrid_data import HybridData
+    from python_magnetrun.dashboards.hybrid_monitor import hybrid_monitor_app
+
+    hybrid = HybridData("/path/to/hybrid_dir/")
+    app = hybrid_monitor_app(hybrid)
+    app.run(port=5007)
+
+Usage — Jupyter notebook::
+
+    from python_magnetrun.dashboards.hybrid_monitor import hybrid_monitor_widget
+    fig = hybrid_monitor_widget(hybrid, kHz_channel="U_coil1")
 """
 from __future__ import annotations
 
 import logging
 from typing import TYPE_CHECKING
 
-import panel as pn
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 if TYPE_CHECKING:
     from python_magnetrun.hybrid.hybrid_data import HybridData
@@ -628,62 +670,166 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def hybrid_monitor_dashboard(
+def _build_hybrid_figure(
     hybrid: "HybridData",
-    max_points: int = 10_000,
-) -> pn.viewable.Viewable:
+    kHz_channel: str | None = None,
+    rms_channel: str | None = None,
+) -> go.Figure:
     """
-    Build a dashboard for FEPC hybrid acquisition data.
+    Build a two-subplot figure from hybrid FEPC data.
+
+    Loads data from the HybridData object; does NOT downsample —
+    the caller wraps in FigureResampler for dynamic aggregation.
 
     Parameters
     ----------
     hybrid : HybridData
-        Loaded hybrid data object.
-    max_points : int
-        Maximum number of points to display (downsampled via LTTB if exceeded).
+    kHz_channel : str, optional
+        kHz channel to show in the top subplot.
+    rms_channel : str, optional
+        RMS channel to show in the bottom subplot.
 
     Returns
     -------
-    pn.viewable.Viewable
+    go.Figure
+        Plain Plotly figure with raw (full-resolution) traces.
     """
-    import hvplot.pandas  # noqa: F401
-    pn.extension()
-
-    # Channel selectors
     kHz_keys  = getattr(hybrid, "kHz_keys",  [])
     rms_keys  = getattr(hybrid, "rms_keys",  [])
-    trig_keys = getattr(hybrid, "trigger_keys", [])
 
-    kHz_select  = pn.widgets.Select(name="kHz channel",  options=kHz_keys  or ["(none)"])
-    rms_select  = pn.widgets.Select(name="RMS channel",  options=rms_keys  or ["(none)"])
-    trig_select = pn.widgets.Select(name="Trigger channel", options=trig_keys or ["(none)"])
+    kHz_ch  = kHz_channel  or (kHz_keys[0]  if kHz_keys  else None)
+    rms_ch  = rms_channel  or (rms_keys[0]  if rms_keys  else None)
 
-    @pn.depends(kHz_select)
-    def kHz_plot(key):
-        if key == "(none)":
-            return pn.pane.Str("No kHz channels")
-        try:
-            df = hybrid.read_kHz(key, max_points=max_points)
-            return df.hvplot.line(title=f"kHz: {key}", height=300, width=900)
-        except Exception as exc:
-            return pn.pane.Str(f"Error loading {key}: {exc}")
-
-    @pn.depends(rms_select)
-    def rms_plot(key):
-        if key == "(none)":
-            return pn.pane.Str("No RMS channels")
-        try:
-            df = hybrid.read_rms(key, max_points=max_points)
-            return df.hvplot.line(title=f"RMS: {key}", height=300, width=900)
-        except Exception as exc:
-            return pn.pane.Str(f"Error loading {key}: {exc}")
-
-    return pn.Column(
-        pn.pane.Markdown("## Hybrid FEPC Monitor"),
-        pn.Row(kHz_select, rms_select, trig_select),
-        pn.panel(kHz_plot),
-        pn.panel(rms_plot),
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        subplot_titles=[
+            f"kHz: {kHz_ch}" if kHz_ch else "kHz (no channel selected)",
+            f"RMS: {rms_ch}" if rms_ch else "RMS (no channel selected)",
+        ],
+        vertical_spacing=0.08,
     )
+    fig.update_layout(height=700, margin=dict(l=60, r=20, t=80, b=60))
+
+    if kHz_ch:
+        try:
+            df_kHz = hybrid.read_kHz(kHz_ch)
+            t_col = df_kHz.columns[0]
+            fig.add_trace(
+                go.Scatter(
+                    x=df_kHz[t_col],
+                    y=df_kHz[kHz_ch],
+                    name=kHz_ch,
+                    mode="lines",
+                    line=dict(color="steelblue", width=1),
+                ),
+                row=1, col=1,
+            )
+            logger.info("Loaded kHz channel %s: %d points", kHz_ch, len(df_kHz))
+        except Exception as exc:
+            logger.error("Failed to load kHz channel %s: %s", kHz_ch, exc)
+
+    if rms_ch:
+        try:
+            df_rms = hybrid.read_rms(rms_ch)
+            t_col = df_rms.columns[0]
+            fig.add_trace(
+                go.Scatter(
+                    x=df_rms[t_col],
+                    y=df_rms[rms_ch],
+                    name=rms_ch,
+                    mode="lines",
+                    line=dict(color="darkorange", width=1),
+                ),
+                row=2, col=1,
+            )
+            logger.info("Loaded RMS channel %s: %d points", rms_ch, len(df_rms))
+        except Exception as exc:
+            logger.error("Failed to load RMS channel %s: %s", rms_ch, exc)
+
+    return fig
+
+
+def hybrid_monitor_app(hybrid: "HybridData"):
+    """
+    Build a Dash app for FEPC hybrid data with live viewport resampling.
+
+    Dropdowns for kHz and RMS channel selection trigger a figure rebuild;
+    FigureResampler handles dynamic aggregation on pan/zoom.
+
+    Returns
+    -------
+    dash.Dash
+    """
+    from plotly_resampler import FigureResampler
+    import dash
+    from dash import dcc, html, Input, Output, callback
+
+    kHz_keys = getattr(hybrid, "kHz_keys", []) or ["(none)"]
+    rms_keys = getattr(hybrid, "rms_keys", []) or ["(none)"]
+
+    app = dash.Dash(__name__)
+    app.layout = html.Div([
+        html.H2("Hybrid FEPC Monitor"),
+        html.Div([
+            html.Label("kHz channel"),
+            dcc.Dropdown(id="kHz-select", options=kHz_keys, value=kHz_keys[0]),
+            html.Label("RMS channel"),
+            dcc.Dropdown(id="rms-select", options=rms_keys, value=rms_keys[0]),
+        ], style={"display": "flex", "gap": "24px", "alignItems": "center",
+                  "marginBottom": "12px"}),
+        dcc.Graph(id="hybrid-graph"),
+        dcc.Store(id="hybrid-store"),
+        dcc.Loading(html.Div(id="hybrid-loading")),
+    ])
+
+    # One FigureResampler instance per callback invocation.
+    # Store in app.server._fr to allow the resampler's own callbacks to work.
+    @app.callback(
+        Output("hybrid-graph", "figure"),
+        Output("hybrid-store", "data"),
+        Input("kHz-select", "value"),
+        Input("rms-select", "value"),
+    )
+    def update_figure(kHz_ch, rms_ch):
+        plain_fig = _build_hybrid_figure(
+            hybrid,
+            kHz_channel=kHz_ch if kHz_ch != "(none)" else None,
+            rms_channel=rms_ch if rms_ch != "(none)" else None,
+        )
+        fr = FigureResampler(plain_fig)
+        # Register resampler so zoom/pan callbacks work
+        fr.register_update_graph_callback(app, "hybrid-graph", "hybrid-store")
+        return fr, {}
+
+    return app
+
+
+def hybrid_monitor_widget(
+    hybrid: "HybridData",
+    kHz_channel: str | None = None,
+    rms_channel: str | None = None,
+):
+    """
+    Return a FigureWidgetResampler for Jupyter notebook use.
+
+    The full dataset is kept in memory; only viewport-visible points
+    are rendered. Pan and zoom trigger automatic re-aggregation via
+    IPython widget events — no Dash server needed.
+
+    Parameters
+    ----------
+    hybrid : HybridData
+    kHz_channel : str, optional
+    rms_channel : str, optional
+
+    Returns
+    -------
+    FigureWidgetResampler
+    """
+    from plotly_resampler import FigureWidgetResampler
+    plain_fig = _build_hybrid_figure(hybrid, kHz_channel, rms_channel)
+    return FigureWidgetResampler(plain_fig)
 ```
 
 ---
@@ -694,67 +840,88 @@ def hybrid_monitor_dashboard(
 """
 python_magnetrun interactive dashboards.
 
-All dashboards require: panel, hvplot, bokeh.
+All dashboards require plotly, dash, and plotly-resampler.
 Install with: pip install python-magnetrun[dashboard]
+
+Two modes per dashboard
+-----------------------
+- ``*_app(run)``    → returns a Dash app; call app.run() or use the CLI.
+- ``*_widget(run)`` → returns a FigureWidgetResampler for Jupyter notebooks.
 
 Available dashboards
 --------------------
-- run_overview_dashboard(run)        — time-series overview of a single run
-- field_analysis_dashboard(run)      — B vs I curves and hysteresis
-- comparison_dashboard(runs)         — multi-run overlay and statistics
-- comparison_dashboard_from_api(...) — load runs from the API and compare
-- hybrid_monitor_dashboard(hybrid)   — FEPC kHz/RMS/trigger data viewer
+- run_overview_app / run_overview_widget
+- field_analysis_app / field_analysis_widget
+- comparison_app / comparison_widget
+- hybrid_monitor_app / hybrid_monitor_widget  ← critical for 10 M+ point FEPC data
 """
 from __future__ import annotations
 
 
-def _require_panel() -> None:
-    try:
-        import panel  # noqa: F401
-        import hvplot  # noqa: F401
-    except ImportError:
+def _require_dashboard_deps() -> None:
+    missing = []
+    for pkg in ("plotly", "dash", "plotly_resampler"):
+        try:
+            __import__(pkg)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
         raise ImportError(
-            "Dashboards require panel and hvplot. "
+            f"Dashboards require: {', '.join(missing)}.\n"
             "Install with: pip install python-magnetrun[dashboard]"
         )
 
 
-def run_overview_dashboard(run, **kwargs):
-    _require_panel()
-    from python_magnetrun.dashboards.run_overview import run_overview_dashboard as _fn
+def run_overview_app(run, **kwargs):
+    _require_dashboard_deps()
+    from python_magnetrun.dashboards.run_overview import run_overview_app as _fn
     return _fn(run, **kwargs)
 
 
-def field_analysis_dashboard(run, **kwargs):
-    _require_panel()
-    from python_magnetrun.dashboards.field_analysis import field_analysis_dashboard as _fn
+def run_overview_widget(run, **kwargs):
+    _require_dashboard_deps()
+    from python_magnetrun.dashboards.run_overview import run_overview_widget as _fn
     return _fn(run, **kwargs)
 
 
-def comparison_dashboard(runs, **kwargs):
-    _require_panel()
-    from python_magnetrun.dashboards.comparison import comparison_dashboard as _fn
+def field_analysis_app(run, **kwargs):
+    _require_dashboard_deps()
+    from python_magnetrun.dashboards.field_analysis import field_analysis_app as _fn
+    return _fn(run, **kwargs)
+
+
+def field_analysis_widget(run, **kwargs):
+    _require_dashboard_deps()
+    from python_magnetrun.dashboards.field_analysis import field_analysis_widget as _fn
+    return _fn(run, **kwargs)
+
+
+def comparison_app(runs, **kwargs):
+    _require_dashboard_deps()
+    from python_magnetrun.dashboards.comparison import comparison_app as _fn
     return _fn(runs, **kwargs)
 
 
-def comparison_dashboard_from_api(run_ids, client=None):
-    _require_panel()
-    from python_magnetrun.dashboards.comparison import comparison_dashboard_from_api as _fn
-    return _fn(run_ids, client=client)
+def hybrid_monitor_app(hybrid, **kwargs):
+    _require_dashboard_deps()
+    from python_magnetrun.dashboards.hybrid_monitor import hybrid_monitor_app as _fn
+    return _fn(hybrid, **kwargs)
 
 
-def hybrid_monitor_dashboard(hybrid, **kwargs):
-    _require_panel()
-    from python_magnetrun.dashboards.hybrid_monitor import hybrid_monitor_dashboard as _fn
+def hybrid_monitor_widget(hybrid, **kwargs):
+    _require_dashboard_deps()
+    from python_magnetrun.dashboards.hybrid_monitor import hybrid_monitor_widget as _fn
     return _fn(hybrid, **kwargs)
 
 
 __all__ = [
-    "run_overview_dashboard",
-    "field_analysis_dashboard",
-    "comparison_dashboard",
-    "comparison_dashboard_from_api",
-    "hybrid_monitor_dashboard",
+    "run_overview_app",
+    "run_overview_widget",
+    "field_analysis_app",
+    "field_analysis_widget",
+    "comparison_app",
+    "hybrid_monitor_app",
+    "hybrid_monitor_widget",
 ]
 ```
 
@@ -766,14 +933,17 @@ __all__ = [
 
 ```python
 """
-CLI for serving python_magnetrun dashboards.
+CLI for serving python_magnetrun Dash dashboards with live resampling.
 
 Usage::
 
     magnetrun-dashboard overview run_20240315.txt
-    magnetrun-dashboard compare run_A.txt run_B.txt
-    magnetrun-dashboard compare --run-ids 42 43 --via-api
+    magnetrun-dashboard overview run_20240315.txt --port 8050 --debug
     magnetrun-dashboard hybrid  /path/to/hybrid_dir/
+    magnetrun-dashboard hybrid  /path/to/hybrid_dir/ --kHz U_coil1 --rms U_rms1
+    magnetrun-dashboard compare run_A.txt run_B.txt
+    magnetrun-dashboard compare --run-ids 42 43
+    magnetrun-dashboard to-notebook run_20240315.txt -o analysis.ipynb
 """
 from __future__ import annotations
 
@@ -787,35 +957,42 @@ logger = logging.getLogger(__name__)
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="magnetrun-dashboard",
-        description="Serve a python_magnetrun interactive dashboard",
+        description="Serve a python_magnetrun Dash dashboard with live resampling",
     )
-    parser.add_argument("--port", type=int, default=5006,
-                        help="Port to serve on (default: 5006)")
-    parser.add_argument("--no-browser", action="store_true",
-                        help="Do not open the browser automatically")
+    parser.add_argument("--port", type=int, default=5006)
+    parser.add_argument("--debug", action="store_true",
+                        help="Run Dash in debug mode (auto-reload)")
     parser.add_argument("-v", "--verbose", action="store_true")
 
     sub = parser.add_subparsers(dest="dashboard", required=True)
 
     # overview
-    p_ov = sub.add_parser("overview", help="Run overview dashboard")
-    p_ov.add_argument("file", help="Path to the run data file (.txt, .tdms, .csv)")
-    p_ov.add_argument("--site", help="Site override (M8, M9, M10)")
+    p_ov = sub.add_parser("overview", help="Run time-series overview")
+    p_ov.add_argument("file", help="Run data file (.txt, .tdms, .csv)")
 
     # field
-    p_fi = sub.add_parser("field", help="Field analysis dashboard")
+    p_fi = sub.add_parser("field", help="Field vs current analysis")
     p_fi.add_argument("file")
 
     # compare
     p_cm = sub.add_parser("compare", help="Multi-run comparison")
-    p_cm.add_argument("files", nargs="*", help="Run data files to compare")
+    p_cm.add_argument("files", nargs="*", help="Run data files")
     p_cm.add_argument("--run-ids", nargs="+", type=int, metavar="ID",
                       help="Run IDs to load from the API")
-    p_cm.add_argument("--api-url", help="API base URL (overrides MAGNETAPI_URL)")
 
-    # hybrid
-    p_hy = sub.add_parser("hybrid", help="Hybrid FEPC data monitor")
-    p_hy.add_argument("directory", help="Directory containing hybrid FEPC files")
+    # hybrid — most important: handles 10 M+ point FEPC data
+    p_hy = sub.add_parser("hybrid", help="FEPC hybrid data monitor (10 M+ pts)")
+    p_hy.add_argument("directory", help="Hybrid FEPC data directory")
+    p_hy.add_argument("--kHz", metavar="CHANNEL", default=None,
+                      help="kHz channel to show on startup")
+    p_hy.add_argument("--rms", metavar="CHANNEL", default=None,
+                      help="RMS channel to show on startup")
+
+    # to-notebook
+    p_nb = sub.add_parser("to-notebook", help="Generate analysis notebook")
+    p_nb.add_argument("file")
+    p_nb.add_argument("--output", "-o", default=None,
+                      help="Output .ipynb path (default: <file>.ipynb)")
 
     return parser
 
@@ -827,10 +1004,11 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.WARNING)
 
     try:
-        import panel as pn
+        import plotly_resampler  # noqa: F401
+        import dash              # noqa: F401
     except ImportError:
         print(
-            "ERROR: panel is required for dashboards.\n"
+            "ERROR: plotly-resampler and dash are required.\n"
             "Install with: pip install python-magnetrun[dashboard]",
             file=sys.stderr,
         )
@@ -839,41 +1017,43 @@ def main(argv: list[str] | None = None) -> int:
     from python_magnetrun import MagnetRun
     import python_magnetrun.dashboards as db
 
-    open_browser = not args.no_browser
-
     if args.dashboard == "overview":
         run = MagnetRun.from_file(args.file)
-        dashboard = db.run_overview_dashboard(run)
-        pn.serve(dashboard, port=args.port, show=open_browser,
-                 title="Run Overview")
+        app = db.run_overview_app(run)
+        app.run(port=args.port, debug=args.debug)
 
     elif args.dashboard == "field":
         run = MagnetRun.from_file(args.file)
-        dashboard = db.field_analysis_dashboard(run)
-        pn.serve(dashboard, port=args.port, show=open_browser,
-                 title="Field Analysis")
+        app = db.field_analysis_app(run)
+        app.run(port=args.port, debug=args.debug)
 
     elif args.dashboard == "compare":
         if args.run_ids:
-            dashboard = db.comparison_dashboard_from_api(
-                args.run_ids,
-                client=None,  # reads MAGNETAPI_URL from env
-            )
-        else:
-            if not args.files:
-                print("ERROR: provide file paths or --run-ids", file=sys.stderr)
-                return 1
+            from python_magnetrun.api import MagnetAPIClient
+            client = MagnetAPIClient()
+            runs = [(f"Run {rid}", client.get_run_data(rid)) for rid in args.run_ids]
+        elif args.files:
             runs = [(f, MagnetRun.from_file(f)) for f in args.files]
-            dashboard = db.comparison_dashboard(runs)
-        pn.serve(dashboard, port=args.port, show=open_browser,
-                 title="Run Comparison")
+        else:
+            print("ERROR: provide file paths or --run-ids", file=sys.stderr)
+            return 1
+        app = db.comparison_app(runs)
+        app.run(port=args.port, debug=args.debug)
 
     elif args.dashboard == "hybrid":
         from python_magnetrun.hybrid.hybrid_data import HybridData
         hybrid = HybridData(args.directory)
-        dashboard = db.hybrid_monitor_dashboard(hybrid)
-        pn.serve(dashboard, port=args.port, show=open_browser,
-                 title="Hybrid Monitor")
+        app = db.hybrid_monitor_app(hybrid)
+        app.run(port=args.port, debug=args.debug)
+
+    elif args.dashboard == "to-notebook":
+        import os
+        from python_magnetrun.dashboards.notebook_generator import (
+            generate_analysis_notebook,
+        )
+        out = args.output or os.path.splitext(args.file)[0] + "_analysis.ipynb"
+        generate_analysis_notebook(args.file, out)
+        print(f"Notebook written to: {out}")
 
     return 0
 
@@ -1075,50 +1255,70 @@ magnetrun-dashboard to-notebook run_20240315.txt --output analysis.ipynb
 ## Verification Checklist
 
 ```bash
-# 1. Import without dashboard dependencies installed (graceful error)
-pip uninstall panel hvplot -y 2>/dev/null
+# 1. Graceful ImportError when dashboard deps not installed
+pip uninstall plotly-resampler dash -y 2>/dev/null
 python -c "
 from python_magnetrun import dashboards
 try:
-    dashboards.run_overview_dashboard(None)
+    dashboards.run_overview_app(None)
 except ImportError as e:
     print('Graceful ImportError:', e)
 "
-pip install panel hvplot  # reinstall
+pip install plotly-resampler dash  # reinstall
 
-# 2. run_overview builds without error
+# 2. run_overview_app builds (Dash app object returned without starting)
 python -c "
 import glob
 from python_magnetrun import MagnetRun
-from python_magnetrun.dashboards import run_overview_dashboard
+from python_magnetrun.dashboards import run_overview_app
 for f in glob.glob('data/*.txt')[:1]:
     run = MagnetRun.fromtxt(f)
-    dashboard = run_overview_dashboard(run)
-    print('overview OK:', type(dashboard))
+    app = run_overview_app(run)
+    print('run_overview_app OK:', type(app))
 "
 
-# 3. comparison_dashboard with two local files
+# 3. run_overview_widget returns FigureWidgetResampler
 python -c "
 import glob
 from python_magnetrun import MagnetRun
-from python_magnetrun.dashboards import comparison_dashboard
-files = glob.glob('data/*.txt')[:2]
-if len(files) >= 2:
-    runs = [(f, MagnetRun.fromtxt(f)) for f in files]
-    d = comparison_dashboard(runs)
-    print('comparison OK:', type(d))
+from python_magnetrun.dashboards import run_overview_widget
+from plotly_resampler import FigureWidgetResampler
+for f in glob.glob('data/*.txt')[:1]:
+    run = MagnetRun.fromtxt(f)
+    fig = run_overview_widget(run)
+    assert isinstance(fig, FigureWidgetResampler)
+    print('widget OK, traces:', len(fig.data))
 "
 
-# 4. CLI help works
+# 4. hybrid_monitor_app loads full-resolution data
+python -c "
+import os, glob
+from python_magnetrun.hybrid.hybrid_data import HybridData
+from python_magnetrun.dashboards import hybrid_monitor_app
+dirs = glob.glob('data/hybrid*')
+if dirs:
+    h = HybridData(dirs[0])
+    app = hybrid_monitor_app(h)
+    print('hybrid_monitor_app OK:', type(app))
+else:
+    print('SKIP: no hybrid data directory found')
+"
+
+# 5. CLI help works
 magnetrun-dashboard --help
 magnetrun-dashboard overview --help
-magnetrun-dashboard compare --help
+magnetrun-dashboard hybrid --help
 
-# 5. Notebook generation
-magnetrun-dashboard to-notebook data/$(ls data/*.txt | head -1 | xargs basename)
-ls *.ipynb
+# 6. Notebook generation
+python -c "
+import glob, os
+from python_magnetrun.dashboards.notebook_generator import generate_analysis_notebook
+for f in glob.glob('data/*.txt')[:1]:
+    generate_analysis_notebook(f, '/tmp/test_analysis.ipynb')
+    print('Notebook written:', os.path.exists('/tmp/test_analysis.ipynb'))
+"
 
-# 6. All tests pass
+# 7. All tests pass
 pytest tests/ -v
 ```
 
@@ -1128,13 +1328,13 @@ pytest tests/ -v
 
 ```
 feat(dashboards): add dashboards/ subpackage skeleton and __init__.py
-feat(dashboards/widgets): shared Panel widgets (time slider, key selector, smoother)
-feat(dashboards/run_overview): run overview dashboard with reactive plots
-feat(dashboards/field_analysis): field vs current dashboard
-feat(dashboards/comparison): multi-run comparison with API support
-feat(dashboards/hybrid_monitor): FEPC kHz/RMS data viewer
-feat(dashboards/cli): magnetrun-dashboard CLI with overview/compare/hybrid/to-notebook
-feat(dashboards/notebook): Jupyter notebook auto-generator
-chore: add panel/hvplot/nbformat to optional dependencies
+feat(dashboards/figures): shared Plotly figure builders (time-series, scatter)
+feat(dashboards/run_overview): FigureResampler Dash app + FigureWidgetResampler
+feat(dashboards/field_analysis): field vs current Plotly dashboard
+feat(dashboards/comparison): multi-run overlay with API support
+feat(dashboards/hybrid_monitor): FEPC kHz/RMS viewer — FigureResampler for 10 M+ pts
+feat(dashboards/cli): magnetrun-dashboard Dash CLI with overview/compare/hybrid/to-notebook
+feat(dashboards/notebook): Jupyter notebook auto-generator (FigureWidgetResampler)
+chore: add plotly/dash/plotly-resampler/tsdownsample to [dashboard] optional deps
 chore: deprecate panels/ scripts with docstring notices
 ```
