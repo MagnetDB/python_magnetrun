@@ -28,8 +28,10 @@ extras may only become mandatory in a later phase.
 | **plotly** | `>=5.22` | `[dashboard]` | Phase 4 | Core figure library |
 | **dash** | `>=2.17` | `[dashboard]` | Phase 4 | Web framework serving `FigureResampler` callbacks |
 | **plotly-resampler** | `>=0.10` | `[dashboard]` | Phase 4 | Dynamic MinMaxLTTB resampling per viewport — handles 10 M+ point FEPC data |
-| **tsdownsample** | `>=0.1.3` | `[dashboard]` | Phase 4 | LTTB backend; pulled in by plotly-resampler |
-| **nbformat** | `>=5.10` | `[notebook]` | Phase 4 | Generate `.ipynb` files programmatically |
+| **tsdownsample** | `>=0.1.3` | `[dashboard]` | Phase 4 | LTTB backend; also used directly for one-shot pre-downsampling in static/Marimo path |
+| **voila** | `>=0.5` | `[notebook]` | Phase 4 | Serve notebooks as web apps (server-based); `FigureWidgetResampler` works here |
+| **marimo** | `>=0.9` | `[notebook]` | Phase 4 | Reactive notebook/app framework; ipywidgets not supported → use `mo.ui.plotly()` + LTTB |
+| **nbformat** | `>=5.10` | `[notebook]` | Phase 4 | Generate `.ipynb` (Jupyter/Voilà) files programmatically |
 | **jupyter_client** | `>=8.0` | `[notebook]` | Phase 4 | Notebook kernel validation |
 | **python_magnetcooling** | `>=0.2.0` | `[cooling]` | Migration prompt | Replaces `python_magnetrun/cooling/`; hydraulic fitting |
 | **python_magnetapi** | — | external service | Phase 3b | REST API server (not a Python dep; must be running) |
@@ -91,9 +93,15 @@ dashboard = [
 ]
 
 notebook = [
-    "nbformat>=5.10",                 # Phase 4
+    "nbformat>=5.10",                 # Phase 4 — generate .ipynb files
     "jupyter_client>=8.0",
-    "plotly-resampler>=0.10",         # FigureWidgetResampler in notebooks
+    "plotly-resampler>=0.10",         # FigureWidgetResampler in Jupyter/Voilà
+    "voila>=0.5",                     # serve notebooks as web apps
+]
+
+marimo = [
+    "marimo>=0.9",                    # Phase 4 — reactive app framework
+    # tsdownsample already in [dashboard] — used for one-shot LTTB in static mode
 ]
 ```
 
@@ -204,15 +212,62 @@ hybrid-monitor dashboard in particular.
 | Notebook generation | **nbformat** | `>=5.10` | `[notebook]` | Optional |
 | Notebook kernel API | **jupyter_client** | `>=8.0` | `[notebook]` | Optional |
 
-#### `FigureResampler` vs `FigureWidgetResampler`
+#### Three output modes per dashboard
 
-| Mode | Class | When to use |
-|------|-------|-------------|
-| Standalone web app / `magnetrun-dashboard` CLI | `FigureResampler` | Runs a Dash server; resampling via server-side Dash callbacks; supports deployment |
-| Jupyter notebook | `FigureWidgetResampler` | Uses IPython widget events and the running kernel; no port forwarding needed |
+Every dashboard exposes three functions built on the same underlying `_build_*_traces() → go.Figure` core:
 
-Both wrap a standard `plotly.graph_objects.Figure` and add dynamic aggregation
-transparently. The same figure-building code works with both classes.
+| Function | Class / output | Works in | Large data (10M+ pts) |
+|----------|---------------|----------|-----------------------|
+| `*_app(run)` | `FigureResampler` → Dash app | `magnetrun-dashboard` CLI, any browser | ✓ Dynamic MinMaxLTTB per viewport |
+| `*_widget(run)` | `FigureWidgetResampler` | Jupyter, **Voilà** | ✓ Server-side resampling via IPython kernel |
+| `*_static(run, max_pts=5000)` | plain `go.Figure` + one-shot LTTB | **Marimo**, **Voici**, static HTML, any Plotly context | ⚠ Pre-downsampled to `max_pts`; no live zoom resampling |
+
+The key design invariant: **figure construction (`_build_*_traces`) is always separated from the resampling wrapper**, making all three modes possible without duplicating code.
+
+#### Deployment compatibility matrix
+
+| Deployment target | `*_app()` | `*_widget()` | `*_static()` | Notes |
+|-------------------|-----------|-------------|--------------|-------|
+| `magnetrun-dashboard` CLI (Dash) | ✓ | — | — | Primary CLI mode |
+| Classic Jupyter notebook | — | ✓ | ✓ | Widget mode preferred |
+| **Voilà** (server) | — | ✓ | ✓ | `FigureWidgetResampler` works; requires running server |
+| **Voici** (WASM/static) | ✗ no server | ✗ ipywidgets not fully supported | ✓ only | 2 GB browser memory limit; FEPC data must be pre-downsampled |
+| **Marimo** (`marimo run`) | ✗ | ✗ ipywidgets not supported | ✓ via `mo.ui.plotly()` | Reactive architecture handles large DataFrames natively; use `*_static()` + `tsdownsample` |
+| Marimo static export | — | — | ✓ | Read-only; no callbacks |
+| Static HTML (`fig.write_html`) | — | — | ✓ | Zero-dependency shareable file |
+
+**Bottom line for FEPC hybrid data (10 kHz, 10 M+ rows):**
+- `*_app()` (Dash) and `*_widget()` (Voilà) both provide live viewport resampling — best experience.
+- `*_static()` (Marimo, Voici) pre-downsamples once via `tsdownsample.LTTB`; zoom is still possible in Plotly but re-aggregation is not triggered. For the hybrid monitor this means selecting a coarse overview first, then loading a narrower time window at full resolution in a second reactive step.
+
+#### Voici note — when to use it
+
+Voici is suitable for **sharing analysis results** (static dashboards) of Pupitre runs (<100 K rows). It is **not suitable** for interactive FEPC hybrid data exploration due to the 2 GB WASM memory cap and the absence of a server kernel for resampling callbacks.
+
+#### Marimo note — design pattern for large data
+
+Marimo does not support ipywidgets (`FigureWidgetResampler` is ipywidget-based).
+For large datasets in Marimo, the recommended pattern is:
+
+```python
+# In a marimo app cell:
+import marimo as mo
+from python_magnetrun.dashboards.run_overview import run_overview_static
+from tsdownsample import LTTBDownsampler
+import numpy as np
+
+run = MagnetRun.from_file("run.txt")
+
+# Slider to choose how many points to render
+max_pts = mo.ui.slider(500, 10_000, value=2_000, label="Max display points")
+
+@mo.cell
+def overview(max_pts):
+    fig = run_overview_static(run, max_pts=max_pts.value)
+    return mo.ui.plotly(fig)
+```
+
+This gives a Marimo-native reactive experience where changing the slider re-applies LTTB and re-renders, without needing plotly-resampler callbacks.
 
 #### Comparison with Panel + hvplot
 
