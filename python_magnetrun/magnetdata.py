@@ -466,10 +466,13 @@ class MagnetData:
         # print("type: ", type(self.Keys))
         return self.Keys
 
-    def cleanupData(self, debug: bool = False):
-        """removes empty columns from Data
+    def cleanupData_legacy(self, debug: bool = False):
+        """removes empty columns from Data (LEGACY VERSION - ORIGINAL IMPLEMENTATION)
 
         Apply only to pupitre files
+        
+        This is the original implementation before the flexible parameter refactoring.
+        It always performs full auto-detection of Icoil and Ucoil columns.
 
         :param debug:activate debug mode, defaults to False
         :type debug: bool, optional
@@ -478,7 +481,7 @@ class MagnetData:
         :rtype: _type_
         """
 
-        logger.debug(f"Clean up Data: filename={self.FileName}, keys={self.Keys}")
+        logger.debug(f"Clean up Data (legacy): filename={self.FileName}, keys={self.Keys}")
         if self.Type == 0:  # isinstance(self.Data, pd.DataFrame):
             import re
 
@@ -556,7 +559,7 @@ class MagnetData:
             #    f"_df uniq Keys = {natsorted(_df.columns.values.tolist())}", flush=True
             # )
 
-            # Find Ucoil for Helices and Bitters
+            # Find Ucoil for Helices and Bitters (ALWAYS - original behavior)
             Ukeys = natsorted(
                 [
                     str(_key)
@@ -593,7 +596,7 @@ class MagnetData:
                 _df["UB"] = _df[UB].sum(axis=1)
                 logger.debug(f"UB: {UB}")
 
-            # Always add latest Ikeys if not already in _df
+            # Always add latest Ikeys if not already in _df (ALWAYS - original behavior)
             Ikeys = natsorted(
                 [
                     _key
@@ -726,15 +729,140 @@ class MagnetData:
             )  # Data.columns.values.tolist()}')
         return 0
 
+    def cleanupData(
+        self,
+        keys_to_remove: list[str] | None = None,
+        keys_to_rename: dict[str, str] | None = None,
+        keys_to_add: dict[str, str] | None = None,
+        debug: bool = False,
+    ):
+        """removes empty columns from Data with optional custom cleanup operations
+
+        Apply only to pupitre files
+
+        :param keys_to_remove: list of column names to remove after cleanup, defaults to None
+        :type keys_to_remove: list[str] | None, optional
+        :param keys_to_rename: dict mapping old column names to new names, defaults to None
+        :type keys_to_rename: dict[str, str] | None, optional
+        :param keys_to_add: dict mapping new column names to their formulas, defaults to None
+        :type keys_to_add: dict[str, str] | None, optional
+        :param debug: activate debug mode, defaults to False
+        :type debug: bool, optional
+        :raises RuntimeError: _description_
+        :return: _description_
+        :rtype: _type_
+        """
+
+        logger.debug(f"Clean up Data: filename={self.FileName}, keys={self.Keys}")
+        if self.Type != 0:  # isinstance(self.Data, pd.DataFrame):
+            return
+
+        # Apply custom operations if provided
+        if keys_to_add:
+            logger.debug(f"cleanupData: adding keys {list(keys_to_add.keys())}")
+            # Check for existing keys
+            existing_keys = [key for key in keys_to_add.keys() if key in self.Keys]
+            if existing_keys:
+                logger.warning(
+                    f"cleanupData: keys {existing_keys} already exist in DataFrame, skipping addition"
+                )
+            for key, formula in keys_to_add.items():
+                self.addData(key, formula, debug=debug)
+        
+        if keys_to_rename:
+            logger.debug(f"cleanupData: renaming keys {keys_to_rename}")
+            # Check for missing keys
+            missing_keys = [old_key for old_key in keys_to_rename.keys() if old_key not in self.Keys]
+            if missing_keys:
+                logger.warning(
+                    f"cleanupData: keys {missing_keys} not found in DataFrame, cannot rename"
+                )
+            # Check for target keys that already exist
+            target_exists = [new_key for new_key in keys_to_rename.values() if new_key in self.Keys]
+            if target_exists:
+                logger.warning(
+                    f"cleanupData: target keys {target_exists} already exist in DataFrame, will be overwritten"
+                )
+            self.renameData(keys_to_rename)
+        
+        if keys_to_remove:
+            logger.debug(f"cleanupData: removing keys {keys_to_remove}")
+            # Check for missing keys
+            missing_keys = [key for key in keys_to_remove if key not in self.Keys]
+            if missing_keys:
+                logger.warning(
+                    f"cleanupData: keys {missing_keys} not found in DataFrame, cannot remove"
+                )
+            self.removeData(keys_to_remove)
+
+        self.Keys = self.Data.columns.values.tolist()
+
+        # Recompute Fkeys after cleanup
+        import re
+        Fkeys = [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
+        Fkeys += [_key for _key in self.Keys if re.match(r"Rpm\w+", _key)]
+        Fkeys += [_key for _key in self.Keys if re.match(r"HP\w+", _key)]
+        Fkeys += [_key for _key in self.Keys if re.match(r"\w+_ref", _key)]
+        Fkeys += [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
+        Fkeys += [_key for _key in self.Keys if re.match(r"Ptot", _key)]  
+        
+        # drop duplicates
+        def getDuplicateColumns(df):
+            # Create an empty set
+            duplicateColumnNames = set()
+
+            # Iterate through all the columns of dataframe
+            for x in range(df.shape[1]):
+                # Take column at xth index.
+                col = df.iloc[:, x]
+
+                for y in range(x + 1, df.shape[1]):
+                    # Take column at yth index.
+                    otherCol = df.iloc[:, y]
+
+                    if col.equals(otherCol):
+                        duplicateColumnNames.add(df.columns.values[y])
+
+            # Return list of unique column names whose contents are duplicates.
+            return list(duplicateColumnNames)
+
+        logger.debug(
+            f"zero columns: {natsorted(self.Data.columns[(self.Data == 0).all()].values.tolist())}",
+        )
+
+        # TODO remove empty column except that with a name that starts with Icoil*
+        empty_cols = [
+            col
+            for col in self.Data.columns[(self.Data == 0).all()].values.tolist()
+            if not col.startswith("Flow") and not col.startswith("Field")
+        ]
+        empty_Ikeys = natsorted(
+            [_key for _key in empty_cols]
+        )
+        print(f"empty cols: {natsorted(empty_cols)}")
+        
+        _df = self.Data
+        if empty_cols:
+            _df = self.Data.drop(empty_cols, axis=1)
+            # print(f'uniq Keys wo empty cols = {_df.columns.values.tolist()}')
+
+        dropped_columns = getDuplicateColumns(_df)
+        really_dropped_columns = natsorted(
+            [col for col in dropped_columns if not col.startswith("Ucoil")]
+        )
+        print(f"duplicate columns (others than Ucoil*): {natsorted(really_dropped_columns)}")
+        # _df.drop(really_dropped_columns, axis=1, inplace=True)
+        
+        return 0
+
     def removeData(self, keys: list):
         """remove a column to Data"""
         if self.Type == 0:
             for key in keys:
                 if key in self.Keys:
-                    # print(f"Remove {key}")
                     del self.Data[key]
                 else:
-                    print(f"cannot remove {key}: no such key - skip operation")
+                    logger.warning(f"removeData: cannot remove '{key}', key not found - skipping")
             self.Keys = self.Data.columns.values.tolist()
         return 0
 
@@ -743,7 +871,14 @@ class MagnetData:
         rename columns
         """
         if self.Type == 0:
-            self.Data.rename(columns=columns, inplace=True)
+            # Filter out keys that don't exist
+            existing_renames = {old: new for old, new in columns.items() if old in self.Keys}
+            if len(existing_renames) < len(columns):
+                missing = [old for old in columns.keys() if old not in self.Keys]
+                logger.warning(f"renameData: keys {missing} not found, skipping")
+            
+            if existing_renames:
+                self.Data.rename(columns=existing_renames, inplace=True)
             self.Keys = self.Data.columns.values.tolist()
 
     def addData(self, key, formula, unit: str = None, debug: bool = False):
@@ -758,7 +893,7 @@ class MagnetData:
         # print("addData: %s = %s" % (key, formula) )
         if self.Type == 0:
             if key in self.Keys:
-                print(f"Key {key} already exists in DataFrame")
+                logger.warning(f"addData: key '{key}' already exists in DataFrame, skipping addition")
             else:
                 # check formula using pyparsing
                 self.Data.eval(formula, inplace=True)
