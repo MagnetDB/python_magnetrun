@@ -9,7 +9,7 @@ import datetime
 
 logger = logging.getLogger(__name__)
 
-from .requests.connect import download
+from .connect import download
 
 
 class MRecord:

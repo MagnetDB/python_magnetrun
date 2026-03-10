@@ -16,8 +16,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # import jsonpickle
-from .. import MRecord
-from .. import GObject
+from . import MRecord
+from . import GObject
 
 from .connect import download
 

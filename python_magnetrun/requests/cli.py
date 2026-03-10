@@ -18,8 +18,8 @@ import requests
 import requests.exceptions
 from io import StringIO
 
-from .. import HMagnet
-from .. import MRecord
+from . import HMagnet
+from . import MRecord
 
 from .connect import createSession
 from .webscrapping import (
