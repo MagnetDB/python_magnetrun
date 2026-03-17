@@ -79,6 +79,9 @@ hybrid-magnetrun = "python_magnetrun.hybrid.cli:main"
 magnetrun-alimconfig = "python_magnetrun.configAlims.convertxml:main"
 magnetrun-pigbrother-logparser = "python_magnetrun.tdms.log_parser:main"
 
+[tool.setuptools.packages.find]
+include = ["python_magnetrun*"]
+
 [tool.ruff]
 line-length = 88
 target-version = "py311"
