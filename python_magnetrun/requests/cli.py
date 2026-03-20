@@ -105,6 +105,12 @@ def main():
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
     )
+    parser.add_argument(
+        "--geometry-csv",
+        help="CSV file with two columns 'geometry' and 'yamfile' to override geometry field",
+        type=str,
+        default=None,
+    )
     args = parser.parse_args()
 
     # Configure logging level
@@ -395,7 +401,14 @@ def main():
                 for name, data in sorted(rings.items()):
                     cad_ref = data[0] if len(data) > 0 else "N/A"
                     material = data[1] if len(data) > 1 else "N/A"
-                    geometry = data[2] if len(data) > 2 else "N/A"
+                    if re.search(r"-[A-Za-z]$", data[2]):
+                        geometry = cad_ref[:-2]  # Remove "-X"
+                    elif re.search(r"[A-Za-z]$", data[2]):
+                        geometry = data[2][:-1]  # Remove "X"
+                    else:
+                        geometry = (
+                            data[2] if len(data) > 2 else "N/A"
+                        )  # No suffix letter
                     print(f"{name:<20} {cad_ref:<20} {material:<15} {geometry:<20}")
 
             print(f"\n{'='*80}")
@@ -479,14 +492,14 @@ def main():
                 "type": part_type,  # Use the part_type from PartsCAD (helix or ring)
                 "design_office_reference": PartsCAD[part][0],
                 "material": PartsCAD[part][1],
-                "geometry": PartsCAD[part][2][:-2],
+                "geometry": re.sub("-[a-zA-Z]", "", PartsCAD[part][2]),
             }
             # TODO geometry field must be consistant with magnetapi -
             if part in PartName:
-                carac["geometry"] = PartsCAD[part][2][:-2]
                 carac["status"] = PartName[part][1]
                 carac["magnets"] = PartName[part][2]
                 cad = re.sub("-[a-zA-Z]", "", PartsCAD[part][0])
+                carac["geometry"] = cad
                 if cad in cad_Parts:
                     if part not in cad_Parts[cad]:
                         cad_Parts[cad].append(part)
@@ -494,6 +507,20 @@ def main():
                     cad_Parts[cad] = [part]
             logger.debug(f"{part}: {carac}")
             db_Parts[part] = carac
+
+        if args.geometry_csv:
+            import csv
+            geometry_override = {}
+            with open(args.geometry_csv, newline="") as csvfile:
+                reader = csv.DictReader(csvfile)
+                for row in reader:
+                    geometry_override[row["geometry"]] = row["yamfile"]
+            logger.info(f"Loaded {len(geometry_override)} geometry overrides from {args.geometry_csv}")
+            for part, carac in db_Parts.items():
+                geom = carac.get("geometry")
+                if geom in geometry_override:
+                    logger.debug(f"{part}: geometry overridden {geom} -> {geometry_override[geom]}")
+                    carac["geometry"] = geometry_override[geom]
 
         logger.info(f"\ncad/Parts ({len(cad_Parts)}):")
 
@@ -859,7 +886,14 @@ def main():
             for magnet in svalues["magnets"]:
                 logger.debug(f"magnets[{site}]: {magnet}")
 
-            filename = f'{svalues["name"]}.json'
+            # filename = f'{svalues["name"]}.json'
+            _commissioned_str = svalues["commissioned_at"]
+            try:
+                _dt = datetime.datetime.fromisoformat(_commissioned_str)
+                _date_str = _dt.strftime("%Y%m%d")
+            except (ValueError, TypeError):
+                _date_str = _commissioned_str
+            filename = f'{housing}_{_date_str}.json'
             if args.datadir != ".":
                 filename = f"{args.datadir}/{filename}"
             with open(filename, "w") as f:
