@@ -112,6 +112,7 @@ def create_base_parser(allowed_extensions=None):
 
     parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9")
     parser.add_argument("--insert", help="specify an insert", default="notdefined")
+    parser.add_argument("--housing", help="specify a housing", default="notdefined")
     parser.add_argument(
         "--pupitre_datadir",
         help="enter pupitre datadir (default srvdata)",

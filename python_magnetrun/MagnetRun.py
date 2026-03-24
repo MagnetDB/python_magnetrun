@@ -286,6 +286,10 @@ class MagnetRun:
         """set Site"""
         self.Site = site
 
+    def setHousing(self, housing):
+        """set Housing"""
+        self.Housing = housing
+
     def getType(self):
         """returns Data Type"""
         if self.MagnetData is not None:
