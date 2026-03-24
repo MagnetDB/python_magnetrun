@@ -188,8 +188,8 @@ def plot_files(
                         print(
                             f"{f}: no displayed - key1={key1} and key2={key2} not in keys"
                         )
-            except:
-                print(f"plot_files: failed to load {f} with pandas")
+            except Exception as e:
+                print(f"plot_files: failed to load {f} with pandas: {e}")
 
     # add fit if present
     if fit:

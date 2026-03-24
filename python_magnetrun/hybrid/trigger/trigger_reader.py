@@ -143,7 +143,7 @@ def parse_trigger_directory(trigger_dir: Path) -> TriggerInfo:
         timestamp_str = metadata['trig.timestamp.approx'].split('[')[0].strip()
         try:
             trig_timestamp = datetime.strptime(timestamp_str, "%d/%m/%Y-%H:%M:%S.%f UTC")
-        except:
+        except ValueError:
             logger.warning(f"Could not parse trigger timestamp: {timestamp_str}")
     
     return TriggerInfo(

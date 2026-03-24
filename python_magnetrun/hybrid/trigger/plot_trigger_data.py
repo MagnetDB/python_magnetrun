@@ -432,7 +432,7 @@ Examples:
     # Parse figure size
     try:
         fig_size = tuple(map(float, args.fig_size.split(',')))
-    except:
+    except ValueError:
         logger.warning(f"Invalid fig-size format, using default (12,6)")
         fig_size = (12, 6)
     

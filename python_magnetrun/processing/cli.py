@@ -159,9 +159,8 @@ def main():
             index = filename.index("_")
             housing = filename[0:index]
             print(f"site detected: {housing}")
-        except:
+        except ValueError:
             print("no site detected - use args.site argument instead")
-            pass
 
     match f_extension:
         case ".txt":
@@ -221,8 +220,8 @@ def main():
                     print(f"f={smoothing_f}, iter={smoothing_iter}")
                     yest = lowess_ag(x, y, f=smoothing_f, iter=smoothing_iter)
                     plt.plot(x, yest, color="orange", label="Loess: A. Gramfort")
-                except:
-                    print("Failed to build lowess_ag")
+                except Exception as e:
+                    print(f"Failed to build lowess_ag: {e}")
 
             if args.method == "bell_kernel":
                 try:
@@ -240,8 +239,8 @@ def main():
                     plt.plot(
                         x, yest_bell, color="red", label="Loess: bell shape kernel"
                     )
-                except:
-                    print("Failed to build bell")
+                except Exception as e:
+                    print(f"Failed to build bell: {e}")
 
             if args.method == "statsmodel_sm":
                 try:
@@ -250,8 +249,8 @@ def main():
                     plt.plot(
                         x, yest_sm, color="magenta", label="Loess: statsmodel"
                     )  # marker="o",
-                except:
-                    print("Failed to build sm")
+                except Exception as e:
+                    print(f"Failed to build sm: {e}")
 
             plt.grid()
             plt.legend()

@@ -602,9 +602,9 @@ def main():
                         record_timestamps.append(
                             datetime.datetime.strptime(timestamp, tformat)
                         )
-                    except:
+                    except Exception as e:
                         logger.warning(
-                            f"trouble with record={link}, name={name}, nlink={nlink}, timestamp={timestamp} -record ignored"
+                            f"trouble with record={link}, name={name}, nlink={nlink}, timestamp={timestamp} -record ignored: {e}"
                         )
 
                     logger.debug(f"nlink={nlink}")

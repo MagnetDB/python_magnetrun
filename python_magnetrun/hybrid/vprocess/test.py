@@ -429,7 +429,7 @@ def main():
         try:
             Path(test_file).unlink()
             logger.info(f"\nCleaned up test file: {test_file}")
-        except:
+        except OSError:
             pass
 
     return 0 if success else 1
