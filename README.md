@@ -40,12 +40,15 @@ To quit the virtual env, run `deactivate`.
 
 You can:
 
-* Get data from `Pupitre`using `python_magnetrun.requests.cli` as described in the next section.
+* Get data from `Pupitre` using `python_magnetrun.requests.cli` as described in the next section.
 * Or, mount `Pupitre`, using for instance:
 
 ```bash
-sshfs -o uid=$(uid -u),gid=$(gid -g) -o IdentityFile=/home/LNCMI-G/$USER/.ssh/id_ecdsa $SRVDATA_SERVER:$SRVDATA_DIR ~/LNCMIG-Data/
+sshfs -o uid=$(id -u),gid=$(id -g) -o IdentityFile=/home/LNCMI-G/$USER/.ssh/id_ecdsa $SRVDATA_SERVER:$SRVDATA_DIR ~/LNCMIG-Data/
 ```
+
+> [!NOTE]
+> sshfs is not really stable. It means that it can stop running any time... In that case, you  just need to relaunch the service.
 
 ## `PigBrother`
 
