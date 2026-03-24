@@ -70,6 +70,26 @@ sudo mount -v -t cifs //pigbrother_server_ip/df $pwd/pigbrothercolddata -o user=
 > [!NOTE]
 > Adapt the script with the proper variables
 
+## Hybrid data
+
+Hybrid data (kHz, RMS, Trigger) is recorded by FEPC acquisition systems and stored as binary files
+organised by date under a base directory with the following layout:
+
+```
+<hybrid_datadir>/
+  kHz/
+    FEPC-LNCMI/    or    FEPC-AUX-LNCMI/
+      YYYY-MM-DD/
+        ...
+  rms/
+    ...
+  trigger/
+    ...
+```
+
+Pass `--hybrid_datadir` and `--hybrid_date` to any `plot` subcommand to overlay hybrid data
+alongside pupitre/pigbrother sources.
+
 # Features
 
 -   Extract data from control/monitoring system
@@ -123,6 +143,28 @@ python -m python_magnetrun.examples.get-record srvdata/M8*.txt plot --xfield tim
 python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms ~/M9_2024.05.09---16_34_03.txt \
     plot --vs_time Courants_Alimentations/Courant_GR1 --vs_time IH
 ```
+
+- Plot `pigbrother`, `pupitre` and `hybrid` (kHz) current together for comparison:
+
+```bash
+python -m python_magnetrun.python_magnetrun \
+    ~/M9_Overview_240509-1634.tdms \
+    ~/M9_2024.05.09---16_34_03.txt \
+    --hybrid_datadir /path/to/hybrid \
+    --hybrid_date 2024-05-09 \
+    --fepc_system FEPC-LNCMI \
+    plot \
+    --vs_time Courants_Alimentations/Courant_GR1 \
+    --vs_time IH \
+    --vs_time_hybrid "kHz/FEPC-LNCMI/I_H1"
+```
+
+> [!NOTE]
+> One `--vs_time` argument is required per input file extension type (`.tdms`, `.txt`).
+> Hybrid keys are passed separately via `--vs_time_hybrid` and do not count toward that total.
+> Use `--hybrid_downsample N` to control how many points are rendered from kHz data (default: 50000).
+> Use `--fepc_system FEPC-AUX-LNCMI` for the auxiliary FEPC system.
+> Field name correspondence between sources is defined in `python_magnetrun/field_mappings.py`.
 
 ## Getting data (obsolete)
 
