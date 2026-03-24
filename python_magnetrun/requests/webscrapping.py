@@ -16,8 +16,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 # import jsonpickle
-from . import MRecord
-from . import GObject
+from .MRecord import MRecord
+from .GObject import GObject
 
 from .connect import download
 
@@ -140,7 +140,7 @@ def getMaterial(
                 logger.debug(
                     f"ref: {ref}, type: {type(ref)}, sigma: {sigmas[i]}, elasticlimit: {elasticlimits[i]}"
                 )
-                Mats[ref] = GObject.GObject(
+                Mats[ref] = GObject(
                     str(ref),
                     "",
                     "",
@@ -165,7 +165,7 @@ def getMaterial(
         nuance = html.xpath('//input[@name="NUANCE"]/@value')[-1]
         # print(materialID, nuance)
         if materialID not in Mats:
-            Mats[materialID] = GObject.GObject(
+            Mats[materialID] = GObject(
                 str(materialID),
                 "",
                 "",
@@ -654,7 +654,7 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
             #     logger.debug("%s: no name defined for Magnet" % link)
 
             # else:
-            record = MRecord.MRecord(timestamp, housing, ID, link)
+            record = MRecord(timestamp, housing, ID, link)
             created_at = Sites[ID]["commissioned_at"]
             stopped_at = Sites[ID]["decommissioned_at"]
             if record.timestamp < created_at or record.timestamp > stopped_at:

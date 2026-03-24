@@ -18,8 +18,8 @@ import requests
 import requests.exceptions
 from io import StringIO
 
-from . import HMagnet
-from . import MRecord
+from .HMagnet import HMagnet
+from .MRecord import MRecord
 
 from .connect import createSession
 from .webscrapping import (
@@ -243,6 +243,7 @@ def main():
                         if name not in _counter:
                             _counter[name] = 0
 
+                        # see L680-689
                         site = f"{name}_{_counter[name]}"
 
                         created_at = None
@@ -250,6 +251,7 @@ def main():
                         logger.debug(f"status={status}, date={row[0]}")
                         if status.lower() == "en service":
                             created_at = datetime.datetime.strptime(row[0], tformat)
+                            # rename site with create_at # see L680-689
                             if site in db_Sites:
                                 db_Sites[site]["status"] = status.lower()
                                 db_Sites[site]["commissioned_at"] = stopped_at
@@ -299,6 +301,7 @@ def main():
                     values["magnets"].append(f"{housing}Bitters")
                 else:
                     values["magnets"].append(values["bitter"])
+            # et ici? # see L680-689
             values["name"] = f"{housing}_{name}"
             logger.debug(f"site={item}: {values}")
 
@@ -311,7 +314,7 @@ def main():
         for site, values in db_Sites.items():
             status = values["status"]
             for magnet in values["magnets"]:
-                Magnets[magnet] = HMagnet.HMagnet(magnet, "", status, parts=[])
+                Magnets[magnet] = HMagnet(magnet, "", status, parts=[])
         logger.info("Magnets:")
         for magnet in Magnets:
             logger.debug(f"{magnet}: {Magnets[magnet]}")
@@ -640,7 +643,7 @@ def main():
                 selected["name"].tolist(), selected["timestamp"].tolist()
             ):
                 if housing in link:
-                    record = MRecord.MRecord(timestamp, housing, site, link)
+                    record = MRecord(timestamp, housing, site, link)
                     values["records"].append(record)
 
         for site, values in db_Sites.items():
@@ -709,7 +712,7 @@ def main():
                 site = "unknown"
                 link = orphan
                 timestamp = link.split("/")[-1].replace("%20", "").replace(".txt", "")
-                orecord = MRecord.MRecord(timestamp, housing, site, link)
+                orecord = MRecord(timestamp, housing, site, link)
                 logger.debug(f"{orecord}")
                 data = orecord.getData(s, url_downloads)
                 iodata = StringIO(data)
@@ -893,6 +896,8 @@ def main():
                 _date_str = _dt.strftime("%Y%m%d")
             except (ValueError, TypeError):
                 _date_str = _commissioned_str
+
+            svalues['name'] = f'{housing}_{_date_str}'
             filename = f'{housing}_{_date_str}.json'
             if args.datadir != ".":
                 filename = f"{args.datadir}/{filename}"
