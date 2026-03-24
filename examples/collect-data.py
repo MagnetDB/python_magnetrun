@@ -57,6 +57,18 @@ def parse_args() -> argparse.Namespace:
         "--archive", default=None, metavar="ARCHIVE.tar.gz",
         help="Archive all found files/dirs into a tar.gz file with paths relative to LNCMIG-Data"
     )
+    parser.add_argument(
+        "--data-type",
+        choices=["pupitre", "pigbrother", "hybrid"],
+        default=None,
+        help=(
+            "Select which data source to collect: "
+            "'pigbrother' = pbsurv .tdms files only, "
+            "'pupitre' = srv-data-install .txt files only, "
+            "'hybrid' = CEA data only (M8 only). "
+            "If omitted, all applicable sources are collected."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -239,15 +251,22 @@ def main() -> None:
 
     # ---- collect ----
     results: dict[str, list[Path]] = {}
+    data_type = args.data_type
 
-    results["pbsurv"] = get_pbsurv_files(housing, start, end)
-    results["srv-data-install"] = get_srv_install_files(housing, start, end)
+    if data_type in (None, "pigbrother"):
+        results["pbsurv"] = get_pbsurv_files(housing, start, end)
 
-    if housing == "M8":
+    if data_type in (None, "pupitre"):
+        results["srv-data-install"] = get_srv_install_files(housing, start, end)
+
+    if data_type in (None, "hybrid") and housing == "M8":
         results["CEA/kHz"] = _get_cea_dated_dirs(CEA_DIR / "kHz", start, end)
         results["CEA/rms"] = _get_cea_dated_dirs(CEA_DIR / "rms", start, end)
         results["CEA/vprocess"] = _get_cea_dated_dirs(CEA_DIR / "vprocess", start, end)
         results["CEA/trigger"] = get_cea_trigger_dirs(start, end)
+
+    if data_type == "hybrid" and housing != "M8":
+        print(f"Warning: --data-type=hybrid (CEA data) is only available for M8, not {housing}.", file=sys.stderr)
 
     # ---- report ----
     lines: list[str] = []

@@ -10,14 +10,29 @@ Collects `pbsurv` (TDMS) and `srv-data-install` (pupitre `.txt`) files for a giv
 
 **Usage:**
 ```bash
-# List files for M9 in 2024
+# List all files for M9 in 2024
 python collect-data.py --housing M9 --start 2024-01-01 --end 2024-12-31
+
+# List only pigbrother (pbsurv TDMS) files
+python collect-data.py --housing M9 --start 2024-01-01 --end 2024-12-31 --data-type pigbrother
+
+# List only pupitre (srv-data-install .txt) files
+python collect-data.py --housing M9 --start 2024-01-01 --end 2024-12-31 --data-type pupitre
+
+# List only CEA/hybrid data (M8 only)
+python collect-data.py --housing M8 --start 2024-01-01 --end 2024-12-31 --data-type hybrid
 
 # Save file list to a text file
 python collect-data.py --housing M8 --start 2023-06-01 --end 2023-12-31 --output results.txt
 
 # Copy all found files to a destination directory
 python collect-data.py --housing M10 --start 2024-01-01 --end 2024-12-31 --copy-to /path/to/dest
+
+# Archive found files into a tar.gz (paths relative to LNCMIG-Data)
+python collect-data.py --housing M8 --start 2024-01-01 --end 2024-12-31 --archive M8_2024.tar.gz
+
+# Combine: archive only pigbrother data
+python collect-data.py --housing M9 --start 2024-01-01 --end 2024-12-31 --data-type pigbrother --archive M9_pb_2024.tar.gz
 ```
 
 **Arguments:**
@@ -28,6 +43,8 @@ python collect-data.py --housing M10 --start 2024-01-01 --end 2024-12-31 --copy-
 | `--end` | End date inclusive (YYYY-MM-DD), required |
 | `--output` | Write file list to this path instead of stdout |
 | `--copy-to` | Copy all found files/dirs into this destination directory |
+| `--archive` | Archive all found files/dirs into a `.tar.gz` file; paths inside the archive are relative to `LNCMIG-Data` |
+| `--data-type` | Filter data source: `pigbrother` (pbsurv TDMS only), `pupitre` (srv-data-install `.txt` only), `hybrid` (CEA data only, M8 only); omit to collect all sources |
 
 **Data directories searched** (hardcoded in the script, edit `BASE_DIR` as needed):
 - `LNCMIG-Data/pbsurv/{housing}/` — TDMS files
