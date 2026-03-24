@@ -69,6 +69,20 @@ debian/
 *.tar.gz
 *.zip
 
+# data files (will be mounted as volume)
+*.csv
+*.csv.*
+*.json
+*.json.*
+*.tdms
+*srvdata
+pigbrotherdata
+pigbrothercolddata
+python_magnetrun/data/
+python_magnetrun/txt/
+python_magnetrun/png/
+python_magnetrun/json/
+
 # Notebooks (will be mounted as volume)
 notebooks/
 *.ipynb_checkpoints/

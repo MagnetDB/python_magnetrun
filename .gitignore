@@ -124,7 +124,7 @@ python_magnetrun/txt/
 python_magnetrun/png/
 python_magnetrun/json/
 
-srvdata
+*srvdata
 pigbrotherdata
 *.csv
 *.csv.*
