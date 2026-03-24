@@ -1014,7 +1014,8 @@ def main():
             )
 
         filename = os.path.basename(file)
-        insert = "tututu"
+        insert = args.insert if args.insert else "notdefined"
+        housing = args.housing if args.housing else "notdefined"
         site = "tttt"
         if args.site:
             site = args.site
@@ -1055,6 +1056,7 @@ def main():
             logger.error(f"Traceback:\n{tb_str}")
             continue
 
+        mrun.setHousing(housing)
         inputs[file] = {"data": mrun}
 
         if args.command == "add":
