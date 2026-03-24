@@ -8,6 +8,7 @@ import logging
 from matplotlib.cbook import flatten
 
 from .MagnetRun import MagnetRun
+from .hybrid import HybridRun
 from .processing.smoothers import savgol
 from scipy.signal import find_peaks
 
@@ -836,7 +837,7 @@ def plot_vs_time(input_files, inputs, extensions, args):
 
     items = args.vs_time
     logger.debug(f"items={items}")
-    title = os.path.basename(input_files[0])
+    title = os.path.basename(input_files[0]) if input_files else ""
     if len(input_files) > 1:
         klabels = flatten(items)
         title = f"{'-'.join(klabels)}"
@@ -844,8 +845,10 @@ def plot_vs_time(input_files, inputs, extensions, args):
     legends = []
     t0 = []
     symbol, unit = None, None
+    f_extension = ""
+    file = ""
+    key = ""
     for i, file in enumerate(input_files):
-        # print(f"file={file}")
         f_extension = os.path.splitext(file)[-1]
         plot_args = items[list(extensions.keys()).index(f_extension)]
         logger.debug(
@@ -886,21 +889,63 @@ def plot_vs_time(input_files, inputs, extensions, args):
                 logger.info(f"available keys: {mdata.getKeys()}")
                 continue
 
-    plt.ylabel(f"{symbol} [{unit:~P}]")
+    # -- Hybrid data ----------------------------------------------------------
+    vs_time_hybrid = getattr(args, "vs_time_hybrid", None)
+    if vs_time_hybrid and "hybrid" in inputs:
+        hrun: HybridRun = inputs["hybrid"]["data"]
+        time_offset = (hrun.StartTime - t0[0]).total_seconds() if t0 else 0.0
+        logger.info(f"hybrid time offset: {time_offset} s")
+
+        for key in vs_time_hybrid:
+            try:
+                data, time = hrun.getData(key, downsample=args.hybrid_downsample)
+                data = np.asarray(data, dtype=float)
+                time = np.asarray(time, dtype=float)
+
+                data_max = float(data.max())
+                if args.normalize:
+                    data_min = float(data.min())
+                    data = (data - data_min) / (data_max - data_min)
+
+                my_ax.plot(time + time_offset, data, alpha=0.7, linewidth=0.5)
+                label = f"{args.fepc_system}:{args.hybrid_date}: {key}"
+                legends.append(label)
+
+                if args.normalize:
+                    unit_info = hrun.getMData().getUnitKey(key)
+                    unit_str = f" [{unit_info[1]:~P}]" if len(unit_info) == 2 else ""
+                    legends[-1] += f" max={data_max:.3f}{unit_str}"
+
+                # Use hybrid unit for axis label if not already set by file data
+                if symbol is None:
+                    unit_info = hrun.getMData().getUnitKey(key)
+                    if len(unit_info) == 2:
+                        symbol, unit = unit_info
+
+            except Exception as e:
+                logger.error(f"key: {key} not found in hybrid data: {e}")
+                continue
+    # -------------------------------------------------------------------------
+
+    if symbol is not None and unit is not None:
+        plt.ylabel(f"{symbol} [{unit:~P}]")
     if args.normalize:
         plt.ylabel("normalized")
 
     if len(legends) > 1:
         my_ax.legend(labels=legends)
 
-    (symbol, unit) = mdata.getUnitKey("t")
-    plt.xlabel(f"{symbol} [{unit:~P}]")
+    if t0:
+        (t_symbol, t_unit) = inputs[input_files[0]]["data"].getMData().getUnitKey("t")
+        plt.xlabel(f"{t_symbol} [{t_unit:~P}]")
+    else:
+        plt.xlabel("t [s]")
 
     plt.title(title)
     if not args.save:
         plt.show()
     else:
-        imagefile = f"{file.replace(f_extension,'')}-{key}"
+        imagefile = f"{file.replace(f_extension,'')}-{key}" if file else f"hybrid-{key}"
         logger.info(f"saveto: {imagefile}_vs_time.png")
         plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
     plt.close()
@@ -921,6 +966,8 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
     my_ax = plt.gca()
 
     items = args.key_vs_key
+    file = ""
+    f_extension = ""
     title = os.path.basename(input_files[0])
     if len(input_files) > 1:
         klabels = flatten(items)
@@ -1078,6 +1125,31 @@ def main():
                         logger.debug(f"convert: key={key}")
                         csvfile = file.replace(f_extension, f"-{key}.csv")
                         df.to_csv(csvfile, sep=str("\t"), index=True, header=True)
+
+    # Load hybrid data if requested
+    hybrid_datadir = getattr(args, "hybrid_datadir", None)
+    hybrid_date = getattr(args, "hybrid_date", None)
+    if hybrid_datadir and hybrid_date:
+        try:
+            hrun = HybridRun.fromdir(
+                base_dir=hybrid_datadir,
+                date_str=hybrid_date,
+                fepc_system=args.fepc_system,
+                site=args.site or "",
+            )
+            inputs["hybrid"] = {"data": hrun}
+            logger.info(
+                f"loaded hybrid data: {hybrid_datadir}, date={hybrid_date}, "
+                f"fepc_system={args.fepc_system}"
+            )
+        except Exception as error:
+            tb_str = "".join(traceback.format_exception(*sys.exc_info()))
+            print(
+                f"hybrid data ({hybrid_datadir}, {hybrid_date}): "
+                f"an error occurred at {format_exception_location()}"
+            )
+            logger.error(f"Error: {error}")
+            logger.error(f"Traceback:\n{tb_str}")
 
     # perform operations defined by options
     if args.command == "plot":

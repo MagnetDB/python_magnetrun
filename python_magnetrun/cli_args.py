@@ -52,6 +52,11 @@ def create_common_plot_parser():
         action="append",
     )
     parser.add_argument(
+        "--vs_time_hybrid",
+        help='select hybrid key(s) to plot (ex. "kHz/FEPC-LNCMI/I_H1")',
+        nargs="+",
+    )
+    parser.add_argument(
         "--key_vs_key",
         help='select pair(s) of keys to plot (ex. "Field-Icoil1")',
         nargs="+",
@@ -59,6 +64,41 @@ def create_common_plot_parser():
     )
     parser.add_argument(
         "--normalize", help="normalize data before plot", action="store_true"
+    )
+    return parser
+
+
+def create_hybrid_parser():
+    """Create parser with hybrid data arguments.
+
+    :return: ArgumentParser with hybrid data arguments
+    :rtype: argparse.ArgumentParser
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--hybrid_datadir",
+        help="base directory for hybrid (kHz/rms/trigger) data",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--hybrid_date",
+        help="date for hybrid data in YYYY-MM-DD format",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--fepc_system",
+        help="FEPC system name",
+        type=str,
+        choices=["FEPC-LNCMI", "FEPC-AUX-LNCMI"],
+        default="FEPC-LNCMI",
+    )
+    parser.add_argument(
+        "--hybrid_downsample",
+        help="downsample kHz data to N points for plotting",
+        type=int,
+        default=50000,
     )
     return parser
 
@@ -163,6 +203,7 @@ def create_main_parser():
     """
     base_parser = create_base_parser()
     plot_parser = create_common_plot_parser()
+    hybrid_parser = create_hybrid_parser()
     smoothing_parser = create_common_smoothing_parser()
     managed_plots_parser = create_managed_plots_parser()
 
@@ -179,7 +220,7 @@ def create_main_parser():
 
     # Add subcommand (with plot capabilities)
     parser_add = subparsers.add_parser(
-        "add", help="add help", parents=[plot_parser, managed_plots_parser]
+        "add", help="add help", parents=[plot_parser, hybrid_parser, managed_plots_parser]
     )
     parser_add.add_argument(
         "--formula", help="add new column with associated formula", type=str, default=""
@@ -189,7 +230,7 @@ def create_main_parser():
 
     # Plot subcommand
     parser_plot = subparsers.add_parser(
-        "plot", help="plot help", parents=[plot_parser, managed_plots_parser]
+        "plot", help="plot help", parents=[plot_parser, hybrid_parser, managed_plots_parser]
     )
 
     # Select subcommand
