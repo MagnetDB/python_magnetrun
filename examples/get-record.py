@@ -219,7 +219,7 @@ def main():
     if args.command == "aggregate":
         print(f"aggregate: fields={selected_keys}")
 
-        df_ = []
+        df_: list[pd.DataFrame] = []
 
         for file in files:
             try:

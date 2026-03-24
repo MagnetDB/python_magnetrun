@@ -2,6 +2,216 @@
 
 This directory contains example scripts demonstrating various features of the `python_magnetrun` package.
 
+## Data Collection
+
+### `collect-data.py`
+
+Collects `pbsurv` (TDMS) and `srv-data-install` (pupitre `.txt`) files for a given housing (magnet site) between two dates. For M8, also collects CEA/kHz, CEA/rms, CEA/vprocess and CEA/trigger directories.
+
+**Usage:**
+```bash
+# List files for M9 in 2024
+python collect-data.py --housing M9 --start 2024-01-01 --end 2024-12-31
+
+# Save file list to a text file
+python collect-data.py --housing M8 --start 2023-06-01 --end 2023-12-31 --output results.txt
+
+# Copy all found files to a destination directory
+python collect-data.py --housing M10 --start 2024-01-01 --end 2024-12-31 --copy-to /path/to/dest
+```
+
+**Arguments:**
+| Argument | Description |
+|---|---|
+| `--housing` | Housing name (M1–M10), required |
+| `--start` | Start date inclusive (YYYY-MM-DD), required |
+| `--end` | End date inclusive (YYYY-MM-DD), required |
+| `--output` | Write file list to this path instead of stdout |
+| `--copy-to` | Copy all found files/dirs into this destination directory |
+
+**Data directories searched** (hardcoded in the script, edit `BASE_DIR` as needed):
+- `LNCMIG-Data/pbsurv/{housing}/` — TDMS files
+- `LNCMIG-Data/srv-data-install/{housing}/` — pupitre `.txt` files
+- `LNCMIG-Data/CEA/` — kHz, rms, vprocess, trigger (M8 only)
+
+---
+
+## Record Selection, Plotting and Statistics
+
+### `get-record.py`
+
+Multi-purpose script to select, plot, and compute statistics over a set of pupitre `.txt` records. Records are sorted by timestamp before processing.
+
+**Subcommands:**
+
+#### `select` — Filter records by duration and field threshold
+
+```bash
+python -m python_magnetrun.examples.get-record srvdata/M8*.txt select --duration 60 --field 18.
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--duration` | 60 s | Minimum record duration |
+| `--field` | 18 T | Minimum magnetic field threshold |
+
+#### `plot` — Plot field(s) vs time (or another x-axis) over multiple records
+
+```bash
+# Plot teb vs timestamp for all M8 records
+python -m python_magnetrun.examples.get-record srvdata/M8*.txt plot --xfield timestamp --fields teb --show
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--xfield` | `timestamp` | X-axis field |
+| `--fields` | — | Y-axis field(s) to plot |
+| `--show` | — | Display plot interactively |
+| `--save` | — | Save plot as PNG |
+
+#### `aggregate` — Concatenate a field across records and plot monthly trends
+
+```bash
+python -m python_magnetrun.examples.get-record srvdata/M*---*.txt aggregate --fields teb --show
+```
+
+Saves a CSV named `aggregate-<fields>.csv` and a seaborn per-month/per-year line plot.
+
+| Option | Description |
+|---|---|
+| `--fields` | Fields to aggregate |
+| `--name` | Base name for output files |
+| `--show` / `--save` | Display / save plots |
+
+#### `stats` — Compute statistics and correlations
+
+```bash
+python -m python_magnetrun.examples.get-record srvdata/M8*.txt stats --fields teb --pearson --show
+```
+
+| Option | Description |
+|---|---|
+| `--fields` | Fields to analyse |
+| `--pearson` | Compute Pearson correlation matrix |
+| `--pairplot` | Generate seaborn pair-plot |
+| `--tlcc` | Time-lagged cross-correlation |
+| `--dtw` | Dynamic time-warping correlation |
+| `--show` / `--save` | Display / save plots |
+
+---
+
+## User Database Integration
+
+### `userdb.py`
+
+Queries the `proposals-for-ct` REST API of the MagnetDB user database to retrieve and export experimental proposals.
+
+**Environment variables:**
+| Variable | Description |
+|---|---|
+| `USERDB_SERVER` | API server hostname/IP (default: `147.173.81.141`) |
+| `USERDB_API_KEY` | Bearer token for authentication |
+
+**Usage:**
+```bash
+# Fetch the first 20 proposals (JSON output)
+python userdb.py --limit 20
+
+# Export all proposals to CSV
+python userdb.py --command export --output proposals.csv
+
+# Use a specific server and token
+python userdb.py --server my.server.example --token <token> --limit 5
+```
+
+**Arguments:**
+| Argument | Default | Description |
+|---|---|---|
+| `--server` | `$USERDB_SERVER` | API server address |
+| `--token` | `$USERDB_API_KEY` | Bearer token |
+| `--command` | `get-proposals` | `get-proposals` or `export` |
+| `--output` | `proposals.csv` | Output file for export |
+| `--limit` | 10 | Number of proposals to fetch |
+
+---
+
+### `proposal.py`
+
+Demonstrator that links experimental proposals from the user database to local pupitre records, then performs per-project statistics and plateau detection.
+
+**Usage:**
+```bash
+python proposal.py proposals.csv --mdatadir srvdata --show
+```
+
+**Arguments:**
+| Argument | Default | Description |
+|---|---|---|
+| `csvfile` | — | Path to proposals CSV file (e.g. exported by `userdb.py`) |
+| `--mdatadir` | `srvdata` | Directory containing pupitre `.txt` record files |
+| `--show` | — | Display plots (requires X11) |
+| `--save` | — | Save plots as PNG |
+| `--thresold` | `1e-3` | Field threshold for plateau detection |
+| `--bthresold` | `1e-3` | Secondary threshold for plateau detection |
+| `--dthresold` | `10` | Minimum plateau duration |
+| `--window` | `10` | Window size for plateau detection |
+
+**What it does:**
+1. Reads and anonymises the proposals CSV (removes user/affiliation columns).
+2. Selects experiments done in Grenoble with status `Done` or `InProgress`.
+3. Matches each proposal's time window to pupitre record files.
+4. Computes per-record statistics and detects current plateaux.
+5. Exports `anonymized_proposals.csv` and `project_records.csv`.
+
+---
+
+## Cooling / Hydraulic Examples
+
+### `flow_params_pipeline.py`
+
+Standalone demonstration of the complete flow parameter extraction pipeline using synthetic data:
+
+1. Generates synthetic pump speed, flow rate, and pressure curves.
+2. Fits the curves with polynomial regression.
+3. Builds a `flow_params` dictionary.
+4. Creates a `WaterFlow` object via `waterflow_factory`.
+5. Performs hydraulic calculations.
+
+**Usage:**
+```bash
+python flow_params_pipeline.py
+```
+
+Requires `python_magnetcooling` to be installed or on `PYTHONPATH`.
+
+---
+
+### `flow_params_magnetrun_pipeline.py`
+
+Same pipeline as above but uses `python_magnetrun` fitting utilities and piecewise-linear fitting (`pwlf`) for the pump speed curve with automatic `Imax` detection.
+
+**Usage:**
+```bash
+python flow_params_magnetrun_pipeline.py
+```
+
+**Additional dependencies:** `pwlf`, `sympy`, `tabulate`.
+
+---
+
+### `waterflow_debitbrut_example.py`
+
+Demonstrates the `debitbrut()` method of `WaterFlow` for computing secondary cooling loop flow rates from power, including hysteresis modelling.
+
+**Usage:**
+```bash
+python waterflow_debitbrut_example.py
+```
+
+Requires `python_magnetcooling` to be installed or on `PYTHONPATH`.
+
+---
+
 ## Hybrid Data Plotting Examples
 
 ### 1. Minimal Example: `plot_hybrid_minimal.py`
