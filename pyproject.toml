@@ -71,9 +71,6 @@ doc = [
     "myst_parser>=0.15.0",
 ]
 
-[tool.setuptools.packages.find]
-include = ["python_magnetrun*"]
-
 [project.urls]
 Homepage = "https://github.com/MagnetDB/python_magnetrun"
 
