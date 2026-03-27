@@ -9,30 +9,23 @@ import logging
 import os
 import sys
 
-logger = logging.getLogger(__name__)
-
-from math import ceil
-import numpy as np
-
 import matplotlib.pyplot as plt
 import pandas as pd
+
+from ..magnetdata import MagnetData
+from ..MagnetRun import MagnetRun
 
 ##from IPython.display import Image
 ##from IPython.display import display
 # plt.style.use('seaborn-white')
 ## if jupyter: %matplotlib inline
-
-import statsmodels.api as sm
 from .filters import filterpikes
-from .correlations import lag_correlation
-from .smoothers import lowess_ag, lowess_sm, lowess_bell_shape_kern, kernel_function
-from ..MagnetRun import MagnetRun
-from ..magnetdata import MagnetData
+from .smoothers import kernel_function, lowess_ag, lowess_bell_shape_kern, lowess_sm
+
+logger = logging.getLogger(__name__)
 
 
 def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:
-    import datetime
-
     print("addtime")
 
     df = pd.DataFrame(mdata.Data[group][channel])
@@ -47,7 +40,6 @@ def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:
 
 def main():
     import argparse
-    from .. import python_magnetrun
 
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file")
@@ -59,9 +51,7 @@ def main():
     parser.add_argument("--debug", help="activate debug mode", action="store_true")
 
     # define subparser: filter, smooth, lag_correlation
-    subparsers = parser.add_subparsers(
-        title="commands", dest="command", help="sub-command help"
-    )
+    subparsers = parser.add_subparsers(title="commands", dest="command", help="sub-command help")
 
     # parser_plot = subparsers.add_parser('plot', help='plot help')
     parser_filter = subparsers.add_parser("filter", help="filter help")
@@ -69,9 +59,7 @@ def main():
     parser_filter.add_argument(
         "--threshold", help="specify a threshold for filter", type=float, default=0.5
     )
-    parser_filter.add_argument(
-        "--twindows", help="specify a window length", type=int, default=10
-    )
+    parser_filter.add_argument("--twindows", help="specify a window length", type=int, default=10)
     parser_filter.add_argument(
         "--keys",
         nargs="+",
@@ -111,12 +99,8 @@ def main():
         help="specify keys to select (eg: Tin1;Tin2)",
         default="Tin1",
     )
-    parser_lag.add_argument(
-        "--target", help="specify a target field", type=str, default="tsb"
-    )
-    parser_lag.add_argument(
-        "--trange", help="specify a range for t", type=int, default=100
-    )
+    parser_lag.add_argument("--target", help="specify a target field", type=str, default="tsb")
+    parser_lag.add_argument("--trange", help="specify a range for t", type=int, default=100)
 
     args = parser.parse_args()
     print(f"args: {args}")
@@ -135,9 +119,7 @@ def main():
         if args.method == "ag":
             smoothing_f = float(params[0])
             smoothing_iter = int(params[1])
-        elif args.method == "bell_kernel":
-            smoothing_tau = float(params[0])
-        elif args.method == "statsmodel_sm":
+        elif args.method == "bell_kernel" or args.method == "statsmodel_sm":
             smoothing_tau = float(params[0])
         else:
             smoothing_tau = float(params[0])
@@ -168,9 +150,7 @@ def main():
         case ".tdms":
             mrun = MagnetRun.fromtdms(housing, insert, args.input_file)
         case _:
-            raise RuntimeError(
-                f"so far file with extension in {supported_formats} are implemented"
-            )
+            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
 
     mdata = mrun.getMData()
     start_timestamp = mdata.getStartDate()
@@ -220,7 +200,7 @@ def main():
                     print(f"f={smoothing_f}, iter={smoothing_iter}")
                     yest = lowess_ag(x, y, f=smoothing_f, iter=smoothing_iter)
                     plt.plot(x, yest, color="orange", label="Loess: A. Gramfort")
-                except Exception as e:
+                except (ValueError, RuntimeError) as e:
                     print(f"Failed to build lowess_ag: {e}")
 
             if args.method == "bell_kernel":
@@ -236,20 +216,16 @@ def main():
                             alpha=0.5,
                             label="Bell shape kernel",
                         )
-                    plt.plot(
-                        x, yest_bell, color="red", label="Loess: bell shape kernel"
-                    )
-                except Exception as e:
+                    plt.plot(x, yest_bell, color="red", label="Loess: bell shape kernel")
+                except (ValueError, RuntimeError) as e:
                     print(f"Failed to build bell: {e}")
 
             if args.method == "statsmodel_sm":
                 try:
                     print(f"f={smoothing_f}, iter={smoothing_iter}")
                     yest_sm = lowess_sm(x, y, f=smoothing_f, iter=smoothing_iter)
-                    plt.plot(
-                        x, yest_sm, color="magenta", label="Loess: statsmodel"
-                    )  # marker="o",
-                except Exception as e:
+                    plt.plot(x, yest_sm, color="magenta", label="Loess: statsmodel")  # marker="o",
+                except (ValueError, RuntimeError) as e:
                     print(f"Failed to build sm: {e}")
 
             plt.grid()
@@ -267,8 +243,7 @@ def main():
                     start_time = mrun.getMData().getData("Time").iloc[0]
 
                 plt.savefig(
-                    "%s_%s---%s-smoothed-%s.png"
-                    % (imagefile, str(start_date), str(start_time), key),
+                    f"{imagefile}_{start_date}---{start_time}-smoothed-{key}.png",
                     dpi=300,
                 )
             plt.close()

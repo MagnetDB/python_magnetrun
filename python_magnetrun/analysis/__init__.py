@@ -38,138 +38,133 @@ Submodules
 """
 
 from .config import (
-    # Constants
-    SAMPLING_RATE_OVERVIEW,
-    SAMPLING_RATE_ARCHIVE,
-    SAMPLING_RATE_INCIDENTS,
-    LAG_THRESHOLD_RATIO,
-    DEFAULT_WINDOW_SIZE,
     DEFAULT_BINS,
-    DEFAULT_LEVELS,
     DEFAULT_DATA_DIR,
     DEFAULT_GROUP,
-    # Dataclasses
-    ChannelMapping,
-    VoltageChannelMapping,
-    SiteConfig,
-    ThresholdConfig,
-    AnalysisConfig,
+    DEFAULT_LEVELS,
+    DEFAULT_WINDOW_SIZE,
+    LAG_THRESHOLD_RATIO,
+    SAMPLING_RATE_ARCHIVE,
+    SAMPLING_RATE_INCIDENTS,
+    # Constants
+    SAMPLING_RATE_OVERVIEW,
     # Pre-defined configurations
     SITE_CONFIGS,
+    AnalysisConfig,
+    # Dataclasses
+    ChannelMapping,
+    SiteConfig,
+    ThresholdConfig,
+    VoltageChannelMapping,
     # Functions
     get_site_config,
 )
-
 from .loaders import (
     # Constants
     TIMESTAMP_FORMAT,
-    # Functions
-    convert_to_timestamp,
-    extract_data,
-    find_files,
-    select_files,
-    load_df,
-    load_data,
-    merge_data,
-    discover_files,
+    # Classes
+    FileDiscovery,
     # Dataclasses
     FileMetadata,
     FileSet,
-    # Classes
-    FileDiscovery,
-)
-
-from .synchronization import (
-    # Dataclasses
-    SyncResult,
-    LagResult,
-    RegimeMatch,
     # Functions
-    synchronize_data,
-    apply_lag_correction,
-    compute_lag,
-    lag_correlation,
-    compute_regime_score,
-    find_best_matching_regime,
-    check_lag_reliability,
-    compute_simple_timeshift,
-    add_time_column,
-    get_timestamp_info,
+    convert_to_timestamp,
+    discover_files,
+    extract_data,
+    find_files,
+    load_data,
+    load_df,
+    merge_data,
+    select_files,
 )
-
 from .metrics import (
+    CorrelationResult,
     # Dataclasses
     DistanceResult,
     DTWResult,
-    CorrelationResult,
     TLCCResult,
+    calc_correlation,
     # Distance functions
     calc_euclidean,
     calc_mae,
     calc_mape,
-    calc_correlation,
+    # Convenience
+    compare_series,
     compute_all_distances,
-    # Cross-correlation functions
-    crosscorr,
-    compute_tlcc,
-    compute_windowed_tlcc,
-    compute_rolling_tlcc,
-    compute_pearson_correlation,
     # DTW functions
     compute_dtw_distance,
     compute_dtw_distance_fast,
+    compute_pearson_correlation,
+    compute_rolling_tlcc,
+    compute_tlcc,
+    compute_windowed_tlcc,
+    # Cross-correlation functions
+    crosscorr,
     dtw_with_paa,
+    plot_dtw_alignment,
     # Plotting
     plot_tlcc,
-    plot_dtw_alignment,
-    # Convenience
-    compare_series,
 )
-
 from .plotting import (
-    # Dataclasses
-    PlotStyle,
-    PlotColors,
+    DEFAULT_COLORS,
     # Constants
     DEFAULT_STYLE,
-    DEFAULT_COLORS,
+    PlotColors,
+    # Dataclasses
+    PlotStyle,
+    create_figure_grid,
+    downsample_dataframe,
     # Downsampling functions
     downsample_for_plot,
-    downsample_dataframe,
     downsample_minmax,
     estimate_downsample_percent,
+    plot_comparison,
     # Main plotting functions
     plot_data,
-    plot_comparison,
-    plot_regimes,
     plot_incidents_markers,
+    plot_regimes,
     plot_time_series,
+    save_figure,
     # Utilities
     setup_matplotlib_defaults,
-    create_figure_grid,
-    save_figure,
 )
-
 from .processing import (
-    # Configuration
-    ProcessingConfig,
     # Main dataclasses
     OverviewRecord,
+    # Configuration
+    ProcessingConfig,
     ProcessingResult,
-    # Main functions
-    process_overview_file,
-    process_experiment,
+    add_time_column_with_offset,
     # Utilities
     compute_time_offset,
-    add_time_column_with_offset,
     create_overview_dict,
-    summarize_record,
-    print_record_summary,
+    load_archive_data,
+    load_incidents_data,
     # Data loading
     load_overview_data,
-    load_archive_data,
     load_pupitre_data,
-    load_incidents_data,
+    print_record_summary,
+    process_experiment,
+    # Main functions
+    process_overview_file,
+    summarize_record,
+)
+from .synchronization import (
+    LagResult,
+    RegimeMatch,
+    # Dataclasses
+    SyncResult,
+    add_time_column,
+    apply_lag_correction,
+    check_lag_reliability,
+    compute_lag,
+    compute_regime_score,
+    compute_simple_timeshift,
+    find_best_matching_regime,
+    get_timestamp_info,
+    lag_correlation,
+    # Functions
+    synchronize_data,
 )
 
 # The `cli` submodule is imported lazily below to avoid executing
@@ -203,7 +198,7 @@ def __getattr__(name: str):
         _cli = import_module(".cli", __name__)
         # map requested name to actual attribute in cli
         if name == "cli_main":
-            return getattr(_cli, "main")
+            return _cli.main
         return getattr(_cli, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

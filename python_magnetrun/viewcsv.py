@@ -1,15 +1,13 @@
+import argparse
 import logging
 import os
-import pandas as np
-
-logger = logging.getLogger(__name__)
-
-from .magnetdata import MagnetData as mdata
 
 # import matplotlib
 import matplotlib.pyplot as plt
 
-import argparse
+from .magnetdata import MagnetData as mdata
+
+logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("input_file", nargs="+", help="enter input file")

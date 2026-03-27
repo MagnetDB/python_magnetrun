@@ -1,12 +1,12 @@
 import logging
+
 import numpy as np
 import pandas as pd
-
-logger = logging.getLogger(__name__)
-
 from scipy import optimize
 
 from ..utils.plots import plot_df
+
+logger = logging.getLogger(__name__)
 
 
 def fit(
@@ -75,9 +75,7 @@ def find_eqn(my_pwlf_2):
             for k in range(2, pwlf_.degree + 1):
                 for line in range(segment_number):
                     beta_index = pwlf_.n_segments * (k - 1) + line + 1
-                    my_eqn += (pwlf_.beta[beta_index]) * (
-                        x - pwlf_.fit_breaks[line]
-                    ) ** k
+                    my_eqn += (pwlf_.beta[beta_index]) * (x - pwlf_.fit_breaks[line]) ** k
 
         return my_eqn.simplify()
 

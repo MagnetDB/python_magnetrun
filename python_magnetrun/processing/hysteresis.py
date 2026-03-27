@@ -1,14 +1,21 @@
 import logging
-import numpy as np
+from typing import Any
+
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 
 def remove_outliers(
-    df, x_col="x", y_col="y", method="iqr", threshold=1.5, verbose=False
-):
+    df: pd.DataFrame,
+    x_col: str = "x",
+    y_col: str = "y",
+    method: str = "iqr",
+    threshold: float = 1.5,
+    verbose: bool = False,
+) -> pd.DataFrame:
     """
     Remove outliers from x,y data using various methods.
 
@@ -75,9 +82,7 @@ def remove_outliers(
 
         if verbose:
             n_removed = len(df_clean) - np.sum(mask)
-            print(
-                f"Z-score method (threshold={threshold}): Removed {n_removed} outliers"
-            )
+            print(f"Z-score method (threshold={threshold}): Removed {n_removed} outliers")
 
     elif method == "mad":
         # Median Absolute Deviation (robust to extreme outliers)
@@ -119,14 +124,10 @@ def remove_outliers(
 
             if verbose:
                 n_removed = len(df_clean) - np.sum(mask)
-                print(
-                    f"Isolation Forest (contamination={threshold}): Removed {n_removed} outliers"
-                )
+                print(f"Isolation Forest (contamination={threshold}): Removed {n_removed} outliers")
         except ImportError:
             print("Warning: sklearn not available. Falling back to IQR method.")
-            return remove_outliers(
-                df, x_col, y_col, method="iqr", threshold=1.5, verbose=verbose
-            )
+            return remove_outliers(df, x_col, y_col, method="iqr", threshold=1.5, verbose=verbose)
 
     else:
         raise ValueError(f"Unknown method: {method}")
@@ -134,7 +135,13 @@ def remove_outliers(
     return df_clean[mask].reset_index(drop=True)
 
 
-def remove_outliers_by_x_range(df, x_col="x", x_min=None, x_max=None, verbose=False):
+def remove_outliers_by_x_range(
+    df: pd.DataFrame,
+    x_col: str = "x",
+    x_min: float | None = None,
+    x_max: float | None = None,
+    verbose: bool = False,
+) -> pd.DataFrame:
     """
     Remove outliers by specifying acceptable x range (simple domain knowledge approach).
 
@@ -172,14 +179,14 @@ def remove_outliers_by_x_range(df, x_col="x", x_min=None, x_max=None, verbose=Fa
 
 
 def remove_low_x_outliers(
-    df,
-    x_col="x",
-    y_col="y",
-    x_percentile=25,
-    method="iqr",
-    threshold=1.5,
-    verbose=False,
-):
+    df: pd.DataFrame,
+    x_col: str = "x",
+    y_col: str = "y",
+    x_percentile: float = 25,
+    method: str = "iqr",
+    threshold: float = 1.5,
+    verbose: bool = False,
+) -> pd.DataFrame:
     """
     Detect and remove outliers specifically in the LOW x region.
 
@@ -219,7 +226,7 @@ def remove_low_x_outliers(
 
     if verbose:
         print(
-            f"Low-x region: x <= {x_cutoff:.4f} ({n_low_x} points, {100*n_low_x/len(df):.1f}%)"
+            f"Low-x region: x <= {x_cutoff:.4f} ({n_low_x} points, {100 * n_low_x / len(df):.1f}%)"
         )
 
     # Start with all points as inliers
@@ -241,9 +248,7 @@ def remove_low_x_outliers(
 
             if verbose:
                 n_removed = np.sum(low_x_outliers)
-                print(
-                    f"  IQR on low-x y values: y in [{lower_bound:.4f}, {upper_bound:.4f}]"
-                )
+                print(f"  IQR on low-x y values: y in [{lower_bound:.4f}, {upper_bound:.4f}]")
                 print(f"  Removed {n_removed} outliers from low-x region")
 
     elif method == "zscore":
@@ -308,14 +313,14 @@ def remove_low_x_outliers(
 
 
 def remove_x_region_outliers(
-    df,
-    x_col="x",
-    y_col="y",
-    x_threshold=None,
-    method="iqr",
-    threshold=1.5,
-    verbose=False,
-):
+    df: pd.DataFrame,
+    x_col: str = "x",
+    y_col: str = "y",
+    x_threshold: float | None = None,
+    method: str = "iqr",
+    threshold: float = 1.5,
+    verbose: bool = False,
+) -> pd.DataFrame:
     """
     Remove outliers in a specific x region (e.g., x < -0.8).
 
@@ -370,9 +375,7 @@ def remove_x_region_outliers(
 
             if verbose:
                 n_removed = np.sum(region_outliers)
-                print(
-                    f"  IQR on y in region: y in [{lower_bound:.4f}, {upper_bound:.4f}]"
-                )
+                print(f"  IQR on y in region: y in [{lower_bound:.4f}, {upper_bound:.4f}]")
                 print(f"  Removed {n_removed} outliers")
 
     elif method == "zscore":
@@ -402,8 +405,12 @@ def remove_x_region_outliers(
 
 
 def estimate_hysteresis_parameters(
-    df, x_col="x", y_col="y", n_levels=None, verbose=False
-):
+    df: pd.DataFrame,
+    x_col: str = "x",
+    y_col: str = "y",
+    n_levels: int | None = None,
+    verbose: bool = False,
+) -> dict[str, Any]:
     """
     Estimate multi-level hysteresis parameters from empirical x,y data.
 
@@ -448,9 +455,7 @@ def estimate_hysteresis_parameters(
             if verbose:
                 print(f"Clustered y into {n_levels} levels")
         except ImportError:
-            print(
-                "Warning: sklearn not available. Using data-driven level detection instead."
-            )
+            print("Warning: sklearn not available. Using data-driven level detection instead.")
 
     # Compute derivatives to identify direction of x change
     dx = np.diff(x, prepend=np.nan)
@@ -464,9 +469,7 @@ def estimate_hysteresis_parameters(
     transitions = np.where(np.abs(dy[1:]) > 1e-10)[0] + 1
 
     # Auto-detect distinct output levels
-    unique_y = sorted(
-        set(np.round(y, decimals=8))
-    )  # Round to handle floating point errors
+    unique_y = sorted(set(np.round(y, decimals=8)))  # Round to handle floating point errors
     n_levels_found = len(unique_y)
 
     if verbose:
@@ -532,7 +535,7 @@ def estimate_hysteresis_parameters(
     # Filter out levels with missing thresholds
     thresholds = []
     valid_indices = []
-    for i, (asc, desc) in enumerate(zip(ascending_thresholds, descending_thresholds)):
+    for i, (asc, desc) in enumerate(zip(ascending_thresholds, descending_thresholds, strict=False)):
         if asc is not None and desc is not None:
             thresholds.append((asc, desc))
             valid_indices.append(i)
@@ -542,7 +545,7 @@ def estimate_hysteresis_parameters(
     low_values = [float(unique_y[max(0, i - 1)]) for i in valid_indices]
 
     # Sort all lists together by low_values to ensure ascending order
-    sorted_items = sorted(zip(low_values, high_values, thresholds))
+    sorted_items = sorted(zip(low_values, high_values, thresholds, strict=False))
     low_values = [item[0] for item in sorted_items]
     high_values = [item[1] for item in sorted_items]
     thresholds = [item[2] for item in sorted_items]
@@ -587,17 +590,15 @@ if __name__ == "__main__":
     y_levels = [0.0, 1.0, 2.0]
 
     for i in range(len(x_base)):
-        if state == 0:
-            if x_base[i] > asc_threshold_1:
-                state = 1
+        if state == 0 and x_base[i] > asc_threshold_1:
+            state = 1
         elif state == 1:
             if x_base[i] < desc_threshold_1:
                 state = 0
             elif x_base[i] > asc_threshold_2:
                 state = 2
-        elif state == 2:
-            if x_base[i] < desc_threshold_2:
-                state = 1
+        elif state == 2 and x_base[i] < desc_threshold_2:
+            state = 1
 
         y[i] = y_levels[state]
 
@@ -648,7 +649,9 @@ if __name__ == "__main__":
     print(f"\nDiagnostics: {result['diagnostics']}")
 
 
-def refine_thresholds_with_hysteresis_loop(df, x_col="x", y_col="y"):
+def refine_thresholds_with_hysteresis_loop(
+    df: pd.DataFrame, x_col: str = "x", y_col: str = "y"
+) -> dict[Any, dict[str, Any]]:
     """
     Alternative method: Analyze the hysteresis loop directly.
 
@@ -675,9 +678,7 @@ def refine_thresholds_with_hysteresis_loop(df, x_col="x", y_col="y"):
     if len(turning_points) > 0:
         for i in range(len(turning_points) - 1):
             t1, t2 = turning_points[i], turning_points[i + 1]
-            if np.sum(np.diff(x[t1 : t2 + 1]) > 0) > np.sum(
-                np.diff(x[t1 : t2 + 1]) < 0
-            ):
+            if np.sum(np.diff(x[t1 : t2 + 1]) > 0) > np.sum(np.diff(x[t1 : t2 + 1]) < 0):
                 ascending_mask[t1 : t2 + 1] = True
             else:
                 descending_mask[t1 : t2 + 1] = True
@@ -706,8 +707,12 @@ def refine_thresholds_with_hysteresis_loop(df, x_col="x", y_col="y"):
 
 
 def hysteresis_model(
-    x, ascending_threshold, descending_threshold, low_value=0, high_value=1
-):
+    x: np.ndarray,
+    ascending_threshold: float,
+    descending_threshold: float,
+    low_value: float = 0,
+    high_value: float = 1,
+) -> np.ndarray:
     """
     A simple hysteresis function model.
 
@@ -730,9 +735,7 @@ def hysteresis_model(
         Output signal with hysteresis effect
     """
     if ascending_threshold <= descending_threshold:
-        raise ValueError(
-            "ascending_threshold must be greater than descending_threshold"
-        )
+        raise ValueError("ascending_threshold must be greater than descending_threshold")
 
     output = np.zeros_like(x)
     state = False  # Initial state (False = low, True = high)
@@ -748,7 +751,12 @@ def hysteresis_model(
     return output
 
 
-def multi_level_hysteresis(x, thresholds, low_values, high_values):
+def multi_level_hysteresis(
+    x: np.ndarray,
+    thresholds: list[tuple[float, float]],
+    low_values: list[float],
+    high_values: list[float],
+) -> np.ndarray:
     """
     A hysteresis function model with multiple threshold levels, each with its own low and high output values.
 
@@ -770,9 +778,7 @@ def multi_level_hysteresis(x, thresholds, low_values, high_values):
         Output signal with multi-level hysteresis effect
     """
     if len(thresholds) != len(low_values) or len(thresholds) != len(high_values):
-        raise ValueError(
-            "thresholds, low_values, and high_values must have the same length"
-        )
+        raise ValueError("thresholds, low_values, and high_values must have the same length")
 
     # Extract ascending and descending thresholds
     ascending_thresholds = [t[0] for t in thresholds]
@@ -780,18 +786,18 @@ def multi_level_hysteresis(x, thresholds, low_values, high_values):
 
     # Check that ascending thresholds are in ascending order
     if not all(
-        a < b for a, b in zip(ascending_thresholds[:-1], ascending_thresholds[1:])
+        a < b for a, b in zip(ascending_thresholds[:-1], ascending_thresholds[1:], strict=False)
     ):
         raise ValueError("ascending thresholds must be in ascending order")
 
     # Check that descending thresholds are in ascending order
     if not all(
-        a < b for a, b in zip(descending_thresholds[:-1], descending_thresholds[1:])
+        a < b for a, b in zip(descending_thresholds[:-1], descending_thresholds[1:], strict=False)
     ):
         raise ValueError("descending thresholds must be in ascending order")
 
     # Check that each descending threshold is less than its corresponding ascending threshold
-    if not all(d < a for d, a in zip(descending_thresholds, ascending_thresholds)):
+    if not all(d < a for d, a in zip(descending_thresholds, ascending_thresholds, strict=False)):
         raise ValueError(
             "Each descending threshold must be less than its corresponding ascending threshold"
         )
@@ -853,7 +859,12 @@ def multi_level_hysteresis(x, thresholds, low_values, high_values):
     return output
 
 
-def old_multi_level_hysteresis(x, thresholds, low_values, high_values):
+def old_multi_level_hysteresis(
+    x: np.ndarray,
+    thresholds: list[tuple[float, float]],
+    low_values: list[float],
+    high_values: list[float],
+) -> np.ndarray:
     """
     A hysteresis function model with multiple threshold levels, each with its own low and high output values.
 
@@ -875,9 +886,7 @@ def old_multi_level_hysteresis(x, thresholds, low_values, high_values):
         Output signal with multi-level hysteresis effect
     """
     if len(thresholds) != len(low_values) or len(thresholds) != len(high_values):
-        raise ValueError(
-            "thresholds, low_values, and high_values must have the same length"
-        )
+        raise ValueError("thresholds, low_values, and high_values must have the same length")
 
     # Extract ascending and descending thresholds
     ascending_thresholds = [t[0] for t in thresholds]
@@ -885,26 +894,24 @@ def old_multi_level_hysteresis(x, thresholds, low_values, high_values):
 
     # Check that ascending thresholds are in ascending order
     if not all(
-        a < b for a, b in zip(ascending_thresholds[:-1], ascending_thresholds[1:])
+        a < b for a, b in zip(ascending_thresholds[:-1], ascending_thresholds[1:], strict=False)
     ):
         raise ValueError("ascending thresholds must be in ascending order")
 
     # Check that descending thresholds are in ascending order
     if not all(
-        a < b for a, b in zip(descending_thresholds[:-1], descending_thresholds[1:])
+        a < b for a, b in zip(descending_thresholds[:-1], descending_thresholds[1:], strict=False)
     ):
         raise ValueError("descending thresholds must be in ascending order")
 
     # Check that each descending threshold is less than its corresponding ascending threshold
-    if not all(d < a for d, a in zip(descending_thresholds, ascending_thresholds)):
+    if not all(d < a for d, a in zip(descending_thresholds, ascending_thresholds, strict=False)):
         raise ValueError(
             "Each descending threshold must be less than its corresponding ascending threshold"
         )
 
     output = np.zeros_like(x)
-    state = np.zeros(
-        len(x), dtype=bool
-    )  # Track state for each point (False = low, True = high)
+    state = np.zeros(len(x), dtype=bool)  # Track state for each point (False = low, True = high)
 
     # For the first point, determine initial state based on value
     # If starting value is already above any ascending threshold, set initial state accordingly
@@ -962,7 +969,13 @@ def old_multi_level_hysteresis(x, thresholds, low_values, high_values):
     return output
 
 
-def relay_hysteresis(x, center, width, low_value=0, high_value=1):
+def relay_hysteresis(
+    x: np.ndarray,
+    center: float,
+    width: float,
+    low_value: float = 0,
+    high_value: float = 1,
+) -> np.ndarray:
     """
     A relay-type hysteresis function centered around a specific value.
 
@@ -987,12 +1000,17 @@ def relay_hysteresis(x, center, width, low_value=0, high_value=1):
     ascending_threshold = center + width / 2
     descending_threshold = center - width / 2
 
-    return hysteresis_model(
-        x, ascending_threshold, descending_threshold, low_value, high_value
-    )
+    return hysteresis_model(x, ascending_threshold, descending_threshold, low_value, high_value)
 
 
-def continuous_hysteresis(x, center, width, slope=10, low_value=0, high_value=1):
+def continuous_hysteresis(
+    x: np.ndarray,
+    center: float,
+    width: float,
+    slope: float = 10,
+    low_value: float = 0,
+    high_value: float = 1,
+) -> np.ndarray:
     """
     A continuous hysteresis function with smooth transitions.
 

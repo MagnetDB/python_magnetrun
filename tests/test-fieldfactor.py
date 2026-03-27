@@ -2,24 +2,28 @@
 idea from chatgpt
 """
 
+import argparse
 import os
+
 import pandas as pd
 import statsmodels.api as sm
 
-from python_magnetrun.MagnetRun import MagnetRun
+from python_magnetrun.MagnetRun import MagnetRun, prepareData_legacy
 from python_magnetrun.processing.smoothers import savgol
 
-import argparse
+_default_input = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "data", "M9_2019.02.14-23_00_38.txt"
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "input_file",
+    nargs="?",
+    default=_default_input,
     help="enter input file (ex: ~/M9_2024.05.13---16_30_51.txt)",
 )
-parser.add_argument(
-    "--window", help="stopping criteria for nlopt", type=int, default=10
-)
-args = parser.parse_args()
+parser.add_argument("--window", help="stopping criteria for nlopt", type=int, default=10)
+args, _unknown = parser.parse_known_args()
 print(f"args: {args}", flush=True)
 
 file = args.input_file
@@ -30,6 +34,7 @@ site = filename.split("_")[0]
 insert = "tutu"
 mrun = MagnetRun.fromtxt(site, insert, file)
 mdata = mrun.getMData()
+prepareData_legacy(mdata, site, debug=True)
 
 
 B = mdata.Data["Field"]

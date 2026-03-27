@@ -7,17 +7,15 @@ Perform some stats
 Try to classify records per PRoposalType and Research Area
 """
 
-import pandas as pd
 import os
 import sys
 
-from ..MagnetRun import MagnetRun
-from ..magnetdata import MagnetData
-from ..processing.stats import stats
-from ..processing.plateaux import plateaus, nplateaus
+import pandas as pd
 
-import matplotlib
-import matplotlib.pyplot as plt
+from ..magnetdata import MagnetData
+from ..MagnetRun import MagnetRun
+from ..processing.plateaux import nplateaus
+from ..processing.stats import stats
 
 # hack to avoid pandas warning
 pd.options.mode.copy_on_write = True
@@ -96,9 +94,7 @@ def main():
         type=float,
         default=10,
     )
-    parser.add_argument(
-        "--window", help="stopping criteria for nlopt", type=int, default=10
-    )
+    parser.add_argument("--window", help="stopping criteria for nlopt", type=int, default=10)
     parser.add_argument("--debug", help="acticate debug", action="store_true")
     args = parser.parse_args()
 
@@ -192,9 +188,7 @@ def main():
     selected_df = selected_df[selected_df["Site"].notna()]
 
     # filter out
-    _df = selected_df.query(
-        'Start == "0000-00-00 00:00:00" or Stop == "0000-00-00 00:00:00"'
-    )
+    _df = selected_df.query('Start == "0000-00-00 00:00:00" or Stop == "0000-00-00 00:00:00"')
     if not _df.empty:
         print(f"drop: {_df}")
         selected_df.query(
@@ -205,13 +199,9 @@ def main():
     # see: https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html
     # pd.to_datetime('13000101', format='%Y%m%d', errors='coerce')
     try:
-        selected_df["Start"] = pd.to_datetime(
-            selected_df.Start, format="%Y-%m-%d %H:%M:%S"
-        )
-        selected_df["Stop"] = pd.to_datetime(
-            selected_df.Stop, format="%Y-%m-%d %H:%M:%S"
-        )
-    except:
+        selected_df["Start"] = pd.to_datetime(selected_df.Start, format="%Y-%m-%d %H:%M:%S")
+        selected_df["Stop"] = pd.to_datetime(selected_df.Stop, format="%Y-%m-%d %H:%M:%S")
+    except:  # noqa: E722
         print("failed to convert Start/Stop to real timestamp", flush=True)
         """
         print(f"types: {selected_df.dtypes}")
@@ -235,8 +225,8 @@ def main():
 
     # find records attached to each line
     # recover list of records stored
-    from glob import glob
     from datetime import datetime
+    from glob import glob
 
     mdatadir = args.mdatadir  # eg srvdata
     print(f"Get records from {mdatadir}", flush=True)
@@ -256,13 +246,11 @@ def main():
             experiment_start.append(datetime_object)
             files_data.append(file)
 
-        except:
+        except:  # noqa: E722
             # print(" - ignored")
             pass
 
-    files_data = sorted(
-        files_data, key=lambda x: getTimestamp(x, args.debug), reverse=False
-    )
+    files_data = sorted(files_data, key=lambda x: getTimestamp(x, args.debug), reverse=False)
     print(f"record files ({len(files_data)})")
 
     # create a dataframe holding: start, housing, recordfilename
@@ -298,7 +286,7 @@ def main():
             records = runs.loc[mask]["filename"].to_list()
             attached_records.append(records)
             print(f"project: {project}, site={site}, attached_records: {len(records)}")
-        except:
+        except:  # noqa: E722
             print("- no records")
             attached_records.append([])
 
@@ -332,7 +320,7 @@ def main():
             ignored = False
             try:
                 data = load_record(record)
-            except Exception as e:
+            except (OSError, ValueError, RuntimeError) as e:
                 print(f"caught {type(e)}: e", flush=True)
                 print(f"{record}: fail to load -  ignored", flush=True)
                 ignored = True

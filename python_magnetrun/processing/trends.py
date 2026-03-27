@@ -1,16 +1,17 @@
 import logging
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 
-logger = logging.getLogger(__name__)
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 from python_magnetrun.magnetdata import MagnetData
+
+logger = logging.getLogger(__name__)
 
 
 def piecewise_linear_approximation(
     serie: pd.Series, threshold: float = 0.1
-) -> list[str]:
+) -> list[tuple[str | None, float]]:
     """
     Perform piecewise linear approximation on a time series and assign a signature.
 
@@ -23,12 +24,12 @@ def piecewise_linear_approximation(
     """
 
     # Initialize variables
-    signature = []
+    signature: list[tuple[str | None, float]] = []
     previous_value = serie.iloc[0]
     previous_trend = None
 
     # Iterate over the dataframe
-    current_init = serie.iloc[0]
+    _current_init = serie.iloc[0]
     for i in range(1, len(serie)):
         current_value = serie.iloc[i]
         difference = current_value - previous_value
@@ -71,8 +72,8 @@ def trends_df(
 
     NB: does not work properly if dt is not constant
     """
-    from tabulate import tabulate
     from statsmodels.tsa.seasonal import seasonal_decompose
+    from tabulate import tabulate  # noqa: F401
 
     print(f"trends_df: key={key}, window={window}, threshold={threshold}", flush=True)
     logger.debug(f"{key}: data({df[tkey].shape})")
@@ -105,9 +106,7 @@ def trends_df(
     valid_mask = ~np.isnan(result.trend)
 
     # Create TimeSeries with tkey values as index
-    trend_series = pd.Series(
-        result.trend[valid_mask].values, index=df.loc[valid_mask, tkey].values
-    )
+    trend_series = pd.Series(result.trend[valid_mask].values, index=df.loc[valid_mask, tkey].values)
 
     # Get signature in terms of Up, Plateau, Down
     signature = piecewise_linear_approximation(trend_series, threshold)
@@ -151,8 +150,9 @@ def trends(
 
     NB: does not work properly if dt is not constant
     """
-    import matplotlib.pyplot as plt
     import os
+
+    import matplotlib.pyplot as plt
 
     df = pd.DataFrame()
 
@@ -202,7 +202,7 @@ def trends(
     plt.title(f"{file}: Decompose {key}")
 
     if save:
-        imagefile = f"{filename.replace(f_extension,'')}-{key}"
+        imagefile = f"{filename.replace(f_extension, '')}-{key}"
         plt.savefig(f"{imagefile}_signature.png", dpi=300)
     if show:
         plt.show()

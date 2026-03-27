@@ -24,13 +24,14 @@ Output dictionaries:
 """
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
-from typing import Iterator
-from natsort import natsorted
 from enum import Enum, auto
+from pathlib import Path
+from typing import Any
 
+from natsort import natsorted
 
 # French day abbreviations mapping
 FRENCH_DAYS = {
@@ -190,7 +191,7 @@ def get_error_info(error_code: int) -> dict:
 
 @dataclass
 class LogEntry:
-    timestamp: datetime
+    timestamp: datetime | None
     event_type: EventType
     message: str
     raw_line: str
@@ -285,7 +286,7 @@ def parse_log_lines(lines: list[str]) -> Iterator[LogEntry]:
     """
     records = []
     current_record = None
-    current_extra_lines = []
+    current_extra_lines: list[str] = []
 
     for line in lines:
         line_stripped = line.rstrip()
@@ -316,9 +317,7 @@ def parse_log_lines(lines: list[str]) -> Iterator[LogEntry]:
                 current_extra_lines.append(line_stripped)
             else:
                 # Standalone test line
-                yield LogEntry(
-                    None, EventType.ENET_TEST_RESULT, line_stripped, line_stripped
-                )
+                yield LogEntry(None, EventType.ENET_TEST_RESULT, line_stripped, line_stripped)
 
         elif current_record is not None:
             # Continuation line for Error or ENET description
@@ -344,9 +343,7 @@ def parse_log_lines(lines: list[str]) -> Iterator[LogEntry]:
             if extra_lines:
                 full_description = "\n".join(extra_lines)
                 full_message = f"{record.message}\n{full_description}"
-            yield LogEntry(
-                record.timestamp, record.event_type, full_message, record.raw_line
-            )
+            yield LogEntry(record.timestamp, record.event_type, full_message, record.raw_line)
 
         else:
             # Regular record - just yield it
@@ -428,12 +425,10 @@ class LogParser:
         self.files_created: list[FileCreatedEvent] = []
         self.errors: list[ErrorEvent] = []
         self.defauts: list[DefautEvent] = []
-        self.defaut_files: dict[str, dict] = (
-            {}
-        )  # filename -> {type, description, timestamp, details}
-        self.files_with_errors: dict[str, dict] = (
-            {}
-        )  # filename -> {file_info, error_info}
+        self.defaut_files: dict[
+            str, dict
+        ] = {}  # filename -> {type, description, timestamp, details}
+        self.files_with_errors: dict[str, dict] = {}  # filename -> {file_info, error_info}
 
     def parse(self) -> "LogParser":
         """Parse the log file and populate structured data."""
@@ -441,7 +436,7 @@ class LogParser:
         # Try different encodings
         for encoding in ["utf-8", "latin-1", "cp1252", "iso-8859-1"]:
             try:
-                with open(self.filepath, "r", encoding=encoding) as f:
+                with open(self.filepath, encoding=encoding) as f:
                     content = f.read()
                 break
             except (UnicodeDecodeError, UnicodeError):
@@ -449,7 +444,7 @@ class LogParser:
 
         if content is None:
             # Fallback: read with errors='replace'
-            with open(self.filepath, "r", encoding="utf-8", errors="replace") as f:
+            with open(self.filepath, encoding="utf-8", errors="replace") as f:
                 content = f.read()
 
         self._parse_entries(content.splitlines())
@@ -469,15 +464,14 @@ class LogParser:
     def _extract_structured_data(self) -> None:
         """Extract structured data from parsed entries."""
         current_enet_test = None
-        pending_defaut: DefautEvent | None = (
-            None  # Track defaut waiting for file association
-        )
-        recent_files: list[tuple[datetime, str, str]] = (
-            []
-        )  # (timestamp, filepath, file_type) - track recent files for error association
+        pending_defaut: DefautEvent | None = None  # Track defaut waiting for file association
+        recent_files: list[
+            tuple[datetime, str, str]
+        ] = []  # (timestamp, filepath, file_type) - track recent files for error association
 
         for entry in self.entries:
             if entry.event_type == EventType.ENET_TEST_START:
+                assert entry.timestamp is not None
                 if current_enet_test:
                     self.enet_tests.append(current_enet_test)
                 current_enet_test = ENETTestResult(timestamp=entry.timestamp)
@@ -502,12 +496,11 @@ class LogParser:
                     self.acquisitions.append(acq)
 
             elif entry.event_type == EventType.FILE_CREATED:
+                assert entry.timestamp is not None
                 match = re.search(r"File created\s*:\s*(.+)$", entry.message)
                 if match:
                     filepath = match.group(1).strip()
-                    file_event = FileCreatedEvent(
-                        timestamp=entry.timestamp, filepath=filepath
-                    )
+                    file_event = FileCreatedEvent(timestamp=entry.timestamp, filepath=filepath)
                     self.files_created.append(file_event)
 
                     # Track for error association (Archive, Overview, Stats files)
@@ -543,6 +536,7 @@ class LogParser:
                     pending_defaut = defaut
 
             elif entry.event_type == EventType.DEFAUT_RECORDING:
+                assert entry.timestamp is not None
                 # "Enregistrement du défaut..." - next file will be the defaut file
                 if pending_defaut is None:
                     # Create a generic defaut event if we don't have one pending
@@ -620,18 +614,14 @@ class LogParser:
         - SpikeAimant_<sensor1>_<sensor2>_..._HH:MM:SS  MM/DD
         - DefautNums_<fault1>,<fault2>,..._HH:MM:SS  MM/DD
         """
+        assert entry.timestamp is not None
         defaut_type = DefautType.UNKNOWN
-        details = {}
+        details: dict[str, Any] = {}
 
         # Check for "Default detected" format
-        if (
-            "default detected" in entry.message.lower()
-            or "faut detect" in entry.message.lower()
-        ):
+        if "default detected" in entry.message.lower() or "faut detect" in entry.message.lower():
             # Extract the part after "Default detected : "
-            match = re.search(
-                r"Default detected\s*:\s*(.+)$", entry.message, re.IGNORECASE
-            )
+            match = re.search(r"Default detected\s*:\s*(.+)$", entry.message, re.IGNORECASE)
             if not match:
                 return None
 
@@ -663,9 +653,7 @@ class LogParser:
 
         elif entry.event_type == EventType.DEFAUT_NUMS:
             defaut_type = DefautType.DEFAUT_NUMS
-            match = re.search(
-                r"DefautNums[_\s]*(A\d+|M\d+|HT\d+)[_\s]*(I_MAX)?", entry.message
-            )
+            match = re.search(r"DefautNums[_\s]*(A\d+|M\d+|HT\d+)[_\s]*(I_MAX)?", entry.message)
             if match:
                 details["axis"] = match.group(1)
                 if match.group(2):
@@ -675,9 +663,7 @@ class LogParser:
             defaut_type = DefautType.COURANTS_50HZ
             current_matches = re.findall(r"Courant_(\w+):(\d+\.?\d*)", entry.message)
             if current_matches:
-                details["currents"] = {
-                    axis: float(value) for axis, value in current_matches
-                }
+                details["currents"] = {axis: float(value) for axis, value in current_matches}
 
         return DefautEvent(
             timestamp=entry.timestamp,
@@ -716,15 +702,13 @@ class LogParser:
         except ValueError:
             return None
 
-    def _parse_courants50hz_payload(
-        self, payload: str, record_timestamp: datetime | None
-    ) -> dict:
+    def _parse_courants50hz_payload(self, payload: str, record_timestamp: datetime | None) -> dict:
         """
         Parse Courants50Hz payload.
 
         Format: Courants50Hz_Courant_A1:val,Courant_A2:val,..._HH:MM:SS  MM/DD[_SpikeAimant_<sensors>_HH:MM:SS  MM/DD]
         """
-        details = {}
+        details: dict[str, Any] = {}
 
         # Check if there's a SpikeAimant part
         spike_match = re.search(r"_SpikeAimant_(.+)$", payload)
@@ -741,25 +725,19 @@ class LogParser:
         # Can be comma-separated or underscore-separated
         current_matches = re.findall(r"Courant_(\w+):(\d+\.?\d*)", payload)
         if current_matches:
-            details["currents"] = {
-                axis: float(value) for axis, value in current_matches
-            }
+            details["currents"] = {axis: float(value) for axis, value in current_matches}
 
         # Extract detection timestamp (at the end before _SpikeAimant if present)
         # Pattern: "_HH:MM:SS  MM/DD" at end of the currents section
         ts_match = re.search(r"_(\d{1,2}:\d{2}:\d{2}\s+\d{2}/\d{2})\s*$", payload)
         if ts_match:
-            detection_ts = self._extract_detection_timestamp(
-                ts_match.group(1), record_timestamp
-            )
+            detection_ts = self._extract_detection_timestamp(ts_match.group(1), record_timestamp)
             if detection_ts:
                 details["detection_timestamp"] = detection_ts
 
         return details
 
-    def _parse_spike_aimant_payload(
-        self, payload: str, record_timestamp: datetime | None
-    ) -> dict:
+    def _parse_spike_aimant_payload(self, payload: str, record_timestamp: datetime | None) -> dict:
         """
         Parse SpikeAimant payload.
 
@@ -767,7 +745,7 @@ class LogParser:
         Sensors: Interne1-2, Interne3, Interne4, Interne5, Interne6, Interne7,
                  Externe1, Externe2, ALL_internes, ALL_externes
         """
-        details = {}
+        details: dict[str, Any] = {}
 
         # Remove "SpikeAimant_" prefix
         content = re.sub(r"^SpikeAimant_", "", payload)
@@ -775,9 +753,7 @@ class LogParser:
         # Extract detection timestamp from end
         ts_match = re.search(r"_?(\d{1,2}:\d{2}:\d{2}\s+\d{2}/\d{2})\s*$", content)
         if ts_match:
-            detection_ts = self._extract_detection_timestamp(
-                ts_match.group(1), record_timestamp
-            )
+            detection_ts = self._extract_detection_timestamp(ts_match.group(1), record_timestamp)
             if detection_ts:
                 details["detection_timestamp"] = detection_ts
             # Remove timestamp from content
@@ -816,16 +792,14 @@ class LogParser:
 
         return details
 
-    def _parse_defaut_nums_payload(
-        self, payload: str, record_timestamp: datetime | None
-    ) -> dict:
+    def _parse_defaut_nums_payload(self, payload: str, record_timestamp: datetime | None) -> dict:
         """
         Parse DefautNums payload.
 
         Format: DefautNums_<fault1>,<fault2>,..._HH:MM:SS  MM/DD
         Faults: A3_I_MAX, A4_Def3, A4_10_Eps, etc.
         """
-        details = {}
+        details: dict[str, Any] = {}
 
         # Remove "DefautNums_" prefix
         content = re.sub(r"^DefautNums_", "", payload)
@@ -833,9 +807,7 @@ class LogParser:
         # Extract detection timestamp from end
         ts_match = re.search(r"_(\d{1,2}:\d{2}:\d{2}\s+\d{2}/\d{2})\s*$", content)
         if ts_match:
-            detection_ts = self._extract_detection_timestamp(
-                ts_match.group(1), record_timestamp
-            )
+            detection_ts = self._extract_detection_timestamp(ts_match.group(1), record_timestamp)
             if detection_ts:
                 details["detection_timestamp"] = detection_ts
             # Remove timestamp from content
@@ -850,7 +822,7 @@ class LogParser:
                 details["faults"] = faults
 
                 # Parse individual faults to extract axis and fault type
-                parsed_faults_by_axis = {}
+                parsed_faults_by_axis: dict[str, list[str]] = {}
                 axes = set()
                 fault_types = set()
 
@@ -888,9 +860,7 @@ class LogParser:
             "original_message": defaut.message,
         }
 
-    def _register_defaut_file_standalone(
-        self, timestamp: datetime, filepath: str
-    ) -> None:
+    def _register_defaut_file_standalone(self, timestamp: datetime, filepath: str) -> None:
         """Register a defaut file detected by folder name (no explicit defaut event)."""
         # Handle both Unix and Windows paths
         filename = filepath.replace("\\", "/").split("/")[-1]
@@ -913,10 +883,9 @@ class LogParser:
             "original_message": None,
         }
 
-    def _parse_acquisition(
-        self, entry: LogEntry, action: str
-    ) -> AcquisitionEvent | None:
+    def _parse_acquisition(self, entry: LogEntry, action: str) -> AcquisitionEvent | None:
         """Parse acquisition start/stop event."""
+        assert entry.timestamp is not None
         # Pattern: "Acquisition_démarrée_sur_Groupe 1&2_aimant_M9"
         # Also handle encoding variants: "Acquisition_d�marr�e_sur_Groupe"
         pattern = r"Acquisition_[^_]+_sur_Groupe\s+([\d&]+)_aimant_(\w+)"
@@ -932,17 +901,16 @@ class LogParser:
 
     def _parse_error(self, entry: LogEntry) -> ErrorEvent | None:
         """Parse error event, including multi-line description."""
+        assert entry.timestamp is not None
         # Pattern: "Error -200220 occurred at ..." or "Erreur démarrage de ..."
-        match = re.search(
-            r"(?:Error|Erreur)\s+(-?\d+)\s+occurred at\s+([^\n,]+)", entry.message
-        )
+        match = re.search(r"(?:Error|Erreur)\s+(-?\d+)\s+occurred at\s+([^\n,]+)", entry.message)
         if match:
             error_code = int(match.group(1))
             location = match.group(2).strip()
 
             # Extract task name if present: "Nom de tâche : Task_Magnet_G2"
             task_match = re.search(r"Nom de t[aâ]che\s*:\s*(\S+)", entry.message)
-            task_name = task_match.group(1) if task_match else None
+            _task_name = task_match.group(1) if task_match else None
 
             # Build description from the full message
             description = entry.message
@@ -1035,7 +1003,7 @@ class LogParser:
 
     def _count_defauts_by_type(self) -> dict[str, int]:
         """Count defauts grouped by type."""
-        counts = {}
+        counts: dict[str, int] = {}
         for defaut in self.defauts:
             type_name = defaut.defaut_type.value
             counts[type_name] = counts.get(type_name, 0) + 1
@@ -1065,16 +1033,16 @@ class LogParser:
 
     def _count_errors_by_code(self) -> dict[int, int]:
         """Count errors grouped by error code."""
-        counts = {}
+        counts: dict[int, int] = {}
         for error in self.errors:
             counts[error.error_code] = counts.get(error.error_code, 0) + 1
         return counts
 
 
-def main():
+def main() -> None:
     """Demo usage with sample data."""
-    import sys
     import json
+    import sys
 
     if len(sys.argv) > 1:
         filepath = sys.argv[1]
@@ -1129,7 +1097,7 @@ jeu. 03-10-2019 09:02:49: Error -200279 occurred at GR1&2.lvlib:Acquisition.lvli
         if test.failed_devices:
             print(f"    Failed: {', '.join(test.failed_devices)}")
 
-    print(f"\n--- Acquisitions ---")
+    print("\n--- Acquisitions ---")
     print(
         f"Started: {summary['acquisitions']['started']}, Stopped: {summary['acquisitions']['stopped']}"
     )
@@ -1181,9 +1149,7 @@ jeu. 03-10-2019 09:02:49: Error -200279 occurred at GR1&2.lvlib:Acquisition.lvli
                 # Format details nicely
                 details_str = []
                 for key, value in info["details"].items():
-                    if isinstance(value, datetime):
-                        details_str.append(f"{key}: {value}")
-                    elif isinstance(value, dict):
+                    if isinstance(value, datetime | dict):
                         details_str.append(f"{key}: {value}")
                     else:
                         details_str.append(f"{key}: {value}")
@@ -1194,7 +1160,7 @@ jeu. 03-10-2019 09:02:49: Error -200279 occurred at GR1&2.lvlib:Acquisition.lvli
 
     # Summary by defaut type
     if summary["defauts"]["by_type"]:
-        print(f"\n--- Defauts by Type ---")
+        print("\n--- Defauts by Type ---")
         for dtype, count in summary["defauts"]["by_type"].items():
             print(f"  {dtype}: {count}")
 
@@ -1223,9 +1189,7 @@ jeu. 03-10-2019 09:02:49: Error -200279 occurred at GR1&2.lvlib:Acquisition.lvli
                 {
                     **err,
                     "error_timestamp": (
-                        err["error_timestamp"].isoformat()
-                        if err["error_timestamp"]
-                        else None
+                        err["error_timestamp"].isoformat() if err["error_timestamp"] else None
                     ),
                 }
                 for err in info["errors"]
@@ -1245,7 +1209,7 @@ jeu. 03-10-2019 09:02:49: Error -200279 occurred at GR1&2.lvlib:Acquisition.lvli
         info = defaut_files[filename]
 
         # Recursively serialize details, converting any datetime objects
-        def serialize_value(value, exclude_keys=None):
+        def serialize_value(value: Any, exclude_keys: set | None = None) -> Any:
             if exclude_keys is None:
                 exclude_keys = set()
             if isinstance(value, datetime):

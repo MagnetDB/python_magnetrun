@@ -1,6 +1,6 @@
 # import necessary libraries
-import pandas as pd
 import numpy as np
+import pandas as pd
 from scipy.signal import argrelextrema
 
 # create a sample series

@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-# -*- coding:utf-8 -*-
 
 """Magnet Record Object"""
 
-import logging
-import json
 import datetime
-
-logger = logging.getLogger(__name__)
+import json
+import logging
+from typing import Any
 
 from .connect import download
+
+logger = logging.getLogger(__name__)
 
 
 class MRecord:
@@ -20,26 +20,18 @@ class MRecord:
     link
     """
 
-    def __init__(
-        self, timestamp: datetime.datetime, housing: str, site: str, link: str
-    ) -> None:
+    def __init__(self, timestamp: datetime.datetime, housing: str, site: str, link: str) -> None:
         """default constructor"""
         self.timestamp = timestamp
         self.housing = housing
         self.site = site
         self.link = link
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """
         representation of object
         """
-        return "%s(timestamp=%r, housing=%r, site=%r, link=%r)" % (
-            self.__class__.__name__,
-            self.timestamp,
-            self.housing,
-            self.site,
-            self.link,
-        )
+        return f"{self.__class__.__name__}(timestamp={self.timestamp!r}, housing={self.housing!r}, site={self.site!r}, link={self.link!r})"
 
     def getTimestamp(self) -> datetime.datetime:
         """get timestamp"""
@@ -69,12 +61,13 @@ class MRecord:
         """set Link"""
         self.link = link
 
-    def getData(self, session, url):
+    def getData(self, session: Any, url: str) -> str:
         """download record"""
         if not session:
             raise Exception("MRecord.download: no session defined")
 
-        params = "file=%s&download=1" % self.link
+        logger.debug(f"Downloading data for record {self} from {url} with link {self.link}")
+        params = {"file": self.link, "download": "1"}
         data = download(session, url, params, self.link)
         return data
 
@@ -83,34 +76,30 @@ class MRecord:
         filename = filename.replace("/", "_").replace("%20", "-")
         return filename
 
-    def saveData(self, data: str, datadir: str = "."):
+    def saveData(self, data: str, datadir: str = ".") -> None:
         filename = self.getDataFilename()
         if datadir != ".":
             filename = f"{datadir}/{filename}"
-        # print(f"save to {filename}")
+        logger.debug(f"Saving data to {filename}")
         with open(filename, "w", newline="\n") as fo:
             fo.write(data)
 
-    def to_json(self):
+    def to_json(self) -> str:
         """
         convert to json
         """
         from . import deserialize
 
-        return json.dumps(
-            self, default=deserialize.serialize_instance, sort_keys=True, indent=4
-        )
+        return json.dumps(self, default=deserialize.serialize_instance, sort_keys=True, indent=4)
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         """compare MRecords"""
         if isinstance(other, MRecord):
-            if self.timestamp != other.timestamp:
-                return False
-            if self.site != other.site:
-                return False
-            if self.link != other.link:
-                return False
-            return True
+            return (
+                self.timestamp == other.timestamp
+                and self.site == other.site
+                and self.link == other.link
+            )
         return False
 
     # def __le__(self, other):

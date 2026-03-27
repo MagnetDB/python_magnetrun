@@ -3,19 +3,23 @@ idea from chatgpt
 """
 
 import os
-import numpy as np
-import pandas as pd
-import statsmodels.api as sm
 
-import matplotlib.pyplot as plt
+import pytest
 
-from python_magnetrun.MagnetRun import MagnetRun
+pytest.importorskip("matplotlib")
+import matplotlib  # noqa: E402
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+
+from python_magnetrun.MagnetRun import MagnetRun  # noqa: E402
+
 # from .processing.smoothers import savgol
 
 
-def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:
-    import datetime
-
+def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:  # noqa: F821
     print("addtime")
 
     df = pd.DataFrame(mdata.Data[group][channel])
@@ -28,14 +32,20 @@ def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:
     return df
 
 
-import argparse
+import argparse  # noqa: E402
+
+_default_input = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "data", "M9_2019.02.14-23_00_38.txt"
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "input_file",
+    nargs="?",
+    default=_default_input,
     help="enter input file (ex: ~/M9_2024.05.13---16_30_51.txt)",
 )
-args = parser.parse_args()
+args, _unknown = parser.parse_known_args()
 print(f"args: {args}", flush=True)
 
 file = args.input_file
@@ -94,15 +104,14 @@ plt.ylabel("V")
 plt.xlabel("t[s]")
 plt.show()
 
-from scipy.integrate import odeint
-from scipy.optimize import least_squares
+from scipy.integrate import odeint  # noqa: E402
 
 time_points = Vh.index.values
 print(f"time_points: {time_points.shape}")
 
 
 # Interpolation function
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d  # noqa: E402
 
 Vh_interpolator = interp1d(
     time_points,
@@ -181,8 +190,8 @@ print(f"Ih0={Ih0}")
 # init values from I=31kA from commisionning calculation (see magnet_workflow)
 L1, R1, L2, R2, M = [0.002315, 0.01364205, 0.01254, 0.01674274, 0.001965]
 det = L1 * L2 - M * M
-print(f"Tau1 = {L1/R1} s, Tau2 = {L2/R2} s")
-from scipy import linalg
+print(f"Tau1 = {L1 / R1} s, Tau2 = {L2 / R2} s")
+from scipy import linalg  # noqa: E402
 
 eigenval = linalg.eigvals(
     np.array([[L2 * R1 / det, -M * R1 / det], [-M * R2 / det, L1 * R2 / det]])

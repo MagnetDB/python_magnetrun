@@ -1,17 +1,22 @@
-import os
 import argparse
 import gc
-from functools import partial
+import os
 from collections import namedtuple
+from functools import partial
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
+import pytest
 
-from python_magnetrun.MagnetRun import MagnetRun
-from python_magnetrun.processing.hysteresis import remove_low_x_outliers
-from python_magnetrun.processing.smoothers import savgol
+pytest.importorskip("matplotlib")
+import matplotlib  # noqa: E402
 
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+
+from python_magnetrun.MagnetRun import MagnetRun  # noqa: E402
+from python_magnetrun.processing.hysteresis import remove_low_x_outliers  # noqa: E402
+from python_magnetrun.processing.smoothers import savgol  # noqa: E402
 
 # Named tuple for detection method configuration
 DetectMethod = namedtuple("DetectMethod", ["func", "marker", "color", "default_params"])
@@ -57,7 +62,9 @@ def movingaverage(df, key, window: int = 7, threshold_std: float = 3.0, debug: b
     return anomalies
 
 
-def isolationforest(df, key, tkey="t", contamination: float = 0.01, random_state: int = 42, debug: bool = False):
+def isolationforest(
+    df, key, tkey="t", contamination: float = 0.01, random_state: int = 42, debug: bool = False
+):
     from sklearn.ensemble import IsolationForest
 
     model = IsolationForest(contamination=contamination, random_state=random_state)
@@ -123,7 +130,15 @@ def elliptic_envelope(df, key, tkey="t", contamination: float = 0.01, debug: boo
     return anomalies
 
 
-def oneclass_svm(df, key, tkey="t", nu: float = 0.01, kernel: str = "rbf", gamma: str = "scale", debug: bool = False):
+def oneclass_svm(
+    df,
+    key,
+    tkey="t",
+    nu: float = 0.01,
+    kernel: str = "rbf",
+    gamma: str = "scale",
+    debug: bool = False,
+):
     from sklearn.svm import OneClassSVM
 
     model = OneClassSVM(nu=nu, kernel=kernel, gamma=gamma)
@@ -174,48 +189,51 @@ def stumpy_decompose(df, key, tkey="t", m: int = 50, percentile: float = 95, deb
 # Registry of all available detection methods
 DETECT_METHODS = {
     "zscore": DetectMethod(
-        func=zscore, marker=".", color="blue",
-        default_params={"threshold": 3.0}
+        func=zscore, marker=".", color="blue", default_params={"threshold": 3.0}
     ),
-    "irq": DetectMethod(
-        func=irq, marker="o", color="cyan",
-        default_params={"k": 1.5}
-    ),
-    "mad": DetectMethod(
-        func=mad, marker="v", color="red",
-        default_params={"threshold": 3.5}
-    ),
+    "irq": DetectMethod(func=irq, marker="o", color="cyan", default_params={"k": 1.5}),
+    "mad": DetectMethod(func=mad, marker="v", color="red", default_params={"threshold": 3.5}),
     "movingaverage": DetectMethod(
-        func=movingaverage, marker="<", color="orange",
-        default_params={"window": 7, "threshold_std": 3.0}
+        func=movingaverage,
+        marker="<",
+        color="orange",
+        default_params={"window": 7, "threshold_std": 3.0},
     ),
     "isolationforest": DetectMethod(
-        func=isolationforest, marker="1", color="purple",
-        default_params={"contamination": 0.01, "random_state": 42}
+        func=isolationforest,
+        marker="1",
+        color="purple",
+        default_params={"contamination": 0.01, "random_state": 42},
     ),
     "lof": DetectMethod(
-        func=lof, marker="8", color="brown",
-        default_params={"n_neighbors": 20, "contamination": 0.01}
+        func=lof,
+        marker="8",
+        color="brown",
+        default_params={"n_neighbors": 20, "contamination": 0.01},
     ),
     "dbscan": DetectMethod(
-        func=dbscan, marker="s", color="green",
-        default_params={"eps": 0.5, "min_samples": 5}
+        func=dbscan, marker="s", color="green", default_params={"eps": 0.5, "min_samples": 5}
     ),
     "elliptic_envelope": DetectMethod(
-        func=elliptic_envelope, marker="p", color="yellow",
-        default_params={"contamination": 0.01}
+        func=elliptic_envelope, marker="p", color="yellow", default_params={"contamination": 0.01}
     ),
     "oneclass_svm": DetectMethod(
-        func=oneclass_svm, marker="*", color="pink",
-        default_params={"nu": 0.01, "kernel": "rbf", "gamma": "scale"}
+        func=oneclass_svm,
+        marker="*",
+        color="pink",
+        default_params={"nu": 0.01, "kernel": "rbf", "gamma": "scale"},
     ),
     "seasonal_decompose": DetectMethod(
-        func=seasonal_decompose, marker="d", color="gray",
-        default_params={"period": 12, "threshold_std": 3.0}
+        func=seasonal_decompose,
+        marker="d",
+        color="gray",
+        default_params={"period": 12, "threshold_std": 3.0},
     ),
     "stumpy_decompose": DetectMethod(
-        func=stumpy_decompose, marker="h", color="magenta",
-        default_params={"m": 50, "percentile": 95}
+        func=stumpy_decompose,
+        marker="h",
+        color="magenta",
+        default_params={"m": 50, "percentile": 95},
     ),
 }
 
@@ -225,25 +243,27 @@ DEFAULT_METHODS = ["mad", "dbscan", "elliptic_envelope", "stumpy_decompose"]
 
 def parse_method_params(param_list: list[str]) -> dict[str, dict]:
     """Parse method parameters from dot notation.
-    
+
     Args:
         param_list: List of strings like ["dbscan.eps=0.3", "mad.threshold=4.0"]
-    
+
     Returns:
         Nested dict like {"dbscan": {"eps": 0.3}, "mad": {"threshold": 4.0}}
     """
     params = {}
     if not param_list:
         return params
-    
+
     for item in param_list:
         if "=" not in item or "." not in item.split("=")[0]:
-            print(f"Warning: invalid param format '{item}', expected 'method.param=value'", flush=True)
+            print(
+                f"Warning: invalid param format '{item}', expected 'method.param=value'", flush=True
+            )
             continue
-        
+
         key, value = item.split("=", 1)
         method, param = key.split(".", 1)
-        
+
         # Type inference
         parsed_value = value
         if value.lower() in ("true", "false"):
@@ -252,36 +272,38 @@ def parse_method_params(param_list: list[str]) -> dict[str, dict]:
             try:
                 parsed_value = int(value)
             except ValueError:
-                try:
+                try:  # noqa: SIM105
                     parsed_value = float(value)
                 except ValueError:
                     pass  # Keep as string
-        
+
         if method not in params:
             params[method] = {}
         params[method][param] = parsed_value
-    
+
     return params
 
 
 def parse_method_params_json(json_str: str) -> dict[str, dict]:
     """Parse method parameters from JSON string.
-    
+
     Args:
         json_str: JSON string like '{"dbscan": {"eps": 0.3}}'
-    
+
     Returns:
         Nested dict with method parameters
     """
     import json
-    
+
     if not json_str:
         return {}
-    
+
     try:
         params = json.loads(json_str)
         if not isinstance(params, dict):
-            print(f"Warning: JSON params must be an object, got {type(params).__name__}", flush=True)
+            print(
+                f"Warning: JSON params must be an object, got {type(params).__name__}", flush=True
+            )
             return {}
         return params
     except json.JSONDecodeError as e:
@@ -291,44 +313,45 @@ def parse_method_params_json(json_str: str) -> dict[str, dict]:
 
 def load_config_file(config_path: str) -> dict:
     """Load configuration from JSON or YAML file.
-    
+
     Args:
         config_path: Path to config file (.json or .yaml/.yml)
-    
+
     Returns:
         Dict with configuration including 'method_params' key
     """
     import json
-    
+
     if not config_path or not os.path.exists(config_path):
         if config_path:
             print(f"Warning: config file not found: {config_path}", flush=True)
         return {}
-    
+
     ext = os.path.splitext(config_path)[1].lower()
-    
+
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             if ext in (".yaml", ".yml"):
                 try:
                     import yaml
+
                     return yaml.safe_load(f) or {}
                 except ImportError:
                     print("Warning: PyYAML not installed, cannot load YAML config", flush=True)
                     return {}
             else:  # Default to JSON
                 return json.load(f)
-    except (json.JSONDecodeError, Exception) as e:
+    except (json.JSONDecodeError, OSError, ValueError) as e:
         print(f"Warning: failed to load config file: {e}", flush=True)
         return {}
 
 
 def merge_method_params(*param_dicts: dict[str, dict]) -> dict[str, dict]:
     """Merge multiple method parameter dicts (later dicts override earlier).
-    
+
     Args:
         *param_dicts: Variable number of parameter dicts to merge
-    
+
     Returns:
         Merged dict with method parameters
     """
@@ -346,7 +369,7 @@ def get_method_params(method_name: str, user_params: dict[str, dict]) -> dict:
     method = DETECT_METHODS.get(method_name)
     if not method:
         return {}
-    
+
     params = dict(method.default_params)  # Copy defaults
     if method_name in user_params:
         params.update(user_params[method_name])  # Override with user params
@@ -355,7 +378,7 @@ def get_method_params(method_name: str, user_params: dict[str, dict]) -> dict:
 
 def downsample_for_plot(x, y, percent=10.0):
     """Downsample data for plotting to reduce memory usage.
-    
+
     Args:
         x, y: arrays to downsample
         percent: percentage of points to keep (0-100)
@@ -388,12 +411,11 @@ skipped_entries = {
     "Numérique_Alimentation": [],
 }
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file", help="enter input file")
-    parser.add_argument(
-        "--site", help="specify a site (ex. M8, M9,...)", default="M9"
-    )
+    parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9")
     parser.add_argument(
         "--group",
         help="set group to consider",
@@ -451,7 +473,10 @@ def main():
     # Validate methods
     invalid_methods = [m for m in args.methods if m not in DETECT_METHODS]
     if invalid_methods:
-        print(f"Warning: unknown methods {invalid_methods}, available: {list(DETECT_METHODS.keys())}", flush=True)
+        print(
+            f"Warning: unknown methods {invalid_methods}, available: {list(DETECT_METHODS.keys())}",
+            flush=True,
+        )
 
     # Parse method parameters from all sources (precedence: config < JSON < dot notation)
     config_params = {}
@@ -460,15 +485,15 @@ def main():
         config_params = config_data.get("method_params", {})
         if args.debug and config_params:
             print(f"Config file params: {config_params}", flush=True)
-    
+
     json_params = parse_method_params_json(args.method_params_json)
     if args.debug and json_params:
         print(f"JSON params: {json_params}", flush=True)
-    
+
     dot_params = parse_method_params(args.method_params)
     if args.debug and dot_params:
         print(f"Dot notation params: {dot_params}", flush=True)
-    
+
     # Merge with precedence: config < JSON < dot notation (later overrides earlier)
     user_method_params = merge_method_params(config_params, json_params, dot_params)
     if args.debug and user_method_params:
@@ -492,9 +517,7 @@ def main():
         case ".tdms":
             mrun = MagnetRun.fromtdms(site, insert, file)
         case _:
-            raise RuntimeError(
-                f"so far file with extension in {supported_formats} are implemented"
-            )
+            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
 
     mdata = mrun.getMData()
 
@@ -509,15 +532,13 @@ def main():
         gc.collect()
         print(f"channels in group {group}: {channels}", flush=True)
 
-        fig, axs = plt.subplots(
-            len(channels), 1, sharex=True, figsize=(10, 5 * len(channels))
-        )
+        fig, axs = plt.subplots(len(channels), 1, sharex=True, figsize=(10, 5 * len(channels)))
         # Handle single channel case
         if len(channels) == 1:
             axs = [axs]
 
         for i, channel in enumerate(channels):
-            print(f"Processing channel {i+1}/{len(channels)}: {channel}", flush=True)
+            print(f"Processing channel {i + 1}/{len(channels)}: {channel}", flush=True)
 
             dt = mdata.Groups[group][channel]["wf_increment"]
             t_offset = mdata.Groups[group][channel]["wf_start_offset"]
@@ -531,15 +552,20 @@ def main():
 
             # Use float32 only if explicitly requested (saves memory but reduces precision)
             dtype = np.float32 if args.use_float32 else np.float64
-            df = pd.DataFrame({
-                tkey: t_values.astype(dtype),
-                channel: y_values.astype(dtype),
-            })
+            df = pd.DataFrame(
+                {
+                    tkey: t_values.astype(dtype),
+                    channel: y_values.astype(dtype),
+                }
+            )
             del df_raw, t_values, y_values
             gc.collect()
 
             if args.debug:
-                print(f"data shape: {df.shape}, memory: {df.memory_usage(deep=True).sum() / 1e6:.1f} MB", flush=True)
+                print(
+                    f"data shape: {df.shape}, memory: {df.memory_usage(deep=True).sum() / 1e6:.1f} MB",
+                    flush=True,
+                )
 
             # Downsample for raw data plot
             x_plot, y_plot = downsample_for_plot(
@@ -601,7 +627,7 @@ def main():
                                 s=20,
                             )
                         del anomalies_df
-                    except Exception as e:
+                    except (ValueError, RuntimeError, TypeError) as e:
                         print(f"  Warning: {method_name} failed: {e}", flush=True)
                     gc.collect()
 

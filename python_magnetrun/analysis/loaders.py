@@ -34,7 +34,6 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -43,10 +42,6 @@ from natsort import natsorted
 from .config import (
     DEFAULT_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
-    DEFAULT_GROUP,
-    TIME_OFFSET_ARCHIVE,
-    TIME_OFFSET_INCIDENTS,
-    TIME_OFFSET_OVERVIEW,
 )
 
 # Module logger
@@ -68,7 +63,7 @@ def convert_to_timestamp(
     time_str: str,
     date_format: str = "%y%m%d",
     time_format: str = "%H%M",
-) -> Tuple[float, str]:
+) -> tuple[float, str]:
     """
     Convert date and time strings to timestamp and formatted string.
 
@@ -211,14 +206,14 @@ class FileSet:
         Spike incident files
     """
 
-    overview: List[str] = field(default_factory=list)
-    archive: List[str] = field(default_factory=list)
-    pupitre: List[str] = field(default_factory=list)
-    default: List[str] = field(default_factory=list)
-    trigger: List[str] = field(default_factory=list)
-    spike: List[str] = field(default_factory=list)
+    overview: list[str] = field(default_factory=list)
+    archive: list[str] = field(default_factory=list)
+    pupitre: list[str] = field(default_factory=list)
+    default: list[str] = field(default_factory=list)
+    trigger: list[str] = field(default_factory=list)
+    spike: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, List[str]]:
+    def to_dict(self) -> dict[str, list[str]]:
         """Convert to dictionary format (backward compatibility)."""
         return {
             "overview": self.overview,
@@ -230,7 +225,7 @@ class FileSet:
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, List[str]]) -> "FileSet":
+    def from_dict(cls, d: dict[str, list[str]]) -> FileSet:
         """Create from dictionary."""
         return cls(
             overview=d.get("overview", []),
@@ -275,9 +270,9 @@ def extract_data(
     file: str,
     site: str,
     insert: str,
-    key: Optional[str] = None,
+    key: str | None = None,
     dry_run: bool = False,
-) -> Tuple[str, str, bool]:
+) -> tuple[str, str, bool]:
     """
     Extract timestamp range and metadata from a data file.
 
@@ -372,10 +367,9 @@ def extract_data(
         mdata = mrun.getMData()
 
         # Check if required key exists
-        if key is not None:
-            if key not in mdata.getKeys():
-                logger.debug("%s: key %s not found", file, key)
-                skip = True
+        if key is not None and key not in mdata.getKeys():
+            logger.debug("%s: key %s not found", file, key)
+            skip = True
 
         # Calculate end timestamp from duration
         duration = mdata.getDuration()
@@ -393,8 +387,8 @@ def find_files(
     site: str,
     date: str,
     time: str,
-    pupitre_datadir: Union[str, Path] = DEFAULT_DATA_DIR,
-) -> Tuple[str, str, str, str, str]:
+    pupitre_datadir: str | Path = DEFAULT_DATA_DIR,
+) -> tuple[str, str, str, str, str]:
     """
     Build glob patterns to find files related to an overview file.
 
@@ -426,9 +420,7 @@ def find_files(
 
     # Pupitre pattern: /datadir/M9/2024.11.06*.txt
     pupitre_site_dir = pupitre_datadir / site
-    pupitre_filter = str(
-        pupitre_site_dir / f"20{date[0:2]}.{date[2:4]}.{date[4:]}*.txt"
-    )
+    pupitre_filter = str(pupitre_site_dir / f"20{date[0:2]}.{date[2:4]}.{date[4:]}*.txt")
 
     # Get base paths from overview file
     extension = os.path.splitext(overview_file)[-1]
@@ -467,11 +459,11 @@ def find_files(
 # Select files function
 # =============================================================================
 def select_files(
-    files: List[str],
+    files: list[str],
     site: str,
     start: str,
     end: str,
-) -> List[str]:
+) -> list[str]:
     """
     Filter files by timestamp range.
 
@@ -521,7 +513,7 @@ def select_files(
             if file_start_time >= start_time and file_end_time <= end_time:
                 selected.append(file)
 
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             logger.warning("Error processing %s: %s", file, e)
             continue
 
@@ -536,8 +528,8 @@ def load_df(
     site: str,
     insert: str,
     group: str,
-    keys: Optional[List[str]],
-) -> Tuple[pd.DataFrame, Optional[datetime]]:
+    keys: list[str] | None,
+) -> tuple[pd.DataFrame, datetime | None]:
     """
     Load a single file into a pandas DataFrame.
 
@@ -576,7 +568,7 @@ def load_df(
 
     extension = os.path.splitext(file)[-1]
     df = pd.DataFrame()
-    t0: Optional[datetime] = None
+    t0: datetime | None = None
 
     try:
         if extension == ".txt":
@@ -600,12 +592,9 @@ def load_df(
             # Check if first key exists
             first_key = channels[0] if keys is None or not keys else keys[0]
             print(f"first_key: {first_key}", flush=True)
-            if keys is not None:
-                if keys[0] not in mdata.Groups.get(group, {}):
-                    logger.debug(
-                        "load_df: %s/%s not found in %s", group, keys[0], mdata.FileName
-                    )
-                    return df, t0
+            if keys is not None and keys[0] not in mdata.Groups.get(group, {}):
+                logger.debug(f"load_df: {group}/{keys[0]} not found in {mdata.FileName}")
+                return df, t0
 
             # Get timing information
             t0 = mdata.Groups[group][first_key]["wf_start_time"]
@@ -616,26 +605,25 @@ def load_df(
 
             # Add timestamp column
             df["timestamp"] = [
-                np.datetime64(t0).astype(datetime)
-                + timedelta(seconds=i * dt + t_offset)
+                np.datetime64(t0).astype(datetime) + timedelta(seconds=i * dt + t_offset)
                 for i in df.index.to_list()
             ]
         else:
             logger.warning("Unsupported file extension: %s", extension)
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, KeyError) as e:
         logger.error("Failed to load %s: %s", file, e)
 
     return df, t0
 
 
 def load_data(
-    files: List[str],
+    files: list[str],
     site: str,
     insert: str,
     group: str,
-    keys: Optional[List[str]],
-) -> List[pd.DataFrame]:
+    keys: list[str] | None,
+) -> list[pd.DataFrame]:
     """
     Load multiple files and return list of DataFrames.
 
@@ -672,7 +660,7 @@ def load_data(
     return df_list
 
 
-def merge_data(df_list: List[pd.DataFrame]) -> pd.DataFrame:
+def merge_data(df_list: list[pd.DataFrame]) -> pd.DataFrame:
     """
     Merge multiple DataFrames into one.
 
@@ -739,9 +727,9 @@ class FileDiscovery:
 
     def __init__(
         self,
-        pupitre_datadir: Union[str, Path] = DEFAULT_DATA_DIR,
-        pigbrother_datadir: Union[str, Path] = DEFAULT_PIGBROTHER_DATA_DIR,
-        log_datadir: Optional[Union[str, Path]] = None,
+        pupitre_datadir: str | Path = DEFAULT_DATA_DIR,
+        pigbrother_datadir: str | Path = DEFAULT_PIGBROTHER_DATA_DIR,
+        log_datadir: str | Path | None = None,
     ):
         self.pupitre_datadir = Path(pupitre_datadir)
         self.pigbrother_datadir = Path(pigbrother_datadir)
@@ -750,7 +738,7 @@ class FileDiscovery:
     def discover(
         self,
         overview_file: str,
-        site: Optional[str] = None,
+        site: str | None = None,
     ) -> FileSet:
         """
         Discover all files related to an overview file.
@@ -791,15 +779,11 @@ class FileDiscovery:
                 if candidate_path.exists():
                     resolved_overview = str(candidate_path)
                     overview_dir = str(candidate_dir)
-                    logger.debug(
-                        "Resolved overview %s -> %s", overview_file, resolved_overview
-                    )
+                    logger.debug("Resolved overview %s -> %s", overview_file, resolved_overview)
                 else:
                     # Keep original (may be relative to cwd)
                     overview_dir = ""
-        logger.info(
-            f"discover overview_dir={overview_dir}, resolved_overview={resolved_overview}"
-        )
+        logger.info(f"discover overview_dir={overview_dir}, resolved_overview={resolved_overview}")
 
         # Extract site, mode, timestamp from filename
         parts = filename.split("_")
@@ -837,9 +821,7 @@ class FileDiscovery:
             time,
             pupitre_datadir=self.pupitre_datadir,
         )
-        pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter = (
-            filters
-        )
+        pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter = filters
 
         logger.debug("File patterns:")
         logger.debug("  pupitre: %s", pupitre_filter)
@@ -874,8 +856,8 @@ class FileDiscovery:
 
     def discover_batch(
         self,
-        overview_files: List[str],
-    ) -> Dict[str, FileSet]:
+        overview_files: list[str],
+    ) -> dict[str, FileSet]:
         """
         Discover files for multiple overview files.
 
@@ -901,10 +883,10 @@ class FileDiscovery:
 # =============================================================================
 def discover_files(
     overview_file: str,
-    pupitre_datadir: Union[str, Path] = DEFAULT_DATA_DIR,
-    pigbrother_datadir: Union[str, Path] = DEFAULT_PIGBROTHER_DATA_DIR,
-    site: Optional[str] = None,
-) -> Dict[str, List[str]]:
+    pupitre_datadir: str | Path = DEFAULT_DATA_DIR,
+    pigbrother_datadir: str | Path = DEFAULT_PIGBROTHER_DATA_DIR,
+    site: str | None = None,
+) -> dict[str, list[str]]:
     """
     Discover files related to an overview file (backward compatible).
 

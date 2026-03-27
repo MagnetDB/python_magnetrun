@@ -1,11 +1,12 @@
 import logging
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 
-logger = logging.getLogger(__name__)
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 from ..magnetdata import MagnetData
+
+logger = logging.getLogger(__name__)
 
 
 def lag_correlation(
@@ -14,7 +15,7 @@ def lag_correlation(
     show: bool = False,
     save: bool = False,
     debug: bool = False,
-):
+) -> pd.Timedelta:
     """_summary_
 
     :param data1: _description_
@@ -51,10 +52,7 @@ def lag_correlation(
         else:
             time_series_slice = series[start_index1:]
     else:
-        if end_index1 is not None:
-            time_series_slice = series[:end_index1]
-        else:
-            time_series_slice = series
+        time_series_slice = series[:end_index1] if end_index1 is not None else series
 
     # Select a slice of the trend series
     if start_index2 != 0:
@@ -63,10 +61,7 @@ def lag_correlation(
         else:
             trend_slice = trend[start_index2:]
     else:
-        if end_index2 is not None:
-            trend_slice = trend[:end_index2]
-        else:
-            trend_slice = trend
+        trend_slice = trend[:end_index2] if end_index2 is not None else trend
 
     # dump data to csv
     if debug:
@@ -78,7 +73,10 @@ def lag_correlation(
     # time_series_slice = time_series_slice[-len(trend_slice):]
 
     # Compute cross-correlation
-    # correlation = correlate(time_series_slice - np.mean(time_series_slice), trend_slice - np.mean(trend_slice))
+    # correlation = correlate(  # noqa: E501
+    #     time_series_slice - np.mean(time_series_slice),
+    #     trend_slice - np.mean(trend_slice)
+    # )
     correlation = correlate(
         time_series_slice - time_series_slice.mean(), trend_slice - trend_slice.mean()
     )
@@ -137,7 +135,7 @@ def compute_lag(
     show: bool = False,
     save: bool = False,
     debug: bool = False,
-):
+) -> pd.Timedelta:
     print(f"compute_lag: {df1_data['field']} - {df2_data['field']}")
 
     ts1 = df1_data["df"].copy()
@@ -170,25 +168,21 @@ def compute_lag(
         duplicates = ts2.index.duplicated()
         print(duplicates)
         raise e
-    pstart = ()
-    pend = ()
+    pstart: np.ndarray = np.array([], dtype=int)
+    pend: np.ndarray = np.array([], dtype=int)
 
     # Interpolate missing values (optional, depending on your use case)
     ts2_resampled = ts2_resampled.interpolate(method="linear")
     if istart2 is None and iend2 is None:
-        pstart = ts2_resampled.index.get_indexer(
-            [pd.Timestamp(otstart)], method="nearest"
-        )
+        pstart = ts2_resampled.index.get_indexer([pd.Timestamp(otstart)], method="nearest")
         pend = ts2_resampled.index.get_indexer([pd.Timestamp(otend)], method="nearest")
     else:
         ts2_index = ts2.index.to_list()
         ptstart = ts2_index[istart2]
         ptend = ts2_index[-1]
-        if not iend2 is None:
+        if iend2 is not None:
             ptend = ts2_index[iend2]
-        pstart = ts2_resampled.index.get_indexer(
-            [pd.Timestamp(ptstart)], method="nearest"
-        )
+        pstart = ts2_resampled.index.get_indexer([pd.Timestamp(ptstart)], method="nearest")
         pend = ts2_resampled.index.get_indexer([pd.Timestamp(ptend)], method="nearest")
 
     ptstart = ts2_resampled.index[pstart[0]]
@@ -229,7 +223,7 @@ def pearson(
     save: bool = False,
     show: bool = False,
     debug: bool = False,
-):
+) -> None:
     """
     compute Pearson correlation for fields
 
@@ -252,20 +246,20 @@ def pearson(
                 f, ax = plt.subplots(figsize=(7, 3))
                 df.rolling(window=30, center=True).median().plot(ax=ax)
                 ax.set(xlabel="Time", ylabel="Pearson r")
-                ax.set(title=f"Overall Pearson r = {np.round(overall_pearson_r,2)}")
+                ax.set(title=f"Overall Pearson r = {np.round(overall_pearson_r, 2)}")
 
                 if save:
                     outputfile = f"{fields[i]}-{fields[j]}-pearson.png"
                     plt.savefig(f"{outputfile}.png", dpi=300)
                 if show:
-                    plt.show
+                    plt.show()
                 plt.close()
 
     else:
         raise RuntimeError(f"stats/pearson: {Data.FileName} not a panda dataframe")
 
 
-def crosscorr(datax, datay, lag=0, wrap=False):
+def crosscorr(datax: pd.Series, datay: pd.Series, lag: int = 0, wrap: bool = False) -> float:
     """Lag-N cross correlation.
     Shifted data filled with NaNs
 
@@ -292,16 +286,12 @@ def tlcc(
     save: bool = False,
     show: bool = False,
     debug: bool = False,
-):
-
+) -> None:
     d1 = Data.getData(xfield)
     d2 = Data.getData(yfield)
     seconds = 5
     fps = 30
-    rs = [
-        crosscorr(d1, d2, lag)
-        for lag in range(-int(seconds * fps), int(seconds * fps + 1))
-    ]
+    rs = [crosscorr(d1, d2, lag) for lag in range(-int(seconds * fps), int(seconds * fps + 1))]
     offset = np.floor(len(rs) / 2) - np.argmax(rs)
     f, ax = plt.subplots(figsize=(14, 3))
     ax.plot(rs)
@@ -333,7 +323,7 @@ def wtlcc(
     save: bool = False,
     show: bool = False,
     debug: bool = False,
-):
+) -> None:
     import seaborn as sns
 
     df = Data.getData([xfield, yfield])
@@ -346,16 +336,13 @@ def wtlcc(
     for t in range(0, no_splits):
         d1 = df[xfield].loc[(t) * samples_per_split : (t + 1) * samples_per_split]
         d2 = df[yfield].loc[(t) * samples_per_split : (t + 1) * samples_per_split]
-        rs = [
-            crosscorr(d1, d2, lag)
-            for lag in range(-int(seconds * fps), int(seconds * fps + 1))
-        ]
+        rs = [crosscorr(d1, d2, lag) for lag in range(-int(seconds * fps), int(seconds * fps + 1))]
         rss.append(rs)
     rss = pd.DataFrame(rss)
     f, ax = plt.subplots(figsize=(10, 5))
     sns.heatmap(rss, cmap="RdBu_r", ax=ax)
     ax.set(
-        title=f"Windowed Time Lagged Cross Correlation",
+        title="Windowed Time Lagged Cross Correlation",
         xlim=[0, 301],
         xlabel="Offset",
         ylabel="Window epochs",
@@ -378,7 +365,7 @@ def rwtlcc(
     save: bool = False,
     show: bool = False,
     debug: bool = False,
-):
+) -> None:
     import seaborn as sns
 
     df = Data.getData([xfield, yfield])
@@ -405,7 +392,7 @@ def rwtlcc(
     f, ax = plt.subplots(figsize=(10, 10))
     sns.heatmap(rss, cmap="RdBu_r", ax=ax)
     ax.set(
-        title=f"Rolling Windowed Time Lagged Cross Correlation",
+        title="Rolling Windowed Time Lagged Cross Correlation",
         xlim=[0, 301],
         xlabel="Offset",
         ylabel="Epochs",

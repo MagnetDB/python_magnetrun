@@ -26,12 +26,12 @@ Example usage:
     # Both have similar interfaces for getData(), getKeys(), etc.
 """
 
-from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any, Tuple, Union, Protocol
-from dataclasses import dataclass
 import logging
 import os
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -55,11 +55,11 @@ except ImportError:
 class DataProvider(Protocol):
     """Protocol defining common interface for data providers (MagnetRun, HybridRun)"""
 
-    def getData(self, key: Optional[str] = None) -> Any:
+    def getData(self, key: str | None = None) -> Any:
         """Get data for a specific key"""
         ...
 
-    def getKeys(self) -> List[str]:
+    def getKeys(self) -> list[str]:
         """Get list of available data keys"""
         ...
 
@@ -77,17 +77,17 @@ class LoadOptions:
     cache: bool = True  # Cache loaded data
 
     # Downsampling options
-    downsample: Optional[int] = None  # Target number of points (None = no downsampling)
+    downsample: int | None = None  # Target number of points (None = no downsampling)
     downsample_method: str = "minmax_lttb"  # 'minmax_lttb', 'lttb', 'stride'
 
     # Time range selection
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    hours: Optional[List[int]] = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    hours: list[int] | None = None
 
     # Calibration
     apply_calib: bool = True
-    cnv_dir: Optional[str] = None
+    cnv_dir: str | None = None
 
 
 @dataclass
@@ -112,7 +112,7 @@ class LazyArrayLoader:
         self,
         filepath: Path,
         dtype: np.dtype,
-        shape: Tuple[int, ...],
+        shape: tuple[int, ...],
         offset: int = 0,
         block_size: int = 1614,  # Default for analog blocks
         samples_per_block: int = 50,
@@ -126,8 +126,8 @@ class LazyArrayLoader:
         self.samples_per_block = samples_per_block
         self.header_size = header_size
 
-        self._mmap: Optional[np.memmap] = None
-        self._data: Optional[np.ndarray] = None
+        self._mmap: np.memmap | None = None
+        self._data: np.ndarray | None = None
 
     def _create_mmap(self) -> None:
         """Create memory-mapped file"""
@@ -137,11 +137,11 @@ class LazyArrayLoader:
             file_size = os.path.getsize(self.filepath)
             logger.debug(f"Creating memmap for {self.filepath}, size={file_size}")
 
-    def __getitem__(self, key) -> np.ndarray:
+    def __getitem__(self, key) -> np.ndarray:  # type: ignore[no-untyped-def]
         """Array-like access with lazy loading"""
         if self._data is None:
             self._load_data()
-        return self._data[key]
+        return self._data[key]  # type: ignore[index]
 
     def _load_data(self) -> None:
         """Load data from file (called on first access)"""
@@ -174,7 +174,7 @@ class LazyKHzLoader(LazyArrayLoader):
         filepath: Path,
         card_type: str,  # 'ANA' or 'DIG'
         endian: str = "big",
-        channel: Optional[int] = None,  # Load specific channel only
+        channel: int | None = None,  # Load specific channel only
     ):
         self.card_type = card_type
         self.endian = endian
@@ -197,7 +197,7 @@ class LazyKHzLoader(LazyArrayLoader):
         total_samples = num_blocks * self.SAMPLES_PER_BLOCK
 
         if channel is not None:
-            shape = (total_samples,)
+            shape: tuple[int, ...] = (total_samples,)
         else:
             shape = (total_samples, num_channels)
 
@@ -237,7 +237,7 @@ class LazyKHzLoader(LazyArrayLoader):
         self,
         start_sample: int,
         end_sample: int,
-        channel: Optional[int] = None,
+        channel: int | None = None,
     ) -> np.ndarray:
         """
         Read a specific range of samples efficiently.
@@ -288,9 +288,7 @@ class LazyKHzLoader(LazyArrayLoader):
 
                 # Copy relevant portion to output
                 block_start = i * self.SAMPLES_PER_BLOCK
-                block_end = min(
-                    block_start + self.SAMPLES_PER_BLOCK, num_samples + data_offset
-                )
+                block_end = min(block_start + self.SAMPLES_PER_BLOCK, num_samples + data_offset)
 
                 src_start = data_offset if i == 0 else 0
                 src_end = src_start + (block_end - block_start)
@@ -315,9 +313,9 @@ class LazyKHzLoader(LazyArrayLoader):
         """Read digital block data and unpack bits"""
         endian_char = ">" if self.endian == "big" else "<"
         dtype = np.dtype(np.uint16).newbyteorder(endian_char)
-        data_uint16 = np.frombuffer(
-            f.read(self.SAMPLES_PER_BLOCK * 4), dtype=dtype
-        ).reshape(self.SAMPLES_PER_BLOCK, 2)
+        data_uint16 = np.frombuffer(f.read(self.SAMPLES_PER_BLOCK * 4), dtype=dtype).reshape(
+            self.SAMPLES_PER_BLOCK, 2
+        )
 
         data = np.zeros((self.SAMPLES_PER_BLOCK, 32), dtype=bool)
         for sample_idx in range(self.SAMPLES_PER_BLOCK):
@@ -336,7 +334,7 @@ def downsample_data(
     time: np.ndarray,
     target_points: int,
     method: str = "minmax_lttb",
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Downsample time series data for visualization.
 
@@ -455,8 +453,8 @@ class HybridRun:
         self,
         housing: str = "Hybrid",
         site: str = "",
-        data: Optional[HybridData] = None,
-        start_time: Optional[datetime] = None,
+        data: HybridData | None = None,
+        start_time: datetime | None = None,
     ):
         self.Housing = housing
         self.Site = site
@@ -464,12 +462,12 @@ class HybridRun:
         self.StartTime = start_time
 
         # Cache for loaded data
-        self._cache: Dict[str, CacheEntry] = {}
+        self._cache: dict[str, CacheEntry] = {}
         self._cache_max_size_bytes = 1024 * 1024 * 1024  # 1 GB default
         self._cache_size_bytes = 0
 
         # Lazy loaders
-        self._lazy_loaders: Dict[str, LazyKHzLoader] = {}
+        self._lazy_loaders: dict[str, LazyKHzLoader] = {}
 
         # Default load options
         self.default_options = LoadOptions()
@@ -479,7 +477,7 @@ class HybridRun:
         cls,
         base_dir: str,
         date_str: str,
-        fepc_system: Optional[str] = None,
+        fepc_system: str | None = None,
         endian: str = "big",
         housing: str = "Hybrid",
         site: str = "",
@@ -571,10 +569,10 @@ class HybridRun:
 
     def getData(
         self,
-        key: Optional[str] = None,
-        downsample: Optional[int] = None,
-        options: Optional[LoadOptions] = None,
-    ) -> Union[Dict, Tuple[np.ndarray, np.ndarray], pd.DataFrame]:
+        key: str | None = None,
+        downsample: int | None = None,
+        options: LoadOptions | None = None,
+    ) -> dict | tuple[np.ndarray, np.ndarray] | pd.DataFrame:
         """
         Get data for a specific key.
 
@@ -628,9 +626,7 @@ class HybridRun:
         # Parse key
         parts = key.split("/")
         if len(parts) < 2:
-            raise ValueError(
-                f"Invalid key format: {key}. Expected 'type/system[/variable]'"
-            )
+            raise ValueError(f"Invalid key format: {key}. Expected 'type/system[/variable]'")
 
         data_type = parts[0]
         system = parts[1]
@@ -667,9 +663,7 @@ class HybridRun:
 
         # Apply downsampling if requested
         if opts.downsample and len(data) > opts.downsample:
-            data, time = downsample_data(
-                data, time, opts.downsample, opts.downsample_method
-            )
+            data, time = downsample_data(data, time, opts.downsample, opts.downsample_method)
 
         # Cache result
         if opts.cache:
@@ -677,19 +671,19 @@ class HybridRun:
 
         return data, time
 
-    def getKeys(self) -> List[str]:
+    def getKeys(self) -> list[str]:
         """Return list of data keys (MagnetRun compatible)"""
         if self.HybridData is not None:
             return self.HybridData.Keys
         raise RuntimeError("HybridRun.getKeys: no HybridData associated")
 
-    def getUnit(self, key: str = "") -> Tuple:
+    def getUnit(self, key: str = "") -> tuple:
         """Return Unit for a key"""
         if self.HybridData is not None:
             return self.HybridData.getUnitKey(key)
         raise RuntimeError("HybridRun.getUnit: no HybridData associated")
 
-    def getStats(self, key: Optional[str] = None) -> Dict:
+    def getStats(self, key: str | None = None) -> dict:
         """
         Return basic statistics for a field.
 
@@ -723,7 +717,7 @@ class HybridRun:
             "duration_s": float(time[-1] - time[0]) if len(time) > 1 else 0,
         }
 
-    def saveData(self, filename: str, key: Optional[str] = None) -> None:
+    def saveData(self, filename: str, key: str | None = None) -> None:
         """
         Save data to file.
 
@@ -756,10 +750,7 @@ class HybridRun:
         size_bytes = data.nbytes + time.nbytes
 
         # Evict old entries if needed
-        while (
-            self._cache_size_bytes + size_bytes > self._cache_max_size_bytes
-            and self._cache
-        ):
+        while self._cache_size_bytes + size_bytes > self._cache_max_size_bytes and self._cache:
             # Remove oldest entry
             oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].loaded_at)
             evicted = self._cache.pop(oldest_key)
@@ -792,7 +783,7 @@ class HybridRun:
     # Convenience methods for comparison with MagnetRun data
     # -------------------------------------------------------------------------
 
-    def get_time_range(self) -> Tuple[datetime, datetime]:
+    def get_time_range(self) -> tuple[datetime, datetime]:
         """Get time range of available data"""
         if self.HybridData is None:
             raise RuntimeError("No HybridData associated")
@@ -809,7 +800,7 @@ class HybridRun:
         key: str,
         target_time: datetime,
         window_seconds: float = 1.0,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Get data around a specific time.
 
@@ -832,13 +823,11 @@ class HybridRun:
         data, time = self.getData(key)
 
         # Convert target time to seconds from start of day
-        day_start = datetime.combine(self.HybridData.date, datetime.min.time())
+        day_start = datetime.combine(self.HybridData.date, datetime.min.time())  # type: ignore[union-attr]
         target_seconds = (target_time - day_start).total_seconds()
 
         # Find indices within window
-        mask = (time >= target_seconds - window_seconds) & (
-            time <= target_seconds + window_seconds
-        )
+        mask = (time >= target_seconds - window_seconds) & (time <= target_seconds + window_seconds)
 
         return data[mask], time[mask]
 
@@ -890,7 +879,7 @@ class HybridRun:
 def load_hybrid(
     base_dir: str,
     date_str: str,
-    fepc_system: Optional[str] = None,
+    fepc_system: str | None = None,
     **kwargs,
 ) -> HybridRun:
     """

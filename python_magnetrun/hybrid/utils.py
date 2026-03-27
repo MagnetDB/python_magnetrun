@@ -8,11 +8,10 @@ Includes:
 """
 
 import logging
-import traceback
 import sys
+import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Tuple, Union
 
 import numpy as np
 
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 def log_exception(
     message: str,
     exception: Exception,
-    logger_instance: Optional[logging.Logger] = None,
+    logger_instance: logging.Logger | None = None,
     use_print: bool = False,
     include_traceback: bool = True,
 ) -> None:
@@ -85,7 +84,7 @@ def log_exception(
         logger.error(error_msg)
 
 
-def format_exception_location(exception: Exception = None) -> str:
+def format_exception_location(exception: Exception | None = None) -> str:
     """
     Get a concise string with file:line:function where exception occurred
 
@@ -119,9 +118,7 @@ def format_exception_location(exception: Exception = None) -> str:
     return "unknown:?:?"
 
 
-def list_available_dates(
-    base_dir: Union[str, Path], data_type: str = "kHz"
-) -> List[str]:
+def list_available_dates(base_dir: str | Path, data_type: str = "kHz") -> list[str]:
     """
     List available dates for a given data type
 
@@ -171,8 +168,8 @@ def remove_outliers(
     time: np.ndarray,
     method: str = "iqr",
     threshold: float = 1.5,
-    window_size: Optional[int] = None,
-) -> Tuple[np.ndarray, np.ndarray, int]:
+    window_size: int | None = None,
+) -> tuple[np.ndarray, np.ndarray, int]:
     """
     Remove outliers from data
 
@@ -224,9 +221,7 @@ def remove_outliers(
         # Interpolate NaN values
         valid_idx = ~np.isnan(data)
         if np.sum(valid_idx) > 2:
-            data = np.interp(
-                np.arange(len(data)), np.arange(len(data))[valid_idx], data[valid_idx]
-            )
+            data = np.interp(np.arange(len(data)), np.arange(len(data))[valid_idx], data[valid_idx])
 
     return data, time, n_outliers
 
@@ -269,9 +264,7 @@ def _global_outlier_mask(data: np.ndarray, method: str, threshold: float) -> np.
         mask = (data < lower_bound) | (data > upper_bound)
 
     else:
-        raise ValueError(
-            f"Unknown method: {method}. Use 'iqr', 'zscore', 'mad', or 'percentile'"
-        )
+        raise ValueError(f"Unknown method: {method}. Use 'iqr', 'zscore', 'mad', or 'percentile'")
 
     return mask
 

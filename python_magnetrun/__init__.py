@@ -1,6 +1,6 @@
 """Top-level package for Python MagnetRun."""
 
-from importlib.metadata import version, PackageNotFoundError
+from importlib.metadata import PackageNotFoundError, version
 
 __author__ = """Christophe Trophime"""
 __email__ = "christophe.trophime@lncmi.cnrs.fr"

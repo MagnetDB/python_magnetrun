@@ -1,17 +1,22 @@
-import os
 import argparse
 import gc
-from functools import partial
+import os
 from collections import namedtuple
+from functools import partial
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
+import pytest
 
-from python_magnetrun.MagnetRun import MagnetRun
-from python_magnetrun.processing.hysteresis import remove_low_x_outliers
-from python_magnetrun.processing.smoothers import savgol
+pytest.importorskip("matplotlib")
+import matplotlib  # noqa: E402
 
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+
+from python_magnetrun.MagnetRun import MagnetRun  # noqa: E402
+from python_magnetrun.processing.hysteresis import remove_low_x_outliers  # noqa: E402
+from python_magnetrun.processing.smoothers import savgol  # noqa: E402
 
 # Named tuple for detection method configuration
 DetectMethod = namedtuple("DetectMethod", ["func", "marker", "color", "default_params"])
@@ -47,9 +52,7 @@ def mad(df, key, threshold: float = 3.5, debug: bool = False):
     return anomalies
 
 
-def movingaverage(
-    df, key, window: int = 7, threshold_std: float = 3.0, debug: bool = False
-):
+def movingaverage(df, key, window: int = 7, threshold_std: float = 3.0, debug: bool = False):
     ma = df[key].rolling(window=window).mean()
     deviation = np.abs(df[key] - ma)
     threshold = threshold_std * deviation.std()
@@ -106,9 +109,7 @@ def lof(
     return anomalies
 
 
-def dbscan(
-    df, key, tkey="t", eps: float = 0.5, min_samples: int = 5, debug: bool = False
-):
+def dbscan(df, key, tkey="t", eps: float = 0.5, min_samples: int = 5, debug: bool = False):
     from sklearn.cluster import DBSCAN
 
     model = DBSCAN(eps=eps, min_samples=min_samples)
@@ -124,9 +125,7 @@ def dbscan(
     return anomalies
 
 
-def elliptic_envelope(
-    df, key, tkey="t", contamination: float = 0.01, debug: bool = False
-):
+def elliptic_envelope(df, key, tkey="t", contamination: float = 0.01, debug: bool = False):
     from sklearn.covariance import EllipticEnvelope
 
     model = EllipticEnvelope(contamination=contamination)
@@ -168,9 +167,7 @@ def oneclass_svm(
     return anomalies
 
 
-def seasonal_decompose(
-    df, key, period: int = 12, threshold_std: float = 3.0, debug: bool = False
-):
+def seasonal_decompose(df, key, period: int = 12, threshold_std: float = 3.0, debug: bool = False):
     from statsmodels.tsa.seasonal import seasonal_decompose as sd
 
     result = sd(df[key], model="additive", period=period)
@@ -184,9 +181,7 @@ def seasonal_decompose(
     return anomalies
 
 
-def stumpy_decompose(
-    df, key, tkey="t", m: int = 50, percentile: float = 95, debug: bool = False
-):
+def stumpy_decompose(df, key, tkey="t", m: int = 50, percentile: float = 95, debug: bool = False):
     import stumpy
 
     mp = stumpy.stump(df[key].values, m=m)
@@ -209,9 +204,7 @@ DETECT_METHODS = {
         func=zscore, marker=".", color="blue", default_params={"threshold": 3.0}
     ),
     "irq": DetectMethod(func=irq, marker="o", color="cyan", default_params={"k": 1.5}),
-    "mad": DetectMethod(
-        func=mad, marker="v", color="red", default_params={"threshold": 3.5}
-    ),
+    "mad": DetectMethod(func=mad, marker="v", color="red", default_params={"threshold": 3.5}),
     "movingaverage": DetectMethod(
         func=movingaverage,
         marker="<",
@@ -298,7 +291,7 @@ def parse_method_params(param_list: list[str]) -> dict[str, dict]:
             try:
                 parsed_value = int(value)
             except ValueError:
-                try:
+                try:  # noqa: SIM105
                     parsed_value = float(value)
                 except ValueError:
                     pass  # Keep as string
@@ -357,7 +350,7 @@ def load_config_file(config_path: str) -> dict:
     ext = os.path.splitext(config_path)[1].lower()
 
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             if ext in (".yaml", ".yml"):
                 try:
                     import yaml
@@ -371,7 +364,7 @@ def load_config_file(config_path: str) -> dict:
                     return {}
             else:  # Default to JSON
                 return json.load(f)
-    except (json.JSONDecodeError, Exception) as e:
+    except (json.JSONDecodeError, OSError, ValueError) as e:
         print(f"Warning: failed to load config file: {e}", flush=True)
         return {}
 
@@ -547,9 +540,7 @@ def main():
         case ".tdms":
             mrun = MagnetRun.fromtdms(site, insert, file)
         case _:
-            raise RuntimeError(
-                f"so far file with extension in {supported_formats} are implemented"
-            )
+            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
 
     mdata = mrun.getMData()
 
@@ -564,15 +555,13 @@ def main():
         gc.collect()
         print(f"channels in group {group}: {channels}", flush=True)
 
-        fig, axs = plt.subplots(
-            len(channels), 1, sharex=True, figsize=(10, 5 * len(channels))
-        )
+        fig, axs = plt.subplots(len(channels), 1, sharex=True, figsize=(10, 5 * len(channels)))
         # Handle single channel case
         if len(channels) == 1:
             axs = [axs]
 
         for i, channel in enumerate(channels):
-            print(f"Processing channel {i+1}/{len(channels)}: {channel}", flush=True)
+            print(f"Processing channel {i + 1}/{len(channels)}: {channel}", flush=True)
 
             dt = mdata.Groups[group][channel]["wf_increment"]
             t_offset = mdata.Groups[group][channel]["wf_start_offset"]
@@ -646,9 +635,7 @@ def main():
 
                     method = DETECT_METHODS[method_name]
                     method_params = get_method_params(method_name, user_method_params)
-                    detect_func = partial(
-                        method.func, debug=args.debug, **method_params
-                    )
+                    detect_func = partial(method.func, debug=args.debug, **method_params)
 
                     print(f"  Running {method_name}...", flush=True)
                     if args.debug:
@@ -666,7 +653,7 @@ def main():
                                 s=20,
                             )
                         del anomalies_df
-                    except Exception as e:
+                    except (ValueError, RuntimeError, TypeError) as e:
                         print(f"  Warning: {method_name} failed: {e}", flush=True)
                     gc.collect()
 

@@ -2,20 +2,25 @@
 view R(I) as function of Tin
 """
 
-import numpy as np
-import pandas as pd
-
-import matplotlib.pyplot as plt
-
-
-import re
-from natsort import natsorted
 import argparse
+import re
+
+import pytest
+
+pytest.importorskip("matplotlib")
+import matplotlib  # noqa: E402
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+from natsort import natsorted  # noqa: E402
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "input_files",
-    nargs="+",
+    nargs="*",
+    default=[],
     help="enter input file(s) (ex: ~/R_14Helices_Tinit=20degCelsius.csv)",
 )
 parser.add_argument(
@@ -27,7 +32,7 @@ parser.add_argument(
 parser.add_argument("--list", help="list valid ikeys values", action="store_true")
 parser.add_argument("--debug", help="acticate debug", action="store_true")
 parser.add_argument("--save", help="save graphs (png format)", action="store_true")
-args = parser.parse_args()
+args, _unknown = parser.parse_known_args()
 print(f"args: {args}", flush=True)
 
 # set width of bar
@@ -39,7 +44,7 @@ RH = {}
 
 for i, file in enumerate(natsorted(args.input_files)):
     print(f"file={file}:", end=" ")
-    with open(file, "r") as f:
+    with open(file) as f:
         # extract Tin from file
         match = re.search(r"Tinit=(\d+\.\d+|\d+)", file)
         if match:
@@ -81,17 +86,17 @@ for i, file in enumerate(natsorted(args.input_files)):
         Tindex.append(Tin)
         Rvalues.append(Rtotal)
 
-plt.xticks(x + width / 2, xkeys)
-plt.ylabel("Ohm")
-plt.grid()
-plt.legend()
+        plt.xticks(x + width / 2, xkeys)
+        plt.ylabel("Ohm")
+        plt.grid()
+        plt.legend()
 
-if not args.save:
-    plt.show()
-else:
-    plt.savefig("R_vs_Tin.png", dpi=300)
+        if not args.save:
+            plt.show()
+        else:
+            plt.savefig("R_vs_Tin.png", dpi=300)
 
-plt.close()
+        plt.close()
 
 # resistance per xkeys
 for key in xkeys:

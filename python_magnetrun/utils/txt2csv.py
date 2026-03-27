@@ -1,28 +1,27 @@
-from __future__ import unicode_literals
+import argparse
 import logging
 import sys
-import argparse
-import pandas as pd
-
-logger = logging.getLogger(__name__)
 
 import matplotlib
-
-matplotlib.rcParams["text.usetex"] = True
-import matplotlib.pyplot as plt
-
-from .plots import plot_vs_time
-from .plots import plot_key_vs_key
+import pandas as pd
 
 from ..magnetdata import MagnetData
 from ..MagnetRun import prepareData_legacy
-from ..thermal_pipeline import CoolingCircuitColumns, compute_circuit_thermal, compute_global_thermal
+from ..thermal_pipeline import (
+    CoolingCircuitColumns,
+    compute_circuit_thermal,
+    compute_global_thermal,
+)
+from .plots import plot_key_vs_key, plot_vs_time
+
+matplotlib.rcParams["text.usetex"] = True
+logger = logging.getLogger(__name__)
 
 
 def concat_files(
     input_files: list,
     housing: str,
-    keys: list = [],
+    keys: list = None,
     debug: bool = False,
 ) -> pd.DataFrame:
     """Load, concatenate and prepare pupitre txt files.
@@ -51,7 +50,13 @@ def concat_files(
                 dfs.append(_df[keys])
             else:
                 dfs.append(_df)
-        except Exception as e:
+        except (
+            FileNotFoundError,
+            PermissionError,
+            pd.errors.ParserError,
+            pd.errors.EmptyDataError,
+            KeyError,
+        ) as e:
             raise RuntimeError(f"concat_files: failed to load {f}") from e
 
     raw_df = pd.concat(dfs, axis=0).dropna(axis=1, how="all").reset_index(drop=True)
@@ -87,16 +92,12 @@ def main():
         type=str,
         default="M9",
     )
-    parser.add_argument(
-        "--plot_vs_time", help='select key(s) to plot (ex. "Field[;Ucoil1]")'
-    )
+    parser.add_argument("--plot_vs_time", help='select key(s) to plot (ex. "Field[;Ucoil1]")')
     parser.add_argument(
         "--plot_key_vs_key", help='select pair(s) of keys to plot (ex. "Field-Icoil1")'
     )
     parser.add_argument("--output_time", help="output key(s) for time")
-    parser.add_argument(
-        "--output_timerange", help="set time range to extract (start;end)"
-    )
+    parser.add_argument("--output_timerange", help="set time range to extract (start;end)")
     parser.add_argument("--output_key", help="output key(s)")
     parser.add_argument("--extract_pairkeys", help="dump key(s) to file")
     parser.add_argument(
@@ -158,7 +159,7 @@ def main():
 
     if args.output_time:
         times = args.output_time.split(";")
-        print("Select data at %s " % (times))
+        print(f"Select data at {times}")
         if args.output_key:
             cols = args.output_key.split(";")
             print(df[df["Time"].isin(times)][cols])
@@ -167,7 +168,7 @@ def main():
 
     if args.output_timerange:
         timerange = args.output_timerange.split(";")
-        print("Select data from %s to %s" % (timerange[0], timerange[1]))
+        print(f"Select data from {timerange[0]} to {timerange[1]}")
         file_name = "timerange"
         file_name += "_from" + str(timerange[0].replace(":", "-"))
         file_name += "_to" + str(timerange[1].replace(":", "-")) + ".csv"
@@ -185,7 +186,7 @@ def main():
         for pair in pairs:
             items = pair.split("-")
             if len(items) != 2:
-                print("invalid pair of keys: %s" % pair)
+                print(f"invalid pair of keys: {pair}")
                 sys.exit(1)
             key1, key2 = items
             newdf = pd.concat([df[key1], df[key2]], axis=1)

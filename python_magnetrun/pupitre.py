@@ -1,26 +1,16 @@
 import logging
 import os
-import datetime
+import re
+
+import matplotlib
 from natsort import natsorted
 
-import numpy as np
-import pandas as pd
+from .MagnetRun import MagnetRun
+from .processing.correlations import lag_correlation
+from .processing.trends import trends
 
 logger = logging.getLogger(__name__)
-
-from .MagnetRun import MagnetRun
-from .processing.trends import trends
-import matplotlib
-import matplotlib.pyplot as plt
-
 matplotlib.rcParams["text.usetex"] = True
-
-from .utils.convert import convert_to_timestamp
-from .processing.correlations import lag_correlation
-from math import floor, ceil
-from .processing.correlations import lag_correlation
-
-import re
 
 if __name__ == "__main__":
     import sys
@@ -36,9 +26,7 @@ if __name__ == "__main__":
     parser.add_argument("--debug", help="acticate debug", action="store_true")
 
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
-    parser.add_argument(
-        "--show", help="display graphs (X11 required)", action="store_true"
-    )
+    parser.add_argument("--show", help="display graphs (X11 required)", action="store_true")
     parser.add_argument("--window", help="rolling window size", type=int, default=10)
     args = parser.parse_args()
     print(f"args: {args}", flush=True)
@@ -89,7 +77,7 @@ if __name__ == "__main__":
     }
 
     input_files = natsorted(args.input_file)
-    for i, file in enumerate(input_files):
+    for _i, file in enumerate(input_files):
         f_extension = os.path.splitext(file)[-1]
         if f_extension != ".txt":
             raise RuntimeError("so far file with tdms extension are implemented")
@@ -111,7 +99,7 @@ if __name__ == "__main__":
         excluded_keys = DRkeys + Tcalkeys + tkeys
         print("DRkeys: ", DRkeys)
         for key in natsorted(mdata.getKeys()):
-            if not key in excluded_keys:
+            if key not in excluded_keys:
                 print(key)
 
                 df = mdata.getData(key)
@@ -144,9 +132,7 @@ if __name__ == "__main__":
         # start_index: ochanges[0][0] + (ochanges[0][1] - ochanges[0][0])/2
         # end:_index ochanges[0][1] + (ochanges[0][2] - ochanges[0][1])/2
         ts_overview = mdata.getData(["timestamp", "TAlimout"])
-        ts_overview["TAlimout"] = (
-            ts_overview["TAlimout"] / ts_overview["TAlimout"].max()
-        )
+        ts_overview["TAlimout"] = ts_overview["TAlimout"] / ts_overview["TAlimout"].max()
         ts_overview.set_index("timestamp", inplace=True)
         ts_overview_data = {
             "field": "TAlimout",

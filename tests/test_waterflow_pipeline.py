@@ -16,10 +16,10 @@ from python_magnetrun.waterflow_pipeline import (
     extract_hydraulic_data,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_df(**kwargs) -> pd.DataFrame:
     """Build a minimal DataFrame with the given column arrays."""
@@ -45,7 +45,7 @@ def _make_synthetic_hydraulic_data(
     vp = vpmax * (current / imax) ** 2 + vp0
     vp_ratio = vp / (vpmax + vp0)
     flow = 140.0 * vp_ratio
-    pressure = 4.0 + 22.0 * vp_ratio ** 2
+    pressure = 4.0 + 22.0 * vp_ratio**2
     back_pressure = np.full(n, 4.0)
     return HydraulicData(
         current=current,
@@ -62,6 +62,7 @@ def _make_synthetic_hydraulic_data(
 # TestExtractHydraulicData
 # ---------------------------------------------------------------------------
 
+
 class TestExtractHydraulicData:
     """Test data extraction from DataFrames."""
 
@@ -69,7 +70,12 @@ class TestExtractHydraulicData:
         """Verify arrays are correctly extracted and filtered."""
         df = _make_df()
         data = extract_hydraulic_data(
-            df, "I", "Rpm", "Flow", "Pin", "Pout",
+            df,
+            "I",
+            "Rpm",
+            "Flow",
+            "Pin",
+            "Pout",
             current_threshold=300.0,
         )
         # rows with I >= 300: 500, 1000, 5000
@@ -88,9 +94,7 @@ class TestExtractHydraulicData:
     def test_name_propagated(self):
         """The name kwarg is stored on HydraulicData."""
         df = _make_df()
-        data = extract_hydraulic_data(
-            df, "I", "Rpm", "Flow", "Pin", "Pout", name="M9_M10"
-        )
+        data = extract_hydraulic_data(df, "I", "Rpm", "Flow", "Pin", "Pout", name="M9_M10")
         assert data.name == "M9_M10"
 
     def test_imax_defaults_to_none(self):
@@ -116,16 +120,23 @@ class TestExtractHydraulicData:
 
     def test_insufficient_data_raises_value_error(self):
         """Verify ValueError when too few points survive filtering."""
-        df = pd.DataFrame({
-            "I": [100, 200],
-            "Rpm": [1000, 1010],
-            "Flow": [10, 11],
-            "Pin": [5, 5.1],
-            "Pout": [4, 4],
-        })
+        df = pd.DataFrame(
+            {
+                "I": [100, 200],
+                "Rpm": [1000, 1010],
+                "Flow": [10, 11],
+                "Pin": [5, 5.1],
+                "Pout": [4, 4],
+            }
+        )
         with pytest.raises(ValueError, match="at least 3"):
             extract_hydraulic_data(
-                df, "I", "Rpm", "Flow", "Pin", "Pout",
+                df,
+                "I",
+                "Rpm",
+                "Flow",
+                "Pin",
+                "Pout",
                 current_threshold=300.0,
             )
 
@@ -133,7 +144,12 @@ class TestExtractHydraulicData:
         """threshold=0 keeps every row."""
         df = _make_df()
         data = extract_hydraulic_data(
-            df, "I", "Rpm", "Flow", "Pin", "Pout",
+            df,
+            "I",
+            "Rpm",
+            "Flow",
+            "Pin",
+            "Pout",
             current_threshold=0.0,
         )
         assert len(data.current) == len(df)
@@ -152,6 +168,7 @@ class TestExtractHydraulicData:
 # ---------------------------------------------------------------------------
 # TestDetectImaxFromPlateaus
 # ---------------------------------------------------------------------------
+
 
 class TestDetectImaxFromPlateaus:
     """Test rolling-derivative plateau detection."""
@@ -244,9 +261,7 @@ class TestDetectImaxFromPlateaus:
             back_pressure=np.ones(n),
         )
         # A strict threshold should not fire on pure noise
-        detected = detect_imax_from_plateaus(
-            data, plateau_threshold=0.001, min_plateau_samples=30
-        )
+        detected = detect_imax_from_plateaus(data, plateau_threshold=0.001, min_plateau_samples=30)
         assert detected is None
 
     def test_window_parameter_accepted(self):
@@ -266,6 +281,7 @@ class TestDetectImaxFromPlateaus:
 # ---------------------------------------------------------------------------
 # TestComputeWaterflow
 # ---------------------------------------------------------------------------
+
 
 class TestComputeWaterflow:
     """Test the full fitting pipeline (requires python_magnetcooling)."""
@@ -310,13 +326,14 @@ class TestComputeWaterflow:
         pytest.importorskip("python_magnetcooling")
         data = _make_synthetic_hydraulic_data()
 
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             compute_waterflow(data, method="unknown_method")
 
 
 # ---------------------------------------------------------------------------
 # TestComputeWaterflowFromRun
 # ---------------------------------------------------------------------------
+
 
 class TestComputeWaterflowFromRun:
     """Test the MagnetRun convenience wrapper."""
@@ -341,13 +358,15 @@ class TestComputeWaterflowFromRun:
 
     def _make_mrun(self, n: int = 200):
         data = _make_synthetic_hydraulic_data(n=n, imax=28000.0)
-        df = pd.DataFrame({
-            "IH": data.current,
-            "Rpm": data.pump_speed,
-            "Flow": data.flow_rate,
-            "HP": data.pressure,
-            "BP": data.back_pressure,
-        })
+        df = pd.DataFrame(
+            {
+                "IH": data.current,
+                "Rpm": data.pump_speed,
+                "Flow": data.flow_rate,
+                "HP": data.pressure,
+                "BP": data.back_pressure,
+            }
+        )
         return self._FakeMagnetRun(df)
 
     def test_basic_call(self):
@@ -368,18 +387,25 @@ class TestComputeWaterflowFromRun:
 
     def test_name_extracted_from_mrun(self):
         """Insert name is passed through to HydraulicData."""
-        df = pd.DataFrame({
-            "IH": np.linspace(300, 5000, 50),
-            "Rpm": np.linspace(1000, 2000, 50),
-            "Flow": np.linspace(10, 50, 50),
-            "HP": np.linspace(5, 15, 50),
-            "BP": np.full(50, 4.0),
-        })
+        df = pd.DataFrame(
+            {
+                "IH": np.linspace(300, 5000, 50),
+                "Rpm": np.linspace(1000, 2000, 50),
+                "Flow": np.linspace(10, 50, 50),
+                "HP": np.linspace(5, 15, 50),
+                "BP": np.full(50, 4.0),
+            }
+        )
         mrun = self._FakeMagnetRun(df, insert="M10")
         # We test only the extraction step here (no fitting dependency)
         result_df = mrun.getMData().getData()
         data = extract_hydraulic_data(
-            result_df, "IH", "Rpm", "Flow", "HP", "BP",
+            result_df,
+            "IH",
+            "Rpm",
+            "Flow",
+            "HP",
+            "BP",
             current_threshold=0.0,
         )
         # Name would be set from mrun.getInsert() in the real call
@@ -406,13 +432,15 @@ class TestComputeWaterflowFromRun:
         """
         n = 50
         # Pure linear ramp — no plateau
-        df = pd.DataFrame({
-            "IH": np.linspace(300, 10000, n),
-            "Rpm": np.linspace(1000, 3000, n),  # monotone, no plateau
-            "Flow": np.linspace(10, 50, n),
-            "HP": np.linspace(5, 15, n),
-            "BP": np.full(n, 4.0),
-        })
+        df = pd.DataFrame(
+            {
+                "IH": np.linspace(300, 10000, n),
+                "Rpm": np.linspace(1000, 3000, n),  # monotone, no plateau
+                "Flow": np.linspace(10, 50, n),
+                "HP": np.linspace(5, 15, n),
+                "BP": np.full(n, 4.0),
+            }
+        )
         mrun = self._FakeMagnetRun(df)
 
         with pytest.raises(ValueError, match="imax"):

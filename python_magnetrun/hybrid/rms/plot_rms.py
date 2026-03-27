@@ -8,9 +8,10 @@ A simple utility to quickly plot variables from RMS files.
 import argparse
 import sys
 from pathlib import Path
-from rms_reader import RMSFileReader
+
 import matplotlib.pyplot as plt
 import numpy as np
+from rms_reader import RMSFileReader
 
 
 def plot_variables(filepath, variable_names, output_file=None, same_plot=False):
@@ -61,7 +62,7 @@ def plot_variables(filepath, variable_names, output_file=None, same_plot=False):
 
         ax1.set_xlabel("Time")
         ax1.grid(True, alpha=0.3)
-        fig.suptitle(f'Variables: {", ".join(valid_vars)}', fontsize=12)
+        fig.suptitle(f"Variables: {', '.join(valid_vars)}", fontsize=12)
 
     else:
         # Separate subplots
@@ -72,7 +73,7 @@ def plot_variables(filepath, variable_names, output_file=None, same_plot=False):
 
         fig.suptitle(f"RMS File: {Path(filepath).name}", fontsize=14, fontweight="bold")
 
-        for ax, var in zip(axes, valid_vars):
+        for ax, var in zip(axes, valid_vars, strict=False):
             ax.plot(df.index, df[var], linewidth=1.5)
             ax.set_ylabel(var)
             ax.set_xlabel("Time")
@@ -140,7 +141,7 @@ def main():
 
     try:
         plot_variables(args.file, args.variables, args.output, args.same_plot)
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         print(f"Error: {e}")
         import traceback
 

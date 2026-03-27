@@ -5,11 +5,10 @@ Test script to demonstrate enhanced error logging capabilities.
 This script shows different error logging patterns and their output.
 """
 
-import sys
 from pathlib import Path
 
 # Import from python_magnetrun.hybrid module
-from python_magnetrun.hybrid.utils import log_exception, format_exception_location
+from python_magnetrun.hybrid.utils import format_exception_location, log_exception
 
 
 def test_full_traceback():
@@ -26,7 +25,7 @@ def test_full_traceback():
 
     try:
         outer_function()
-    except Exception as e:
+    except ValueError as e:
         log_exception(
             "Failed to execute outer function",
             e,
@@ -49,7 +48,7 @@ def test_concise_location():
 
     try:
         result = process_data(-5)
-    except Exception as e:
+    except ValueError as e:
         log_exception(
             "Warning: Could not process data",
             e,
@@ -93,10 +92,8 @@ def test_nested_exceptions():
 
     try:
         level_1()
-    except Exception as e:
-        log_exception(
-            "Error in nested calls", e, use_print=True, include_traceback=True
-        )
+    except RuntimeError as e:
+        log_exception("Error in nested calls", e, use_print=True, include_traceback=True)
     print()
 
 
@@ -109,21 +106,21 @@ def test_type_error():
     try:
         # TypeError
         result = "string" + 123
-    except Exception as e:
+    except TypeError as e:
         print(f"TypeError at {format_exception_location()}: {e}")
 
     try:
         # KeyError
         d = {"a": 1}
         value = d["b"]
-    except Exception as e:
+    except KeyError as e:
         print(f"KeyError at {format_exception_location()}: {e}")
 
     try:
         # IndexError
         lst = [1, 2, 3]
         value = lst[10]
-    except Exception as e:
+    except IndexError as e:
         log_exception("IndexError occurred", e, use_print=True, include_traceback=False)
     print()
 
@@ -135,12 +132,12 @@ def test_with_context():
     print("=" * 70)
 
     def process_file(filename):
-        raise IOError(f"Cannot read {filename}")
+        raise OSError(f"Cannot read {filename}")
 
     filename = "data.txt"
     try:
         process_file(filename)
-    except Exception as e:
+    except OSError as e:
         log_exception(
             f"Failed to process file '{filename}'",
             e,

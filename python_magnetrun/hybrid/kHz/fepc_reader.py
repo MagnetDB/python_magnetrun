@@ -3,15 +3,13 @@ FEPC kHz Data Reader
 Reads configuration and binary data files from FEPC acquisition system
 """
 
-import logging
-import numpy as np
-import struct
 import argparse
-from pathlib import Path
+import logging
+import struct
 from dataclasses import dataclass
-from typing import List, Dict, Tuple, Optional
+from pathlib import Path
 
-
+import numpy as np
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -19,9 +17,7 @@ logger = logging.getLogger(__name__)
 # FEPC kHz format constants
 SAMPLES_PER_BLOCK = 50  # Number of samples in each data block
 KHZ_SAMPLING_FREQUENCY = 1000.0  # Sampling frequency in Hz for kHz files
-SAMPLE_INTERVAL = (
-    1.0 / KHZ_SAMPLING_FREQUENCY
-)  # Time interval between samples in seconds
+SAMPLE_INTERVAL = 1.0 / KHZ_SAMPLING_FREQUENCY  # Time interval between samples in seconds
 
 # Analog card constants
 ANALOG_CHANNELS = 16
@@ -44,8 +40,8 @@ class CalibrationInfo:
     coef_b: float = 0.0
     a: float = 1.0
     b: float = 0.0
-    cnv_file: Optional[str] = None  # Path to CNV file if piecewise calibration
-    unit: Optional[str] = None  # Physical unit string (e.g., 'A', 'V', 'bar')
+    cnv_file: str | None = None  # Path to CNV file if piecewise calibration
+    unit: str | None = None  # Physical unit string (e.g., 'A', 'V', 'bar')
 
 
 @dataclass
@@ -58,12 +54,10 @@ class CardInfo:
     buffer_pre: int
     buffer_post: int
     num_channels: int
-    variable_names: List[str]
-    calibrations: Optional[List[CalibrationInfo]] = None  # Calibration for each channel
-    digital_info: Optional[List[Dict]] = (
-        None  # Additional info for digital variables (NUM_BIT, etc.)
-    )
-    analog_info: Optional[List[Dict]] = (
+    variable_names: list[str]
+    calibrations: list[CalibrationInfo] | None = None  # Calibration for each channel
+    digital_info: list[dict] | None = None  # Additional info for digital variables (NUM_BIT, etc.)
+    analog_info: list[dict] | None = (
         None  # Additional info for analog variables (calibration, unit, etc.)
     )
 
@@ -74,14 +68,12 @@ class FEPCConfig:
 
     fepc_name: str
     num_cards: int
-    cards: List[CardInfo]
-    host_number: Optional[str] = None  # HOST number extracted from CFG filename
-    digital_variables: Optional[Dict[int, List[str]]] = (
+    cards: list[CardInfo]
+    host_number: str | None = None  # HOST number extracted from CFG filename
+    digital_variables: dict[int, list[str]] | None = (
         None  # Slot -> variable names for digital cards
     )
-    analog_variables: Optional[Dict[int, List[str]]] = (
-        None  # Slot -> variable names for analog cards
-    )
+    analog_variables: dict[int, list[str]] | None = None  # Slot -> variable names for analog cards
 
     def __post_init__(self):
         if self.digital_variables is None:
@@ -96,11 +88,11 @@ class FEPCConfig:
                 return card
         raise ValueError(f"Slot {slot} not found")
 
-    def get_analog_slots(self) -> List[int]:
+    def get_analog_slots(self) -> list[int]:
         """Return list of analog card slots"""
         return [card.slot for card in self.cards if card.card_type == "ANA"]
 
-    def get_digital_slots(self) -> List[int]:
+    def get_digital_slots(self) -> list[int]:
         """Return list of digital card slots"""
         return [card.slot for card in self.cards if card.card_type == "DIG"]
 
@@ -127,7 +119,7 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
         - type: card type (0=ANA, 1=DIG)
         - nchannels: number of channels
     """
-    with open(cfg_path, "r") as f:
+    with open(cfg_path) as f:
         lines = [line.strip() for line in f.readlines() if line.strip()]
 
     # First line contains the header with FEPC info
@@ -192,25 +184,23 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
 
         # Get card description from header
         card_idx = line_idx - 1
-        card_desc = (
-            card_descriptions[card_idx] if card_idx < len(card_descriptions) else {}
-        )
+        card_desc = card_descriptions[card_idx] if card_idx < len(card_descriptions) else {}
 
         slot = card_idx
-        card_type = card_desc.get("card_type", "ANA" if line_idx <= 6 else "DIG")
-        num_channels = card_desc.get(
+        card_type = card_desc.get("card_type", "ANA" if line_idx <= 6 else "DIG")  # type: ignore[assignment]
+        num_channels = card_desc.get(  # type: ignore[assignment]
             "nchannels", ANALOG_CHANNELS if card_type == "ANA" else DIGITAL_CHANNELS
         )
-        buffer_freq = card_desc.get("freq", 10000)
-        buffer_pre = card_desc.get("pre", 20)
-        buffer_post = card_desc.get("post", 50)
+        buffer_freq = card_desc.get("freq", 10000)  # type: ignore[assignment]
+        buffer_pre = card_desc.get("pre", 20)  # type: ignore[assignment]
+        buffer_post = card_desc.get("post", 50)  # type: ignore[assignment]
 
         # Ensure we have the right number of channels
-        while len(variable_names) < num_channels:
+        while len(variable_names) < num_channels:  # type: ignore[operator]
             variable_names.append(f"CH{len(variable_names)}")
 
         # Trim to exact number of channels
-        variable_names = variable_names[:num_channels]
+        variable_names = variable_names[:num_channels]  # type: ignore[misc]
 
         # Default calibrations (no calibration info in variable lines)
         calibrations = None
@@ -219,10 +209,10 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
         card = CardInfo(
             slot=slot,
             card_type=card_type,
-            buffer_freq=buffer_freq,
-            buffer_pre=buffer_pre,
-            buffer_post=buffer_post,
-            num_channels=num_channels,
+            buffer_freq=buffer_freq,  # type: ignore[arg-type]
+            buffer_pre=buffer_pre,  # type: ignore[arg-type]
+            buffer_post=buffer_post,  # type: ignore[arg-type]
+            num_channels=num_channels,  # type: ignore[arg-type]
             variable_names=variable_names,
             calibrations=calibrations,
         )
@@ -245,8 +235,8 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
     analog_variables = {}
 
     # Lists to collect variable info before assigning to slots
-    digital_var_list = []
-    analog_var_list = []
+    digital_var_list: list[dict] = []
+    analog_var_list: list[dict] = []
 
     def safe_float(val, default=0.0):
         """Convert string to float, handling French decimal notation"""
@@ -313,9 +303,7 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
             analog_var_list.append(
                 {
                     "name": var_name,
-                    "num_channel": (
-                        int(num_channel) if num_channel else len(analog_var_list)
-                    ),
+                    "num_channel": (int(num_channel) if num_channel else len(analog_var_list)),
                     "calibration": calib,
                     "info": line_dict,
                 }
@@ -326,8 +314,8 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
             logger.warning(f"Unknown line format (TYPE={var_type}): {line[:50]}...")
 
     # Sort variables by num_bit/num_channel for proper ordering
-    digital_var_list.sort(key=lambda x: x["num_bit"])
-    analog_var_list.sort(key=lambda x: x["num_channel"])
+    digital_var_list.sort(key=lambda x: x["num_bit"])  # type: ignore[return-value]
+    analog_var_list.sort(key=lambda x: x["num_channel"])  # type: ignore[return-value]
 
     # Assign collected digital variables to slots
     for card in digital_slots:
@@ -347,7 +335,7 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
             calib = CalibrationInfo()  # Default
             for var_info in analog_var_list:
                 if var_info["name"] == var_name:
-                    calib = var_info["calibration"]
+                    calib = var_info["calibration"]  # type: ignore[assignment]
                     break
             calibrations.append(calib)
 
@@ -416,7 +404,7 @@ def _extract_calibration(var_dict: dict) -> CalibrationInfo:
 
 def read_analog_block(
     file, block_idx: int, endian: str = "big", verbose: bool = False
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Read one analog data block (1614 bytes)
 
@@ -473,18 +461,13 @@ def read_analog_block(
     # Read data (50 samples × 16 channels)
     data_bytes = file.read(ANALOG_DATA_SIZE)
     dtype = np.dtype(np.uint16).newbyteorder(">" if endian == "big" else "<")
-    data = np.frombuffer(data_bytes, dtype=dtype).reshape(
-        SAMPLES_PER_BLOCK, ANALOG_CHANNELS
-    )
+    data = np.frombuffer(data_bytes, dtype=dtype).reshape(SAMPLES_PER_BLOCK, ANALOG_CHANNELS)
     # print(f"read_analog_block: data shape={data.shape}")
 
     # Create timestamp array: header timestamp is for last sample (index 49)
     # Each previous sample is one sample interval earlier
     timestamps = np.array(
-        [
-            t_last - (SAMPLES_PER_BLOCK - 1 - i) * SAMPLE_INTERVAL
-            for i in range(SAMPLES_PER_BLOCK)
-        ]
+        [t_last - (SAMPLES_PER_BLOCK - 1 - i) * SAMPLE_INTERVAL for i in range(SAMPLES_PER_BLOCK)]
     )
 
     return data, timestamps
@@ -492,7 +475,7 @@ def read_analog_block(
 
 def read_digital_block(
     file, block_idx: int, endian: str = "big", verbose: bool = False
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Read one digital data block (212 bytes)
 
@@ -564,10 +547,7 @@ def read_digital_block(
     # Create timestamp array: header timestamp is for last sample (index 49)
     # Each previous sample is one sample interval earlier
     timestamps = np.array(
-        [
-            t_last - (SAMPLES_PER_BLOCK - 1 - i) * SAMPLE_INTERVAL
-            for i in range(SAMPLES_PER_BLOCK)
-        ]
+        [t_last - (SAMPLES_PER_BLOCK - 1 - i) * SAMPLE_INTERVAL for i in range(SAMPLES_PER_BLOCK)]
     )
 
     logger.debug(f"read_digital_block: data shape = {data.shape}")
@@ -636,14 +616,10 @@ def read_hour_file(
     verbose = False
     if num_blocks != actual_num_blocks:
         verbose = True
-        logger.warning(
-            f"{filepath}: expected {num_blocks} blocks got {actual_num_blocks}"
-        )
+        logger.warning(f"{filepath}: expected {num_blocks} blocks got {actual_num_blocks}")
 
     # Pre-allocate array
-    data = np.zeros(
-        (total_samples, num_channels), dtype=np.uint16 if card_type == "ANA" else bool
-    )
+    data = np.zeros((total_samples, num_channels), dtype=np.uint16 if card_type == "ANA" else bool)
     # TODO set NaN instead of zero
     data = np.empty((total_samples, num_channels))
     data.fill(np.nan)
@@ -667,13 +643,9 @@ def read_hour_file(
         for block_idx in range(num_blocks):
             try:
                 if card_type == "ANA":
-                    block_data, timestamps = read_analog_block(
-                        f, block_idx, endian, verbose
-                    )
+                    block_data, timestamps = read_analog_block(f, block_idx, endian, verbose)
                 else:
-                    block_data, timestamps = read_digital_block(
-                        f, block_idx, endian, verbose
-                    )
+                    block_data, timestamps = read_digital_block(f, block_idx, endian, verbose)
 
                 # Store in output array
                 start_idx = block_idx * SAMPLES_PER_BLOCK
@@ -694,7 +666,7 @@ def read_hour_file(
                         ax.relim()
                         ax.autoscale_view()
                         ax.set_title(
-                            f"Debug: Reading {Path(filepath).name} - Block {block_idx+1}/{num_blocks}"
+                            f"Debug: Reading {Path(filepath).name} - Block {block_idx + 1}/{num_blocks}"
                         )
                     if fig is not None:
                         fig.canvas.draw()
@@ -714,9 +686,7 @@ def read_hour_file(
         if ax is not None:
             ax.relim()
             ax.autoscale_view()
-            ax.set_title(
-                f"Debug: {Path(filepath).name} - Complete ({num_blocks} blocks)"
-            )
+            ax.set_title(f"Debug: {Path(filepath).name} - Complete ({num_blocks} blocks)")
         if fig is not None:
             fig.canvas.draw()
             fig.canvas.flush_events()
@@ -726,7 +696,7 @@ def read_hour_file(
     return data
 
 
-def load_calibration(cnv_path: str) -> Dict:
+def load_calibration(cnv_path: str) -> dict:
     """
     Load calibration file (.CNV) for piecewise linear calibration
 
@@ -752,7 +722,7 @@ def load_calibration(cnv_path: str) -> Dict:
     physical_values = []
 
     try:
-        with open(cnv_path, "r") as f:
+        with open(cnv_path) as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#"):
@@ -769,8 +739,8 @@ def load_calibration(cnv_path: str) -> Dict:
                     physical_values.append(phys)
 
         # Sort by N values
-        sorted_pairs = sorted(zip(n_values, physical_values))
-        n_values, physical_values = zip(*sorted_pairs)
+        sorted_pairs = sorted(zip(n_values, physical_values, strict=False))
+        n_values, physical_values = zip(*sorted_pairs, strict=False)  # type: ignore[assignment]
 
         return {
             "type": "piecewise",
@@ -779,15 +749,15 @@ def load_calibration(cnv_path: str) -> Dict:
         }
 
     except FileNotFoundError:
-        raise FileNotFoundError(f"CNV file not found: {cnv_path}")
-    except Exception as e:
-        raise ValueError(f"Error parsing CNV file {cnv_path}: {e}")
+        raise FileNotFoundError(f"CNV file not found: {cnv_path}") from None
+    except (OSError, ValueError, RuntimeError) as e:
+        raise ValueError(f"Error parsing CNV file {cnv_path}: {e}") from e
 
 
 def apply_calibration(
     raw_data: np.ndarray,
-    calib_info: Optional[CalibrationInfo] = None,
-    cnv_dict: Optional[Dict] = None,
+    calib_info: CalibrationInfo | None = None,
+    cnv_dict: dict | None = None,
 ) -> np.ndarray:
     """
     Apply calibration to convert raw int16 values to physical units
@@ -812,9 +782,7 @@ def apply_calibration(
         Calibrated data in physical units (float)
     """
     if cnv_dict is not None and cnv_dict["type"] == "piecewise":
-        logger.debug(
-            f"apply piecewise calibration using CNV data (cvn_dict={cnv_dict})"
-        )
+        logger.debug(f"apply piecewise calibration using CNV data (cvn_dict={cnv_dict})")
         # Piecewise linear calibration
         return _apply_piecewise_calibration(raw_data, cnv_dict)
 
@@ -830,9 +798,7 @@ def apply_calibration(
         return raw_data.astype(np.float64)
 
 
-def _apply_linear_calibration(
-    raw_data: np.ndarray, calib: CalibrationInfo
-) -> np.ndarray:
+def _apply_linear_calibration(raw_data: np.ndarray, calib: CalibrationInfo) -> np.ndarray:
     """
     Apply linear calibration: Signal = A * (COEF_A * N + COEF_B) + B
 
@@ -850,7 +816,7 @@ def _apply_linear_calibration(
     return signal
 
 
-def _apply_piecewise_calibration(raw_data: np.ndarray, cnv_dict: Dict) -> np.ndarray:
+def _apply_piecewise_calibration(raw_data: np.ndarray, cnv_dict: dict) -> np.ndarray:
     """
     Apply piecewise linear calibration using CNV lookup table
 
@@ -861,9 +827,7 @@ def _apply_piecewise_calibration(raw_data: np.ndarray, cnv_dict: Dict) -> np.nda
 
     # Use numpy's interpolation
     # extrapolation uses nearest value for out-of-range points
-    physical_data = np.interp(raw_data.flatten(), n_values, physical_values).reshape(
-        raw_data.shape
-    )
+    physical_data = np.interp(raw_data.flatten(), n_values, physical_values).reshape(raw_data.shape)
 
     return physical_data
 
@@ -999,9 +963,7 @@ def main():
         print(f"Endianness: {args.endian}")
         print(f"Number of blocks: {args.num_blocks}")
 
-        data = read_hour_file(
-            args.datafile, args.card_type, args.num_blocks, args.endian
-        )
+        data = read_hour_file(args.datafile, args.card_type, args.num_blocks, args.endian)
         print(f"\nData shape: {data.shape}")
         print(f"Data type: {data.dtype}")
 

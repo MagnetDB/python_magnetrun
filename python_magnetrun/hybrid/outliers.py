@@ -30,8 +30,8 @@ Example usage:
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, List, Tuple, Dict, Any, Union
 from enum import Enum, auto
+from typing import Any
 
 import numpy as np
 
@@ -41,13 +41,14 @@ logger = logging.getLogger(__name__)
 
 class OutlierMethod(Enum):
     """Available outlier detection methods"""
-    IQR = auto()          # Interquartile Range
-    ZSCORE = auto()       # Z-score (standard deviations from mean)
-    MAD = auto()          # Median Absolute Deviation
-    PERCENTILE = auto()   # Percentile-based clipping
+
+    IQR = auto()  # Interquartile Range
+    ZSCORE = auto()  # Z-score (standard deviations from mean)
+    MAD = auto()  # Median Absolute Deviation
+    PERCENTILE = auto()  # Percentile-based clipping
     MODIFIED_ZSCORE = auto()  # Modified Z-score using median
-    GRUBBS = auto()       # Grubbs' test (single outlier)
-    DBSCAN = auto()       # Density-based (requires scipy)
+    GRUBBS = auto()  # Grubbs' test (single outlier)
+    DBSCAN = auto()  # Density-based (requires scipy)
 
 
 @dataclass
@@ -57,15 +58,16 @@ class OutlierResult:
 
     Contains the outlier mask and metadata about the detection.
     """
+
     mask: np.ndarray  # Boolean mask where True = outlier
     method: str
     threshold: float
     n_outliers: int
     n_total: int
     indices: np.ndarray = field(default_factory=lambda: np.array([]))
-    statistics: Dict[str, float] = field(default_factory=dict)
+    statistics: dict[str, float] = field(default_factory=dict)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if len(self.indices) == 0:
             self.indices = np.where(self.mask)[0]
 
@@ -94,9 +96,9 @@ class OutlierResult:
     def apply_to_data(
         self,
         data: np.ndarray,
-        time: Optional[np.ndarray] = None,
+        time: np.ndarray | None = None,
         strategy: str = "remove",
-    ) -> Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]:
+    ) -> np.ndarray | tuple[np.ndarray, np.ndarray]:
         """
         Apply outlier handling to data.
 
@@ -138,7 +140,7 @@ class OutlierResult:
                 clean_data = np.interp(
                     np.arange(len(clean_data)),
                     np.arange(len(clean_data))[valid_idx],
-                    clean_data[valid_idx]
+                    clean_data[valid_idx],
                 )
 
         elif strategy == "clip":
@@ -146,7 +148,7 @@ class OutlierResult:
                 clean_data = np.clip(
                     clean_data,
                     self.statistics["lower_bound"],
-                    self.statistics["upper_bound"]
+                    self.statistics["upper_bound"],
                 )
 
         elif strategy == "median":
@@ -196,9 +198,9 @@ class OutlierDetector:
     def __init__(
         self,
         method: str = "iqr",
-        threshold: Optional[float] = None,
-        window_size: Optional[int] = None,
-        chunk_size: Optional[int] = None,
+        threshold: float | None = None,
+        window_size: int | None = None,
+        chunk_size: int | None = None,
     ):
         self.method = method.lower()
         self.threshold = threshold or self.DEFAULT_THRESHOLDS.get(self.method, 1.5)
@@ -208,7 +210,7 @@ class OutlierDetector:
     def detect(
         self,
         data: np.ndarray,
-        time: Optional[np.ndarray] = None,
+        time: np.ndarray | None = None,
     ) -> OutlierResult:
         """
         Detect outliers in data.
@@ -244,7 +246,7 @@ class OutlierDetector:
             statistics=stats,
         )
 
-    def _detect_global(self, data: np.ndarray) -> Tuple[np.ndarray, Dict]:
+    def _detect_global(self, data: np.ndarray) -> tuple[np.ndarray, dict]:
         """Global outlier detection"""
         stats = {}
 
@@ -256,8 +258,11 @@ class OutlierDetector:
             upper = q3 + self.threshold * iqr
             mask = (data < lower) | (data > upper)
             stats = {
-                "q1": q1, "q3": q3, "iqr": iqr,
-                "lower_bound": lower, "upper_bound": upper
+                "q1": q1,
+                "q3": q3,
+                "iqr": iqr,
+                "lower_bound": lower,
+                "upper_bound": upper,
             }
 
         elif self.method == "zscore":
@@ -269,9 +274,10 @@ class OutlierDetector:
             else:
                 mask = np.zeros(len(data), dtype=bool)
             stats = {
-                "mean": mean, "std": std,
+                "mean": mean,
+                "std": std,
                 "lower_bound": mean - self.threshold * std,
-                "upper_bound": mean + self.threshold * std
+                "upper_bound": mean + self.threshold * std,
             }
 
         elif self.method == "mad":
@@ -284,9 +290,10 @@ class OutlierDetector:
             else:
                 mask = np.zeros(len(data), dtype=bool)
             stats = {
-                "median": median, "mad": mad,
+                "median": median,
+                "mad": mad,
                 "lower_bound": median - self.threshold * mad / 0.6745,
-                "upper_bound": median + self.threshold * mad / 0.6745
+                "upper_bound": median + self.threshold * mad / 0.6745,
             }
 
         elif self.method == "percentile":
@@ -310,8 +317,10 @@ class OutlierDetector:
 
         return mask, stats
 
-    def _detect_rolling(self, data: np.ndarray) -> Tuple[np.ndarray, Dict]:
+    def _detect_rolling(self, data: np.ndarray) -> tuple[np.ndarray, dict]:
         """Rolling window outlier detection"""
+        if self.window_size is None:
+            raise ValueError("window_size must be set for rolling detection")
         n = len(data)
         mask = np.zeros(n, dtype=bool)
         half_window = self.window_size // 2
@@ -322,11 +331,13 @@ class OutlierDetector:
             from scipy.ndimage import uniform_filter1d
 
             if self.method == "zscore":
-                rolling_mean = uniform_filter1d(data, self.window_size, mode='nearest')
-                rolling_var = uniform_filter1d(data**2, self.window_size, mode='nearest') - rolling_mean**2
+                rolling_mean = uniform_filter1d(data, self.window_size, mode="nearest")
+                rolling_var = (
+                    uniform_filter1d(data**2, self.window_size, mode="nearest") - rolling_mean**2
+                )
                 rolling_std = np.sqrt(np.maximum(rolling_var, 0))
 
-                with np.errstate(divide='ignore', invalid='ignore'):
+                with np.errstate(divide="ignore", invalid="ignore"):
                     z_scores = np.abs((data - rolling_mean) / rolling_std)
                     z_scores[~np.isfinite(z_scores)] = 0
                 mask = z_scores > self.threshold
@@ -368,7 +379,7 @@ class OutlierDetector:
     def _detect_chunked(
         self,
         data: np.ndarray,
-        time: Optional[np.ndarray] = None,
+        time: np.ndarray | None = None,
     ) -> OutlierResult:
         """
         Detect outliers in chunks for memory efficiency.
@@ -381,10 +392,11 @@ class OutlierDetector:
         all_stats = []
 
         # Process in chunks with overlap for boundary consistency
-        overlap = self.window_size if self.window_size else 1000
+        overlap: int = self.window_size if self.window_size else 1000
+        chunk_size: int = self.chunk_size if self.chunk_size else 10000
 
-        for start in range(0, n, self.chunk_size - overlap):
-            end = min(start + self.chunk_size, n)
+        for start in range(0, n, chunk_size - overlap):
+            end = min(start + chunk_size, n)
             chunk_data = data[start:end]
 
             if self.window_size:
@@ -402,7 +414,7 @@ class OutlierDetector:
             logger.debug(f"Processed chunk {start}-{end}, found {np.sum(chunk_mask)} outliers")
 
         # Combine statistics
-        combined_stats = {"chunks": len(all_stats)}
+        combined_stats: dict[str, float] = {"chunks": float(len(all_stats))}
         if all_stats and "lower_bound" in all_stats[0]:
             combined_stats["lower_bound"] = np.mean([s.get("lower_bound", 0) for s in all_stats])
             combined_stats["upper_bound"] = np.mean([s.get("upper_bound", 0) for s in all_stats])
@@ -419,11 +431,12 @@ class OutlierDetector:
 
 # Convenience functions for simple usage
 
+
 def detect_outliers(
     data: np.ndarray,
     method: str = "iqr",
-    threshold: Optional[float] = None,
-    window_size: Optional[int] = None,
+    threshold: float | None = None,
+    window_size: int | None = None,
 ) -> np.ndarray:
     """
     Detect outliers and return boolean mask.
@@ -461,9 +474,9 @@ def remove_outliers(
     time: np.ndarray,
     method: str = "iqr",
     threshold: float = 1.5,
-    window_size: Optional[int] = None,
+    window_size: int | None = None,
     strategy: str = "interpolate",
-) -> Tuple[np.ndarray, np.ndarray, int]:
+) -> tuple[np.ndarray, np.ndarray, int]:
     """
     Remove outliers from data (backward compatible with original API).
 
@@ -497,8 +510,8 @@ def remove_outliers(
 
 def get_outlier_summary(
     data: np.ndarray,
-    methods: Optional[List[str]] = None,
-) -> Dict[str, OutlierResult]:
+    methods: list[str] | None = None,
+) -> dict[str, OutlierResult]:
     """
     Get outlier summary using multiple methods.
 
@@ -536,7 +549,7 @@ def get_outlier_summary(
 def find_outlier_segments(
     mask: np.ndarray,
     min_gap: int = 10,
-) -> List[Tuple[int, int]]:
+) -> list[tuple[int, int]]:
     """
     Find contiguous segments of outliers.
 
@@ -586,10 +599,10 @@ def find_outlier_segments(
 
 def analyze_outliers(
     data: np.ndarray,
-    time: Optional[np.ndarray] = None,
+    time: np.ndarray | None = None,
     method: str = "iqr",
     threshold: float = 1.5,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Comprehensive outlier analysis.
 

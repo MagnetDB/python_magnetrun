@@ -63,20 +63,19 @@ import json
 import logging
 import sys
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Generator, List, Optional, Union
-
-from python_magnetrun.analysis.metrics import compute_dtw_distance
+from typing import Any
 
 from .config import (
-    DEFAULT_DATA_DIR,
-    DEFAULT_PIGBROTHER_DATA_DIR,
     DEFAULT_BINS,
-    DEFAULT_WINDOW_SIZE,
+    DEFAULT_DATA_DIR,
     DEFAULT_LEVELS,
+    DEFAULT_PIGBROTHER_DATA_DIR,
+    DEFAULT_WINDOW_SIZE,
 )
 
 # =============================================================================
@@ -147,9 +146,7 @@ class ColoredFormatter(logging.Formatter):
             # Format with detailed info
             if self.use_colors and record.levelname in COLORS:
                 original_levelname = record.levelname
-                record.levelname = (
-                    f"{COLORS[record.levelname]}{record.levelname}{COLORS['RESET']}"
-                )
+                record.levelname = f"{COLORS[record.levelname]}{record.levelname}{COLORS['RESET']}"
                 result = detailed_formatter.format(record)
                 record.levelname = original_levelname
                 return result
@@ -159,9 +156,7 @@ class ColoredFormatter(logging.Formatter):
         if self.use_colors and record.levelname in COLORS:
             # Store original levelname
             original_levelname = record.levelname
-            record.levelname = (
-                f"{COLORS[record.levelname]}{record.levelname}{COLORS['RESET']}"
-            )
+            record.levelname = f"{COLORS[record.levelname]}{record.levelname}{COLORS['RESET']}"
             result = super().format(record)
             # Restore original
             record.levelname = original_levelname
@@ -227,19 +222,19 @@ class LogConfig:
     console: bool = True
     console_format: str = COMPACT_FORMAT
     use_colors: bool = True
-    log_file: Optional[Path] = None
+    log_file: Path | None = None
     file_format: str = DETAILED_FORMAT
-    json_file: Optional[Path] = None
+    json_file: Path | None = None
     propagate: bool = False
 
 
 def setup_logging(
     debug: bool = False,
-    log_file: Optional[Union[str, Path]] = None,
-    json_file: Optional[Union[str, Path]] = None,
+    log_file: str | Path | None = None,
+    json_file: str | Path | None = None,
     use_colors: bool = True,
     quiet: bool = False,
-    config: Optional[LogConfig] = None,
+    config: LogConfig | None = None,
 ) -> logging.Logger:
     """
     Configure logging for the analysis module.
@@ -372,7 +367,7 @@ def get_logger(name: str = "") -> logging.Logger:
     return logging.getLogger(ROOT_LOGGER_NAME)
 
 
-def set_log_level(level: Union[int, str]) -> None:
+def set_log_level(level: int | str) -> None:
     """
     Set the log level for all analysis loggers.
 
@@ -399,7 +394,7 @@ def set_log_level(level: Union[int, str]) -> None:
 def log_exception(
     message: str,
     exception: Exception,
-    logger_instance: Optional[logging.Logger] = None,
+    logger_instance: logging.Logger | None = None,
     use_print: bool = False,
     include_traceback: bool = True,
 ) -> None:
@@ -463,7 +458,7 @@ def log_exception(
         logger.error(error_msg)
 
 
-def format_exception_location(exception: Optional[Exception] = None) -> str:
+def format_exception_location(exception: Exception | None = None) -> str:
     """
     Get a concise string with file:line:function where exception occurred
 
@@ -590,7 +585,7 @@ class ProgressTracker:
 @contextmanager
 def timed_operation(
     description: str,
-    logger: Optional[logging.Logger] = None,
+    logger: logging.Logger | None = None,
     log_start: bool = True,
 ) -> Generator[dict, None, None]:
     """
@@ -646,7 +641,7 @@ class LogContext:
         self.context = context
         self.old_factory = None
 
-    def __enter__(self) -> "LogContext":
+    def __enter__(self) -> LogContext:
         self.old_factory = logging.getLogRecordFactory()
         context = self.context
         old_factory = self.old_factory
@@ -839,7 +834,7 @@ Examples:
     return parser
 
 
-def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_arguments(args: list[str] | None = None) -> argparse.Namespace:
     """
     Parse command-line arguments.
 
@@ -895,7 +890,7 @@ def args_to_processing_config(args: argparse.Namespace):
 # =============================================================================
 
 
-def main(args: Optional[List[str]] = None) -> int:
+def main(args: list[str] | None = None) -> int:
     """
     Main entry point for the analysis CLI.
 
@@ -927,20 +922,19 @@ def main(args: Optional[List[str]] = None) -> int:
     try:
         # Import here to avoid circular imports and speed up --help
         from natsort import natsorted
-        from .processing import process_overview_file
+
         from .config import get_site_config
-        from .plotting import (
-            plot_data,
-            plot_comparison,
-            estimate_downsample_percent,
-            DEFAULT_COLORS,
-        )
         from .metrics import (
+            calc_correlation,
             calc_euclidean,
             calc_mape,
-            calc_correlation,
             compute_dtw_distance,
         )
+        from .plotting import (
+            estimate_downsample_percent,
+            plot_data,
+        )
+        from .processing import process_overview_file
 
         # Convert args to processing config
         config = args_to_processing_config(parsed_args)
@@ -1039,10 +1033,7 @@ def main(args: Optional[List[str]] = None) -> int:
 
                                 # Sync message
                                 msg = "(nosync)"
-                                if (
-                                    config.synchronize
-                                    and "timeshift_seconds" in record.sync_info
-                                ):
+                                if config.synchronize and "timeshift_seconds" in record.sync_info:
                                     shift = record.sync_info["timeshift_seconds"]
                                     msg = f"(sync: {shift:.2f}s)"
 
@@ -1061,9 +1052,7 @@ def main(args: Optional[List[str]] = None) -> int:
                                     msg=msg,
                                     show=parsed_args.show,
                                     save=parsed_args.save,
-                                    output_path=(
-                                        str(output_path) if output_path else None
-                                    ),
+                                    output_path=(str(output_path) if output_path else None),
                                     downsample_percent=downsample_pct,
                                 )
 
@@ -1071,15 +1060,9 @@ def main(args: Optional[List[str]] = None) -> int:
                                     logger.info("Saved plot to %s", output_path)
 
                         # === DISTANCE METRICS ===
-                        if (
-                            parsed_args.distance
-                            and pupitre_key
-                            and record.has_data("pupitre")
-                        ):
+                        if parsed_args.distance and pupitre_key and record.has_data("pupitre"):
                             if pupitre_key in df_pupitre.columns:
-                                with timed_operation(
-                                    f"Computing metrics for {key}", logger
-                                ):
+                                with timed_operation(f"Computing metrics for {key}", logger):
                                     # Get aligned time series
                                     # Use overview as reference
                                     series1 = df_overview[key].values
@@ -1092,9 +1075,7 @@ def main(args: Optional[List[str]] = None) -> int:
                                         # Simple resampling by interpolation
                                         x_orig = np.linspace(0, 1, len(pupitre_values))
                                         x_new = np.linspace(0, 1, len(series1))
-                                        series2 = np.interp(
-                                            x_new, x_orig, pupitre_values
-                                        )
+                                        series2 = np.interp(x_new, x_orig, pupitre_values)
                                     else:
                                         series2 = pupitre_values
 
@@ -1122,9 +1103,7 @@ def main(args: Optional[List[str]] = None) -> int:
 
                                     # DTW (can be slow for large datasets)
                                     if len(series1) <= 5000:
-                                        dtw_result = compute_dtw_distance(
-                                            series1, series2
-                                        )
+                                        dtw_result = compute_dtw_distance(series1, series2)
                                         # print(dtw_result.distance)           # The DTW distance
                                         # print(dtw_result.path)               # The warping path
                                         # print(dtw_result.normalized_distance) # Normalized by length
@@ -1134,9 +1113,7 @@ def main(args: Optional[List[str]] = None) -> int:
                                             key,
                                             dtw_result.similarity_score,
                                         )
-                                        record.metrics[key][
-                                            "dtw"
-                                        ] = dtw_result.similarity_score
+                                        record.metrics[key]["dtw"] = dtw_result.similarity_score
                                     else:
                                         logger.info(
                                             "Skipping DTW for %s (dataset too large: %d points)",
@@ -1149,7 +1126,7 @@ def main(args: Optional[List[str]] = None) -> int:
                                     pupitre_key,
                                 )
 
-                except Exception as e:
+                except (OSError, ValueError, KeyError, RuntimeError) as e:
                     logger.error("Failed to process %s: %s", input_file, e)
                     if parsed_args.debug:
                         logger.exception("Full traceback:")
@@ -1185,7 +1162,7 @@ def main(args: Optional[List[str]] = None) -> int:
     except KeyboardInterrupt:
         logger.info("Analysis interrupted by user")
         return 130
-    except Exception as e:
+    except (ImportError, OSError, RuntimeError) as e:
         logger.exception("Analysis failed: %s", e)
         return 1
 

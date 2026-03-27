@@ -26,7 +26,7 @@ Note:
 
 import logging
 import struct
-from typing import Optional, List, Tuple, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
@@ -56,7 +56,7 @@ def downsample_for_plot(
     time: np.ndarray,
     target_points: int = 50000,
     method: str = "auto",
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Downsample data for efficient plotting while preserving visual features.
 
@@ -98,7 +98,7 @@ def downsample_for_plot(
 
     logger.debug(
         f"Downsampling {n_points:,} points to {target_points:,} "
-        f"(ratio: {n_points/target_points:.1f}x)"
+        f"(ratio: {n_points / target_points:.1f}x)"
     )
 
     # Ensure proper data types for tsdownsample
@@ -165,25 +165,19 @@ def _get_khz_unit(hybrid_data: "HybridData", system: str, variable: str) -> str:
     for card in config.cards:
         if variable in card.variable_names:
             idx = card.variable_names.index(variable)
-            if (
-                card.calibrations
-                and idx < len(card.calibrations)
-                and card.calibrations[idx]
-            ):
+            if card.calibrations and idx < len(card.calibrations) and card.calibrations[idx]:
                 return card.calibrations[idx].unit or ""
     return ""
 
 
-def _get_rms_unit(
-    hybrid_data: "HybridData", system: str, variable: str, file_idx: int = 0
-) -> str:
+def _get_rms_unit(hybrid_data: "HybridData", system: str, variable: str, file_idx: int = 0) -> str:
     """Get unit for an RMS variable from variable info."""
     try:
         var_info = hybrid_data.get_rms_variable_info(system, file_idx=file_idx)
         var_row = var_info[var_info["name"] == variable]
         if not var_row.empty and var_row.iloc[0]["unit"]:
             return var_row.iloc[0]["unit"]
-    except Exception:
+    except (OSError, ValueError, RuntimeError, KeyError):
         pass
     return ""
 
@@ -191,20 +185,20 @@ def _get_rms_unit(
 def plot_khz_variables(
     hybrid_data: "HybridData",
     system: str,
-    variables: List[str],
-    hours: Optional[List[int]] = None,
+    variables: list[str],
+    hours: list[int] | None = None,
     apply_calib: bool = True,
-    cnv_dir: Optional[str] = None,
+    cnv_dir: str | None = None,
     layout: str = "subplots",
     share_x: bool = True,
     show: bool = True,
-    save: Optional[str] = None,
-    outlier_results: Optional[Dict[str, "OutlierResult"]] = None,
+    save: str | None = None,
+    outlier_results: dict[str, "OutlierResult"] | None = None,
     outlier_strategy: str = "interpolate",
-    downsample: Optional[int] = 50000,
+    downsample: int | None = 50000,
     downsample_method: str = "auto",
     **plot_kwargs,
-) -> Tuple:
+) -> tuple:
     """
     Plot multiple kHz variables
 
@@ -335,12 +329,8 @@ def plot_khz_variables(
             # Apply downsampling for efficient plotting
             if downsample is not None and len(data) > downsample:
                 original_len = len(data)
-                data, time = downsample_for_plot(
-                    data, time, downsample, downsample_method
-                )
-                logger.info(
-                    f"Downsampled {variable}: {original_len:,} -> {len(data):,} points"
-                )
+                data, time = downsample_for_plot(data, time, downsample, downsample_method)
+                logger.info(f"Downsampled {variable}: {original_len:,} -> {len(data):,} points")
 
             unit = _get_khz_unit(hybrid_data, system, variable)
             ylabel = f"{variable}" + (f" [{unit}]" if unit else "")
@@ -385,7 +375,7 @@ def plot_khz_variables(
                 ax.grid(True, alpha=0.3)
                 ax.legend(loc="upper right")
 
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError, KeyError) as e:
             logger.error(f"Error plotting {variable}: {e}")
             if layout != "overlay":
                 axes[i].text(
@@ -428,17 +418,17 @@ def plot_khz_variables(
 def plot_rms_variables(
     hybrid_data: "HybridData",
     system: str,
-    variables: List[str],
-    file_idx: Optional[int] = None,
-    hours: Optional[List[int]] = None,
+    variables: list[str],
+    file_idx: int | None = None,
+    hours: list[int] | None = None,
     layout: str = "subplots",
     share_x: bool = True,
     show: bool = True,
-    save: Optional[str] = None,
-    outlier_results: Optional[Dict[str, "OutlierResult"]] = None,
+    save: str | None = None,
+    outlier_results: dict[str, "OutlierResult"] | None = None,
     outlier_strategy: str = "interpolate",
     **plot_kwargs,
-) -> Tuple:
+) -> tuple:
     """
     Plot multiple RMS variables
 
@@ -584,7 +574,7 @@ def plot_rms_variables(
                 ax.grid(True, alpha=0.3)
                 ax.legend(loc="upper right")
 
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError, KeyError) as e:
             logger.error(f"Error plotting {variable}: {e}")
             if layout != "overlay":
                 axes[i].text(
@@ -628,18 +618,18 @@ def plot_khz_variable(
     hybrid_data: "HybridData",
     system: str,
     variable: str,
-    hours: Optional[List[int]] = None,
+    hours: list[int] | None = None,
     apply_calib: bool = True,
-    cnv_dir: Optional[str] = None,
+    cnv_dir: str | None = None,
     ax=None,
     show: bool = True,
-    save: Optional[str] = None,
+    save: str | None = None,
     outlier_result: Optional["OutlierResult"] = None,
     outlier_strategy: str = "interpolate",
-    downsample: Optional[int] = 50000,
+    downsample: int | None = 50000,
     downsample_method: str = "auto",
     **plot_kwargs,
-) -> Tuple:
+) -> tuple:
     """
     Plot kHz data for a specific variable
 
@@ -717,11 +707,7 @@ def plot_khz_variable(
         for card in config.cards:
             if variable in card.variable_names:
                 idx = card.variable_names.index(variable)
-                if (
-                    card.calibrations
-                    and idx < len(card.calibrations)
-                    and card.calibrations[idx]
-                ):
+                if card.calibrations and idx < len(card.calibrations) and card.calibrations[idx]:
                     unit = card.calibrations[idx].unit or ""
                 break
 
@@ -741,9 +727,7 @@ def plot_khz_variable(
             plot_data, plot_time = outlier_result.apply_to_data(
                 data, time, strategy=outlier_strategy
             )
-            outlier_info = (
-                f" ({outlier_result.n_outliers:,} outliers {outlier_strategy}d)"
-            )
+            outlier_info = f" ({outlier_result.n_outliers:,} outliers {outlier_strategy}d)"
             logger.info(
                 f"Applied outlier handling: {outlier_result.n_outliers:,} outliers "
                 f"({outlier_result.outlier_percentage:.2f}%) using {outlier_strategy}"
@@ -755,9 +739,7 @@ def plot_khz_variable(
         plot_data, plot_time = downsample_for_plot(
             plot_data, plot_time, downsample, downsample_method
         )
-        logger.info(
-            f"Downsampled {variable}: {original_len:,} -> {len(plot_data):,} points"
-        )
+        logger.info(f"Downsampled {variable}: {original_len:,} -> {len(plot_data):,} points")
 
     # Create figure if needed
     if ax is None:
@@ -814,17 +796,17 @@ def plot_rms_variable(
     hybrid_data: "HybridData",
     system: str,
     variable: str,
-    file_idx: Optional[int] = None,
-    hours: Optional[List[int]] = None,
+    file_idx: int | None = None,
+    hours: list[int] | None = None,
     ax=None,
     show: bool = True,
-    save: Optional[str] = None,
+    save: str | None = None,
     outlier_result: Optional["OutlierResult"] = None,
     outlier_strategy: str = "interpolate",
-    downsample: Optional[int] = None,
+    downsample: int | None = None,
     downsample_method: str = "auto",
     **plot_kwargs,
-) -> Tuple:
+) -> tuple:
     """
     Plot RMS data for a specific variable
 
@@ -885,14 +867,10 @@ def plot_rms_variable(
     """
     import matplotlib.pyplot as plt
 
-    logger.debug(
-        f"plot_rms_variable: system={system}, variable={variable}, hours={hours}"
-    )
+    logger.debug(f"plot_rms_variable: system={system}, variable={variable}, hours={hours}")
 
     # Read data using read_rms_variable (same pattern as kHz)
-    data, time = hybrid_data.read_rms_variable(
-        system, variable, file_idx=file_idx, hours=hours
-    )
+    data, time = hybrid_data.read_rms_variable(system, variable, file_idx=file_idx, hours=hours)
 
     # Get unit if available from variable info
     unit = ""
@@ -903,7 +881,7 @@ def plot_rms_variable(
         var_row = var_info[var_info["name"] == variable]
         if not var_row.empty and var_row.iloc[0]["unit"]:
             unit = var_row.iloc[0]["unit"]
-    except Exception:
+    except (OSError, ValueError, RuntimeError, KeyError):
         pass  # No unit available
 
     ylabel = f"{variable}"
@@ -924,8 +902,7 @@ def plot_rms_variable(
                 data = data[valid_mask]
                 time = time[valid_mask]
             logger.info(
-                f"Applied {outlier_strategy} to {outlier_result.n_outliers} "
-                f"outliers in {variable}"
+                f"Applied {outlier_strategy} to {outlier_result.n_outliers} outliers in {variable}"
             )
 
     # Apply downsampling if requested
@@ -963,9 +940,7 @@ def plot_rms_variable(
                 label=f"Outliers ({outlier_result.n_outliers})",
                 zorder=5,
             )
-            logger.info(
-                f"Highlighting {outlier_result.n_outliers} outliers in {variable}"
-            )
+            logger.info(f"Highlighting {outlier_result.n_outliers} outliers in {variable}")
 
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(ylabel)
@@ -990,14 +965,14 @@ def plot_khz_with_rms(
     hybrid_data: "HybridData",
     system: str,
     khz_variable: str,
-    rms_variable: Optional[str] = None,
-    hours: Optional[List[int]] = None,
+    rms_variable: str | None = None,
+    hours: list[int] | None = None,
     apply_calib: bool = True,
-    rms_file_idx: Optional[int] = None,
-    rms_hours: Optional[List[int]] = None,
+    rms_file_idx: int | None = None,
+    rms_hours: list[int] | None = None,
     show: bool = True,
-    save: Optional[str] = None,
-) -> Tuple:
+    save: str | None = None,
+) -> tuple:
     """
     Plot kHz and RMS data together for comparison
 
@@ -1031,9 +1006,7 @@ def plot_khz_with_rms(
     """
     import matplotlib.pyplot as plt
 
-    logger.debug(
-        f"plot_khz_with_rms: system={system}, khz={khz_variable}, rms={rms_variable}"
-    )
+    logger.debug(f"plot_khz_with_rms: system={system}, khz={khz_variable}, rms={rms_variable}")
 
     if rms_variable is None:
         rms_variable = khz_variable
@@ -1049,9 +1022,7 @@ def plot_khz_with_rms(
         khz_data, khz_time = hybrid_data.read_khz_variable(
             system, khz_variable, hours=hours, apply_calib=apply_calib
         )
-        axes[0].plot(
-            khz_time, khz_data, "b-", linewidth=0.5, label=f"{khz_variable} (kHz)"
-        )
+        axes[0].plot(khz_time, khz_data, "b-", linewidth=0.5, label=f"{khz_variable} (kHz)")
         axes[0].set_xlabel("Time (s)")
         axes[0].set_ylabel(khz_variable)
         axes[0].set_title(f"kHz Data: {khz_variable}")
@@ -1070,7 +1041,7 @@ def plot_khz_with_rms(
         axes[0].set_title(f"kHz Data: {khz_variable} (ERROR)")
     except struct.error as e:
         logger.critical(f"Struct error plotting kHz variable: {e}")
-    except Exception as e:
+    except (OSError, RuntimeError, KeyError) as e:
         logger.error(f"Error plotting kHz variable: {e}")
         axes[0].text(
             0.5,
@@ -1111,7 +1082,7 @@ def plot_khz_with_rms(
             transform=axes[1].transAxes,
         )
         axes[1].set_title(f"RMS Data: {rms_variable} (ERROR)")
-    except Exception as e:
+    except (OSError, RuntimeError, KeyError) as e:
         logger.error(f"Error plotting RMS variable: {e}")
         axes[1].text(
             0.5,

@@ -7,14 +7,14 @@ This demonstrates:
 3. Accessing variables by name
 """
 
-import numpy as np
-import matplotlib.pyplot as plt
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
 from fepc_reader import (
     parse_cfg_file,
-    read_hour_file,
     read_analog_block,
-    read_digital_block,
+    read_hour_file,
 )
 
 
@@ -37,9 +37,9 @@ def example_read_config():
 
     # Display info for each card
     for card in config.cards:
-        print(f"\n{'='*50}")
+        print(f"\n{'=' * 50}")
         print(f"Slot {card.slot}: {card.card_type} Card")
-        print(f"{'='*50}")
+        print(f"{'=' * 50}")
         print(f"  Sampling frequency: {card.sampling_freq} Hz")
         print(f"  Number of channels: {card.num_channels}")
         print(f"  Quench buffer: Pre={card.buffer_pre}s, Post={card.buffer_post}s")
@@ -189,13 +189,14 @@ def example_calibration():
     print("EXAMPLE 6: Applying Calibration")
     print("=" * 60)
 
+    from pathlib import Path
+
     from fepc_reader import (
+        apply_calibration,
+        calibrate_channel,
         parse_cfg_file,
         read_hour_file,
-        calibrate_channel,
-        apply_calibration,
     )
-    from pathlib import Path
 
     # Parse configuration
     cfg_path = "HOST_2_DATA.CFG"
@@ -219,19 +220,21 @@ def example_calibration():
     print(f"Variables: {card.variable_names[:3]}...")
 
     # Display calibration info for each channel
-    print(f"\nCalibration parameters:")
+    print("\nCalibration parameters:")
     print(f"{'Ch':<4} {'Variable':<20} {'Type':<12} {'Parameters'}")
     print("-" * 70)
 
     for i, (var_name, calib) in enumerate(
-        zip(card.variable_names[:5], card.calibrations[:5])
+        zip(card.variable_names[:5], card.calibrations[:5], strict=False)
     ):
         if calib.cnv_file:
             calib_type = "Piecewise"
             params = f"CNV: {calib.cnv_file}"
         else:
             calib_type = "Linear"
-            params = f"A={calib.a:.3e}, B={calib.b:.3e}, Ca={calib.coef_a:.3f}, Cb={calib.coef_b:.3f}"
+            params = (
+                f"A={calib.a:.3e}, B={calib.b:.3e}, Ca={calib.coef_a:.3f}, Cb={calib.coef_b:.3f}"
+            )
         print(f"{i:<4} {var_name:<20} {calib_type:<12} {params}")
 
     # Read some data
@@ -246,36 +249,28 @@ def example_calibration():
 
     # Apply calibration to first channel
     channel_idx = 0
-    print(
-        f"\nApplying calibration to channel {channel_idx}: {card.variable_names[channel_idx]}"
-    )
+    print(f"\nApplying calibration to channel {channel_idx}: {card.variable_names[channel_idx]}")
 
     raw_channel = raw_data[:, channel_idx]
     print(f"Raw data range: [{raw_channel.min()}, {raw_channel.max()}]")
 
     # Try to calibrate
     try:
-        calibrated = calibrate_channel(
-            raw_channel, card, channel_idx, cnv_directory="."
-        )
-        print(
-            f"Calibrated data range: [{calibrated.min():.3f}, {calibrated.max():.3f}]"
-        )
+        calibrated = calibrate_channel(raw_channel, card, channel_idx, cnv_directory=".")
+        print(f"Calibrated data range: [{calibrated.min():.3f}, {calibrated.max():.3f}]")
 
         # Show first few values
-        print(f"\nFirst 5 samples:")
+        print("\nFirst 5 samples:")
         print(f"{'Raw':<10} {'Calibrated':<15}")
         for i in range(5):
             print(f"{raw_channel[i]:<10} {calibrated[i]:<15.6f}")
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         print(f"Calibration error: {e}")
         print("Using linear calibration from CFG parameters")
         calib = card.calibrations[channel_idx]
         calibrated = apply_calibration(raw_channel, calib_info=calib)
-        print(
-            f"Calibrated data range: [{calibrated.min():.3f}, {calibrated.max():.3f}]"
-        )
+        print(f"Calibrated data range: [{calibrated.min():.3f}, {calibrated.max():.3f}]")
 
 
 def main():
@@ -294,9 +289,7 @@ def main():
 
         if not has_data_files:
             print(f"\n⚠ Warning: Data file '{sample_file}' not found")
-            print(
-                "Place your data files in the same directory to run data reading examples"
-            )
+            print("Place your data files in the same directory to run data reading examples")
 
             # Still run calibration example to show parameters
             print("\n" + "=" * 60)
@@ -326,7 +319,7 @@ def main():
     except FileNotFoundError as e:
         print(f"\n⚠ Error: File not found - {e}")
         print("Make sure your CFG and data files are in the correct location")
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         print(f"\n⚠ Error: {e}")
         import traceback
 

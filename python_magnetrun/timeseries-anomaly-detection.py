@@ -1,20 +1,19 @@
 import logging
-import numpy as np
-from scipy import stats
-import pandas as pd
-from seaborn import reset_defaults
-from sklearn.ensemble import IsolationForest
-from typing import Union, Tuple, List
 
-logger = logging.getLogger(__name__)
+import numpy as np
+import pandas as pd
+from scipy import stats
+from sklearn.ensemble import IsolationForest
 
 from .MagnetRun import MagnetRun
+
+logger = logging.getLogger(__name__)
 
 
 class TimeSeriesAnomalyDetector:
     """A class implementing multiple methods for time series anomaly detection."""
 
-    def __init__(self, series: Union[list, np.ndarray, pd.Series]):
+    def __init__(self, series: list | np.ndarray | pd.Series):
         """
         Initialize the detector with a time series.
 
@@ -24,7 +23,7 @@ class TimeSeriesAnomalyDetector:
         self.series = np.array(series)
         self.n = len(series)
 
-    def zscore_detection(self, threshold: float = 3.5) -> Tuple[np.ndarray, np.ndarray]:
+    def zscore_detection(self, threshold: float = 3.5) -> tuple[np.ndarray, np.ndarray]:
         """
         Detect anomalies using Z-score method.
 
@@ -42,9 +41,7 @@ class TimeSeriesAnomalyDetector:
         anomalies = z_scores > threshold
         return np.where(anomalies)[0], z_scores
 
-    def iqr_detection(
-        self, iqr_multiplier: float = 1.5
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def iqr_detection(self, iqr_multiplier: float = 1.5) -> tuple[np.ndarray, np.ndarray]:
         """
         Detect anomalies using the Interquartile Range (IQR) method.
 
@@ -61,15 +58,13 @@ class TimeSeriesAnomalyDetector:
         lower_bound = Q1 - iqr_multiplier * IQR
         upper_bound = Q3 + iqr_multiplier * IQR
 
-        scores = np.maximum(
-            (self.series - upper_bound) / IQR, (lower_bound - self.series) / IQR
-        )
+        scores = np.maximum((self.series - upper_bound) / IQR, (lower_bound - self.series) / IQR)
         anomalies = (self.series < lower_bound) | (self.series > upper_bound)
         return np.where(anomalies)[0], scores
 
     def moving_average_detection(
         self, window: int = 20, threshold: float = 3.5
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Detect anomalies using moving average and standard deviation.
 
@@ -92,7 +87,7 @@ class TimeSeriesAnomalyDetector:
 
     def moving_median_detection(
         self, window: int = 20, threshold: float = 3.5
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Detect anomalies using moving median and standard deviation.
 
@@ -114,7 +109,7 @@ class TimeSeriesAnomalyDetector:
 
     def moving_zscore_detection(
         self, window: int = 20, threshold: float = 3.5
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Detect anomalies using moving zcore.
 
@@ -125,7 +120,6 @@ class TimeSeriesAnomalyDetector:
         Returns:
             Tuple of (anomaly indices, deviation scores)
         """
-        from scipy import stats
 
         print(f"moving_median: window={window}, threshold={threshold}")
         rolling_median = pd.Series(self.series).rolling(window=window).median()
@@ -138,7 +132,7 @@ class TimeSeriesAnomalyDetector:
 
     def isolation_forest_detection(
         self, contamination: float = 0.1
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Detect anomalies using Isolation Forest algorithm.
 
@@ -192,9 +186,7 @@ def plot_anomalies(
     fig.suptitle(title)
 
     ax1.plot(series, label="Original Data")
-    ax1.scatter(
-        anomaly_indices, series[anomaly_indices], color="red", label="Anomalies"
-    )
+    ax1.scatter(anomaly_indices, series[anomaly_indices], color="red", label="Anomalies")
     ax1.grid()
     ax1.legend()
 
@@ -207,9 +199,10 @@ def plot_anomalies(
 
 
 if __name__ == "__main__":
-    import os
-    from natsort import natsorted
     import argparse
+    import os
+
+    from natsort import natsorted
 
     parser = argparse.ArgumentParser()
     parser.add_argument("input_file", nargs="+", help="enter input file")
@@ -250,9 +243,7 @@ if __name__ == "__main__":
     for file in input_files:
         f_extension = os.path.splitext(file)[-1]
         if f_extension not in supported_formats:
-            raise RuntimeError(
-                f"so far file with extension in {supported_formats} are implemented"
-            )
+            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
 
         filename = os.path.basename(file)
         result = filename.startswith("M")
@@ -270,7 +261,7 @@ if __name__ == "__main__":
                     raise RuntimeError(
                         f"so far file with extension in {supported_formats} are implemented"
                     )
-        except Exception as error:
+        except (ValueError, OSError, RuntimeError) as error:
             print(f"{file}: an error occurred when loading:", error)
             continue
 

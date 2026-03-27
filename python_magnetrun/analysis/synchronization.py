@@ -43,7 +43,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -135,8 +135,8 @@ class RegimeMatch:
     regime: str
     match_regime: str
     score: float
-    lags: Tuple[float, float]
-    indices: Tuple[int, int]
+    lags: tuple[float, float]
+    indices: tuple[int, int]
 
     @property
     def is_reliable(self) -> bool:
@@ -152,7 +152,7 @@ def synchronize_data(
     target_t0: datetime,
     timestamp_col: str = "timestamp",
     time_col: str = "t",
-) -> Tuple[timedelta, pd.DataFrame]:
+) -> tuple[timedelta, pd.DataFrame]:
     """
     Synchronize a DataFrame to a reference timestamp.
 
@@ -196,9 +196,7 @@ def synchronize_data(
     new_t0 = df[timestamp_col].iloc[0]
     if time_col in df.columns:
         df.drop([time_col], axis=1, inplace=True)
-    df[time_col] = df.apply(
-        lambda row: (row[timestamp_col] - new_t0).total_seconds(), axis=1
-    )
+    df[time_col] = df.apply(lambda row: (row[timestamp_col] - new_t0).total_seconds(), axis=1)
 
     logger.debug(
         "Synchronized data: shift=%.3f s, source_t0=%s, target_t0=%s",
@@ -212,9 +210,9 @@ def synchronize_data(
 
 def apply_lag_correction(
     df: pd.DataFrame,
-    lag: Union[timedelta, float],
+    lag: timedelta | float,
     timestamp_col: str = "timestamp",
-    reference_t0: Optional[datetime] = None,
+    reference_t0: datetime | None = None,
     time_col: str = "t",
 ) -> pd.DataFrame:
     """
@@ -245,7 +243,7 @@ def apply_lag_correction(
     df = df.copy()
 
     # Convert lag to timedelta if needed
-    if isinstance(lag, (int, float)):
+    if isinstance(lag, int | float):
         lag = timedelta(seconds=lag)
 
     # Apply lag to timestamps
@@ -266,8 +264,8 @@ def apply_lag_correction(
 # =============================================================================
 def compute_lag(
     tkey: str,
-    df1_data: Dict[str, Any],
-    df2_data: Dict[str, Any],
+    df1_data: dict[str, Any],
+    df2_data: dict[str, Any],
     show: bool = False,
     save: bool = False,
     debug: bool = False,
@@ -310,7 +308,6 @@ def compute_lag(
     ... }
     >>> lag = compute_lag("timestamp", df1_data, df2_data)
     """
-    from scipy.signal import correlate, correlation_lags
 
     logger.debug("compute_lag: %s - %s", df1_data["field"], df2_data["field"])
 
@@ -346,9 +343,7 @@ def compute_lag(
 
     # Determine range for ts2
     if istart2 is None and iend2 is None:
-        pstart = ts2_resampled.index.get_indexer(
-            [pd.Timestamp(otstart)], method="nearest"
-        )
+        pstart = ts2_resampled.index.get_indexer([pd.Timestamp(otstart)], method="nearest")
         pend = ts2_resampled.index.get_indexer([pd.Timestamp(otend)], method="nearest")
         ptstart = ts2_resampled.index[pstart[0]]
         ptend = ts2_resampled.index[pend[0]]
@@ -356,9 +351,7 @@ def compute_lag(
         ts2_idx = ts2.index.to_list()
         ptstart = ts2_idx[istart2] if istart2 else ts2_idx[0]
         ptend = ts2_idx[iend2] if iend2 is not None else ts2_idx[-1]
-        pstart = ts2_resampled.index.get_indexer(
-            [pd.Timestamp(ptstart)], method="nearest"
-        )
+        pstart = ts2_resampled.index.get_indexer([pd.Timestamp(ptstart)], method="nearest")
         pend = ts2_resampled.index.get_indexer([pd.Timestamp(ptend)], method="nearest")
         ptstart = ts2_resampled.index[pstart[0]]
         ptend = ts2_resampled.index[pend[0]]
@@ -383,8 +376,8 @@ def compute_lag(
 
 
 def lag_correlation(
-    data1: Dict[str, Any],
-    data2: Dict[str, Any],
+    data1: dict[str, Any],
+    data2: dict[str, Any],
     show: bool = False,
     save: bool = False,
     debug: bool = False,
@@ -435,10 +428,7 @@ def lag_correlation(
         else:
             time_series_slice = series[start_index1:]
     else:
-        if end_index1 is not None:
-            time_series_slice = series[:end_index1]
-        else:
-            time_series_slice = series
+        time_series_slice = series[:end_index1] if end_index1 is not None else series
 
     # Select slice of second series
     if start_index2 != 0 and start_index2 is not None:
@@ -447,10 +437,7 @@ def lag_correlation(
         else:
             trend_slice = trend[start_index2:]
     else:
-        if end_index2 is not None:
-            trend_slice = trend[:end_index2]
-        else:
-            trend_slice = trend
+        trend_slice = trend[:end_index2] if end_index2 is not None else trend
 
     if debug:
         time_series_slice.to_csv("time_series_slice.csv")
@@ -466,9 +453,7 @@ def lag_correlation(
     lag = lags[np.argmax(correlation)]
     time_shift = pd.to_timedelta(f"{lag}s")
 
-    logger.debug(
-        'lag_correlation: "%s" vs "%s", lag=%d s', name_series, name_trend, lag
-    )
+    logger.debug('lag_correlation: "%s" vs "%s", lag=%d s', name_series, name_trend, lag)
 
     # Visualization
     if show or save:
@@ -543,12 +528,12 @@ def _plot_lag_correlation(
 # =============================================================================
 def compute_regime_score(
     regime: str,
-    value: Tuple[float, float],
-    time: Tuple[float, float],
+    value: tuple[float, float],
+    time: tuple[float, float],
     reference_regime: str,
-    reference_value: Tuple[float, float],
-    reference_time: Tuple[float, float],
-) -> Tuple[float, float, Tuple[float, float]]:
+    reference_value: tuple[float, float],
+    reference_time: tuple[float, float],
+) -> tuple[float, float, tuple[float, float]]:
     """
     Compute similarity score between two regimes.
 
@@ -584,14 +569,10 @@ def compute_regime_score(
 
     if reference_regime == regime:
         # Compare value ranges
-        score = abs(
-            abs(value[1] - value[0]) - abs(reference_value[1] - reference_value[0])
-        )
+        score = abs(abs(value[1] - value[0]) - abs(reference_value[1] - reference_value[0]))
 
         # Compare durations
-        tscore = abs(
-            abs(time[1] - time[0]) - abs(reference_time[1] - reference_time[0])
-        )
+        tscore = abs(abs(time[1] - time[0]) - abs(reference_time[1] - reference_time[0]))
 
         # Compute lags
         start_lag = time[0] - reference_time[0]
@@ -604,7 +585,7 @@ def compute_regime_score(
 def find_best_matching_regime(
     signature: Any,
     reference_signature: Any,
-) -> List[RegimeMatch]:
+) -> list[RegimeMatch]:
     """
     Find best matching regimes between two signatures.
 
@@ -677,7 +658,7 @@ def find_best_matching_regime(
 
 
 def check_lag_reliability(
-    lags: Tuple[float, float],
+    lags: tuple[float, float],
     duration: float,
     threshold_ratio: float = LAG_THRESHOLD_RATIO,
 ) -> bool:
@@ -775,9 +756,7 @@ def add_time_column(
     if time_col in df.columns:
         df.drop([time_col], axis=1, inplace=True)
 
-    df[time_col] = df.apply(
-        lambda row: (row[timestamp_col] - reference_t0).total_seconds(), axis=1
-    )
+    df[time_col] = df.apply(lambda row: (row[timestamp_col] - reference_t0).total_seconds(), axis=1)
 
     return df
 
@@ -785,7 +764,7 @@ def add_time_column(
 def get_timestamp_info(
     df: pd.DataFrame,
     timestamp_col: str = "timestamp",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Get timestamp information from a DataFrame.
 

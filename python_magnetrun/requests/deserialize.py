@@ -1,26 +1,25 @@
 #!/usr/bin/env python3
-# -*- coding:utf-8 -*-
 
 """
 Provides tools to un/serialize data from json
 """
 
 import logging
-import json
+from typing import Any
+
+from .GObject import GObject
+from .HMagnet import HMagnet
+from .MRecord import MRecord
 
 logger = logging.getLogger(__name__)
-
-from . import MRecord
-from . import GObject
-from . import HMagnet
 
 # From : http://chimera.labs.oreilly.com/books/1230000000393/ch06.html#_discussion_95
 # Dictionary mapping names to known classes
 
-classes = {"MRecord": MRecord, "GObject": GObject, "HMagnet": HMagnet}
+classes: dict[str, Any] = {"MRecord": MRecord, "GObject": GObject, "HMagnet": HMagnet}
 
 
-def serialize_instance(obj):
+def serialize_instance(obj: Any) -> dict:
     """
     serialize_instance of an obj
     """
@@ -30,7 +29,7 @@ def serialize_instance(obj):
     return d
 
 
-def unserialize_object(d):
+def unserialize_object(d: dict) -> Any:
     """
     unserialize_instance of an obj
     """

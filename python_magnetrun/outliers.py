@@ -1,28 +1,16 @@
 """Main module."""
 
-import os
-import traceback
-
-from matplotlib.cbook import flatten
-
-from python_magnetrun.processing import breakingpoints
-
-from .MagnetRun import MagnetRun
-from .processing.smoothers import savgol
-from scipy.signal import find_peaks
-
-from tabulate import tabulate
-
 import logging
-from natsort import natsorted
+import os
 
-logger = logging.getLogger(__name__)
-
-import numpy as np
-import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib import gridspec
+import numpy as np
+from natsort import natsorted
+
+from .MagnetRun import MagnetRun
+
+logger = logging.getLogger(__name__)
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True
@@ -80,9 +68,7 @@ if __name__ == "__main__":
     for file in input_files:
         f_extension = os.path.splitext(file)[-1]
         if f_extension not in supported_formats:
-            raise RuntimeError(
-                f"so far file with extension in {supported_formats} are implemented"
-            )
+            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
 
         filename = os.path.basename(file)
         result = filename.startswith("M")
@@ -100,7 +86,7 @@ if __name__ == "__main__":
                     raise RuntimeError(
                         f"so far file with extension in {supported_formats} are implemented"
                     )
-        except Exception as error:
+        except (OSError, ValueError, RuntimeError) as error:
             print(f"{file}: an error occurred when loading:", error)
             continue
 
@@ -121,9 +107,7 @@ if __name__ == "__main__":
                 fig = plt.figure(figsize=(16, 12))
 
                 ax0 = plt.subplot(211)
-                ax0.set_title(
-                    f'{filename.replace(f_extension,"")}: {item[0]}/{item[1]}'
-                )
+                ax0.set_title(f"{filename.replace(f_extension, '')}: {item[0]}/{item[1]}")
                 ax0.set_xlabel("t [s]")
 
                 ax1 = plt.subplot(212, sharex=ax0)
@@ -221,8 +205,6 @@ if __name__ == "__main__":
             ts.plot()
             ts[res].plot(marker="o", linestyle="none", mfc="none")
             plt.grid()
-            plt.title(
-                f'{filename.replace(f_extension,"")}: {key}: mean={tmax} [{unit:~P}]'
-            )
+            plt.title(f"{filename.replace(f_extension, '')}: {key}: mean={tmax} [{unit:~P}]")
             plt.show()
             plt.close()

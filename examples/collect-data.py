@@ -8,11 +8,11 @@ Usage:
     python collect-data.py --housing M9 --start 2023-06-01 --end 2023-12-31 --output results.txt
 """
 
-import re
-import sys
-import shutil
-import tarfile
 import argparse
+import re
+import shutil
+import sys
+import tarfile
 from datetime import date, datetime
 from pathlib import Path
 
@@ -36,26 +36,32 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Collect LNCMIG data files for a housing between two dates."
     )
-    parser.add_argument(
-        "--housing", required=True, help="Housing name, e.g. M1 … M10"
-    )
+    parser.add_argument("--housing", required=True, help="Housing name, e.g. M1 … M10")
     parser.add_argument(
         "--start", required=True, metavar="YYYY-MM-DD", help="Start date (inclusive)"
     )
+    parser.add_argument("--end", required=True, metavar="YYYY-MM-DD", help="End date (inclusive)")
     parser.add_argument(
-        "--end", required=True, metavar="YYYY-MM-DD", help="End date (inclusive)"
+        "--output", default=None, help="Write file list to this path instead of stdout"
     )
     parser.add_argument(
-        "--output", default=None,
-        help="Write file list to this path instead of stdout"
+        "--copy-to",
+        default=None,
+        metavar="DEST_DIR",
+        help="Copy all found files/dirs into DEST_DIR (directory will be created)",
     )
     parser.add_argument(
-        "--copy-to", default=None, metavar="DEST_DIR",
-        help="Copy all found files/dirs into DEST_DIR (directory will be created)"
-    )
-    parser.add_argument(
-        "--archive", default=None, metavar="ARCHIVE.tar.gz",
-        help="Archive all found files/dirs into a tar.gz file with paths relative to LNCMIG-Data"
+        "--archive",
+        default=None,
+        metavar="ARCHIVE",
+        help=(
+            "Base name for three archives: "
+            "ARCHIVE-pupitre.tar.gz (srv-data-install .txt, compressed), "
+            "ARCHIVE-pbsurv.tar (pbsurv .tdms, uncompressed), "
+            "ARCHIVE-cea.tar (CEA hybrid dirs, uncompressed). "
+            "Any .tar/.tar.gz suffix on ARCHIVE is stripped automatically. "
+            "Paths inside archives are relative to LNCMIG-Data."
+        ),
     )
     parser.add_argument(
         "--data-type",
@@ -76,6 +82,7 @@ def parse_args() -> argparse.Namespace:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def in_range(d: date, start: date, end: date) -> bool:
     return start <= d <= end
 
@@ -94,6 +101,7 @@ def parse_ymd(name: str) -> date | None:
 # ---------------------------------------------------------------------------
 # pbsurv .tdms files
 # ---------------------------------------------------------------------------
+
 
 def _check_tdms(path: Path, start: date, end: date) -> date | None:
     """Return file date if it matches the pbsurv naming pattern and is in range."""
@@ -146,6 +154,7 @@ def get_pbsurv_files(housing: str, start: date, end: date) -> list[Path]:
 # srv-data-install files
 # ---------------------------------------------------------------------------
 
+
 def get_srv_install_files(housing: str, start: date, end: date) -> list[Path]:
     """
     Collect srv-data-install .txt files matching 'YYYY.MM.DD - *.txt'
@@ -175,6 +184,7 @@ def get_srv_install_files(housing: str, start: date, end: date) -> list[Path]:
 # ---------------------------------------------------------------------------
 # CEA helpers (M8 only)
 # ---------------------------------------------------------------------------
+
 
 def _get_cea_dated_dirs(base: Path, start: date, end: date) -> list[Path]:
     """
@@ -235,6 +245,7 @@ def get_cea_trigger_dirs(start: date, end: date) -> list[Path]:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
     args = parse_args()
 
@@ -266,7 +277,10 @@ def main() -> None:
         results["CEA/trigger"] = get_cea_trigger_dirs(start, end)
 
     if data_type == "hybrid" and housing != "M8":
-        print(f"Warning: --data-type=hybrid (CEA data) is only available for M8, not {housing}.", file=sys.stderr)
+        print(
+            f"Warning: --data-type=hybrid (CEA data) is only available for M8, not {housing}.",
+            file=sys.stderr,
+        )
 
     # ---- report ----
     lines: list[str] = []
@@ -308,14 +322,66 @@ def main() -> None:
 
     # ---- optional archive ----
     if args.archive:
-        archive_path = Path(args.archive)
-        with tarfile.open(archive_path, "w:gz") as tar:
-            for paths in results.values():
-                for p in paths:
-                    arcname = p.relative_to(BASE_DIR.parent)
-                    tar.add(p, arcname=arcname)
-        total = sum(len(v) for v in results.values())
-        print(f"Archived {total} item(s) to {archive_path}")
+        # Derive archive names from the stem, stripping any .tar.gz / .tar suffix.
+        base = Path(args.archive)
+        for suffix in (".tar.gz", ".tar.bz2", ".tar.xz", ".tar", ".tgz"):
+            if base.name.endswith(suffix):
+                base = base.with_name(base.name[: -len(suffix)])
+                break
+
+        pupitre_archive = base.with_name(base.name + "-pupitre.tar.gz")
+        pbsurv_archive = base.with_name(base.name + "-pbsurv.tar")
+        cea_archive = base.with_name(base.name + "-cea.tar")
+
+        CEA_CATEGORIES = {"CEA/kHz", "CEA/rms", "CEA/vprocess", "CEA/trigger"}
+
+        pupitre_items: list[Path] = []
+        pbsurv_items: list[Path] = []
+        cea_items: list[Path] = []
+        for category, paths in results.items():
+            if category == "srv-data-install":
+                pupitre_items.extend(paths)
+            elif category == "pbsurv":
+                pbsurv_items.extend(paths)
+            elif category in CEA_CATEGORIES:
+                cea_items.extend(paths)
+
+        skipped: list[str] = []
+
+        def _add_to_tar(tar: tarfile.TarFile, paths: list[Path]) -> int:
+            count = 0
+            for p in paths:
+                try:
+                    arcname = str(p.resolve().relative_to(BASE_DIR.resolve()))
+                except ValueError:
+                    skipped.append(str(p))
+                    continue
+                try:
+                    tar.add(p, arcname=arcname, recursive=True)
+                    count += 1
+                except (OSError, tarfile.TarError) as exc:
+                    skipped.append(f"{p}: {exc}")
+            return count
+
+        if pupitre_items:
+            with tarfile.open(pupitre_archive, "w:gz") as tar:
+                n = _add_to_tar(tar, pupitre_items)
+            print(f"Pupitre archive : {pupitre_archive}  ({n} item(s), compressed)")
+
+        if pbsurv_items:
+            with tarfile.open(pbsurv_archive, "w:") as tar:
+                n = _add_to_tar(tar, pbsurv_items)
+            print(f"Pbsurv archive  : {pbsurv_archive}  ({n} item(s), uncompressed)")
+
+        if cea_items:
+            with tarfile.open(cea_archive, "w:") as tar:
+                n = _add_to_tar(tar, cea_items)
+            print(f"CEA archive     : {cea_archive}  ({n} item(s), uncompressed)")
+
+        if skipped:
+            print("Skipped items:", file=sys.stderr)
+            for s in skipped:
+                print(f"  {s}", file=sys.stderr)
 
 
 if __name__ == "__main__":

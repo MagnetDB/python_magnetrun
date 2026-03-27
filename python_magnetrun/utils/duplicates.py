@@ -1,12 +1,11 @@
 import logging
-import numpy as np
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 
-def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False):
+def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False) -> pd.DataFrame:
     """Find duplicates key in dataframe and eventually drop them
 
     :param df: _description_
@@ -28,23 +27,3 @@ def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False)
         print(counts[counts > 1])
     df_clean = df.drop_duplicates(subset=[key])
     return df_clean
-
-    """
-    dups = pd.Index(df[key].to_numpy()).duplicated()
-    # print(f"dups: {dups}")
-    unique, counts = np.unique(dups, return_counts=True)
-    # print(f"duplicated df[t]: {dict(zip(unique, counts))}")
-    dups_dict = dict(zip(unique, counts))
-    # print(f"dups_dict df[t]: {dups_dict}")
-    if np.True_ in dups_dict:
-        if strict:
-            raise RuntimeError(f"found duplicates time in {name}")
-
-        print(f"remove {dups_dict[np.True_]} duplicates")
-        df = df[~df.index.duplicated(keep="first")]
-
-    # print(f"find_duplicate:\,n{df.head()}")
-    # duplicates = df[key].duplicated()
-    print(f"find_duplicate: duplicates\n{df[df[key].duplicated()]}")
-    return df
-    """

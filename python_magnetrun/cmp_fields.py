@@ -1,27 +1,19 @@
 """Compare 2 timeseries."""
 
-import os
-from platform import mac_ver
-import traceback
-
-from .MagnetRun import MagnetRun
-from .processing.smoothers import lowess_bell_shape_kern, lowess_ag, savgol
-from scipy.signal import find_peaks
-from scipy import stats
-
-from tabulate import tabulate
-
 import logging
-from natsort import natsorted
+import os
 
-logger = logging.getLogger(__name__)
-
-import numpy as np
-import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib import gridspec
+import numpy as np
+from natsort import natsorted
+from scipy import stats
 from tabulate import tabulate
+
+from .MagnetRun import MagnetRun
+from .processing.smoothers import lowess_bell_shape_kern
+
+logger = logging.getLogger(__name__)
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True
@@ -61,12 +53,8 @@ if __name__ == "__main__":
         help="select ykey",
         default="IB",
     )
-    parser.add_argument(
-        "--lagcorrelation", help="estimate lagcorrelation", action="store_true"
-    )
-    parser.add_argument(
-        "--range", help="select data from (index value)", type=int, nargs=2
-    )
+    parser.add_argument("--lagcorrelation", help="estimate lagcorrelation", action="store_true")
+    parser.add_argument("--range", help="select data from (index value)", type=int, nargs=2)
     parser.add_argument("--to", help="select data to (index value)", type=int)
     parser.add_argument("--dtw", help="use dtw", action="store_true")
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
@@ -80,8 +68,6 @@ if __name__ == "__main__":
     import re
 
     # Todo change title and ... if tdms data
-
-    import re
 
     labels = [xkey, ykey]
     for i, label in enumerate(labels):
@@ -100,9 +86,9 @@ if __name__ == "__main__":
         "Pearson",
         "Image",
         f"<{labels[1]} - {labels[0]}>",
-        f"min",
-        f"max",
-        f"var",
+        "min",
+        "max",
+        "var",
     ]
 
     if args.outputdir:
@@ -113,9 +99,7 @@ if __name__ == "__main__":
     for file in input_files:
         f_extension = os.path.splitext(file)[-1]
         if f_extension not in supported_formats:
-            raise RuntimeError(
-                f"so far file with extension in {supported_formats} are implemented"
-            )
+            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
 
         filename = os.path.basename(file)
         result = filename.startswith("M")
@@ -126,7 +110,7 @@ if __name__ == "__main__":
                 index = filename.index("_")
                 site = filename[0:index]
                 print(f"site detected: {site}")
-            except Exception:
+            except ValueError:
                 print("no site detected - use args.site argument instead")
                 pass
 
@@ -173,7 +157,9 @@ if __name__ == "__main__":
 
                 timesteps = np.arange(start, end, 1)
                 print(type(timesteps), type(ydata))
-                ysmoothed = lowess_bell_shape_kern(x, ydata.to_numpy().reshape(-1))
+                ysmoothed = lowess_bell_shape_kern(
+                    xdata.to_numpy().reshape(-1), ydata.to_numpy().reshape(-1)
+                )
 
                 plt.plot(xdata / xdata.max(), "-")
                 plt.plot(ysmoothed / ysmoothed.max(), "o")
@@ -268,7 +254,7 @@ if __name__ == "__main__":
                     plt.savefig(f"{imagefile}_vs_dtw.png", dpi=300)
                 else:
                     plt.show()
-            except MemoryError as e:
+            except MemoryError:
                 print("!!! retry pyts piecewise aggregate approx !!!")
 
                 # PAA transformation
@@ -276,9 +262,7 @@ if __name__ == "__main__":
 
                 n_samples, n_timestamps = 1, y.shape[0]
                 window_size = 125
-                paa = PiecewiseAggregateApproximation(
-                    window_size=window_size, overlapping=False
-                )
+                paa = PiecewiseAggregateApproximation(window_size=window_size, overlapping=False)
                 try:
                     x_paa = paa.transform(np.array([x]))
                     y_paa = paa.transform(np.array([y]))
@@ -318,11 +302,11 @@ if __name__ == "__main__":
                         plt.savefig(f"{imagefile}_vs_dtw-paa.png", dpi=300)
                     else:
                         plt.show()
-                except Exception as e:
+                except (ValueError, RuntimeError) as e:
                     print(f"dtw using paa exception : {e}, type={type(e)}")
                     pass
 
-            except Exception as e:
+            except (ValueError, RuntimeError, ImportError) as e:
                 print(f"dtw exception: {e}, type={type(e)}")
                 pass
 

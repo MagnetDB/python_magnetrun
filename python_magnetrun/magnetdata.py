@@ -1,15 +1,14 @@
 """MagnetData"""
 
 import logging
-import keyword
-from natsort import natsorted
-from datetime import datetime
-
 import os
 import sys
+from datetime import datetime
+from typing import Any
 
-import pandas as pd
 import numpy as np
+import pandas as pd
+from natsort import natsorted
 
 logger = logging.getLogger(__name__)
 
@@ -31,19 +30,18 @@ class MagnetData:
         Groups: dict,
         Keys: list[str],
         Type: int = 0,
-        Data: pd.DataFrame | dict = None,
+        Data: pd.DataFrame | dict | None = None,
     ) -> None:
         """default constructor"""
         self.FileName = filename
         self.Groups = Groups
         self.Keys = Keys
         self.Type = Type  # 0 for Pandas, 1 for Tdms, 2: for Ensight
-        if Data is not None:
-            self.Data = Data
-        self.units = dict()
+        self.Data: pd.DataFrame | dict = Data if Data is not None else pd.DataFrame()
+        self.units: dict = dict()
 
     @classmethod
-    def fromtdms(cls, name: str):
+    def fromtdms(cls, name: str) -> "MagnetData":
         """create from a pigbrother file
 
         :param name: filename with a tdms extension
@@ -56,9 +54,9 @@ class MagnetData:
 
         logger.debug(f"magnetdata.fromtdms: {name}")
 
-        Keys = []
-        Groups = {}
-        Data = {}
+        Keys: list[str] = []
+        Groups: dict = {}
+        Data: dict[str, pd.DataFrame] = {}
         if not os.path.exists(name):
             raise FileNotFoundError(f"fromtdms: file not found: {name}")
         f_extension = os.path.splitext(name)[-1]
@@ -68,7 +66,7 @@ class MagnetData:
             raise RuntimeError(f"fromtdms: expect a tdms filename - got {name}")
 
         # add t_offset to account for tdms downsampled data
-        t_offset = 0
+        t_offset: float = 0.0
         if "Overview" in name:
             t_offset = (1) / 2.0
         elif "Archive" in name:
@@ -91,6 +89,9 @@ class MagnetData:
                     # print(f"properties: {channel.properties}", flush=True)
                     # update wf_start_offset to account for downsampled data
                     if "wf_start_offset" in Groups[gname][cname]:
+                        logger.debug(
+                            f"update wf_start_offset for {gname}/{cname} - original value: {Groups[gname][cname]['wf_start_offset']}"
+                        )
                         Groups[gname][cname]["wf_start_offset"] = t_offset
                     # print(f"* properties: {channel.properties}", flush=True)
 
@@ -102,11 +103,13 @@ class MagnetData:
 
                 # rename columns to avoid space in columns name
                 Data[gname].rename(
-                    columns={
-                        col: col.replace(" ", "_") for col in Data[gname].columns
-                    },
+                    columns={col: col.replace(" ", "_") for col in Data[gname].columns},
                     inplace=True,
                 )
+
+                # dt = Groups[group][channel]["wf_increment"]
+                # t_offset = Groups[group][channel]["wf_start_offset"]
+                # result["t"] = result.index * dt + t_offset
 
                 # print(f"Data[{gname}]\n{Data[gname].head()}")
             else:
@@ -130,9 +133,7 @@ class MagnetData:
                 + Data["Courants_Alimentations"]["Référence_A2"]
             )
             Keys.append("Courants_Alimentations/Référence_GR1")
-            Groups["Courants_Alimentations"]["Référence_GR1"] = Groups[
-                "Courants_Alimentations"
-            ][
+            Groups["Courants_Alimentations"]["Référence_GR1"] = Groups["Courants_Alimentations"][
                 "Référence_A1"
             ]  # "Added Référence_A1+Référence_A2"
         if "Référence_A3" in Data["Courants_Alimentations"]:
@@ -141,9 +142,7 @@ class MagnetData:
                 + Data["Courants_Alimentations"]["Référence_A4"]
             )
             Keys.append("Courants_Alimentations/Référence_GR2")
-            Groups["Courants_Alimentations"]["Référence_GR2"] = Groups[
-                "Courants_Alimentations"
-            ][
+            Groups["Courants_Alimentations"]["Référence_GR2"] = Groups["Courants_Alimentations"][
                 "Référence_A3"
             ]  # "Added Référence_A3+Référence_A4"
 
@@ -151,7 +150,7 @@ class MagnetData:
         return cls(name, Groups, Keys, 1, Data)
 
     @classmethod
-    def fromtxt(cls, name: str):
+    def fromtxt(cls, name: str) -> "MagnetData":
         """create from a pupitre file
 
         :param name: filename with a txt extension
@@ -160,7 +159,7 @@ class MagnetData:
         :return: magnetdata object
         :rtype: magnetdata
         """
-        with open(name, "r") as f:
+        with open(name) as f:
             f_extension = os.path.splitext(name)[-1]
             # print("f_extension: % s" % f_extension)
             if f_extension == ".txt":
@@ -172,9 +171,9 @@ class MagnetData:
         return cls(name, {}, Keys, 0, Data)
 
     @classmethod
-    def fromensight(cls, name: str):
+    def fromensight(cls, name: str) -> "MagnetData":
         """create from a cvs ensight file"""
-        with open(name, "r") as f:
+        with open(name) as f:
             # f_extension=os.path.splitext(name)[-1]
             # f_extension += "-ensight"
             Data = pd.read_csv(f, sep=",", engine="python", skiprows=2)
@@ -182,28 +181,26 @@ class MagnetData:
         return cls(name, {}, Keys, 2, Data)
 
     @classmethod
-    def fromcsv(cls, name: str):
+    def fromcsv(cls, name: str) -> "MagnetData":
         """create from a cvs file"""
-        with open(name, "r") as f:
+        with open(name) as f:
             # get file extension
             # f_extension = os.path.splitext(name)[-1]
-            Data = pd.read_csv(f, sep=str(","), engine="python", skiprows=0)
+            Data = pd.read_csv(f, sep=",", engine="python", skiprows=0)
             Keys = Data.columns.values.tolist()
         return cls(name, {}, Keys, 0, Data)
 
     @classmethod
-    def fromStringIO(cls, name: str, sep: str = r"\s+", skiprows: int = 1):
+    def fromStringIO(cls, name: str, sep: str = r"\s+", skiprows: int = 1) -> "MagnetData":
         """create from a stringIO"""
         from io import StringIO
 
         Data = pd.DataFrame()
         Keys = []
         try:
-            Data = pd.read_csv(
-                StringIO(name), sep=sep, engine="python", skiprows=skiprows
-            )
+            Data = pd.read_csv(StringIO(name), sep=sep, engine="python", skiprows=skiprows)
             Keys = Data.columns.values.tolist()
-        except Exception:
+        except (pd.errors.ParserError, ValueError, OSError):
             print("magnetdata.fromStringIO: trouble loading data")
             with open("wrongdata.txt", "w", newline="\n") as fo:
                 fo.write(name)
@@ -211,16 +208,10 @@ class MagnetData:
 
         return cls("stringIO", {}, Keys, 0, Data)
 
-    def __repr__(self):
-        return "%s(Type=%r, Groups=%r, Keys=%r, Data=%r)" % (
-            self.__class__.__name__,
-            self.Type,
-            self.Groups,
-            self.Keys,
-            self.Data,
-        )
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(Type={self.Type!r}, Groups={self.Groups!r}, Keys={self.Keys!r}, Data={self.Data!r})"
 
-    def getType(self):
+    def getType(self) -> int:
         """returns Data Type"""
         return self.Type
 
@@ -268,9 +259,7 @@ class MagnetData:
         # )
 
         if not isinstance(self.Data, dict):
-            raise Exception(
-                f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict"
-            )
+            raise Exception(f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict")
 
         result = None
         if channel is None:
@@ -285,7 +274,7 @@ class MagnetData:
         # print(f"-> result={result.keys()} (type={type(result)})", flush=True)
         return result
 
-    def getData(self, key: list[str] | str = None) -> pd.DataFrame:
+    def getData(self, key: list[str] | str | None = None) -> pd.DataFrame:
         """_summary_
 
         :param key: _description_, defaults to None
@@ -332,15 +321,13 @@ class MagnetData:
 
             return self.getTdmsData(groups[0], channels)
         else:
-            raise RuntimeError(
-                f"getData not implemented for MagneData.Data type={self.Type}"
-            )
+            raise RuntimeError(f"getData not implemented for MagneData.Data type={self.Type}")
 
     def PigBrotherUnits(self, key: str, debug: bool = False) -> tuple:
         from pint import UnitRegistry
 
         logger.debug(f"PigBrotherUnits: key={key}")
-        ureg = UnitRegistry()
+        ureg: UnitRegistry = UnitRegistry()
 
         PigBrotherUnits = {
             "Courant": ("I", ureg.ampere),
@@ -355,20 +342,27 @@ class MagnetData:
 
         return ()
 
-    def Units(self, debug: bool = False):
+    def Units(self, debug: bool = False) -> None:
         """
         set units and symbols for data in record
 
         NB: to print unit use '[{:~P}]'.format(self.units[key][1])
         """
         from pint import UnitRegistry
+        from pint.errors import UndefinedUnitError
 
         # print(f'magnetdata: Units, Filename:{self.FileName}')
 
-        ureg = UnitRegistry()
-        ureg.define("percent = 1 / 100 = %")
-        ureg.define("ppm = 1e-6 = ppm")
-        ureg.define("var = 1")
+        ureg: UnitRegistry = UnitRegistry()
+        for defn, unit in [
+            ("percent = 1 / 100 = %", "percent"),
+            ("ppm = 1e-6 = ppm", "ppm"),
+            ("var = 1", "var"),
+        ]:
+            try:
+                ureg.parse_units(unit)
+            except UndefinedUnitError:
+                ureg.define(defn)
 
         if self.Type == 1:
             # print("self.Data=", type(self.Data))
@@ -416,9 +410,7 @@ class MagnetData:
                 self.units[key] = ("Q", ureg.meter**3 / ureg.hour)
             elif key.startswith("HP") or key.startswith("BP"):
                 self.units[key] = ("P", ureg.bar)
-            elif key == "Pmagnet" or key == "Ptot":
-                self.units[key] = ("Power", ureg.megawatt)
-            elif key.startswith("Power"):
+            elif key == "Pmagnet" or key == "Ptot" or key.startswith("Power"):
                 self.units[key] = ("Power", ureg.megawatt)
             elif key == "Q":
                 # TODO define a specific 'var' unit for this field
@@ -440,15 +432,13 @@ class MagnetData:
             from pint import UnitRegistry
 
             # print(f"getUnitKey: {key} not in {self.Keys}")
-            ureg = UnitRegistry()
+            ureg: UnitRegistry = UnitRegistry()
             if key == "t":
                 return ("t", ureg.second)
             elif key == "timestamp":
                 return ("time", None)
             else:
-                raise RuntimeError(
-                    f"{key} not defined in data - available keys are {self.Keys}"
-                )
+                raise RuntimeError(f"{key} not defined in data - available keys are {self.Keys}")
 
         if self.Type == 0:
             return self.units[key]
@@ -461,16 +451,16 @@ class MagnetData:
             return self.PigBrotherUnits(group)
         return ()
 
-    def getKeys(self):
+    def getKeys(self) -> list[str]:
         """return list of Data keys"""
         # print("type: ", type(self.Keys))
         return self.Keys
 
-    def cleanupData_legacy(self, debug: bool = False):
+    def cleanupData_legacy(self, debug: bool = False) -> int:
         """removes empty columns from Data (LEGACY VERSION - ORIGINAL IMPLEMENTATION)
 
         Apply only to pupitre files
-        
+
         This is the original implementation before the flexible parameter refactoring.
         It always performs full auto-detection of Icoil and Ucoil columns.
 
@@ -483,12 +473,11 @@ class MagnetData:
 
         logger.debug(f"Clean up Data (legacy): filename={self.FileName}, keys={self.Keys}")
         if self.Type == 0:  # isinstance(self.Data, pd.DataFrame):
+            assert isinstance(self.Data, pd.DataFrame)
             import re
 
             # print(f'self.Keys = {self.Keys}') # Data.columns.values.tolist()}')
-            init_Ikeys = natsorted(
-                [_key for _key in self.Keys if re.match(r"Icoil\d+", _key)]
-            )
+            init_Ikeys = natsorted([_key for _key in self.Keys if re.match(r"Icoil\d+", _key)])
             logger.debug(f"init_Ikeys: {init_Ikeys}")
             Fkeys = [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
             Fkeys += [_key for _key in self.Keys if re.match(r"Rpm\w+", _key)]
@@ -500,7 +489,7 @@ class MagnetData:
             # print(f'FKeys = {Fkeys}')
 
             # drop duplicates
-            def getDuplicateColumns(df):
+            def getDuplicateColumns(df: pd.DataFrame) -> list[str]:
                 # Create an empty set
                 duplicateColumnNames = set()
 
@@ -529,11 +518,9 @@ class MagnetData:
                 for col in self.Data.columns[(self.Data == 0).all()].values.tolist()
                 if not col.startswith("Flow") and not col.startswith("Field")
             ]
-            empty_Ikeys = natsorted(
-                [_key for _key in empty_cols if re.match(r"Icoil\d+", _key)]
-            )
+            _empty_Ikeys = natsorted([_key for _key in empty_cols if re.match(r"Icoil\d+", _key)])
             # print(f"empty cols: {natsorted(empty_cols)}")
-            # print(f"empty Ikeys: {empty_Ikeys}")
+            # print(f"empty Ikeys: {_empty_Ikeys}")
             _df = self.Data
             if empty_cols:
                 _df = self.Data.drop(empty_cols, axis=1)
@@ -561,11 +548,7 @@ class MagnetData:
 
             # Find Ucoil for Helices and Bitters (ALWAYS - original behavior)
             Ukeys = natsorted(
-                [
-                    str(_key)
-                    for _key in _df.columns.values.tolist()
-                    if re.match(r"Ucoil\d+", _key)
-                ]
+                [str(_key) for _key in _df.columns.values.tolist() if re.match(r"Ucoil\d+", _key)]
             )
             # print(f"UKeys = {Ukeys}")
 
@@ -598,11 +581,7 @@ class MagnetData:
 
             # Always add latest Ikeys if not already in _df (ALWAYS - original behavior)
             Ikeys = natsorted(
-                [
-                    _key
-                    for _key in _df.columns.values.tolist()
-                    if re.match(r"Icoil\d+", _key)
-                ]
+                [_key for _key in _df.columns.values.tolist() if re.match(r"Icoil\d+", _key)]
             )
             logger.debug(f"IKeys = {Ikeys} ({len(Ikeys)})")
             if Ikeys:
@@ -724,9 +703,7 @@ class MagnetData:
 
             self.Data = _df
             self.Keys = self.Data.columns.values.tolist()
-            logger.debug(
-                f"--> self.Keys = {self.Keys}"
-            )  # Data.columns.values.tolist()}')
+            logger.debug(f"--> self.Keys = {self.Keys}")  # Data.columns.values.tolist()}')
         return 0
 
     def cleanupData(
@@ -735,7 +712,7 @@ class MagnetData:
         keys_to_rename: dict[str, str] | None = None,
         keys_to_add: dict[str, str] | None = None,
         debug: bool = False,
-    ):
+    ) -> int:
         """removes empty columns from Data with optional custom cleanup operations
 
         Apply only to pupitre files
@@ -755,24 +732,25 @@ class MagnetData:
 
         logger.debug(f"Clean up Data: filename={self.FileName}, keys={self.Keys}")
         if self.Type != 0:  # isinstance(self.Data, pd.DataFrame):
-            return
+            return 0
 
+        assert isinstance(self.Data, pd.DataFrame)
         # Apply custom operations if provided
         if keys_to_add:
             logger.debug(f"cleanupData: adding keys {list(keys_to_add.keys())}")
             # Check for existing keys
-            existing_keys = [key for key in keys_to_add.keys() if key in self.Keys]
+            existing_keys = [key for key in keys_to_add if key in self.Keys]
             if existing_keys:
                 logger.warning(
                     f"cleanupData: keys {existing_keys} already exist in DataFrame, skipping addition"
                 )
             for key, formula in keys_to_add.items():
                 self.addData(key, formula, debug=debug)
-        
+
         if keys_to_rename:
             logger.debug(f"cleanupData: renaming keys {keys_to_rename}")
             # Check for missing keys
-            missing_keys = [old_key for old_key in keys_to_rename.keys() if old_key not in self.Keys]
+            missing_keys = [key for key in keys_to_rename if key not in self.Keys]
             if missing_keys:
                 logger.warning(
                     f"cleanupData: keys {missing_keys} not found in DataFrame, cannot rename"
@@ -784,7 +762,7 @@ class MagnetData:
                     f"cleanupData: target keys {target_exists} already exist in DataFrame, will be overwritten"
                 )
             self.renameData(keys_to_rename)
-        
+
         if keys_to_remove:
             logger.debug(f"cleanupData: removing keys {keys_to_remove}")
             # Check for missing keys
@@ -799,15 +777,16 @@ class MagnetData:
 
         # Recompute Fkeys after cleanup
         import re
+
         Fkeys = [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
         Fkeys += [_key for _key in self.Keys if re.match(r"Rpm\w+", _key)]
         Fkeys += [_key for _key in self.Keys if re.match(r"HP\w+", _key)]
         Fkeys += [_key for _key in self.Keys if re.match(r"\w+_ref", _key)]
         Fkeys += [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
-        Fkeys += [_key for _key in self.Keys if re.match(r"Ptot", _key)]  
-        
+        Fkeys += [_key for _key in self.Keys if re.match(r"Ptot", _key)]
+
         # drop duplicates
-        def getDuplicateColumns(df):
+        def getDuplicateColumns(df: pd.DataFrame) -> list[str]:
             # Create an empty set
             duplicateColumnNames = set()
 
@@ -836,11 +815,9 @@ class MagnetData:
             for col in self.Data.columns[(self.Data == 0).all()].values.tolist()
             if not col.startswith("Flow") and not col.startswith("Field")
         ]
-        empty_Ikeys = natsorted(
-            [_key for _key in empty_cols]
-        )
+        _empty_Ikeys = natsorted([_key for _key in empty_cols])
         print(f"empty cols: {natsorted(empty_cols)}")
-        
+
         _df = self.Data
         if empty_cols:
             _df = self.Data.drop(empty_cols, axis=1)
@@ -852,12 +829,13 @@ class MagnetData:
         )
         print(f"duplicate columns (others than Ucoil*): {natsorted(really_dropped_columns)}")
         # _df.drop(really_dropped_columns, axis=1, inplace=True)
-        
+
         return 0
 
-    def removeData(self, keys: list):
+    def removeData(self, keys: list) -> int:
         """remove a column to Data"""
         if self.Type == 0:
+            assert isinstance(self.Data, pd.DataFrame)
             for key in keys:
                 if key in self.Keys:
                     del self.Data[key]
@@ -866,22 +844,23 @@ class MagnetData:
             self.Keys = self.Data.columns.values.tolist()
         return 0
 
-    def renameData(self, columns: dict):
+    def renameData(self, columns: dict) -> None:
         """
         rename columns
         """
         if self.Type == 0:
+            assert isinstance(self.Data, pd.DataFrame)
             # Filter out keys that don't exist
             existing_renames = {old: new for old, new in columns.items() if old in self.Keys}
             if len(existing_renames) < len(columns):
-                missing = [old for old in columns.keys() if old not in self.Keys]
+                missing = [old for old in columns if old not in self.Keys]
                 logger.warning(f"renameData: keys {missing} not found, skipping")
-            
+
             if existing_renames:
                 self.Data.rename(columns=existing_renames, inplace=True)
             self.Keys = self.Data.columns.values.tolist()
 
-    def addData(self, key, formula, unit: str = None, debug: bool = False):
+    def addData(self, key: str, formula: str, unit: str | None = None, debug: bool = False) -> int:
         """
         add a new column to Data from  a formula
 
@@ -892,8 +871,11 @@ class MagnetData:
 
         # print("addData: %s = %s" % (key, formula) )
         if self.Type == 0:
+            assert isinstance(self.Data, pd.DataFrame)
             if key in self.Keys:
-                logger.warning(f"addData: key '{key}' already exists in DataFrame, skipping addition")
+                logger.warning(
+                    f"addData: key '{key}' already exists in DataFrame, skipping addition"
+                )
             else:
                 # check formula using pyparsing
                 self.Data.eval(formula, inplace=True)
@@ -933,7 +915,7 @@ class MagnetData:
             except pd.errors.UndefinedVariableError as error:
                 raise RuntimeError(
                     f"addData: {key}: {nformula} - failed for tdms {group} data - error={error}"
-                )
+                ) from error
 
             # self.Groups[group][channel] = self.Groups[group]
             # raise RuntimeError("addData: not implemented for pigbrother file")
@@ -941,12 +923,12 @@ class MagnetData:
 
     def computeData(
         self,
-        method,
+        method: Any,
         key: str,
         kparams: list,
-        unit: tuple = None,
+        unit: tuple | None = None,
         debug: bool = False,
-    ):
+    ) -> None:
         """
         compute new column
         """
@@ -954,9 +936,10 @@ class MagnetData:
 
         if key in self.Keys:
             print(f"Key {key} already exists in DataFrame")
-            return 0
+            return
 
         if self.Type == 0:
+            assert isinstance(self.Data, pd.DataFrame)
             data = []
             for values in self.Data[kparams].values.tolist():
                 data.append(method(*values))
@@ -973,13 +956,11 @@ class MagnetData:
             logger.debug("done")
 
         elif self.Type == 1:
-            raise RuntimeError(
-                f"computeData: key={key} not implemented for pigbrother file"
-            )
+            raise RuntimeError(f"computeData: key={key} not implemented for pigbrother file")
 
-    def getStartDate(self, group: str = None) -> tuple:
+    def getStartDate(self, group: str | None = None) -> tuple:
         """get start timestamp"""
-        res = ()
+        res: tuple = ()
         if self.Type == 0:  # isinstance(self.Data, pd.DataFrame):
             # print("keys=", self.Keys)
             if "Date" in self.Keys and "Time" in self.Keys:
@@ -1008,7 +989,7 @@ class MagnetData:
             res = (start_date, start_time, end_date, end_time)
         return res
 
-    def getDuration(self, group: str = None) -> float:
+    def getDuration(self, group: str | None = None) -> float:
         """compute duration of the run in seconds"""
         # print("magnetdata.getDuration")
         duration = 0
@@ -1039,11 +1020,78 @@ class MagnetData:
             duration = dt * samples
         return duration
 
-    def addTime(self):
+    def addTdmsTime(self, group: str | None = None) -> int:
+        """add a 't' column to group(s) in Data for Type=1 (TDMS) magnetdata.
+
+        Uses wf_increment and wf_start_offset from the first channel's properties
+        to compute t = index * dt + t_offset.
+
+        :param group: group name to process; if None, processes all groups, defaults to None
+        :type group: str | None, optional
+        :return: 0 on success
+        :rtype: int
+        :raises RuntimeError: if called on non-TDMS data or group not found
+        """
+        if self.Type != 1:
+            raise RuntimeError(
+                f"MagnetData/addTdmsTime {self.FileName}: only applicable for Type=1 (TDMS), got Type={self.Type}"
+            )
+
+        assert isinstance(self.Data, dict)
+
+        if group is not None and group not in self.Data:
+            raise RuntimeError(
+                f"MagnetData/addTdmsTime {self.FileName}: group '{group}' not found in Data"
+            )
+
+        groups_to_process = [group] if group is not None else list(self.Data.keys())
+
+        for gname in groups_to_process:
+            if gname == "Infos":
+                continue
+            if "t" in self.Data[gname].columns:
+                logger.debug(f"addTdmsTime: 't' already present in group '{gname}', skipping")
+                continue
+
+            group_channels = self.Groups.get(gname, {})
+            if not group_channels:
+                logger.warning(
+                    f"addTdmsTime: no channel properties found for group '{gname}', skipping"
+                )
+                continue
+
+            first_channel = list(group_channels.keys())[0]
+            props = group_channels[first_channel]
+
+            if "wf_increment" not in props or "wf_start_offset" not in props:
+                logger.warning(
+                    f"addTdmsTime: missing wf_increment/wf_start_offset for '{gname}/{first_channel}', skipping"
+                )
+                continue
+
+            dt = props["wf_increment"]
+            t_offset = props["wf_start_offset"]
+            self.Data[gname]["t"] = self.Data[gname].index * dt + t_offset
+
+            key = f"{gname}/t"
+            if key not in self.Keys:
+                self.Keys.append(key)
+
+            if "t" not in self.Groups[gname]:
+                self.Groups[gname]["t"] = {
+                    "wf_increment": dt,
+                    "wf_start_offset": t_offset,
+                    "unit_string": "s",
+                }
+
+        return 0
+
+    def addTime(self) -> int:
         """add a Time column to Data"""
         # print("magnetdata.AddTime")
 
         if self.Type == 0:  # isinstance(self.Data, pd.DataFrame):
+            assert isinstance(self.Data, pd.DataFrame)
             if "Date" in self.Keys and "Time" in self.Keys:
                 #  tformat = "%Y.%m.%d %H:%M:%S"
 
@@ -1051,24 +1099,24 @@ class MagnetData:
                     self.Data["Date"] = pd.to_datetime(
                         self.Data.Date, cache=True, format="%Y.%m.%d"
                     )
-                except Exception:
+                except (ValueError, TypeError):
                     raise RuntimeError(
                         f"MagnetData/AddTime {self.FileName}: failed to convert Date"
-                    )
+                    ) from None
 
                 try:
                     self.Data["Time"] = pd.to_timedelta(self.Data.Time)
-                except Exception:
+                except (ValueError, TypeError):
                     raise RuntimeError(
                         f"MagnetData/AddTime {self.FileName}: failed to convert Time"
-                    )
+                    ) from None
 
                 try:
                     self.Data["timestamp"] = self.Data.Date + self.Data.Time
-                except Exception:
+                except (ValueError, TypeError):
                     raise RuntimeError(
                         f"MagnetData/AddTime {self.FileName}: failed to create timestamp column"
-                    )
+                    ) from None
                 else:
                     t0 = self.Data.iloc[0]["timestamp"]
 
@@ -1083,11 +1131,11 @@ class MagnetData:
 
                 # check interval in t column
                 times = self.Data["t"].to_numpy()
-                dt = np.diff(times)
-                # if dt.min() != dt.max():
+                _dt = np.diff(times)
+                # if _dt.min() != _dt.max():
                 #     print(
-                #        f"!!! {self.FileName}: dt from {dt.min()} to {dt.max()} !!!"
-                #     )  # stats={stats.describe(dt)}"
+                #        f"!!! {self.FileName}: dt from {_dt.min()} to {_dt.max()} !!!"
+                #     )  # stats={stats.describe(_dt)}"
 
                 # print("magnetdata.AddTime: add t and timestamp")
                 # remove Date and Time ??
@@ -1103,7 +1151,7 @@ class MagnetData:
                 )
         return 0
 
-    def shiftTime(self, dt: float):
+    def shiftTime(self, dt: float) -> int:
         """shift time column by dt seconds"""
         if self.Type == 0:  # isinstance(self.Data, pd.DataFrame):
             if "t" in self.Keys:
@@ -1134,11 +1182,10 @@ class MagnetData:
             return pd.concat([self.Data[key] for key in keys], axis=1)
 
         elif self.Type == 1:
-
             groups = []
             channels = []
             dfs = []
-            Addt = False
+            _Addt = False
             for item in keys:
                 if item != "t":
                     (group, channel) = item.split("/")
@@ -1150,19 +1197,18 @@ class MagnetData:
             result = pd.concat(dfs, axis=1)
             if "t" in keys:
 
-                def all_same_string(lst):
+                def all_same_string(lst: list) -> bool:
                     return len(set(lst)) <= 1
 
                 if all_same_string(groups):
                     group = groups[0]
-                    channel = channels[0]
-                    dt = self.Groups[group][channel]["wf_increment"]
-                    t_offset = self.Groups[group][channel]["wf_start_offset"]
+                    if "t" not in self.Data[group].columns:
+                        self.addTdmsTime(group=group)
+                    result["t"] = self.Data[group]["t"]
                 else:
                     raise RuntimeError(
                         f"extractData: keys={keys} - cannot add t column - groups are not the same: {groups}"
                     )
-                result["t"] = result.index * dt + t_offset
 
             # print(f"-> result={result.keys()} (type={type(result)}) Done", flush=True)
             return result
@@ -1170,10 +1216,11 @@ class MagnetData:
         # else:
         #    raise RuntimeError(f"extractData: magnetdata type ({self.Type})unsupported")
 
-    def extractDataThreshold(self, key, threshold):
+    def extractDataThreshold(self, key: str, threshold: float) -> pd.DataFrame:
         """extra data above a given threshold for field"""
         if self.Type == 0:
             # if isinstance(self.Data, pd.DataFrame):
+            assert isinstance(self.Data, pd.DataFrame)
             if key not in self.Keys:
                 raise RuntimeError(
                     f"extractData: key={key} - no such keys in dataframe (valid keys are: {self.Keys}"
@@ -1186,26 +1233,20 @@ class MagnetData:
         else:
             raise RuntimeError(f"extractData: not implement for {type(self.Data)}")
 
-    def extractTimeData(self, timerange, group: str = None) -> pd.DataFrame:
+    def extractTimeData(self, timerange: str, group: str | None = None) -> pd.DataFrame:
         """extract column to Data"""
 
         trange = timerange.split(";")
         print(f"Select data from {trange[0]} to {trange[1]}")
 
         if self.Type == 0:  # isinstance(self.Data, pd.DataFrame):
-            return self.Data[
-                self.Data["Time"].between(trange[0], trange[1], inclusive="both")
-            ]
+            return self.Data[self.Data["Time"].between(trange[0], trange[1], inclusive="both")]
         elif self.Type == 1:
-            return self.Data[group]["timestamp"].between(
-                trange[0], trange[1], inclusive="both"
-            )
+            return self.Data[group]["timestamp"].between(trange[0], trange[1], inclusive="both")
         else:
-            raise RuntimeError(
-                f"extractTimeData: magnetdata type ({self.Type})unsupported"
-            )
+            raise RuntimeError(f"extractTimeData: magnetdata type ({self.Type})unsupported")
 
-    def saveData(self, keys: list[str], filename: str):
+    def saveData(self, keys: list[str], filename: str) -> int:
         """save Data to csv format
 
         :param keys:list of selected keys
@@ -1216,14 +1257,14 @@ class MagnetData:
         :rtype: _type_
         """
         if self.Type == 0:
-            self.Data[keys].to_csv(filename, sep=str("\t"), index=False, header=True)
+            self.Data[keys].to_csv(filename, sep="\t", index=False, header=True)
         elif self.Type == 1:
             dfs = []
             for key in keys:
                 (group, channel) = key.split("/")
                 dfs.append(self.getTdmsData(group, channel))
             df = pd.concat(dfs)
-            df.to_csv(filename, sep=str("\t"), index=False, header=True)
+            df.to_csv(filename, sep="\t", index=False, header=True)
 
         return 0
 
@@ -1231,12 +1272,12 @@ class MagnetData:
         self,
         x: str,
         y: str,
-        ax,
+        ax: Any,
         alpha: float = 1,
-        label: str = None,
+        label: str | None = None,
         normalize: bool = False,
         offset: float = 0,
-    ):
+    ) -> None:
         """plot x vs y
 
         :param x: _description_
@@ -1256,8 +1297,6 @@ class MagnetData:
         :raises Exception: _description_
         """
 
-        import datetime
-        import numpy as np
         import matplotlib
         import matplotlib.pyplot as plt
 
@@ -1274,11 +1313,12 @@ class MagnetData:
 
             # if isinstance(self.Data, pd.DataFrame):
             if self.Type == 0:
+                assert isinstance(self.Data, pd.DataFrame)
                 if normalize:
                     df = self.Data.copy()
                     ymax = abs(df[y].max())
                     df[y] /= ymax
-                    label = f"{y} (norm with {ymax:.3e} {yunit:~P})"
+                    _label = f"{y} (norm with {ymax:.3e} {yunit:~P})"
                     df.plot(
                         x=x,
                         y=y,
@@ -1301,20 +1341,9 @@ class MagnetData:
                     xchannel = x
 
                 if xgroup == ygroup:
+                    if xchannel == "t" and "t" not in self.Data[xgroup].columns:
+                        self.addTdmsTime(group=xgroup)
                     df = self.Data[xgroup].copy()
-                    dt = self.Groups[ygroup][ychannel]["wf_increment"]
-                    t_offset = self.Groups[ygroup][ychannel]["wf_start_offset"]
-
-                    if xchannel == "t":
-                        df[xchannel] = df.index * dt + t_offset + offset
-                    elif xchannel == "timestamp":
-                        t0 = self.Groups[ygroup][ychannel]["wf_start_time"]
-                        # print(f"plotData ({self.FileName}: t0={t0})")
-                        df[xchannel] = [
-                            np.datetime64(t0).astype(datetime.datetime)
-                            + datetime.timedelta(0, i * dt)
-                            for i in df.index.to_list()
-                        ]
 
                     if normalize:
                         ymax = abs(df[ychannel].max())
@@ -1348,7 +1377,7 @@ class MagnetData:
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {y} key (valid keys: {self.Keys})"
             )
 
-    def stats(self, key: str = None):
+    def stats(self, key: str | None = None) -> pd.DataFrame | None:
         """display basic statistics
 
         :param key: key to display, defaults to None
@@ -1364,14 +1393,11 @@ class MagnetData:
         # TODO: use tabulate to get more pretty output
 
         if self.Type == 0:
+            assert isinstance(self.Data, pd.DataFrame)
             if key is not None:
                 if key in self.Keys:
                     # print(f"stats[{key}]: {self.Data[key].mean()}")
-                    print(
-                        tabulate(
-                            self.Data[key].describe(), headers="keys", tablefmt="psql"
-                        )
-                    )
+                    print(tabulate(self.Data[key].describe(), headers="keys", tablefmt="psql"))
                 else:
                     raise RuntimeError(
                         f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {key} key"
@@ -1400,9 +1426,7 @@ class MagnetData:
                         )
                         return self.Data[group][channel].describe()
                     else:
-                        raise RuntimeError(
-                            f"magnetdata/stats: cannot find channel {channel}"
-                        )
+                        raise RuntimeError(f"magnetdata/stats: cannot find channel {channel}")
                 else:
                     raise RuntimeError(f"magnetdata/stats: cannot find group {group}")
             else:
@@ -1417,7 +1441,9 @@ class MagnetData:
                         )
                     )
 
-    def info(self):
+        return None
+
+    def info(self) -> None:
         """magnetdata info"""
 
         print(f"magnetdata: {self.FileName}, Type={self.Type}")
@@ -1428,8 +1454,9 @@ class MagnetData:
 
         # TODO for tdms display Infos group
         if self.Type == 1:
-            from tabulate import tabulate
             from collections import OrderedDict
+
+            from tabulate import tabulate
 
             headers = [
                 "Group",
@@ -1444,9 +1471,7 @@ class MagnetData:
             for group, values in self.Groups.items():
                 # print(f"group={group}")
                 for item in values:
-                    if isinstance(values[item], dict) or isinstance(
-                        values[item], OrderedDict
-                    ):
+                    if isinstance(values[item], dict | OrderedDict):
                         table = [
                             group,
                             item,

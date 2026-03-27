@@ -1,16 +1,16 @@
 #! /usr/bin/python3
 
 import logging
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
+from datetime import timedelta
 
-logger = logging.getLogger(__name__)
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
 from ..magnetdata import MagnetData
 from ..utils.sequence import list_duplicates_of, list_sequence
 
-from datetime import timedelta
+logger = logging.getLogger(__name__)
 
 
 def tuple_type(strings: str) -> tuple:
@@ -38,7 +38,7 @@ def nplateaus(
         flush=True,
     )
 
-    ykey = str()
+    ykey = ""
     df = pd.DataFrame()
     if not isinstance(Data.Data, pd.DataFrame):
         if xField[0] == "t":
@@ -91,7 +91,7 @@ def nplateaus(
     )
 
     plateau_data = []
-    for group_idx, group_data in df.groupby(group_ids):
+    for _group_idx, group_data in df.groupby(group_ids):
         # filter non-plateaus by min number of points
         if len(group_data) < min_number_points:
             # print(f"ignore group_data: {len(group_data)}")
@@ -259,9 +259,7 @@ def plateaus(
     outlier_idx = difference > threshold
     # print("median[%d]:" % df_[gradkey][outlier_idx].size, df_[gradkey][outlier_idx])
 
-    kw = dict(
-        marker="o", linestyle="none", color="g", label=str(threshold), legend=True
-    )
+    kw = dict(marker="o", linestyle="none", color="g", label=str(threshold), legend=True)
     df_[gradkey][outlier_idx].plot(**kw)
 
     # not needed if center=True
@@ -328,22 +326,15 @@ def plateaus(
 
         # if (b1-b0)/b1 > b_thresold: reject plateau
         # if abs(b1) < b_thresold and abs(b0) < b_thresold: reject plateau
-        if (dt / timedelta(seconds=1)) >= duration:
-            if abs(b1) >= b_threshold and abs(b0) >= b_threshold:
-                actual_plateaux.append(
-                    [start_time, end_time, dt.total_seconds(), b0, b1]
-                )
+        if (
+            (dt / timedelta(seconds=1)) >= duration
+            and abs(b1) >= b_threshold
+            and abs(b0) >= b_threshold
+        ):
+            actual_plateaux.append([start_time, end_time, dt.total_seconds(), b0, b1])
 
     print(
-        "%s plateaus(threshold=%g, b_threshold=%g, duration>=%g s): %d over %d"
-        % (
-            "Field",
-            threshold,
-            b_threshold,
-            duration,
-            len(actual_plateaux),
-            len(plateaux),
-        )
+        f"Field plateaus(threshold={threshold:g}, b_threshold={b_threshold:g}, duration>={duration:g} s): {len(actual_plateaux)} over {len(plateaux)}"
     )
     tables = []
     for p in actual_plateaux:
@@ -361,8 +352,7 @@ def plateaus(
     B_ = [x[0] for x in itertools.groupby(B_list)]
     logger.debug(f"B_={B_}, count(0)={B_.count(0)}")
     print(
-        "Field commisionning ? (aka sequence [1.0,0,-1.0,0.0,-1.0]): %d"
-        % len(list_sequence(B_, [1.0, 0, -1.0, 0.0, -1.0]))
+        f"Field commisionning ? (aka sequence [1.0,0,-1.0,0.0,-1.0]): {len(list_sequence(B_, [1.0, 0, -1.0, 0.0, -1.0]))}"
     )
     print("\n\n")
 
@@ -385,12 +375,8 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "input_files", help="input txt file (ex. HL31_2018.04.13.txt)", nargs="+"
-    )
-    parser.add_argument(
-        "--difference", help="specify difference", type=float, default=2.0e-2
-    )
+    parser.add_argument("input_files", help="input txt file (ex. HL31_2018.04.13.txt)", nargs="+")
+    parser.add_argument("--difference", help="specify difference", type=float, default=2.0e-2)
     parser.add_argument(
         "--min_num_points",
         help="specify minimum number of points",

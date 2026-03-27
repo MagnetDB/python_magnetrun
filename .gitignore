@@ -155,3 +155,7 @@ M*.conf
 *.tar.*
 *.tgz
 
+# rustfs
+rustfs/rustfs_internal_data
+rustfs/rustfs_logs
+

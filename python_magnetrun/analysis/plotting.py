@@ -19,7 +19,7 @@ Example usage::
         plot_comparison,
         downsample_for_plot,
     )
-    
+
     # Plot with 10% downsampling for large datasets
     plot_data(
         df_overview, df_archive, df_pupitre, df_incidents,
@@ -34,8 +34,8 @@ Example usage::
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -51,7 +51,7 @@ logger = logging.getLogger("magnetrun.analysis.plotting")
 class PlotStyle:
     """
     Configuration for plot styling.
-    
+
     Attributes
     ----------
     figsize : Tuple[int, int]
@@ -69,8 +69,8 @@ class PlotStyle:
     label_fontsize : int
         Axis label font size
     """
-    
-    figsize: Tuple[int, int] = (12, 5)
+
+    figsize: tuple[int, int] = (12, 5)
     dpi: int = 300
     grid: bool = True
     grid_alpha: float = 0.3
@@ -83,7 +83,7 @@ class PlotStyle:
 class PlotColors:
     """
     Color configuration for different data sources and regimes.
-    
+
     Attributes
     ----------
     overview : str
@@ -101,7 +101,7 @@ class PlotColors:
     regime_plateau : str
         Color for 'Plateau' regime spans
     """
-    
+
     overview: str = "blue"
     archive: str = "red"
     pupitre: str = "green"
@@ -109,7 +109,7 @@ class PlotColors:
     regime_up: str = "green"
     regime_down: str = "red"
     regime_plateau: str = "blue"
-    
+
     def get_regime_color(self, regime: str) -> str:
         """Get color for a regime type."""
         regime_map = {
@@ -132,13 +132,13 @@ def downsample_for_plot(
     x: np.ndarray,
     y: np.ndarray,
     percent: float = 100.0,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Downsample data for plotting to reduce memory usage and rendering time.
-    
+
     This is essential for plotting high-frequency data (e.g., 4800 Hz incident
     files) where millions of points would overwhelm the plotting system.
-    
+
     Parameters
     ----------
     x : np.ndarray
@@ -148,12 +148,12 @@ def downsample_for_plot(
     percent : float, optional
         Percentage of points to keep (0-100). Default is 100 (no downsampling).
         A value of 10 means keep 10% of the data points.
-        
+
     Returns
     -------
     Tuple[np.ndarray, np.ndarray]
         Downsampled (x, y) arrays
-        
+
     Examples
     --------
     >>> x = np.arange(1000000)
@@ -161,7 +161,7 @@ def downsample_for_plot(
     >>> x_ds, y_ds = downsample_for_plot(x, y, percent=1.0)
     >>> len(x_ds)  # ~10000 points
     10000
-    
+
     Notes
     -----
     Uses uniform step-based downsampling which preserves the overall shape
@@ -170,31 +170,30 @@ def downsample_for_plot(
     """
     if percent >= 100.0:
         return x, y
-    
+
     if percent <= 0.0:
         logger.warning("downsample percent <= 0, returning single point")
         return x[:1], y[:1]
-    
+
     n = len(x)
     n_keep = max(1, int(n * percent / 100.0))
     step = max(1, n // n_keep)
-    
+
     logger.debug(
-        "Downsampling: %d -> %d points (%.1f%%, step=%d)",
-        n, len(x[::step]), percent, step
+        "Downsampling: %d -> %d points (%.1f%%, step=%d)", n, len(x[::step]), percent, step
     )
-    
+
     return x[::step], y[::step]
 
 
 def downsample_dataframe(
     df: pd.DataFrame,
     percent: float = 100.0,
-    preserve_columns: Optional[List[str]] = None,
+    preserve_columns: list[str] | None = None,
 ) -> pd.DataFrame:
     """
     Downsample a DataFrame for plotting.
-    
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -203,7 +202,7 @@ def downsample_dataframe(
         Percentage of rows to keep (0-100)
     preserve_columns : List[str], optional
         Columns that must be included (not affected by downsampling logic)
-        
+
     Returns
     -------
     pd.DataFrame
@@ -211,11 +210,11 @@ def downsample_dataframe(
     """
     if percent >= 100.0:
         return df
-    
+
     n = len(df)
     n_keep = max(1, int(n * percent / 100.0))
     step = max(1, n // n_keep)
-    
+
     return df.iloc[::step].copy()
 
 
@@ -223,13 +222,13 @@ def downsample_minmax(
     x: np.ndarray,
     y: np.ndarray,
     n_bins: int = 1000,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Downsample preserving min/max values in each bin.
-    
+
     This method divides the data into bins and keeps both the minimum
     and maximum value in each bin, preserving peaks and valleys.
-    
+
     Parameters
     ----------
     x : np.ndarray
@@ -238,7 +237,7 @@ def downsample_minmax(
         Y-axis data
     n_bins : int, optional
         Number of bins to divide data into
-        
+
     Returns
     -------
     Tuple[np.ndarray, np.ndarray]
@@ -247,21 +246,21 @@ def downsample_minmax(
     n = len(x)
     if n <= n_bins * 2:
         return x, y
-    
+
     bin_size = n // n_bins
     x_out = []
     y_out = []
-    
+
     for i in range(n_bins):
         start = i * bin_size
         end = min(start + bin_size, n)
-        
+
         y_slice = y[start:end]
         x_slice = x[start:end]
-        
+
         min_idx = np.argmin(y_slice)
         max_idx = np.argmax(y_slice)
-        
+
         # Add in order (min first if it comes before max)
         if min_idx <= max_idx:
             x_out.extend([x_slice[min_idx], x_slice[max_idx]])
@@ -269,7 +268,7 @@ def downsample_minmax(
         else:
             x_out.extend([x_slice[max_idx], x_slice[min_idx]])
             y_out.extend([y_slice[max_idx], y_slice[min_idx]])
-    
+
     return np.array(x_out), np.array(y_out)
 
 
@@ -279,14 +278,14 @@ def estimate_downsample_percent(
 ) -> float:
     """
     Estimate appropriate downsample percentage for a given dataset size.
-    
+
     Parameters
     ----------
     n_points : int
         Number of data points
     target_points : int, optional
         Target number of points for plotting (default: 10000)
-        
+
     Returns
     -------
     float
@@ -294,7 +293,7 @@ def estimate_downsample_percent(
     """
     if n_points <= target_points:
         return 100.0
-    
+
     return (target_points / n_points) * 100.0
 
 
@@ -305,9 +304,9 @@ def plot_data(
     df_overview: pd.DataFrame,
     df_archive: pd.DataFrame,
     df_pupitre: pd.DataFrame,
-    df_incidents: Optional[Dict[str, List[pd.DataFrame]]],
-    channels_dict: Dict[str, str],
-    pupitre_dict: Dict[str, Dict[str, str]],
+    df_incidents: dict[str, list[pd.DataFrame]] | None,
+    channels_dict: dict[str, str],
+    pupitre_dict: dict[str, dict[str, str]],
     site: str,
     tkey: str,
     key: str,
@@ -315,18 +314,18 @@ def plot_data(
     msg: str,
     show: bool = False,
     save: bool = False,
-    output_path: Optional[str] = None,
+    output_path: str | None = None,
     downsample_percent: float = 100.0,
-    style: Optional[PlotStyle] = None,
-    colors: Optional[PlotColors] = None,
+    style: PlotStyle | None = None,
+    colors: PlotColors | None = None,
     interactive: bool = True,
-) -> Optional[Any]:
+) -> Any | None:
     """
     Plot data from multiple sources with optional downsampling.
-    
+
     Creates a comparison plot showing overview, archive, and pupitre data
     on the same axes, with optional incident markers.
-    
+
     Parameters
     ----------
     df_overview : pd.DataFrame
@@ -367,12 +366,12 @@ def plot_data(
         Color configuration
     interactive : bool, optional
         Enable interactive incident annotations
-        
+
     Returns
     -------
     matplotlib.figure.Figure or None
         Figure object if show=False, None otherwise
-        
+
     Examples
     --------
     >>> plot_data(
@@ -385,145 +384,148 @@ def plot_data(
     ... )
     """
     import matplotlib.pyplot as plt
-    
+
     style = style or DEFAULT_STYLE
     colors = colors or DEFAULT_COLORS
-    
+
     # Create figure
     fig, ax = plt.subplots(figsize=style.figsize)
     legends = []
-    
+
     # Helper to downsample and plot
     def plot_series(df, x_col, y_col, color, label, marker=None, alpha=1.0):
         if df is None or df.empty:
             return
-        
+
         x = df[x_col].values
         y = df[y_col].values
-        
+
         if downsample_percent < 100.0:
             x, y = downsample_for_plot(x, y, downsample_percent)
-        
+
         if marker:
-            ax.plot(x, y, color=color, marker=marker, alpha=alpha, markersize=3, linestyle='-')
+            ax.plot(x, y, color=color, marker=marker, alpha=alpha, markersize=3, linestyle="-")
         else:
             ax.plot(x, y, color=color, alpha=alpha)
         legends.append(label)
-    
+
     # Plot overview data
     if not df_overview.empty:
         plot_series(df_overview, tkey, key, colors.overview, f"Overview: {key}")
         plot_series(
-            df_overview, tkey, channels_dict[key],
-            colors.overview, f"Overview: {channels_dict[key]}",
-            marker=".", alpha=0.7
+            df_overview,
+            tkey,
+            channels_dict[key],
+            colors.overview,
+            f"Overview: {channels_dict[key]}",
+            marker=".",
+            alpha=0.7,
         )
-    
+
     # Plot archive data
     if not df_archive.empty:
         plot_series(
-            df_archive, tkey, channels_dict[key],
-            colors.archive, f"Archive: {channels_dict[key]}",
-            alpha=0.5
+            df_archive,
+            tkey,
+            channels_dict[key],
+            colors.archive,
+            f"Archive: {channels_dict[key]}",
+            alpha=0.5,
         )
-    
+
     # Plot pupitre data
     if not df_pupitre.empty:
         pupitre_key = pupitre_dict[site][key]
-        plot_series(
-            df_pupitre, tkey, pupitre_key,
-            colors.pupitre, f"Pupitre: {pupitre_key}"
-        )
-    
+        plot_series(df_pupitre, tkey, pupitre_key, colors.pupitre, f"Pupitre: {pupitre_key}")
+
     # Store annotation metadata for interactivity
     annotation_dict = {}
-    
+
     # Plot incidents
     if df_incidents is not None and interactive:
         for itype, incident_list in df_incidents.items():
             for i, idf in enumerate(incident_list):
                 if idf.empty:
                     continue
-                
+
                 # Get midpoint for annotation
                 t_mid = idf[tkey].median()
-                
+
                 # Get the channel key for this incident
                 incident_key = channels_dict.get(key, key)
                 if incident_key not in idf.columns:
                     continue
-                
+
                 f_mid = idf[incident_key].median()
-                
+
                 # Plot marker
-                point, = ax.plot(t_mid, f_mid, "yo", markersize=8)
-                
+                (point,) = ax.plot(t_mid, f_mid, "yo", markersize=8)
+
                 # Add annotation with arrow
                 annot = ax.annotate(
-                    rf"{itype} \#{i+1}",
+                    rf"{itype} \#{i + 1}",
                     xy=(t_mid, f_mid),
                     xytext=(10, 10),
                     textcoords="offset points",
                     bbox=dict(boxstyle="round,pad=0.5", fc=colors.incident, alpha=0.7),
                     arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0"),
                 )
-                
+
                 # Make annotation clickable
                 annot.set_picker(True)
-                
+
                 # Store metadata for click handler
                 annotation_dict[annot] = {
-                    "anomaly": rf"{itype} \#{i+1}",
+                    "anomaly": rf"{itype} \#{i + 1}",
                     "idx": i,
                     "df": idf,
                     "pupitre": (df_pupitre, pupitre_dict.get(site, {}).get(key)),
                     "archive": (df_archive, channels_dict.get(key)),
                 }
-    
+
     # Setup interactive click handler
     if interactive and annotation_dict:
         open_figures = {}
-        
+
         def on_pick(event):
             if event.artist in annotation_dict:
                 metadata = annotation_dict[event.artist]
                 _show_incident_detail(
-                    metadata, open_figures, tkey,
-                    colors, style, downsample_percent
+                    metadata, open_figures, tkey, colors, style, downsample_percent
                 )
-        
+
         fig.canvas.mpl_connect("pick_event", on_pick)
-    
+
     # Finalize plot
     ax.legend(labels=legends, loc=style.legend_loc)
-    ax.set_title(f'{title.replace("_Overview", "")}: {key} {msg}', fontsize=style.title_fontsize)
+    ax.set_title(f"{title.replace('_Overview', '')}: {key} {msg}", fontsize=style.title_fontsize)
     ax.set_xlabel(tkey, fontsize=style.label_fontsize)
-    
+
     if style.grid:
         ax.grid(True, alpha=style.grid_alpha)
-    
+
     plt.tight_layout()
-    
+
     # Save if requested
     if save:
         if output_path is None:
             # Auto-generate filename
             label, igroup = key.split("_") if "_" in key else (key, "")
-            output_path = f'{title.replace("_Overview", "")}-{igroup}.png'
+            output_path = f"{title.replace('_Overview', '')}-{igroup}.png"
         plt.savefig(output_path, dpi=style.dpi)
         logger.info("Saved plot to %s", output_path)
-    
+
     if show:
         plt.show()
         plt.close()
         return None
-    
+
     return fig
 
 
 def _show_incident_detail(
-    metadata: Dict[str, Any],
-    open_figures: Dict[int, Any],
+    metadata: dict[str, Any],
+    open_figures: dict[int, Any],
     tkey: str,
     colors: PlotColors,
     style: PlotStyle,
@@ -531,27 +533,27 @@ def _show_incident_detail(
 ) -> None:
     """Show detailed view of an incident when clicked."""
     import matplotlib.pyplot as plt
-    
+
     anomaly = metadata["anomaly"]
     idx = metadata["idx"]
     idf = metadata["df"]
     pupitre, pupitre_key = metadata["pupitre"]
     archive, archive_key = metadata["archive"]
-    
+
     # Close previous subplot if it exists
     if idx in open_figures:
         plt.close(open_figures[idx])
-    
+
     # Create subplot
     fig_sub, ax_sub = plt.subplots(figsize=(8, 5))
-    
+
     # Plot incident data
     if archive_key and archive_key in idf.columns:
         x, y = idf[tkey].values, idf[archive_key].values
         if downsample_percent < 100.0:
             x, y = downsample_for_plot(x, y, downsample_percent)
         ax_sub.plot(x, y, color=colors.incident, label=f"Incident: {archive_key}")
-    
+
     # Plot pupitre context
     if pupitre is not None and not pupitre.empty and pupitre_key:
         t_start, t_end = idf[tkey].iloc[0], idf[tkey].iloc[-1]
@@ -560,7 +562,7 @@ def _show_incident_detail(
         if not pupitre_slice.empty and pupitre_key in pupitre_slice.columns:
             x, y = pupitre_slice[tkey].values, pupitre_slice[pupitre_key].values
             ax_sub.plot(x, y, color=colors.pupitre, alpha=0.7, label=f"Pupitre: {pupitre_key}")
-    
+
     # Plot archive context
     if archive is not None and not archive.empty and archive_key:
         t_start, t_end = idf[tkey].iloc[0], idf[tkey].iloc[-1]
@@ -569,16 +571,16 @@ def _show_incident_detail(
         if not archive_slice.empty and archive_key in archive_slice.columns:
             x, y = archive_slice[tkey].values, archive_slice[archive_key].values
             ax_sub.plot(x, y, color=colors.archive, alpha=0.5, label=f"Archive: {archive_key}")
-    
+
     ax_sub.set_xlabel(tkey)
     ax_sub.set_xlim(idf[tkey].iloc[0], idf[tkey].iloc[-1])
     ax_sub.set_title(anomaly)
     ax_sub.legend()
     ax_sub.grid(True, alpha=style.grid_alpha)
-    
+
     fig_sub.tight_layout()
     fig_sub.show()
-    
+
     # Store figure reference
     open_figures[idx] = fig_sub
 
@@ -595,12 +597,12 @@ def plot_comparison(
     downsample_percent: float = 100.0,
     show: bool = False,
     save: bool = False,
-    output_path: Optional[str] = None,
-    style: Optional[PlotStyle] = None,
-) -> Optional[Any]:
+    output_path: str | None = None,
+    style: PlotStyle | None = None,
+) -> Any | None:
     """
     Plot comparison between two DataFrames.
-    
+
     Parameters
     ----------
     df1, df2 : pd.DataFrame
@@ -623,62 +625,62 @@ def plot_comparison(
         Output file path
     style : PlotStyle, optional
         Plot style configuration
-        
+
     Returns
     -------
     Figure or None
     """
     import matplotlib.pyplot as plt
-    
+
     style = style or DEFAULT_STYLE
-    
+
     fig, ax = plt.subplots(figsize=style.figsize)
-    
+
     # Plot first series
     x1, y1 = df1[x_col].values, df1[y_col1].values
     if downsample_percent < 100.0:
         x1, y1 = downsample_for_plot(x1, y1, downsample_percent)
     ax.plot(x1, y1, label=label1, color="blue")
-    
+
     # Plot second series
     x2, y2 = df2[x_col].values, df2[y_col2].values
     if downsample_percent < 100.0:
         x2, y2 = downsample_for_plot(x2, y2, downsample_percent)
     ax.plot(x2, y2, label=label2, color="red", alpha=0.7)
-    
+
     ax.set_xlabel(x_col)
     ax.set_title(title)
     ax.legend()
-    
+
     if style.grid:
         ax.grid(True, alpha=style.grid_alpha)
-    
+
     plt.tight_layout()
-    
+
     if save and output_path:
         plt.savefig(output_path, dpi=style.dpi)
-    
+
     if show:
         plt.show()
         plt.close()
         return None
-    
+
     return fig
 
 
 def plot_regimes(
     ax: Any,
-    regimes: List[str],
-    times: List[float],
-    colors: Optional[PlotColors] = None,
+    regimes: list[str],
+    times: list[float],
+    colors: PlotColors | None = None,
     alpha: float = 0.2,
 ) -> None:
     """
     Add regime spans to a plot.
-    
+
     Highlights different operational regimes (Up, Down, Plateau) with
     colored vertical spans.
-    
+
     Parameters
     ----------
     ax : matplotlib.axes.Axes
@@ -691,7 +693,7 @@ def plot_regimes(
         Color configuration
     alpha : float, optional
         Transparency for spans
-        
+
     Examples
     --------
     >>> fig, ax = plt.subplots()
@@ -699,10 +701,10 @@ def plot_regimes(
     >>> plot_regimes(ax, ['U', 'P', 'D'], [0, 10, 50, 100])
     """
     colors = colors or DEFAULT_COLORS
-    
+
     if len(times) < 2:
         return
-    
+
     t0 = times[0]
     for i in range(1, min(len(regimes) + 1, len(times))):
         regime = regimes[i - 1] if i - 1 < len(regimes) else "P"
@@ -713,14 +715,14 @@ def plot_regimes(
 
 def plot_incidents_markers(
     ax: Any,
-    incident_times: List[float],
+    incident_times: list[float],
     color: str = "red",
     alpha: float = 0.3,
     linestyle: str = "--",
 ) -> None:
     """
     Add vertical lines at incident times.
-    
+
     Parameters
     ----------
     ax : matplotlib.axes.Axes
@@ -741,18 +743,18 @@ def plot_incidents_markers(
 def plot_time_series(
     df: pd.DataFrame,
     x_col: str,
-    y_cols: Union[str, List[str]],
+    y_cols: str | list[str],
     title: str = "",
     downsample_percent: float = 100.0,
     normalize: bool = False,
     show: bool = False,
     save: bool = False,
-    output_path: Optional[str] = None,
-    style: Optional[PlotStyle] = None,
-) -> Optional[Any]:
+    output_path: str | None = None,
+    style: PlotStyle | None = None,
+) -> Any | None:
     """
     Plot one or more time series from a DataFrame.
-    
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -775,55 +777,55 @@ def plot_time_series(
         Output file path
     style : PlotStyle, optional
         Plot style configuration
-        
+
     Returns
     -------
     Figure or None
     """
     import matplotlib.pyplot as plt
-    
+
     style = style or DEFAULT_STYLE
-    
+
     if isinstance(y_cols, str):
         y_cols = [y_cols]
-    
+
     fig, ax = plt.subplots(figsize=style.figsize)
-    
+
     x = df[x_col].values
-    
+
     for y_col in y_cols:
         y = df[y_col].values
-        
+
         if normalize:
             y_min, y_max = y.min(), y.max()
             if y_max - y_min > 0:
                 y = (y - y_min) / (y_max - y_min)
-        
+
         if downsample_percent < 100.0:
             x_plot, y_plot = downsample_for_plot(x, y, downsample_percent)
         else:
             x_plot, y_plot = x, y
-        
+
         ax.plot(x_plot, y_plot, label=y_col)
-    
+
     ax.set_xlabel(x_col)
     ax.set_ylabel("Normalized" if normalize else "Value")
     ax.set_title(title)
     ax.legend()
-    
+
     if style.grid:
         ax.grid(True, alpha=style.grid_alpha)
-    
+
     plt.tight_layout()
-    
+
     if save and output_path:
         plt.savefig(output_path, dpi=style.dpi)
-    
+
     if show:
         plt.show()
         plt.close()
         return None
-    
+
     return fig
 
 
@@ -833,28 +835,28 @@ def plot_time_series(
 def setup_matplotlib_defaults() -> None:
     """
     Setup matplotlib with sensible defaults for scientific plotting.
-    
+
     Enables LaTeX rendering if available and sets common style options.
     """
     import matplotlib
     import matplotlib.pyplot as plt
-    
+
     try:
         matplotlib.rcParams["text.usetex"] = True
-    except Exception:
+    except (OSError, RuntimeError):
         logger.debug("LaTeX not available for matplotlib")
-    
+
     plt.style.use("seaborn-v0_8-whitegrid")
 
 
 def create_figure_grid(
     n_plots: int,
     n_cols: int = 2,
-    figsize_per_plot: Tuple[float, float] = (6, 4),
-) -> Tuple[Any, np.ndarray]:
+    figsize_per_plot: tuple[float, float] = (6, 4),
+) -> tuple[Any, np.ndarray]:
     """
     Create a grid of subplots.
-    
+
     Parameters
     ----------
     n_plots : int
@@ -863,19 +865,19 @@ def create_figure_grid(
         Number of columns in grid
     figsize_per_plot : tuple
         Size of each subplot
-        
+
     Returns
     -------
     Tuple[Figure, np.ndarray]
         Figure and array of axes
     """
     import matplotlib.pyplot as plt
-    
+
     n_rows = (n_plots + n_cols - 1) // n_cols
     figsize = (figsize_per_plot[0] * n_cols, figsize_per_plot[1] * n_rows)
-    
+
     fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
-    
+
     # Ensure axes is always 2D array
     if n_plots == 1:
         axes = np.array([[axes]])
@@ -883,7 +885,7 @@ def create_figure_grid(
         axes = axes.reshape(1, -1)
     elif n_cols == 1:
         axes = axes.reshape(-1, 1)
-    
+
     return fig, axes
 
 
@@ -896,7 +898,7 @@ def save_figure(
 ) -> None:
     """
     Save a figure with common settings.
-    
+
     Parameters
     ----------
     fig : matplotlib.figure.Figure

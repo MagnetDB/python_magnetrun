@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-# -*- coding:utf-8 -*-
 
 """Magnet component Object"""
 
-import logging
 import json
+import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -37,24 +37,13 @@ class GObject:
         self.category = category
         self.status = status
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """
         representation of object
         """
-        return (
-            "%s(name=%r, cadref=%r, geofile=%r, material=%r, category=%r, status=%r)"
-            % (
-                self.__class__.__name__,
-                self.name,
-                self.cadref,
-                self.geofile,
-                self.material,
-                self.category,
-                self.status,
-            )
-        )
+        return f"{self.__class__.__name__}(name={self.name!r}, cadref={self.cadref!r}, geofile={self.geofile!r}, material={self.material!r}, category={self.category!r}, status={self.status!r})"
 
-    def setCadref(self, cadref) -> None:
+    def setCadref(self, cadref: str) -> None:
         """set cadref"""
         self.cadref = cadref
 
@@ -62,7 +51,7 @@ class GObject:
         """get cadref"""
         return self.cadref
 
-    def setStatus(self, status) -> None:
+    def setStatus(self, status: str) -> None:
         """set status"""
         self.status = status
 
@@ -70,7 +59,7 @@ class GObject:
         """get status"""
         return self.status
 
-    def setCategory(self, category) -> None:
+    def setCategory(self, category: str) -> None:
         """set category"""
         self.category = category
 
@@ -82,24 +71,22 @@ class GObject:
         """get Material"""
         return self.material
 
-    def getMaterialProperty(self, mproperty) -> dict:
+    def getMaterialProperty(self, mproperty: str) -> dict:
         """get Material Property"""
         return self.material[mproperty]
 
-    def setMaterial(self, material) -> None:
+    def setMaterial(self, material: dict) -> None:
         """set Material"""
         self.material = material
 
-    def setMaterialProperty(self, mproperty, mval) -> None:
+    def setMaterialProperty(self, mproperty: str, mval: Any) -> None:
         """set Material Property"""
         self.material[mproperty] = mval
 
-    def to_json(self):
+    def to_json(self) -> str:
         """
         convert to json
         """
         from . import deserialize
 
-        return json.dumps(
-            self, default=deserialize.serialize_instance, sort_keys=True, indent=4
-        )
+        return json.dumps(self, default=deserialize.serialize_instance, sort_keys=True, indent=4)

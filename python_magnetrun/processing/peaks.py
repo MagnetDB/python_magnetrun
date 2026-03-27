@@ -3,7 +3,10 @@ Find peaks
 """
 
 import logging
+from typing import Any
+
 import matplotlib.pyplot as plt
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -12,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 def detect_peaks(
-    ts,
-    max_values,
+    ts: pd.Series,
+    max_values: Any,
     group: str,
     channel: str,
     window_size: int,
@@ -21,7 +24,7 @@ def detect_peaks(
     normalize: bool = False,
     save: bool = False,
     debug: bool = False,
-):
+) -> pd.Series:
     # use rolling() to calculate the rolling minimum
     print(
         f"Rolling windows for {channel}: window_size={window_size}, show={not save}",
@@ -34,7 +37,6 @@ def detect_peaks(
 
     # find picks
     from scipy.signal import find_peaks, peak_prominences
-    from numpy import argmin
 
     height = threshold
     if normalize:

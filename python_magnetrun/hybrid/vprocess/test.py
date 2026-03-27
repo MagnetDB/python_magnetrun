@@ -11,12 +11,12 @@ Usage:
 """
 
 import argparse
-import struct
-from pathlib import Path
-from datetime import datetime, timezone, timedelta
-import sys
 import logging
 import math
+import struct
+import sys
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ def create_mock_vprocess_file(
 ) -> str:
     """
     Create a mock vprocess file for testing.
-    
+
     Parameters
     ----------
     filepath : str
@@ -41,7 +41,7 @@ def create_mock_vprocess_file(
         Number of analog variables
     n_digital : int
         Number of digital variables
-    
+
     Returns
     -------
     str
@@ -68,7 +68,7 @@ def create_mock_vprocess_file(
 
     # Variables line
     var_specs = []
-    for i, var in enumerate(all_vars):
+    for _i, var in enumerate(all_vars):
         if var in analog_vars:
             spec = f"{var} [type:float32|unit:U|min:0.00|max:100.00|df:%.2f]"
         else:
@@ -79,7 +79,7 @@ def create_mock_vprocess_file(
     header_lines.append(variables_line)
 
     # Time window
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
     end_time = start_time + timedelta(seconds=n_samples - 1)
     windows_line = (
         f"# windows = [UTC] {start_time.strftime('%d/%m/%Y-%H:%M:%S.%f')[:-3]} "
@@ -92,9 +92,7 @@ def create_mock_vprocess_file(
     header_lines.append("# timestamp = absolute")
 
     # Data helper (offset will be calculated)
-    data_helper_line = (
-        f"# data-helper [offset:PLACEHOLDER - time:8(B) - width:{sample_width}(B)]"
-    )
+    data_helper_line = f"# data-helper [offset:PLACEHOLDER - time:8(B) - width:{sample_width}(B)]"
     header_lines.append(data_helper_line)
 
     # Write file
@@ -118,7 +116,7 @@ def create_mock_vprocess_file(
             f.write(struct.pack("<d", timestamp + i))
 
             # Analog variables (sine waves with different frequencies)
-            for j, var in enumerate(analog_vars):
+            for j, _avar in enumerate(analog_vars):
                 value = 50 + 30 * math.sin(2 * math.pi * (i / n_samples) * (j + 1))
                 f.write(struct.pack("<f", value))
 
@@ -143,20 +141,20 @@ def test_basic_reading(filepath: str) -> bool:
         from vprocess_reader import VProcessFileReader
 
         reader = VProcessFileReader(filepath)
-        logger.info(f"✓ Reader initialized")
+        logger.info("✓ Reader initialized")
 
         # Read data
         df = reader.read()
-        logger.info(f"✓ Data read successfully")
+        logger.info("✓ Data read successfully")
         logger.info(f"  Shape: {df.shape}")
         logger.info(f"  Time range: {df.index[0]} to {df.index[-1]}")
-        logger.info(f"\nFirst 3 rows:")
+        logger.info("\nFirst 3 rows:")
         logger.info(str(df.head(3)))
 
-        logger.info(f"\n✓ Test passed")
+        logger.info("\n✓ Test passed")
         return True
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, ImportError) as e:
         logger.error(f"\n✗ Test failed: {str(e)}")
         import traceback
 
@@ -178,21 +176,21 @@ def test_header_parsing(filepath: str) -> bool:
 
         # Check metadata
         metadata = reader.get_metadata()
-        logger.info(f"\n✓ Header parsed successfully")
-        logger.info(f"\nMetadata:")
+        logger.info("\n✓ Header parsed successfully")
+        logger.info("\nMetadata:")
         for key, value in metadata.items():
             logger.info(f"  {key}: {value}")
 
         # Check variables
         var_info = reader.get_variable_info()
-        logger.info(f"\n✓ Variable info extracted")
+        logger.info("\n✓ Variable info extracted")
         logger.info(f"\nVariables ({len(var_info)}):")
         logger.info(str(var_info))
 
-        logger.info(f"\n✓ Test passed")
+        logger.info("\n✓ Test passed")
         return True
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, ImportError) as e:
         logger.error(f"\n✗ Test failed: {str(e)}")
         import traceback
 
@@ -217,13 +215,13 @@ def test_variable_selection(filepath: str) -> bool:
 
         logger.info(f"\n✓ Selected variables: {selected_vars}")
         logger.info(f"  Shape: {df_selected.shape}")
-        logger.info(f"\nStatistics:")
+        logger.info("\nStatistics:")
         logger.info(str(df_selected.describe()))
 
-        logger.info(f"\n✓ Test passed")
+        logger.info("\n✓ Test passed")
         return True
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, ImportError) as e:
         logger.error(f"\n✗ Test failed: {str(e)}")
         import traceback
 
@@ -239,7 +237,6 @@ def test_time_filtering(filepath: str) -> bool:
 
     try:
         from vprocess_reader import read_vprocess_file
-        import pandas as pd
 
         df = read_vprocess_file(filepath)
 
@@ -251,10 +248,10 @@ def test_time_filtering(filepath: str) -> bool:
         logger.info(f"  Filtered: {df_filtered.shape[0]} samples")
         logger.info(f"  Time range: {df_filtered.index[0]} to {df_filtered.index[-1]}")
 
-        logger.info(f"\n✓ Test passed")
+        logger.info("\n✓ Test passed")
         return True
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, ImportError) as e:
         logger.error(f"\n✗ Test failed: {str(e)}")
         import traceback
 
@@ -275,16 +272,16 @@ def test_validation_script(filepath: str) -> bool:
         results = validate_vprocess_file(filepath, check_data=True, verbose=False)
 
         if results["valid"]:
-            logger.info(f"✓ Validation passed")
+            logger.info("✓ Validation passed")
         else:
-            logger.error(f"✗ Validation failed")
+            logger.error("✗ Validation failed")
             logger.error(f"  Errors: {results['errors']}")
             return False
 
-        logger.info(f"\n✓ Test passed")
+        logger.info("\n✓ Test passed")
         return True
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, ImportError) as e:
         logger.error(f"\n✗ Test failed: {str(e)}")
         import traceback
 
@@ -319,12 +316,12 @@ def test_export_formats(filepath: str) -> bool:
             logger.info(f"✓ Parquet export successful: {parquet_file}")
             Path(parquet_file).unlink()
         except ImportError:
-            logger.info(f"  Parquet export skipped (pyarrow not installed)")
+            logger.info("  Parquet export skipped (pyarrow not installed)")
 
-        logger.info(f"\n✓ Test passed")
+        logger.info("\n✓ Test passed")
         return True
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, ImportError) as e:
         logger.error(f"\n✗ Test failed: {str(e)}")
         import traceback
 
@@ -356,7 +353,7 @@ def run_all_tests(filepath: str) -> bool:
                 passed += 1
             else:
                 failed += 1
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError, ImportError) as e:
             logger.error(f"\n✗ Test '{name}' crashed: {str(e)}")
             failed += 1
 
@@ -374,7 +371,7 @@ def run_all_tests(filepath: str) -> bool:
         return False
 
 
-def main():
+def main() -> int:
     """Main function."""
     parser = argparse.ArgumentParser(description="Test VProcess reader functionality")
 

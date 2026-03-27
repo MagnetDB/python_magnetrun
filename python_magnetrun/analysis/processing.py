@@ -37,22 +37,19 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple, Union
+from datetime import datetime
+from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from .config import (
     DEFAULT_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
-    SAMPLING_RATE_OVERVIEW,
     SAMPLING_RATE_ARCHIVE,
     SAMPLING_RATE_INCIDENTS,
+    SAMPLING_RATE_OVERVIEW,
     SITE_CONFIGS,
     SiteConfig,
-    AnalysisConfig,
-    get_site_config,
 )
 from .loaders import (
     FileDiscovery,
@@ -61,13 +58,9 @@ from .loaders import (
     merge_data,
 )
 from .synchronization import (
-    synchronize_data,
-    apply_lag_correction,
     compute_lag,
-    compute_regime_score,
-    find_best_matching_regime,
-    check_lag_reliability,
     get_timestamp_info,
+    synchronize_data,
 )
 
 # Module logger
@@ -165,14 +158,14 @@ class OverviewRecord:
     filename: str
     site: str
     mode: str = ""
-    t0: Optional[datetime] = None
+    t0: datetime | None = None
     duration: float = 0.0
 
     # Source files
-    sources: Optional[FileSet] = None
+    sources: FileSet | None = None
 
     # Loaded data
-    data: Dict[str, Any] = field(
+    data: dict[str, Any] = field(
         default_factory=lambda: {
             "overview": pd.DataFrame(),
             "archive": pd.DataFrame(),
@@ -184,15 +177,15 @@ class OverviewRecord:
     )
 
     # Analysis results
-    signatures: Dict[str, Any] = field(default_factory=dict)
-    sync_info: Dict[str, Any] = field(default_factory=dict)
-    flow_params: Dict[str, Any] = field(default_factory=dict)
-    metrics: Dict[str, Any] = field(default_factory=dict)
+    signatures: dict[str, Any] = field(default_factory=dict)
+    sync_info: dict[str, Any] = field(default_factory=dict)
+    flow_params: dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, Any] = field(default_factory=dict)
 
     # Extra parameters from pupitre
     teb: float = 0.0
     BP: float = 0.0
-    debitbrut: Dict[str, Any] = field(default_factory=dict)
+    debitbrut: dict[str, Any] = field(default_factory=dict)
 
     def get_overview(self) -> pd.DataFrame:
         """Get overview DataFrame."""
@@ -206,7 +199,7 @@ class OverviewRecord:
         """Get pupitre DataFrame."""
         return self.data.get("pupitre", pd.DataFrame())
 
-    def get_incidents(self) -> Dict[str, List[pd.DataFrame]]:
+    def get_incidents(self) -> dict[str, list[pd.DataFrame]]:
         """Get incidents as dict of DataFrames."""
         return {
             "default": self.data.get("default", []),
@@ -241,15 +234,15 @@ class ProcessingResult:
         Any errors encountered during processing
     """
 
-    records: Dict[str, OverviewRecord] = field(default_factory=dict)
+    records: dict[str, OverviewRecord] = field(default_factory=dict)
     site: str = ""
-    keys: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    keys: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
     def __len__(self) -> int:
         return len(self.records)
 
-    def get_record(self, filename: str) -> Optional[OverviewRecord]:
+    def get_record(self, filename: str) -> OverviewRecord | None:
         """Get record by filename."""
         return self.records.get(filename)
 
@@ -322,7 +315,7 @@ def add_time_column_with_offset(
 def load_overview_data(
     record: OverviewRecord,
     group: str,
-    keys: Optional[List[str]],
+    keys: list[str] | None,
 ) -> pd.DataFrame:
     """
     Load overview data for a record.
@@ -370,7 +363,7 @@ def load_archive_data(
     record: OverviewRecord,
     site_config: SiteConfig,
     group: str,
-    keys: List[str],
+    keys: list[str],
 ) -> pd.DataFrame:
     """
     Load archive data for a record.
@@ -415,8 +408,8 @@ def load_pupitre_data(
     record: OverviewRecord,
     site_config: SiteConfig,
     group: str,
-    keys: List[str],
-    extra_keys: Optional[List[str]] = None,
+    keys: list[str],
+    extra_keys: list[str] | None = None,
 ) -> pd.DataFrame:
     """
     Load pupitre data for a record.
@@ -493,9 +486,9 @@ def load_incidents_data(
     record: OverviewRecord,
     site_config: SiteConfig,
     group: str,
-    keys: List[str],
+    keys: list[str],
     reference_t0: datetime,
-) -> Dict[str, List[pd.DataFrame]]:
+) -> dict[str, list[pd.DataFrame]]:
     """
     Load incidents data (default, trigger, spike).
 
@@ -538,8 +531,7 @@ def load_incidents_data(
         for df in df_list:
             if not df.empty and "timestamp" in df.columns:
                 df["t"] = df.apply(
-                    lambda row: (row["timestamp"] - reference_t0).total_seconds()
-                    + t_offset,
+                    lambda row: (row["timestamp"] - reference_t0).total_seconds() + t_offset,
                     axis=1,
                 )
 
@@ -554,7 +546,7 @@ def load_incidents_data(
 def process_overview_file(
     overview_file: str,
     config: ProcessingConfig,
-    site_config: Optional[SiteConfig] = None,
+    site_config: SiteConfig | None = None,
 ) -> OverviewRecord:
     """
     Process a single overview file with all associated data.
@@ -600,9 +592,7 @@ def process_overview_file(
     # Get site configuration
     if site_config is None:
         if site not in SITE_CONFIGS:
-            raise ValueError(
-                f"Unknown site: {site}. Available: {list(SITE_CONFIGS.keys())}"
-            )
+            raise ValueError(f"Unknown site: {site}. Available: {list(SITE_CONFIGS.keys())}")
         site_config = SITE_CONFIGS[site]
 
     # Create record
@@ -626,9 +616,7 @@ def process_overview_file(
         "Discovered files - archive: %d, pupitre: %d, incidents: %d",
         len(record.sources.archive),
         len(record.sources.pupitre),
-        len(record.sources.default)
-        + len(record.sources.trigger)
-        + len(record.sources.spike),
+        len(record.sources.default) + len(record.sources.trigger) + len(record.sources.spike),
     )
 
     if config.dry_run:
@@ -702,13 +690,9 @@ def process_overview_file(
     # Load incidents data
     if any([record.sources.default, record.sources.trigger, record.sources.spike]):
         reference_t0 = (
-            record.data["archive"]["timestamp"].iloc[0]
-            if record.has_data("archive")
-            else record.t0
+            record.data["archive"]["timestamp"].iloc[0] if record.has_data("archive") else record.t0
         )
-        incidents = load_incidents_data(
-            record, site_config, config.group, keys, reference_t0
-        )
+        incidents = load_incidents_data(record, site_config, config.group, keys, reference_t0)
         record.data.update(incidents)
 
     # Extract signatures for each key
@@ -724,7 +708,7 @@ def process_overview_file(
 
 
 def process_experiment(
-    overview_files: List[str],
+    overview_files: list[str],
     config: ProcessingConfig,
 ) -> ProcessingResult:
     """
@@ -763,7 +747,7 @@ def process_experiment(
             if not result.keys and record.signatures:
                 result.keys = list(record.signatures.keys())
 
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             error_msg = f"Error processing {overview_file}: {e}"
             logger.error(error_msg)
             result.errors.append(error_msg)
@@ -773,9 +757,7 @@ def process_experiment(
 
                 traceback.print_exc()
 
-    logger.info(
-        f"Processed {len(result.records)}/{len(sorted_files)} files successfully"
-    )
+    logger.info(f"Processed {len(result.records)}/{len(sorted_files)} files successfully")
 
     return result
 
@@ -785,7 +767,7 @@ def process_experiment(
 # =============================================================================
 
 
-def _get_pupitre_channel(site_config: SiteConfig, key: str) -> Optional[str]:
+def _get_pupitre_channel(site_config: SiteConfig, key: str) -> str | None:
     """Get pupitre channel name for a key."""
     if key == "Courant_GR1":
         return site_config.reference_gr1_current
@@ -819,7 +801,7 @@ def _synchronize_pupitre(record: OverviewRecord, config: ProcessingConfig) -> No
 def _extract_signatures(
     record: OverviewRecord,
     site_config: SiteConfig,
-    keys: List[str],
+    keys: list[str],
     config: ProcessingConfig,
 ) -> None:
     """Extract signatures from overview data."""
@@ -847,7 +829,7 @@ def _extract_signatures(
 def _compute_lag_correlation(
     record: OverviewRecord,
     site_config: SiteConfig,
-    keys: List[str],
+    keys: list[str],
     config: ProcessingConfig,
 ) -> None:
     """Compute lag correlation between overview and pupitre."""
@@ -896,14 +878,14 @@ def _compute_lag_correlation(
 
             logger.info("Lag for %s: %.3f s", key, lag.total_seconds())
 
-        except Exception as e:
+        except (ValueError, RuntimeError) as e:
             logger.warning("Failed to compute lag for %s: %s", key, e)
 
 
 # =============================================================================
 # Convenience functions
 # =============================================================================
-def create_overview_dict(result: ProcessingResult) -> Dict[str, Dict[str, Any]]:
+def create_overview_dict(result: ProcessingResult) -> dict[str, dict[str, Any]]:
     """
     Convert ProcessingResult to legacy overview_dict format.
 
@@ -945,7 +927,7 @@ def create_overview_dict(result: ProcessingResult) -> Dict[str, Dict[str, Any]]:
     return overview_dict
 
 
-def summarize_record(record: OverviewRecord) -> Dict[str, Any]:
+def summarize_record(record: OverviewRecord) -> dict[str, Any]:
     """
     Create a summary of an OverviewRecord.
 
@@ -982,13 +964,13 @@ def print_record_summary(record: OverviewRecord) -> None:
     """Print a formatted summary of a record."""
     summary = summarize_record(record)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Overview Record: {summary['filename']}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Site: {summary['site']}, Mode: {summary['mode']}")
     print(f"Start time: {summary['t0']}")
     print(f"Duration: {summary['duration']:.1f} s")
-    print(f"\nData sources:")
+    print("\nData sources:")
     print(f"  - Overview: {'✓' if summary['has_overview'] else '✗'}")
     print(f"  - Archive: {'✓' if summary['has_archive'] else '✗'}")
     print(f"  - Pupitre: {'✓' if summary['has_pupitre'] else '✗'}")
@@ -998,9 +980,9 @@ def print_record_summary(record: OverviewRecord) -> None:
     print(f"\nSignatures: {', '.join(summary['signatures']) or 'None'}")
 
     if summary["sync_info"]:
-        print(f"\nSync info:")
+        print("\nSync info:")
         for key, value in summary["sync_info"].items():
             print(f"  - {key}: {value}")
 
     print(f"\nPupitre params: teb={summary['teb']:.2f}, BP={summary['BP']:.2f}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")

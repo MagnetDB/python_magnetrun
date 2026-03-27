@@ -12,17 +12,15 @@ Usage:
 """
 
 import argparse
-from pathlib import Path
-from typing import List, Optional, Tuple
 import logging
+from pathlib import Path
+from typing import Any
 
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 from matplotlib.figure import Figure
-from matplotlib.axes import Axes
-
 from vprocess_reader import VProcessFileReader, read_vprocess_file
 
 # Setup logger
@@ -31,17 +29,17 @@ logger = logging.getLogger(__name__)
 
 def plot_variables(
     filepath: str,
-    variables: List[str],
-    start_time: Optional[pd.Timestamp] = None,
-    end_time: Optional[pd.Timestamp] = None,
-    title: Optional[str] = None,
-    save_path: Optional[str] = None,
+    variables: list[str],
+    start_time: pd.Timestamp | None = None,
+    end_time: pd.Timestamp | None = None,
+    title: str | None = None,
+    save_path: str | None = None,
     show: bool = True,
     layout: str = "subplots",
-) -> Tuple[Figure, Axes]:
+) -> tuple[Figure | None, Any]:
     """
     Plot selected variables from VProcess file.
-    
+
     Parameters
     ----------
     filepath : str
@@ -60,7 +58,7 @@ def plot_variables(
         Whether to display the plot
     layout : str
         'subplots' or 'overlay'
-    
+
     Returns
     -------
     tuple
@@ -78,7 +76,7 @@ def plot_variables(
     # Check available variables
     available_vars = [v for v in variables if v in df.columns]
     if not available_vars:
-        logger.error(f"None of the requested variables found in file")
+        logger.error("None of the requested variables found in file")
         logger.info(f"Available variables: {list(df.columns[:10])}...")
         return None, None
 
@@ -120,10 +118,7 @@ def plot_variables(
             min_val = df_plot[var].min()
             max_val = df_plot[var].max()
 
-            stats_text = (
-                f"μ={mean_val:.2f}, σ={std_val:.2f}\n"
-                f"min={min_val:.2f}, max={max_val:.2f}"
-            )
+            stats_text = f"μ={mean_val:.2f}, σ={std_val:.2f}\nmin={min_val:.2f}, max={max_val:.2f}"
             ax.text(
                 0.02,
                 0.98,
@@ -163,12 +158,12 @@ def plot_variables(
 def plot_overview(
     filepath: str,
     max_vars: int = 10,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     show: bool = True,
-) -> Tuple[Figure, Axes]:
+) -> tuple[Figure | None, Any]:
     """
     Create overview plot with first N analog variables.
-    
+
     Parameters
     ----------
     filepath : str
@@ -179,7 +174,7 @@ def plot_overview(
         Path to save figure
     show : bool
         Whether to display the plot
-    
+
     Returns
     -------
     tuple
@@ -209,12 +204,12 @@ def plot_comparison(
     filepath: str,
     var1: str,
     var2: str,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     show: bool = True,
-) -> Tuple[Figure, Axes]:
+) -> tuple[Figure | None, Any]:
     """
     Create comparison plot of two variables.
-    
+
     Parameters
     ----------
     filepath : str
@@ -227,7 +222,7 @@ def plot_comparison(
         Path to save figure
     show : bool
         Whether to display the plot
-    
+
     Returns
     -------
     tuple
@@ -237,7 +232,7 @@ def plot_comparison(
     df = read_vprocess_file(filepath)
 
     if var1 not in df.columns or var2 not in df.columns:
-        logger.error(f"Variables not found in file")
+        logger.error("Variables not found in file")
         return None, None
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
@@ -301,14 +296,14 @@ def plot_comparison(
 
 def plot_heatmap(
     filepath: str,
-    variables: Optional[List[str]] = None,
+    variables: list[str] | None = None,
     max_vars: int = 20,
-    save_path: Optional[str] = None,
+    save_path: str | None = None,
     show: bool = True,
-) -> Tuple[Figure, Axes]:
+) -> tuple[Figure | None, Any]:
     """
     Create correlation heatmap for variables.
-    
+
     Parameters
     ----------
     filepath : str
@@ -321,7 +316,7 @@ def plot_heatmap(
         Path to save figure
     show : bool
         Whether to display the plot
-    
+
     Returns
     -------
     tuple
@@ -377,7 +372,7 @@ def plot_heatmap(
     return fig, ax
 
 
-def main():
+def main() -> None:
     """Main function for command-line usage."""
     parser = argparse.ArgumentParser(
         description="Plot VProcess data",

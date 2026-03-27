@@ -3,23 +3,27 @@ idea from chatgpt
 """
 
 import os
-import pandas as pd
-import statsmodels.api as sm
-
 from math import pi
-import numpy as np
 
-from scipy.fft import fft, fftshift, fftfreq
-import matplotlib.pyplot as plt
+import pytest
 
-from python_magnetrun.MagnetRun import MagnetRun
-from python_magnetrun.magnetdata import MagnetData
+pytest.importorskip("matplotlib")
+import matplotlib  # noqa: E402
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+import statsmodels.api as sm  # noqa: E402
+from scipy.fft import fft, fftfreq, fftshift  # noqa: E402
+
+from python_magnetrun.magnetdata import MagnetData  # noqa: E402
+from python_magnetrun.MagnetRun import MagnetRun  # noqa: E402
+
 # from .processing.smoothers import savgol
 
 
 def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:
-    import datetime
-
     print("addtime")
 
     df = pd.DataFrame(mdata.Data[group][channel])
@@ -32,14 +36,20 @@ def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:
     return df
 
 
-import argparse
+import argparse  # noqa: E402
+
+_default_input = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "data", "M9_2019.02.14-23_00_38.txt"
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "input_file",
+    nargs="?",
+    default=_default_input,
     help="enter input file (ex: ~/M9_2024.05.13---16_30_51.txt)",
 )
-args = parser.parse_args()
+args, _unknown = parser.parse_known_args()
 print(f"args: {args}", flush=True)
 
 file = args.input_file

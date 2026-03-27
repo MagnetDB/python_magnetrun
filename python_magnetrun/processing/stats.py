@@ -1,22 +1,17 @@
 """Main module."""
 
 import logging
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+from tabulate import tabulate  # type: ignore[import-untyped]
+
+from ..magnetdata import MagnetData
 
 logger = logging.getLogger(__name__)
 
 numpy_version = np.__version__.split(".")
-if numpy_version[0] == 1:
-    numpy_NaN = np.NaN
-else:
-    numpy_NaN = np.nan
-
-
-from ..magnetdata import MagnetData
-from ..utils.sequence import list_sequence, list_duplicates_of
-
-from tabulate import tabulate
+numpy_NaN = np.NaN if numpy_version[0] == 1 else np.nan
 
 
 def stats(
@@ -38,8 +33,16 @@ def stats(
     # see https://github.com/astanin/python-tabulate for tablefmt
     if isinstance(Data.Data, pd.DataFrame):
         # print(f"data keys: {Data.getKeys()}", flush=True)
-        tables = []
-        headers = ["Name", "Mean", "Max", "Min", "Std", "Median", "Mode"]
+        tables: list | pd.DataFrame = []
+        headers: list[str] | str = [
+            "Name",
+            "Mean",
+            "Max",
+            "Min",
+            "Std",
+            "Median",
+            "Mode",
+        ]
         selected_fields = [
             "Field",
             "IH",
@@ -77,7 +80,7 @@ def stats(
                 v_mode = numpy_NaN  # Most frequent value in a data set
                 try:
                     v_mode = float(df.mode().iloc[0])
-                except Exception as e:
+                except (IndexError, ValueError) as e:
                     logger.debug(f"{f}: failed to compute df.mode() - {e}")
                     pass
                 table = [

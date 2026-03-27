@@ -21,18 +21,14 @@ Example:
         return {"mean": data.mean(), "max": data.max()}
 """
 
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum, auto
 from typing import (
-    Protocol,
-    Optional,
-    List,
-    Dict,
     Any,
-    Tuple,
+    Protocol,
     runtime_checkable,
 )
-from datetime import datetime
-from dataclasses import dataclass, field
-from enum import Enum, auto
 
 import numpy as np
 import pandas as pd
@@ -60,16 +56,16 @@ class DataInfo:
 
     source_type: DataSourceType
     filename: str
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    duration_seconds: Optional[float] = None
-    sample_rate_hz: Optional[float] = None
-    num_samples: Optional[int] = None
-    num_channels: Optional[int] = None
-    keys: List[str] = field(default_factory=list)
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    duration_seconds: float | None = None
+    sample_rate_hz: float | None = None
+    num_samples: int | None = None
+    num_channels: int | None = None
+    keys: list[str] = field(default_factory=list)
 
     @property
-    def estimated_size_mb(self) -> Optional[float]:
+    def estimated_size_mb(self) -> float | None:
         """Estimate data size in MB"""
         if self.num_samples and self.num_channels:
             # Assume float32 (4 bytes per value)
@@ -90,7 +86,7 @@ class DataLoader(Protocol):
     - HybridRun (hybrid.hybrid_run.HybridRun)
     """
 
-    def getData(self, key: Optional[str] = None) -> Any:
+    def getData(self, key: str | None = None) -> Any:
         """
         Get data for a specific key.
 
@@ -105,7 +101,7 @@ class DataLoader(Protocol):
         """
         ...
 
-    def getKeys(self) -> List[str]:
+    def getKeys(self) -> list[str]:
         """
         Get list of available data keys.
 
@@ -147,8 +143,8 @@ class DownsamplingLoader(Protocol):
 
     def getData(
         self,
-        key: Optional[str] = None,
-        downsample: Optional[int] = None,
+        key: str | None = None,
+        downsample: int | None = None,
     ) -> Any:
         """
         Get data with optional downsampling.
@@ -175,7 +171,7 @@ class TimeSeriesLoader(Protocol):
     Provides additional methods for time-based queries.
     """
 
-    def get_time_range(self) -> Tuple[datetime, datetime]:
+    def get_time_range(self) -> tuple[datetime, datetime]:
         """Get start and end time of data"""
         ...
 
@@ -184,7 +180,7 @@ class TimeSeriesLoader(Protocol):
         key: str,
         target_time: datetime,
         window_seconds: float = 1.0,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Get data around a specific time"""
         ...
 
@@ -212,9 +208,7 @@ def get_data_info(loader: DataLoader) -> DataInfo:
     if loader_type == "MagnetRun":
         mdata = loader.getMData() if hasattr(loader, "getMData") else None
         if mdata:
-            source_type = (
-                DataSourceType.TDMS if mdata.Type == 1 else DataSourceType.PUPITRE
-            )
+            source_type = DataSourceType.TDMS if mdata.Type == 1 else DataSourceType.PUPITRE
             filename = mdata.FileName
         else:
             source_type = DataSourceType.UNKNOWN
@@ -238,7 +232,7 @@ def load_comparable_data(
     loader: DataLoader,
     key: str,
     target_points: int = 10000,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Load data from any loader in a comparable format.
 
@@ -306,10 +300,10 @@ def load_comparable_data(
 
 
 def align_time_series(
-    data1: Tuple[np.ndarray, np.ndarray],
-    data2: Tuple[np.ndarray, np.ndarray],
+    data1: tuple[np.ndarray, np.ndarray],
+    data2: tuple[np.ndarray, np.ndarray],
     method: str = "interpolate",
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Align two time series for comparison.
 
@@ -381,7 +375,7 @@ def compare_loaders(
     key1: str,
     key2: str,
     target_points: int = 10000,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Compare data from two loaders.
 

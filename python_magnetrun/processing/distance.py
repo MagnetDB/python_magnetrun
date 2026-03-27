@@ -1,18 +1,19 @@
 import logging
+
 import numpy as np
 
 logger = logging.getLogger(__name__)
 
 
-def calc_euclidean(actual, predic):
+def calc_euclidean(actual: np.ndarray, predic: np.ndarray) -> float:
     return np.sqrt(np.sum((actual - predic) ** 2))
 
 
-def calc_mape(actual, predic):
+def calc_mape(actual: np.ndarray, predic: np.ndarray) -> float:
     return np.mean(np.abs(actual - predic))
 
 
-def calc_correlation(actual, predic):
+def calc_correlation(actual: np.ndarray, predic: np.ndarray) -> float:
     a_diff = actual - np.mean(actual)
     p_diff = predic - np.mean(predic)
     numerator = np.sum(a_diff * p_diff)

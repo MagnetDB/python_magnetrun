@@ -3,18 +3,19 @@
 Script to query the proposals-for-ct API endpoint
 
 # Get all proposals from 2024
-curl -H "Authorization: Bearer a2089c45497ebb6b541d6e97f0724ccd2cdaef2e31ba1a6a0639dfddb490adc6" "http://147.173.81.141/api/proposals-for-ct?experiment_year=2024"
+curl -H "Authorization: Bearer TOKEN" "http://USERDB_SERVER/api/proposals-for-ct?experiment_year=2024"
 # Get submitted proposals from Grenoble
-curl -H "Authorization: Bearer a2089c45497ebb6b541d6e97f0724ccd2cdaef2e31ba1a6a0639dfddb490adc6" "http://147.173.81.141/api/proposals-for-ct?status=Submitted&facility=LNCMI Grenoble"
+curl -H "Authorization: Bearer TOKEN" "http://USERDB_SERVER/api/proposals-for-ct?status=Submitted&facility=LNCMI Grenoble"
 # Get magnetism proposals with regular access
-curl -H "Authorization: Bearer a2089c45497ebb6b541d6e97f0724ccd2cdaef2e31ba1a6a0639dfddb490adc6" "http://147.173.81.141/api/proposals-for-ct?research_area=Magnetism&access_mode=Regular"
+curl -H "Authorization: Bearer TOKEN" "http://USERDB_SERVER/api/proposals-for-ct?research_area=Magnetism&access_mode=Regular"
 # Combine multiple filters with pagination
-curl -H "Authorization: Bearer a2089c45497ebb6b541d6e97f0724ccd2cdaef2e31ba1a6a0639dfddb490adc6" "http://147.173.81.141/api/proposals-for-ct?status=Done&experiment_year=2024&limit=50&offset=0"
+curl -H "Authorization: Bearer TOKEN" "http://USERDB_SERVER/api/proposals-for-ct?status=Done&experiment_year=2024&limit=50&offset=0"
 """
 
-import os
-import requests
 import json
+import os
+
+import requests
 
 # Configuration
 API_BASE_URL = os.getenv("USERDB_SERVER") or "147.173.81.141"
@@ -22,7 +23,6 @@ TOKEN = os.getenv("USERDB_API_KEY")
 
 
 def get_proposals(api_server, headers, limit=10, debug: bool = False):
-
     url = api_server
     params = {"limit": limit}
 
@@ -38,7 +38,6 @@ def get_proposals(api_server, headers, limit=10, debug: bool = False):
 
 
 def export_csv(api_server, headers, output_file="proposals.csv", debug: bool = False):
-
     url = f"{api_server}/export-csv"
 
     try:
@@ -61,16 +60,10 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--server", help="specify userdb host", type=str, default=API_BASE_URL
-    )
+    parser.add_argument("--server", help="specify userdb host", type=str, default=API_BASE_URL)
     parser.add_argument("--token", help="specify userdb token", type=str, default=TOKEN)
-    parser.add_argument(
-        "--command", help="specify API command", type=str, default="get-proposals"
-    )
-    parser.add_argument(
-        "--output", help="specify output file", type=str, default="proposals.csv"
-    )
+    parser.add_argument("--command", help="specify API command", type=str, default="get-proposals")
+    parser.add_argument("--output", help="specify output file", type=str, default="proposals.csv")
     parser.add_argument("--limit", help="number of proposals to fetch", default=10)
     parser.add_argument("--debug", help="enable debug mode", action="store_true")
     args = parser.parse_args()

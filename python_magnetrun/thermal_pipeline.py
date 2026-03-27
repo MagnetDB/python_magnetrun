@@ -30,12 +30,12 @@ class CoolingCircuitColumns:
     For M8/M10 the H/B assignment is swapped; pass the correct mapping.
     """
 
-    voltage: str       # sum of Ucoil voltages for this circuit [V], e.g. "UH"
-    current: str       # circuit current [A], e.g. "IH"
-    flow: str          # volumetric flow rate [l/s], e.g. "FlowH"
-    temp_in: str       # inlet water temperature [°C], e.g. "TinH"
-    pressure_in: str   # inlet pressure [bar], e.g. "HPH"
-    back_pressure: str # back (outlet) pressure [bar], e.g. "BP"
+    voltage: str  # sum of Ucoil voltages for this circuit [V], e.g. "UH"
+    current: str  # circuit current [A], e.g. "IH"
+    flow: str  # volumetric flow rate [l/s], e.g. "FlowH"
+    temp_in: str  # inlet water temperature [°C], e.g. "TinH"
+    pressure_in: str  # inlet pressure [bar], e.g. "HPH"
+    back_pressure: str  # back (outlet) pressure [bar], e.g. "BP"
 
     @property
     def suffix(self) -> str:
@@ -74,34 +74,36 @@ def compute_circuit_thermal(
     :raises KeyError: If any required column is missing from df
     """
     try:
-        from python_magnetcooling.water_properties import get_rho, get_cp
+        from python_magnetcooling.water_properties import get_cp, get_rho
     except ImportError as exc:
-        raise ImportError(
-            "python_magnetcooling is required for thermal computations."
-        ) from exc
+        raise ImportError("python_magnetcooling is required for thermal computations.") from exc
 
     required = [
-        circuit.voltage, circuit.current, circuit.flow,
-        circuit.temp_in, circuit.pressure_in, circuit.back_pressure,
+        circuit.voltage,
+        circuit.current,
+        circuit.flow,
+        circuit.temp_in,
+        circuit.pressure_in,
+        circuit.back_pressure,
     ]
     missing = [c for c in required if c not in df.columns]
     if missing:
         raise KeyError(f"compute_circuit_thermal: missing columns {missing}")
 
     s = circuit.suffix
-    Pe_col   = f"Pe{s}"
-    DP_col   = f"DP{s}"
-    DT_col   = f"DT{s}"
-    rho_col  = f"rho{s}"
-    cp_col   = f"cp{s}"
+    Pe_col = f"Pe{s}"
+    DP_col = f"DP{s}"
+    DT_col = f"DT{s}"
+    rho_col = f"rho{s}"
+    cp_col = f"cp{s}"
     Tout_col = f"Tout{s}"
-    Tw_col   = f"Tw{s}"
-    P_col    = f"P{s}"
+    Tw_col = f"Tw{s}"
+    P_col = f"P{s}"
 
-    bp  = circuit.back_pressure
+    bp = circuit.back_pressure
     tin = circuit.temp_in
-    hp  = circuit.pressure_in
-    fl  = circuit.flow
+    hp = circuit.pressure_in
+    fl = circuit.flow
 
     # Electrical power [MW]
     df[Pe_col] = df[circuit.voltage] * df[circuit.current] / 1.0e6
@@ -111,14 +113,13 @@ def compute_circuit_thermal(
 
     # Initial water properties at inlet conditions (BP, Tin [°C])
     df[rho_col] = df.apply(lambda row: get_rho(row[bp], row[tin]), axis=1)
-    df[cp_col]  = df.apply(lambda row: get_cp(row[bp], row[tin]), axis=1)
+    df[cp_col] = df.apply(lambda row: get_cp(row[bp], row[tin]), axis=1)
 
     # Iterative DT refinement with updated mean-condition properties
     for _ in range(n_iter):
         df[DT_col] = df.apply(
             lambda row: (
-                row[Pe_col] * 1.0e6
-                / (row[rho_col] * row[cp_col] * row[fl] * 1.0e-3)
+                row[Pe_col] * 1.0e6 / (row[rho_col] * row[cp_col] * row[fl] * 1.0e-3)
                 if row[fl] != 0
                 else row[tin]
             ),
@@ -140,8 +141,8 @@ def compute_circuit_thermal(
         )
 
     df[Tout_col] = df[tin] + df[DT_col]
-    df[Tw_col]   = df[tin] + df[DT_col] / 2.0
-    df[P_col]    = (df[hp] + df[bp]) / 2.0
+    df[Tw_col] = df[tin] + df[DT_col] / 2.0
+    df[P_col] = (df[hp] + df[bp]) / 2.0
 
     logger.debug(
         "compute_circuit_thermal: circuit=%s, added columns %s",

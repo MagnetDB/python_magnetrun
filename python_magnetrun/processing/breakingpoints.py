@@ -3,16 +3,17 @@ Find Changing Points in an magnet record (tdms format)
 
 Use kernelCPD algo for performance
 
-ex: python ./test-ruptures.py M9_Overview_240509-1634.tdms --group Tensions_Aimant --channel Interne6 --detect --algo kernelCPD --model rbf --pen 512 --min_size=200
+ex: python ./test-ruptures.py M9_Overview_240509-1634.tdms --group Tensions_Aimant
+    --channel Interne6 --detect --algo kernelCPD --model rbf --pen 512 --min_size=200
 """
 
 import logging
+
+import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd
 import ruptures as rpt
 
 logger = logging.getLogger(__name__)
-
-import matplotlib.pyplot as plt
 
 # from: https://github.com/sztistvan/change_detection/blob/main/change_point_detection_chatgpt.ipynb
 # https://stackoverflow.com/questions/47519626/using-numpy-scipy-to-identify-slope-changes-in-digital-signals
@@ -70,9 +71,7 @@ def detect_changes(
     # algo = rpt.Pelt(model="rbf", min_size=1, jump=10).fit(signal)
     # is gamma usefull - see https://centre-borelli.github.io/ruptures-docs/code-reference/detection/kernelcpd-reference/
     if algoname == "kernelCDP":
-        rpt_algo = rpt.kernelCDP(
-            kernel=model, min_size=min_size
-        )  # , params={'gamma': 0.001})
+        rpt_algo = rpt.kernelCDP(kernel=model, min_size=min_size)  # , params={'gamma': 0.001})
     elif algoname == "Window":
         rpt_algo = rpt.Window(model, width=min_size, jump=jump)
     else:
@@ -105,8 +104,8 @@ def plot_changes(
     method: str,
     name: str,
     show: bool = False,
-    ax=None,
-):
+    ax: "plt.Axes | None" = None,
+) -> None:
     """
     display changes
     """
@@ -155,9 +154,9 @@ def breakingpoints(
     jump: int = 10,
     pen: float = 2,
     n_bkps: int = 5,
-    ax=None,
+    ax: "plt.Axes | None" = None,
     save: bool = False,
-):
+) -> None:
     # display algo
     print(f"algo: {algo}")
     print(f"model: {model}")

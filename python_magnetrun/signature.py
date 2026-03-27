@@ -1,13 +1,12 @@
 import logging
 from datetime import datetime
-from typing import List
 
 import pandas as pd
-
-logger = logging.getLogger(__name__)
+import pint
 
 from python_magnetrun.magnetdata import MagnetData
-import pint
+
+logger = logging.getLogger(__name__)
 
 
 class Signature:
@@ -18,10 +17,10 @@ class Signature:
         unit: str,
         t0: datetime,
         timeshift: float,
-        changes: List[int],
-        regimes: List[str],
-        times: List[float],
-        values: List[float],
+        changes: list[int],
+        regimes: list[str],
+        times: list[float],
+        values: list[float],
     ):
         self._name = name
         self._symbol = symbol
@@ -80,38 +79,38 @@ class Signature:
 
     # Getter and setter for changes
     @property
-    def changes(self) -> List[int]:
+    def changes(self) -> list[int]:
         return self._changes
 
     @changes.setter
-    def changes(self, value: List[int]):
+    def changes(self, value: list[int]):
         self._changes = value
 
     # Getter and setter for regimes
     @property
-    def regimes(self) -> List[str]:
+    def regimes(self) -> list[str]:
         return self._regimes
 
     @regimes.setter
-    def regimes(self, value: List[str]):
+    def regimes(self, value: list[str]):
         self._regimes = value
 
     # Getter and setter for times
     @property
-    def times(self) -> List[float]:
+    def times(self) -> list[float]:
         return self._times
 
     @times.setter
-    def times(self, value: List[float]):
+    def times(self, value: list[float]):
         self._times = value
 
     # Getter and setter for values
     @property
-    def values(self) -> List[float]:
+    def values(self) -> list[float]:
         return self._values
 
     @values.setter
-    def values(self, value: List[float]):
+    def values(self, value: list[float]):
         self._values = value
 
     @classmethod
@@ -193,6 +192,7 @@ class Signature:
         - A Signature instance.
         """
         from datetime import datetime
+
         from .processing.trends import trends
 
         t0 = datetime.now()
@@ -262,14 +262,11 @@ class Signature:
 
         sfilename = f"{filename}_signature.json"
         with open(filename, "w") as file:
-
             # Column names as strings
             column_names = ["time", self.name]
 
             # Method 1: Create DataFrame using a dictionary
-            df = pd.DataFrame(
-                {column_names[0]: self.times, column_names[1]: self.values}
-            )
+            df = pd.DataFrame({column_names[0]: self.times, column_names[1]: self.values})
             csv_filename = f"{filename}-{self.name}.csv"
             df.to_csv(csv_filename, index=False)
 

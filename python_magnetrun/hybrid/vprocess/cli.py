@@ -12,8 +12,8 @@ Usage:
 """
 
 import argparse
-import sys
 import logging
+import sys
 from pathlib import Path
 
 # Setup logger
@@ -33,9 +33,7 @@ def cmd_validate(args):
     """Validate VProcess file."""
     from .validate import validate_vprocess_file
 
-    results = validate_vprocess_file(
-        args.file, check_data=args.check_data, verbose=not args.quiet
-    )
+    results = validate_vprocess_file(args.file, check_data=args.check_data, verbose=not args.quiet)
 
     return 0 if results["valid"] else 1
 
@@ -43,10 +41,10 @@ def cmd_validate(args):
 def cmd_plot(args):
     """Plot VProcess data."""
     from .plot_vprocess import (
-        plot_variables,
-        plot_overview,
         plot_comparison,
         plot_heatmap,
+        plot_overview,
+        plot_variables,
     )
 
     if args.heatmap:
@@ -93,11 +91,11 @@ def cmd_plot(args):
 def cmd_batch(args):
     """Batch process VProcess files."""
     from .batch import (
+        analyze_batch,
+        export_data,
         find_vprocess_files,
         get_common_variables,
         process_batch,
-        export_data,
-        analyze_batch,
     )
 
     # Find files
@@ -126,15 +124,13 @@ def cmd_batch(args):
 
     # Process and merge
     if args.merge or args.output:
-        df = process_batch(
-            file_list, selected_vars=args.vars, merge=True, verbose=not args.quiet
-        )
+        df = process_batch(file_list, selected_vars=args.vars, merge=True, verbose=not args.quiet)
 
         logger.info(f"\nMerged data shape: {df.shape}")
         if len(df) > 0:
             logger.info(f"Time range: {df.index[0]} to {df.index[-1]}")
             duration = (df.index[-1] - df.index[0]).total_seconds()
-            logger.info(f"Duration: {duration:.1f} seconds ({duration/3600:.2f} hours)")
+            logger.info(f"Duration: {duration:.1f} seconds ({duration / 3600:.2f} hours)")
 
         if args.output:
             export_data(df, args.output, args.format)
@@ -147,7 +143,7 @@ def cmd_batch(args):
 
 def cmd_test(args):
     """Run tests."""
-    from .test import run_all_tests, create_mock_vprocess_file
+    from .test import create_mock_vprocess_file, run_all_tests
 
     if args.create_mock:
         create_mock_vprocess_file(
@@ -170,10 +166,7 @@ def cmd_test(args):
 
     # Cleanup if we created the file
     if not args.file:
-        try:
-            Path(test_file).unlink()
-        except Exception as e:
-            pass
+        Path(test_file).unlink(missing_ok=True)
 
     return 0 if success else 1
 
@@ -199,9 +192,7 @@ def main():
     # Validate command
     validate_parser = subparsers.add_parser("validate", help="Validate file")
     validate_parser.add_argument("file", help="VProcess file")
-    validate_parser.add_argument(
-        "--check-data", action="store_true", help="Check data integrity"
-    )
+    validate_parser.add_argument("--check-data", action="store_true", help="Check data integrity")
 
     # Plot command
     plot_parser = subparsers.add_parser("plot", help="Plot data")
@@ -211,12 +202,8 @@ def main():
     plot_parser.add_argument(
         "--compare", nargs=2, metavar=("VAR1", "VAR2"), help="Compare variables"
     )
-    plot_parser.add_argument(
-        "--heatmap", action="store_true", help="Correlation heatmap"
-    )
-    plot_parser.add_argument(
-        "--max-vars", type=int, default=10, help="Max variables (default: 10)"
-    )
+    plot_parser.add_argument("--heatmap", action="store_true", help="Correlation heatmap")
+    plot_parser.add_argument("--max-vars", type=int, default=10, help="Max variables (default: 10)")
     plot_parser.add_argument(
         "--layout",
         choices=["subplots", "overlay"],
@@ -224,17 +211,13 @@ def main():
         help="Plot layout",
     )
     plot_parser.add_argument("--save", "-s", help="Save to file")
-    plot_parser.add_argument(
-        "--no-show", action="store_true", help="Don't display plot"
-    )
+    plot_parser.add_argument("--no-show", action="store_true", help="Don't display plot")
 
     # Batch command
     batch_parser = subparsers.add_parser("batch", help="Batch process files")
     batch_parser.add_argument("--dir", required=True, help="Directory with files")
     batch_parser.add_argument("--pattern", default="*.vprocess", help="File pattern")
-    batch_parser.add_argument(
-        "-r", "--recursive", action="store_true", help="Search recursively"
-    )
+    batch_parser.add_argument("-r", "--recursive", action="store_true", help="Search recursively")
     batch_parser.add_argument("--vars", nargs="+", help="Variables to extract")
     batch_parser.add_argument("--merge", action="store_true", help="Merge files")
     batch_parser.add_argument("--output", "-o", help="Output file")
@@ -252,26 +235,16 @@ def main():
     # Test command
     test_parser = subparsers.add_parser("test", help="Run tests")
     test_parser.add_argument("--file", help="Test specific file")
-    test_parser.add_argument(
-        "--create-mock", action="store_true", help="Create mock file"
-    )
-    test_parser.add_argument(
-        "--output", default="mock_data.vprocess", help="Mock file output"
-    )
-    test_parser.add_argument(
-        "--samples", type=int, default=3600, help="Number of samples"
-    )
+    test_parser.add_argument("--create-mock", action="store_true", help="Create mock file")
+    test_parser.add_argument("--output", default="mock_data.vprocess", help="Mock file output")
+    test_parser.add_argument("--samples", type=int, default=3600, help="Number of samples")
     test_parser.add_argument("--analog", type=int, default=10, help="Analog variables")
     test_parser.add_argument("--digital", type=int, default=2, help="Digital variables")
 
     args = parser.parse_args()
 
     # Configure logging
-    log_level = (
-        logging.WARNING
-        if args.quiet
-        else (logging.DEBUG if args.verbose else logging.INFO)
-    )
+    log_level = logging.WARNING if args.quiet else (logging.DEBUG if args.verbose else logging.INFO)
     logging.basicConfig(level=log_level, format="%(message)s")
 
     # Execute command
@@ -292,7 +265,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("\nInterrupted by user")
         return 130
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         logger.error(f"Error: {e}")
         if args.verbose:
             import traceback

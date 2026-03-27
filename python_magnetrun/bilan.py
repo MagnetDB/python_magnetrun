@@ -1,17 +1,16 @@
+import argparse
+import glob
 import logging
 import os
 
-logger = logging.getLogger(__name__)
+import matplotlib.pyplot as plt
+from pint import UnitRegistry
+
+from python_magnetcooling.water_properties import get_cp, get_rho
 
 from .MagnetRun import MagnetRun
 
-import matplotlib.pyplot as plt
-
-from python_magnetcooling.water_properties import get_rho, get_cp
-from pint import UnitRegistry
-
-import argparse
-
+logger = logging.getLogger(__name__)
 command_line = None
 parser = argparse.ArgumentParser("Energy Balance")
 parser.add_argument("input_file", help="input pigbrother file")
@@ -62,7 +61,6 @@ print(f"time={time}")
 pupitre_datadir = args.pupitre_datadir
 pupitre_filter = f"{pupitre_datadir}/{site}_20{time[0][0:2]}.{time[0][2:4]}.{time[0][4:]}---{time[1][0:2]}:{time[1][2:]}:*.txt"
 print(f'pupitre_filter="{pupitre_filter}"')
-import glob
 
 pupitre_files = glob.glob(pupitre_filter)
 # just get the first one for the moment, eg. "srvdata/M10_2024.10.14---09:51:32.txt"

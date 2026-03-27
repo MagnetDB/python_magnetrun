@@ -1,3 +1,5 @@
+import argparse
+
 site_dict = {
     "17": "M7",
     "18": "M8",
@@ -6,7 +8,7 @@ site_dict = {
 }
 
 
-def parse_arguments():
+def parse_arguments() -> argparse.Namespace:
     import argparse
 
     parser = argparse.ArgumentParser()
@@ -21,9 +23,10 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def main():
-    import os
+def main() -> None:
     import json
+    import os
+
     import xmltodict
 
     args = parse_arguments()
@@ -38,7 +41,7 @@ def main():
     # get config from: https://srv-data-install.lncmi.cnrs.fr/cirrus/A1/xml/
     for file in input_files:
         print(file)
-        with open(file, "r") as f:
+        with open(file) as f:
             xml = f.read()
             config_dict = xmltodict.parse(xml)
             if args.debug:
@@ -57,7 +60,7 @@ def main():
         print(f"Version: {version}, Date: {date}")
 
         config_regs = config_dict["configuration"]["CIRRUS_CP"]["analogique"]["regs"]
-        for i, reg_value in enumerate(config_regs["regulateur"]):
+        for _i, reg_value in enumerate(config_regs["regulateur"]):
             # print(f'value[{i}]={reg_value}, type={type(reg_value)}')
             # for key, values in reg_value.items():
             #    print(key, values)
@@ -71,12 +74,10 @@ def main():
             rapport_entre_boucle = reg_value.get("@rapport_entre_boucle", "unknown")
             # print(f'looking for numero={numero} (type={type(numero)})')
 
-            if numero == str(1):
-                # print(f'looking for numero_jeu={numero_jeu}, site_dict={site_dict}')
-                if numero_jeu in site_dict:
-                    print(
-                        f"Current PID {site_dict[numero_jeu]}: Numero Seuil: {numero_seuil}, Ki: {Ki}, Kp: {Kp}, Kd: {Kd}, Rapport Entre Boucle: {rapport_entre_boucle}"
-                    )
+            if numero == str(1) and numero_jeu in site_dict:
+                print(
+                    f"Current PID {site_dict[numero_jeu]}: Numero Seuil: {numero_seuil}, Ki: {Ki}, Kp: {Kp}, Kd: {Kd}, Rapport Entre Boucle: {rapport_entre_boucle}"
+                )
 
         # configuration.CIRRUS_CP.analogique.rampes.rampe ?? control power shutdown in case of alarm
         # numero

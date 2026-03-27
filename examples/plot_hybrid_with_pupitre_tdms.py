@@ -12,25 +12,24 @@ The script uses the data directories as defined in python_magnetrun analysis con
 """
 
 import argparse
-from pathlib import Path
+import glob
 from datetime import datetime
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
-import glob
 
-# Import from python_magnetrun
-from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.analysis.config import (
-    SITE_CONFIGS,
     DEFAULT_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
 )
-from python_magnetrun.analysis.loaders import FileDiscovery
 
 # Import from hybrid module
 from python_magnetrun.hybrid.hybrid_run import HybridRun
-from python_magnetrun.hybrid.utils import log_exception, format_exception_location
+from python_magnetrun.hybrid.utils import format_exception_location, log_exception
 
+# Import from python_magnetrun
+from python_magnetrun.MagnetRun import MagnetRun
 
 # =============================================================================
 # Field name mapping dictionaries
@@ -83,7 +82,7 @@ def parse_date_from_filename(filename):
     # Try YYYY-MM-DD format first
     try:
         return datetime.strptime(filename, "%Y-%m-%d")
-    except:
+    except:  # noqa: E722
         pass
 
     # Try to extract from Overview filename: YYMMDD-HHMM
@@ -251,7 +250,7 @@ def plot_comparison(hybrid_data, pupitre_data, tdms_data, hybrid_key, site, hour
             linewidth=0.5,
             label=f"Hybrid kHz ({hybrid_key})",
         )
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError, KeyError) as e:
         log_exception(
             "Warning: Could not load hybrid data",
             e,
@@ -277,7 +276,7 @@ def plot_comparison(hybrid_data, pupitre_data, tdms_data, hybrid_key, site, hour
                 )
             else:
                 print(f"Warning: Pupitre field '{pupitre_field}' not found")
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError, KeyError) as e:
             log_exception(
                 "Warning: Could not plot pupitre data",
                 e,
@@ -295,7 +294,7 @@ def plot_comparison(hybrid_data, pupitre_data, tdms_data, hybrid_key, site, hour
             if tdms_field in tdms_keys:
                 tdms_values = mdata.getData(tdms_field)
                 # TDMS typically uses 't' for time
-                if "t" in tdms_keys:
+                if "t" in tdms_keys:  # noqa: SIM108
                     tdms_time = mdata.getData("t")
                 else:
                     tdms_time = np.arange(len(tdms_values))
@@ -308,10 +307,8 @@ def plot_comparison(hybrid_data, pupitre_data, tdms_data, hybrid_key, site, hour
                     label=f"TDMS ({tdms_field})",
                 )
             else:
-                print(
-                    f"Warning: TDMS field '{tdms_field}' not found. Available: {tdms_keys[:10]}"
-                )
-        except Exception as e:
+                print(f"Warning: TDMS field '{tdms_field}' not found. Available: {tdms_keys[:10]}")
+        except (OSError, ValueError, RuntimeError, KeyError) as e:
             log_exception(
                 "Warning: Could not plot TDMS data",
                 e,
@@ -408,9 +405,7 @@ Examples:
         help="Comma-separated list of hours to plot (e.g., 0,1,2 or 10,11,12)",
     )
 
-    parser.add_argument(
-        "--insert", default="Unknown", help="Insert name (default: Unknown)"
-    )
+    parser.add_argument("--insert", default="Unknown", help="Insert name (default: Unknown)")
 
     parser.add_argument("--show", action="store_true", help="Show plot interactively")
 
@@ -445,10 +440,8 @@ Examples:
         )
         print("Hybrid data loaded successfully")
         print(f"Available keys: {hrun.getKeys()[:10]}...")  # Show first 10 keys
-    except Exception as e:
-        log_exception(
-            "Error loading hybrid data", e, use_print=True, include_traceback=True
-        )
+    except (OSError, ValueError, RuntimeError) as e:
+        log_exception("Error loading hybrid data", e, use_print=True, include_traceback=True)
         return 1
 
     # Find and load pupitre data
@@ -460,7 +453,7 @@ Examples:
         try:
             pupitre_data = load_pupitre_data(pupitre_files[0], args.site, args.insert)
             print(f"Pupitre keys: {pupitre_data.getMData().getKeys()[:10]}...")
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             log_exception(
                 "Warning: Could not load pupitre data",
                 e,
@@ -480,7 +473,7 @@ Examples:
         try:
             tdms_data = load_tdms_data(tdms_files[0], args.site, args.insert)
             print(f"TDMS keys: {tdms_data.getMData().getKeys()[:10]}...")
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             log_exception(
                 "Warning: Could not load TDMS data",
                 e,
@@ -493,9 +486,7 @@ Examples:
 
     # Plot comparison
     print("\nGenerating comparison plot...")
-    fig, ax = plot_comparison(
-        hrun, pupitre_data, tdms_data, hybrid_key, args.site, hours=hours
-    )
+    fig, ax = plot_comparison(hrun, pupitre_data, tdms_data, hybrid_key, args.site, hours=hours)
 
     # Save or show plot
     if args.save:

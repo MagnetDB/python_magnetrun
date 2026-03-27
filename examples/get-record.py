@@ -1,17 +1,17 @@
 """Console script."""
 
 import argparse
-import sys
 import os
-import matplotlib.pyplot as plt
-
-from ..MagnetRun import MagnetRun
-from ..magnetdata import MagnetData
-from ..processing.stats import stats
-from ..processing.correlations import pearson
-
+import sys
 from datetime import datetime
+
+import matplotlib.pyplot as plt
 import pandas as pd
+
+from ..magnetdata import MagnetData
+from ..MagnetRun import MagnetRun
+from ..processing.correlations import pearson
+from ..processing.stats import stats
 
 
 def load_record(file: str, args, show: bool = False) -> MagnetData:
@@ -83,8 +83,8 @@ def getTimestamp(file: str, debug: bool = False) -> datetime:
         timestamp = datetime.strptime(date_string, tformat)
         if debug:
             print(f"{site}: timestamp={timestamp}")
-    except:
-        raise RuntimeError(f"getTimestamp: {file} failed -unexpected filename")
+    except:  # noqa: E722
+        raise RuntimeError(f"getTimestamp: {file} failed -unexpected filename") from None
 
     return timestamp
 
@@ -95,9 +95,7 @@ def main():
     parser.add_argument("inputfile", help="specify inputfile", nargs="+")
     parser.add_argument("--debug", help="enable debug mode", action="store_true")
 
-    subparsers = parser.add_subparsers(
-        title="commands", dest="command", help="sub-command help"
-    )
+    subparsers = parser.add_subparsers(title="commands", dest="command", help="sub-command help")
     parser_select = subparsers.add_parser("select", help="select help")
     parser_stats = subparsers.add_parser("stats", help="stats help")
     parser_plot = subparsers.add_parser("plot", help="select help")
@@ -110,9 +108,7 @@ def main():
         type=float,
         default="60",
     )
-    parser_select.add_argument(
-        "--fields", help="select fields to plot", type=str, nargs="+"
-    )
+    parser_select.add_argument("--fields", help="select fields to plot", type=str, nargs="+")
     parser_select.add_argument(
         "--field",
         help="select field with a value more than",
@@ -121,12 +117,8 @@ def main():
     )
 
     # subcommand plot
-    parser_plot.add_argument(
-        "--fields", help="select fields to plot", type=str, nargs="+"
-    )
-    parser_plot.add_argument(
-        "--xfield", help="select x to plot", type=str, default="timestamp"
-    )
+    parser_plot.add_argument("--fields", help="select fields to plot", type=str, nargs="+")
+    parser_plot.add_argument("--xfield", help="select x to plot", type=str, default="timestamp")
     parser_plot.add_argument("--show", help="enable show mode", action="store_true")
     parser_plot.add_argument("--save", help="enable save mode", action="store_true")
 
@@ -134,21 +126,13 @@ def main():
     parser_aggregate.add_argument(
         "--fields", help="select fields to aggregate", type=str, nargs="+"
     )
-    parser_aggregate.add_argument(
-        "--name", help="set basename of file to be saved", type=str
-    )
-    parser_aggregate.add_argument(
-        "--show", help="enable show mode", action="store_true"
-    )
-    parser_aggregate.add_argument(
-        "--save", help="enable save mode", action="store_true"
-    )
+    parser_aggregate.add_argument("--name", help="set basename of file to be saved", type=str)
+    parser_aggregate.add_argument("--show", help="enable show mode", action="store_true")
+    parser_aggregate.add_argument("--save", help="enable save mode", action="store_true")
 
     # subcommand stats
     parser_stats.add_argument("--fields", help="select fields", type=str, nargs="+")
-    parser_stats.add_argument(
-        "--pairplot", help="enable save mode", action="store_true"
-    )
+    parser_stats.add_argument("--pairplot", help="enable save mode", action="store_true")
     parser_stats.add_argument(
         "--pearson", help="enable Pearson correlation calculation", action="store_true"
     )
@@ -238,7 +222,7 @@ def main():
                     try:
                         df_.append(data.Data[selected_keys])
                         print(f"- extract {selected_keys}", flush=True)
-                    except Exception as error:
+                    except (KeyError, IndexError) as error:
                         print(
                             f"- ignored dataset: {selected_keys} not all in {data.getKeys()} (error={error})"
                         )
@@ -246,7 +230,7 @@ def main():
                 else:
                     print("- skipped", flush=True)
 
-            except Exception as error:
+            except (OSError, ValueError, RuntimeError) as error:
                 print(f"- fail to load (error={error})", flush=True)
                 pass
 
@@ -310,7 +294,7 @@ def main():
                 end=" ",
                 flush=True,
             )
-        except:
+        except:  # noqa: E722
             print("- fail to load")
             # is it possible to curate txt files
             # reading csv line by line with import csv??
@@ -326,13 +310,9 @@ def main():
                     )
 
             elif args.command == "stats":
-                if (
-                    args.pearson and data.getDuration() >= min_duration
-                ):  # previous limit 1000:
+                if args.pearson and data.getDuration() >= min_duration:  # previous limit 1000:
                     pearson(data, args.fields, args.save, args.show, args.debug)
-                elif (
-                    args.pairplot and data.getDuration() >= min_duration
-                ):  # previous limit 1000:
+                elif args.pairplot and data.getDuration() >= min_duration:  # previous limit 1000:
                     import seaborn as sns
 
                     selected_keys = [
@@ -381,9 +361,7 @@ def main():
 
             elif args.command == "plot":
                 if args.xfield not in data.Keys:
-                    print(
-                        f"- missing xfield={args.xfield} in {data.Keys}- ignored dataset"
-                    )
+                    print(f"- missing xfield={args.xfield} in {data.Keys}- ignored dataset")
                 else:
                     if data.getDuration() >= min_duration:
                         if args.fields:
@@ -401,13 +379,9 @@ def main():
 
                                     # overwrite legend
                                     if key in legends:
-                                        legends[key].append(
-                                            f"{data.FileName.replace('.txt','')}"
-                                        )
+                                        legends[key].append(f"{data.FileName.replace('.txt','')}")
                                     else:
-                                        legends[key] = [
-                                            data.FileName.replace(".txt", "")
-                                        ]
+                                        legends[key] = [data.FileName.replace(".txt", "")]
 
                     else:
                         print(f"duration < {min_duration} - ignored dataset")

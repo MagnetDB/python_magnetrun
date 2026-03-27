@@ -6,19 +6,18 @@ This is a simplified version demonstrating the core concepts.
 For a full-featured version, see plot_hybrid_with_pupitre_tdms.py
 """
 
-from pathlib import Path
+import glob
 from datetime import datetime
+
 import matplotlib.pyplot as plt
 import numpy as np
-import glob
-
-# Import from python_magnetrun
-from python_magnetrun.MagnetRun import MagnetRun
 
 # Import from hybrid module
 from python_magnetrun.hybrid.hybrid_run import HybridRun
-from python_magnetrun.hybrid.utils import log_exception, format_exception_location
+from python_magnetrun.hybrid.utils import log_exception
 
+# Import from python_magnetrun
+from python_magnetrun.MagnetRun import MagnetRun
 
 # =============================================================================
 # Configuration
@@ -27,7 +26,9 @@ from python_magnetrun.hybrid.utils import log_exception, format_exception_locati
 # Data directories (adjust these to your setup)
 HYBRID_BASE_DIR = "/path/to/hybrid_data"  # Base dir containing kHz/, rms/, trigger/
 PUPITRE_DATADIR = "/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install"
-PIGBROTHER_DATADIR = "/home/LNCMI-G/christophe.trophime/github/python_magnetrun/pigbrotherdata/Fichiers_Data"
+PIGBROTHER_DATADIR = (
+    "/home/LNCMI-G/christophe.trophime/github/python_magnetrun/pigbrotherdata/Fichiers_Data"
+)
 
 # Field name mappings: hybrid kHz -> pupitre -> TDMS
 # Customize based on your channel configuration
@@ -68,9 +69,7 @@ def main():
     date = datetime.strptime(date_str, "%Y-%m-%d")
 
     # Search pattern for pupitre files: M10/2025.01.27---*.txt
-    pupitre_pattern = (
-        f"{PUPITRE_DATADIR}/{site}/{date.year}.{date.month:02d}.{date.day:02d}*.txt"
-    )
+    pupitre_pattern = f"{PUPITRE_DATADIR}/{site}/{date.year}.{date.month:02d}.{date.day:02d}*.txt"
     pupitre_files = glob.glob(pupitre_pattern)
 
     pupitre_data = None
@@ -112,7 +111,7 @@ def main():
         print(f"Warning: No mapping defined for {hybrid_key}")
         return
 
-    print(f"\nPlotting comparison:")
+    print("\nPlotting comparison:")
     print(f"  Hybrid: {hybrid_key}")
     print(f"  Pupitre: {pupitre_field}")
     print(f"  TDMS: {tdms_field}")
@@ -136,10 +135,8 @@ def main():
             linewidth=0.5,
             label=f"Hybrid kHz ({hybrid_key})",
         )
-    except Exception as e:
-        log_exception(
-            "Could not plot hybrid data", e, use_print=True, include_traceback=True
-        )
+    except (OSError, ValueError, RuntimeError, KeyError) as e:
+        log_exception("Could not plot hybrid data", e, use_print=True, include_traceback=True)
 
     # Plot pupitre data
     if pupitre_data and pupitre_field:
@@ -158,10 +155,8 @@ def main():
                 )
             else:
                 print(f"Pupitre field '{pupitre_field}' not found")
-        except Exception as e:
-            log_exception(
-                "Could not plot pupitre data", e, use_print=True, include_traceback=True
-            )
+        except (OSError, ValueError, RuntimeError, KeyError) as e:
+            log_exception("Could not plot pupitre data", e, use_print=True, include_traceback=True)
 
     # Plot TDMS data
     if tdms_data and tdms_field:
@@ -169,11 +164,7 @@ def main():
             mdata = tdms_data.getMData()
             if tdms_field in mdata.getKeys():
                 values = mdata.getData(tdms_field)
-                time_t = (
-                    mdata.getData("t")
-                    if "t" in mdata.getKeys()
-                    else np.arange(len(values))
-                )
+                time_t = mdata.getData("t") if "t" in mdata.getKeys() else np.arange(len(values))
                 ax.plot(
                     time_t,
                     values,
@@ -184,10 +175,8 @@ def main():
                 )
             else:
                 print(f"TDMS field '{tdms_field}' not found")
-        except Exception as e:
-            log_exception(
-                "Could not plot TDMS data", e, use_print=True, include_traceback=True
-            )
+        except (OSError, ValueError, RuntimeError, KeyError) as e:
+            log_exception("Could not plot TDMS data", e, use_print=True, include_traceback=True)
 
     ax.set_xlabel("Time (seconds)")
     ax.set_ylabel("Value")

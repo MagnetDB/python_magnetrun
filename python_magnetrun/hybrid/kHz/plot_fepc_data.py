@@ -8,17 +8,16 @@ Example: python plot_fepc_data.py -c HOST_2_DATA.CFG -v ALIM1_J1 -s 4
 import argparse
 import re
 import sys
-from pathlib import Path
-from typing import Optional, Tuple
-import numpy as np
-import matplotlib.pyplot as plt
 from datetime import datetime
+from pathlib import Path
 
-from cfg_analyzer import extract_host_number, analyze_cfg_file
+import matplotlib.pyplot as plt
+import numpy as np
+from cfg_analyzer import analyze_cfg_file, extract_host_number
 from fepc_reader import (
+    KHZ_SAMPLING_FREQUENCY,
     apply_calibration,
     read_hour_file,
-    KHZ_SAMPLING_FREQUENCY,
 )
 
 # Import remove_outliers from parent utils module
@@ -27,9 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from utils import remove_outliers
 
 
-def find_bin_files(
-    cfg_path: str, slot: int, date_range: Optional[Tuple[str, str]] = None
-) -> list:
+def find_bin_files(cfg_path: str, slot: int, date_range: tuple[str, str] | None = None) -> list:
     """
     Find all bin files matching the pattern for a given slot
 
@@ -79,7 +76,7 @@ def find_bin_files(
     return matching_files
 
 
-def get_variable_info(config, var_name: str) -> Optional[dict]:
+def get_variable_info(config, var_name: str) -> dict | None:
     """
     Find variable in config and return its slot and channel index
 
@@ -125,7 +122,7 @@ def read_variable_from_files(
     endian: str = "big",
     debug: bool = False,
     var_name: str = "Variable",
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Read specific variable from all bin files
 
@@ -210,7 +207,7 @@ def read_variable_from_files(
                     fig.canvas.flush_events()
                 plt.pause(1)
 
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             print(f"  ✗ Error reading {file_path.name}: {e}")
 
     if debug:
@@ -253,8 +250,9 @@ def apply_variable_calibration(
     np.ndarray
         Calibrated data
     """
-    from fepc_reader import load_calibration
     from pathlib import Path
+
+    from fepc_reader import load_calibration
 
     try:
         card = config.get_card_by_slot(slot)
@@ -273,9 +271,7 @@ def apply_variable_calibration(
                     cnv_dict = load_calibration(str(cnv_path))
                     return apply_calibration(data, cnv_dict=cnv_dict)
                 else:
-                    print(
-                        f"  Warning: CNV file {cnv_path} not found, using linear calibration"
-                    )
+                    print(f"  Warning: CNV file {cnv_path} not found, using linear calibration")
 
             # Use linear calibration
             print(
@@ -294,10 +290,10 @@ def plot_variable(
     time: np.ndarray,
     var_name: str,
     slot: int,
-    output_file: Optional[str] = None,
-    unit: Optional[str] = None,
-    raw_data: Optional[np.ndarray] = None,
-    raw_time: Optional[np.ndarray] = None,
+    output_file: str | None = None,
+    unit: str | None = None,
+    raw_data: np.ndarray | None = None,
+    raw_time: np.ndarray | None = None,
     n_outliers: int = 0,
 ):
     """
@@ -475,9 +471,7 @@ def main():
             print(f"❌ Variable '{args.variable}' not found in configuration")
             print("\nAvailable variables by slot:")
             for card in config.cards:
-                print(
-                    f"  Slot {card.slot} ({card.card_type}): {card.variable_names[:3]}..."
-                )
+                print(f"  Slot {card.slot} ({card.card_type}): {card.variable_names[:3]}...")
             return None
 
         slot = var_info["slot"]
@@ -521,9 +515,7 @@ def main():
         print("Applying calibration...")
         cfg_dir = Path(args.cfg).parent
         cnv_dir = args.cnv_dir if args.cnv_dir != "." else str(cfg_dir)
-        data = apply_variable_calibration(
-            data, config, slot, channel_idx, cnv_directory=cnv_dir
-        )
+        data = apply_variable_calibration(data, config, slot, channel_idx, cnv_directory=cnv_dir)
 
         print(f"✓ Loaded {len(data):,} samples over {time[-1]:.1f} seconds")
 
@@ -564,7 +556,7 @@ def main():
     except FileNotFoundError as e:
         print(f"❌ Error: {e}")
         return None
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         print(f"❌ Error: {e}")
         import traceback
 

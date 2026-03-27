@@ -28,11 +28,15 @@ python collect-data.py --housing M8 --start 2023-06-01 --end 2023-12-31 --output
 # Copy all found files to a destination directory
 python collect-data.py --housing M10 --start 2024-01-01 --end 2024-12-31 --copy-to /path/to/dest
 
-# Archive found files into a tar.gz (paths relative to LNCMIG-Data)
-python collect-data.py --housing M8 --start 2024-01-01 --end 2024-12-31 --archive M8_2024.tar.gz
+# Archive all data into three separate archives
+python collect-data.py --housing M8 --start 2024-01-01 --end 2024-12-31 --archive M8_2024
+# Produces:
+#   M8_2024-pupitre.tar.gz   — srv-data-install .txt files (gzip compressed)
+#   M8_2024-pbsurv.tar       — pbsurv .tdms files (uncompressed)
+#   M8_2024-cea.tar          — CEA kHz/rms/vprocess/trigger dirs (uncompressed)
 
-# Combine: archive only pigbrother data
-python collect-data.py --housing M9 --start 2024-01-01 --end 2024-12-31 --data-type pigbrother --archive M9_pb_2024.tar.gz
+# Archive only pigbrother data (produces M9_pb_2024-pbsurv.tar only)
+python collect-data.py --housing M9 --start 2024-01-01 --end 2024-12-31 --data-type pigbrother --archive M9_pb_2024
 ```
 
 **Arguments:**
@@ -43,8 +47,20 @@ python collect-data.py --housing M9 --start 2024-01-01 --end 2024-12-31 --data-t
 | `--end` | End date inclusive (YYYY-MM-DD), required |
 | `--output` | Write file list to this path instead of stdout |
 | `--copy-to` | Copy all found files/dirs into this destination directory |
-| `--archive` | Archive all found files/dirs into a `.tar.gz` file; paths inside the archive are relative to `LNCMIG-Data` |
+| `--archive` | Base name for up to three archives (see below); any `.tar`/`.tar.gz` suffix is stripped automatically |
 | `--data-type` | Filter data source: `pigbrother` (pbsurv TDMS only), `pupitre` (srv-data-install `.txt` only), `hybrid` (CEA data only, M8 only); omit to collect all sources |
+
+**Archive format:**
+
+When `--archive BASE` is given, up to three archives are created depending on which data sources are collected:
+
+| File | Contents | Compression |
+|---|---|---|
+| `BASE-pupitre.tar.gz` | `srv-data-install` `.txt` files | gzip (text compresses well) |
+| `BASE-pbsurv.tar` | `pbsurv` `.tdms` binary files | none (binary, compression gives no benefit) |
+| `BASE-cea.tar` | CEA kHz/rms/vprocess/trigger directories | none (large binary data) |
+
+Paths inside every archive are relative to `LNCMIG-Data`. Only archives that have matching items are created.
 
 **Data directories searched** (hardcoded in the script, edit `BASE_DIR` as needed):
 - `LNCMIG-Data/pbsurv/{housing}/` — TDMS files

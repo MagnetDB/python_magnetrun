@@ -9,9 +9,10 @@ by binary data.
 import logging
 import re
 import struct
-from pathlib import Path
-from typing import Dict, List, Tuple, Any, Optional
 from datetime import datetime
+from pathlib import Path
+from typing import Any
+
 import pandas as pd
 
 # Setup logger
@@ -32,10 +33,10 @@ class RMSVariable:
         self,
         name: str,
         var_type: str,
-        unit: Optional[str] = None,
-        min_val: Optional[float] = None,
-        max_val: Optional[float] = None,
-        display_format: Optional[str] = None,
+        unit: str | None = None,
+        min_val: float | None = None,
+        max_val: float | None = None,
+        display_format: str | None = None,
     ):
         self.name = name
         self.var_type = var_type  # 'float32' or 'bit'
@@ -46,7 +47,7 @@ class RMSVariable:
         self.is_analog = var_type == "float32"
         self.byte_size = FLOAT32_SIZE if self.is_analog else DIGITAL_SIZE
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"RMSVariable({self.name}, {self.var_type}, {self.unit})"
 
 
@@ -55,23 +56,21 @@ class RMSFileReader:
 
     def __init__(self, filepath: str, endian: str = "big"):
         self.filepath = Path(filepath)
-        self.header_lines: List[str] = []
-        self.variables: List[RMSVariable] = []
-        self.metadata: Dict[str, Any] = {}
-        self.data: Optional[pd.DataFrame] = None
-        self.endian = (
-            ">" if endian == "big" else "<"
-        )  # '>' for big-endian, '<' for little-endian
+        self.header_lines: list[str] = []
+        self.variables: list[RMSVariable] = []
+        self.metadata: dict[str, Any] = {}
+        self.data: pd.DataFrame | None = None
+        self.endian = ">" if endian == "big" else "<"  # '>' for big-endian, '<' for little-endian
 
     def parse_header(self) -> None:
         """Parse the ASCII header from the RMS file."""
         with open(self.filepath, "rb") as f:
             header_lines = []
             while True:
-                line = f.readline()
+                raw_line = f.readline()
                 # Check if line starts with #
-                if line.startswith(b"#"):
-                    decoded_line = line.decode("US-ASCII").strip()
+                if raw_line.startswith(b"#"):
+                    decoded_line = raw_line.decode("US-ASCII").strip()
                     header_lines.append(decoded_line)
                 else:
                     # End of header
@@ -135,9 +134,7 @@ class RMSFileReader:
             max_val = float(props["max"]) if "max" in props else None
             display_format = props.get("df")
 
-            variable = RMSVariable(
-                name, var_type, unit, min_val, max_val, display_format
-            )
+            variable = RMSVariable(name, var_type, unit, min_val, max_val, display_format)
             self.variables.append(variable)
 
     def _parse_windows(self, line: str) -> None:
@@ -149,7 +146,7 @@ class RMSFileReader:
             end_str = match.group(2).strip()
 
             # Parse datetime strings (format: DD/MM/YYYY-HH:MM:SS.mmm)
-            def parse_datetime(dt_str):
+            def parse_datetime(dt_str: str) -> datetime:
                 return datetime.strptime(dt_str, "%d/%m/%Y-%H:%M:%S.%f")
 
             self.metadata["start_time"] = parse_datetime(start_str)
@@ -212,15 +209,13 @@ class RMSFileReader:
 
         # Prepare data arrays
         timestamps = []
-        data_arrays = {var.name: [] for var in self.variables}
+        data_arrays: dict[str, list] = {var.name: [] for var in self.variables}
         assert len(data_arrays) == len(
             self.variables
         ), f"Data arrays length mismatch: {len(data_arrays)} vs {len(self.variables)}"
         logger.debug(f"Reading {len(self.variables)} variables")
         logger.debug(f"Analog: {len([var for var in self.variables if var.is_analog])}")
-        logger.debug(
-            f"Digital: {len([var for var in self.variables if not var.is_analog])}"
-        )
+        logger.debug(f"Digital: {len([var for var in self.variables if not var.is_analog])}")
 
         # Parse each sample
         for i in range(num_samples):
@@ -229,9 +224,7 @@ class RMSFileReader:
 
             # Read timestamp (8 bytes, double precision float)
             # nombre de secondes depuis 01/01/1970 00:00 UTC
-            timestamp = struct.unpack(f"{self.endian}d", sample_data[0:timestamp_size])[
-                0
-            ]
+            timestamp = struct.unpack(f"{self.endian}d", sample_data[0:timestamp_size])[0]
             timestamps.append(timestamp)
 
             # Read variables in order
@@ -294,12 +287,10 @@ class RMSFileReader:
                     "display_format": var.display_format,
                 }
             )
-        logger.debug(
-            f"Variable info collected: {len(var_info)} variables ({len(self.variables)})"
-        )
+        logger.debug(f"Variable info collected: {len(var_info)} variables ({len(self.variables)})")
         return pd.DataFrame(var_info)
 
-    def get_metadata(self) -> Dict[str, Any]:
+    def get_metadata(self) -> dict[str, Any]:
         """Return metadata dictionary."""
         if not self.metadata:
             self.parse_header()
@@ -318,9 +309,7 @@ class RMSFileReader:
         print(f"End Time: {self.metadata.get('end_time', 'Unknown')}")
         print(f"Data Offset: 0x{self.metadata.get('data_offset', 0):x}")
         print(f"Sample Width: {self.metadata.get('sample_width', 'Unknown')} bytes")
-        print(
-            f"Timestamp Size: {self.metadata.get('timestamp_bytes', 'Unknown')} bytes"
-        )
+        print(f"Timestamp Size: {self.metadata.get('timestamp_bytes', 'Unknown')} bytes")
         print(f"Number of Variables: {len(self.variables)}")
 
         # Count analog vs digital
@@ -356,9 +345,7 @@ def read_rms_file(filepath: str, endian: str = "big") -> pd.DataFrame:
     return reader.read()
 
 
-def get_rms_info(
-    filepath: str, endian: str = "big"
-) -> Tuple[Dict[str, Any], pd.DataFrame]:
+def get_rms_info(filepath: str, endian: str = "big") -> tuple[dict[str, Any], pd.DataFrame]:
     """
     Get metadata and variable information from an RMS file.
 
@@ -379,7 +366,7 @@ def get_rms_info(
     return reader.get_metadata(), reader.get_variable_info()
 
 
-def main():
+def main() -> None:
     """Main function for CLI usage"""
     import argparse
 

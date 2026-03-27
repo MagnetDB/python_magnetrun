@@ -1,9 +1,11 @@
-from __future__ import unicode_literals
-
 import logging
 import sys
+from typing import Any
 
 import matplotlib
+import matplotlib.cm as cm
+import matplotlib.colors as colors
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -11,9 +13,6 @@ logger = logging.getLogger(__name__)
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
-import matplotlib.cm as cm
-import matplotlib.colors as colors
-import matplotlib.pyplot as plt
 
 matplotlib.rcParams["text.usetex"] = True
 
@@ -27,9 +26,9 @@ def plot_vs_time(
     items: list,
     show: bool = False,
     wd: str | None = None,
-    ax=None,
+    ax: Any = None,
     close: bool = False,
-):
+) -> None:
     print(f"plot_vs_time: items={items}, close={close}", flush=True)
     keys = df.columns.values.tolist()
 
@@ -53,7 +52,9 @@ def plot_vs_time(
         plt.close()
 
 
-def plot_key_vs_key(df, pairs, show: bool = False, wd: str | None = None):
+def plot_key_vs_key(
+    df: pd.DataFrame, pairs: list, show: bool = False, wd: str | None = None
+) -> None:
     keys = df.columns.values.tolist()
     for pair in pairs:
         print(f"pair={pair}")
@@ -96,8 +97,7 @@ def plot_df(
     show: bool = False,
     debug: bool = False,
     wd: str | None = None,
-):
-
+) -> None:
     # Import Dataset
     ax = plt.gca()
 
@@ -144,15 +144,13 @@ def plot_files(
     show: bool = False,
     debug: bool = False,
     wd: str | None = None,
-):
+) -> None:
     logger.debug(f"plot_files: input_files={input_files}, key1={key1}, key2={key2}")
 
     # Import Dataset
     ax = plt.gca()
-    colormap = cm.viridis
-    colorlist = [
-        colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(input_files))
-    ]
+    colormap = cm.get_cmap("viridis")
+    colorlist = [colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(input_files))]
 
     legends = []
     for i, f in enumerate(input_files):
@@ -186,9 +184,9 @@ def plot_files(
                         # print(f"{f}: displayed")
                     else:
                         print(
-                            f"{f}: no displayed - key1={key1} and key2={key2} not in keys"
+                            f"{f}: no displayed - key1={key1} and key2={key2} not in keys"  # noqa: E501
                         )
-            except Exception as e:
+            except (OSError, pd.errors.ParserError, KeyError, ValueError) as e:
                 print(f"plot_files: failed to load {f} with pandas: {e}")
 
     # add fit if present

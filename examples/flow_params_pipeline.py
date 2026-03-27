@@ -11,24 +11,25 @@ This script demonstrates the full workflow:
 This is a simplified, standalone version of the compute() method from flow_params.py
 """
 
-import numpy as np
-from scipy import optimize
-import matplotlib.pyplot as plt
-from typing import Dict, Tuple, List, Callable
 import json
+import os
 
 # Import the factory module
 import sys
-import os
+from collections.abc import Callable
+
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy import optimize
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from python_magnetcooling.waterflow_factory import from_flow_params
 from python_magnetcooling import WaterFlow
+from python_magnetcooling.waterflow_factory import from_flow_params
 
 
 def generate_synthetic_data(
     n_points: int = 500, noise_level: float = 0.02
-) -> Dict[str, np.ndarray]:
+) -> dict[str, np.ndarray]:
     """
     Generate synthetic experimental data simulating magnet cooling system measurements.
 
@@ -98,9 +99,9 @@ def perform_fit(
     x_data: np.ndarray,
     y_data: np.ndarray,
     fit_function: Callable,
-    param_names: List[str],
+    param_names: list[str],
     quantity_name: str,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Perform curve fit using scipy.optimize.curve_fit
 
@@ -130,7 +131,7 @@ def perform_fit(
     r_squared = 1 - (ss_res / ss_tot)
 
     print(f"{quantity_name} Fit Results:")
-    for name, value, error in zip(param_names, params, stderr):
+    for name, value, error in zip(param_names, params, stderr, strict=False):
         print(f"  {name} = {value:.4f} ± {error:.4f}")
     print(f"  R² = {r_squared:.6f}")
     print()
@@ -138,7 +139,7 @@ def perform_fit(
     return params, stderr
 
 
-def fit_pump_speed(data: Dict) -> Tuple[float, float]:
+def fit_pump_speed(data: dict) -> tuple[float, float]:
     """
     FIT #1: Pump Speed vs Current
 
@@ -166,7 +167,7 @@ def fit_pump_speed(data: Dict) -> Tuple[float, float]:
     return params[0], params[1]  # Vpmax, Vp0
 
 
-def fit_flow_rate(data: Dict, vpmax: float, vp0: float) -> Tuple[float, float]:
+def fit_flow_rate(data: dict, vpmax: float, vp0: float) -> tuple[float, float]:
     """
     FIT #2: Flow Rate vs Current
 
@@ -199,7 +200,7 @@ def fit_flow_rate(data: Dict, vpmax: float, vp0: float) -> Tuple[float, float]:
     return params[0], params[1]  # F0, Fmax
 
 
-def fit_pressure(data: Dict, vpmax: float, vp0: float) -> Tuple[float, float]:
+def fit_pressure(data: dict, vpmax: float, vp0: float) -> tuple[float, float]:
     """
     FIT #3: Pressure vs Current
 
@@ -234,7 +235,7 @@ def fit_pressure(data: Dict, vpmax: float, vp0: float) -> Tuple[float, float]:
     return params[0], params[1]  # Pmin, Pmax
 
 
-def calculate_back_pressure_stats(data: Dict) -> Tuple[float, float]:
+def calculate_back_pressure_stats(data: dict) -> tuple[float, float]:
     """
     Calculate statistics for back pressure (roughly constant)
 
@@ -265,7 +266,7 @@ def build_flow_params_dict(
     pmin: float,
     bp: float,
     imax: float,
-) -> Dict:
+) -> dict:
     """
     Build flow_params dictionary in the format expected by waterflow_factory
 
@@ -293,7 +294,7 @@ def build_flow_params_dict(
     return flow_params
 
 
-def create_waterflow_object(flow_params: Dict) -> WaterFlow:
+def create_waterflow_object(flow_params: dict) -> WaterFlow:
     """
     Create WaterFlow object using waterflow_factory
 
@@ -342,7 +343,7 @@ def demonstrate_calculations(waterflow: WaterFlow):
     print()
 
 
-def plot_results(data: Dict, waterflow: WaterFlow, save_plot: bool = True):
+def plot_results(data: dict, waterflow: WaterFlow, save_plot: bool = True):
     """
     Create visualization of fitted curves vs experimental data
     """
@@ -412,7 +413,7 @@ def plot_results(data: Dict, waterflow: WaterFlow, save_plot: bool = True):
     return fig
 
 
-def save_flow_params(flow_params: Dict, filename: str = "flow_params_output.json"):
+def save_flow_params(flow_params: dict, filename: str = "flow_params_output.json"):
     """
     Save flow_params to JSON file (as done in compute() method)
     """

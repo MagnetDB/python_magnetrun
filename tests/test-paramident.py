@@ -2,21 +2,29 @@
 idea from chatgpt
 """
 
+import argparse
 import os
-import pandas as pd
-
-from python_magnetrun..MagnetRun import MagnetRun
-from python_magnetrun..processing.smoothers import savgol
 
 import numpy as np
-import matplotlib.pyplot as plt
+import pandas as pd
+import pytest
 from scipy.linalg import lstsq
 
-import argparse
+from python_magnetrun.MagnetRun import MagnetRun
+from python_magnetrun.processing.smoothers import savgol
+
+pytest.importorskip("matplotlib")
+import matplotlib  # isort: skip  # noqa: E402
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # isort: skip  # noqa: E402
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "input_file", help="enter input file (ex: ~/M9_Overview_240509-1634.tdms)"
+    "input_file",
+    help="enter input file (ex: ~/M9_Overview_240509-1634.tdms)",
+    nargs="?",
+    default="data/M9_Default_200921-123303_Courants50Hz.tdms",
 )
 parser.add_argument("--window", help="rolling window size", type=int, default=10)
 args = parser.parse_args()
@@ -35,7 +43,9 @@ print(f"duration: {mdata.getDuration()}")
 # Helices insert
 
 # Uh = mdata.Data["Tensions_Aimant"]["ALL_internes"]
+mdata.addTdmsTime(group="Tensions_Aimant")
 if "ALL_internes" in mdata.Data["Tensions_Aimant"]:
+    # create "t" key in Tensions_Aimant group
     Vh = mdata.Data["Tensions_Aimant"][["ALL_internes", "t"]]
     Vh = Vh.set_index("t")
 else:
@@ -46,6 +56,7 @@ else:
 print(f"Vh: {Vh.head()}", flush=True)
 
 # print(f"Uh({t})=", end="", flush=True)
+mdata.addTdmsTime(group="Courants_Alimentations")
 if "Courant_GR1" in mdata.Data["Courants_Alimentations"]:
     Ih = mdata.Data["Courants_Alimentations"][["Courant_GR1", "t"]]
     Ih = Ih.set_index("t")
@@ -80,19 +91,19 @@ print(f"Ih: {Ih.head()}", flush=True)
 # Ub = mdata.Data["Tensions_Aimant"]["ALL_externes"]
 if "ALL_externes" in mdata.Data["Tensions_Aimant"]:
     Vb = mdata.Data["Tensions_Aimant"][["ALL_externes", "t"]]
-    Vb = Vb.set_index("t", "ALL_externes")
+    # Vb = Vb.set_index("t", "ALL_externes")
 else:
     Vb = mdata.Data["Tensions_Aimant"][["ALL externes", "t"]]
-    Vb = Vb.set_index("t", "ALL externes")
+    # Vb = Vb.set_index("t", "ALL externes")
     Vb.rename(columns={"ALL externes": "ALL_externes"}, inplace=True)
 
 
 if "Courant_GR1" in mdata.Data["Courants_Alimentations"]:
     Ib = mdata.Data["Courants_Alimentations"][["Courant_GR2", "t"]]
-    Ib = Ib.set_index("t", "Courant_GR2")
+    # Ib = Ib.set_index("t", "Courant_GR2")
 else:
     Ib = mdata.Data["Courants_Alimentations"][["Courant GR2", "t"]]
-    Ib = Ib.set_index("t", "Courant GR2")
+    # Ib = Ib.set_index("t", "Courant GR2")
     Ib.rename(columns={"Courant GR2": "Courant_GR2"}, inplace=True)
 
 Ub_smoothed = savgol(
@@ -165,15 +176,15 @@ plt.legend()
 plt.show()
 
 
-from scipy.integrate import odeint
-from scipy.optimize import least_squares
+from scipy.integrate import odeint  # noqa: E402
+from scipy.optimize import least_squares  # noqa: E402
 
 time_points = Vh.index.values
 print(f"time_points: {time_points.shape}")
 
 
 # Interpolation function
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d  # noqa: E402
 
 Vh_interpolator = interp1d(
     time_points,
@@ -265,12 +276,8 @@ def residuals(parameters, time, actual_position):
     print(f"residuals: infodict={infodict}")
 
     [I1_model, I2_model] = np.transpose(simulated_position)
-    err_I1 = np.linalg.norm(I1_model - actual_position[0]) / np.linalg.norm(
-        actual_position[0]
-    )
-    err_I2 = np.linalg.norm(I2_model - actual_position[1]) / np.linalg.norm(
-        actual_position[1]
-    )
+    err_I1 = np.linalg.norm(I1_model - actual_position[0]) / np.linalg.norm(actual_position[0])
+    err_I2 = np.linalg.norm(I2_model - actual_position[1]) / np.linalg.norm(actual_position[1])
     print(
         f"residuals: err_I1={err_I1}, err_I2={err_I2}",
         flush=True,
@@ -308,12 +315,8 @@ ax = Vh.plot()
 Vb.plot(ax=ax)
 plt.plot(Vb.index, Y["Uh"], "r", label="smoothed_Uh")
 plt.plot(Vb.index, Y["Ub"], "g", label="smoothed_Ub")
-plt.plot(
-    Vb.index, Y["scipy_Uh"], "or", label="scipy_Uh", markevery=100, linestyle="None"
-)
-plt.plot(
-    Vb.index, Y["scipy_Ub"], "og", label="scipy_Ub", markevery=100, linestyle="None"
-)
+plt.plot(Vb.index, Y["scipy_Uh"], "or", label="scipy_Uh", markevery=100, linestyle="None")
+plt.plot(Vb.index, Y["scipy_Ub"], "og", label="scipy_Ub", markevery=100, linestyle="None")
 
 plt.grid()
 plt.legend()

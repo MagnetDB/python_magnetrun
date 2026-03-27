@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-# -*- coding:utf-8 -*-
 
 """HMagnet Object"""
 
-import logging
 import json
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +23,11 @@ class HMagnet:
         self.status = status
         self.parts = parts
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         """
         representation of object
         """
-        return "%s(name=%r, cadref=%r, status=%r, parts=%r)" % (
-            self.__class__.__name__,
-            self.name,
-            self.cadref,
-            self.status,
-            self.parts,
-        )
+        return f"{self.__class__.__name__}(name={self.name!r}, cadref={self.cadref!r}, status={self.status!r}, parts={self.parts!r})"
 
     def setParts(self, parts: list) -> None:
         """set Parts"""
@@ -43,14 +36,14 @@ class HMagnet:
 
     def addPart(self, part: str) -> None:
         """add to Parts"""
-        if not part in self.parts:
+        if part not in self.parts:
             self.parts.append(part)
 
-    def getParts(self):
+    def getParts(self) -> list:
         """get parts"""
         return self.parts
 
-    def setCadref(self, cadref) -> None:
+    def setCadref(self, cadref: str) -> None:
         """set Cadref"""
         self.cadref = cadref
 
@@ -58,7 +51,7 @@ class HMagnet:
         """get cadref"""
         return self.cadref
 
-    def setStatus(self, status) -> None:
+    def setStatus(self, status: str) -> None:
         """set status"""
         self.status = status
 
@@ -66,12 +59,10 @@ class HMagnet:
         """get status"""
         return self.status
 
-    def to_json(self):
+    def to_json(self) -> str:
         """
         convert to json
         """
         from . import deserialize
 
-        return json.dumps(
-            self, default=deserialize.serialize_instance, sort_keys=True, indent=4
-        )
+        return json.dumps(self, default=deserialize.serialize_instance, sort_keys=True, indent=4)

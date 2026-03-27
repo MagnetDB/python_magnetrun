@@ -8,11 +8,11 @@ This tool reads the HOST_X_DATA.CFG file and displays:
 - File naming conventions
 """
 
-import sys
-import re
 import argparse
+import re
 from pathlib import Path
-from fepc_reader import parse_cfg_file
+
+from fepc_reader import FEPCConfig, parse_cfg_file
 
 
 def extract_host_number(cfg_path: str) -> str:
@@ -37,7 +37,7 @@ def extract_host_number(cfg_path: str) -> str:
         raise ValueError(f"Could not extract HOST number from filename: {filename}")
 
 
-def analyze_cfg_file(cfg_path: str, verbose: bool = True):
+def analyze_cfg_file(cfg_path: str, verbose: bool = True) -> FEPCConfig:
     """
     Analyze CFG file and display structure
 
@@ -74,9 +74,7 @@ def analyze_cfg_file(cfg_path: str, verbose: bool = True):
 
     print("\nCARD DISTRIBUTION:")
     print(f"  Analog cards (MIVA):  {len(analog_slots)} cards in slots {analog_slots}")
-    print(
-        f"  Digital cards (MAD):  {len(digital_slots)} cards in slots {digital_slots}"
-    )
+    print(f"  Digital cards (MAD):  {len(digital_slots)} cards in slots {digital_slots}")
 
     # Files per day calculation
     files_per_hour = config.num_cards
@@ -120,13 +118,13 @@ def analyze_cfg_file(cfg_path: str, verbose: bool = True):
             if card.card_type == "ANA" and card.calibrations:
                 # Show calibration type
                 for i, (var, calib) in enumerate(
-                    zip(card.variable_names, card.calibrations)
+                    zip(card.variable_names, card.calibrations, strict=False)
                 ):
                     if calib.cnv_file:
                         cal_info = f"[CNV: {calib.cnv_file[:20]}]"
                     else:
                         cal_info = f"[Linear: A={calib.a:.2e}]"
-                    line = f"│   {i+1:2d}. {var:25s} {cal_info}"
+                    line = f"│   {i + 1:2d}. {var:25s} {cal_info}"
                     line += " " * (78 - len(line)) + "│"
                     print(line)
             else:
@@ -134,9 +132,7 @@ def analyze_cfg_file(cfg_path: str, verbose: bool = True):
                 vars_per_line = 3
                 for i in range(0, len(card.variable_names), vars_per_line):
                     var_group = card.variable_names[i : i + vars_per_line]
-                    var_strs = [
-                        f"{i+j+1:2d}. {var:20s}" for j, var in enumerate(var_group)
-                    ]
+                    var_strs = [f"{i + j + 1:2d}. {var:20s}" for j, var in enumerate(var_group)]
                     line = "│   " + "  ".join(var_strs)
                     line += " " * (78 - len(line)) + "│"
                     print(line)
@@ -147,7 +143,7 @@ def analyze_cfg_file(cfg_path: str, verbose: bool = True):
     return config
 
 
-def display_slot_map(config):
+def display_slot_map(config: FEPCConfig) -> None:
     """
     Display a visual map of slots
     """
@@ -168,7 +164,7 @@ def display_slot_map(config):
     print("  (XX = hour from 00 to 23)")
 
 
-def search_variable(config, var_name: str):
+def search_variable(config: FEPCConfig, var_name: str) -> None:
     """
     Search for a variable across all slots
 
@@ -189,9 +185,7 @@ def search_variable(config, var_name: str):
         for channel_idx, var in enumerate(card.variable_names):
             if var_name_upper in var.upper():
                 if not found:
-                    print(
-                        f"\n{'Slot':<6} {'Channel':<8} {'Variable Name':<30} {'Card Type'}"
-                    )
+                    print(f"\n{'Slot':<6} {'Channel':<8} {'Variable Name':<30} {'Card Type'}")
                     print("─" * 80)
                     found = True
 
@@ -203,7 +197,7 @@ def search_variable(config, var_name: str):
         print("=" * 80)
 
 
-def export_variable_list(config, output_file: str = "fepc_variables.csv"):
+def export_variable_list(config: FEPCConfig, output_file: str = "fepc_variables.csv") -> None:
     """
     Export complete variable list to CSV
     """
@@ -211,20 +205,16 @@ def export_variable_list(config, output_file: str = "fepc_variables.csv"):
 
     with open(output_file, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(
-            ["Slot", "Channel", "Variable Name", "Card Type", "Channels Total"]
-        )
+        writer.writerow(["Slot", "Channel", "Variable Name", "Card Type", "Channels Total"])
 
         for card in config.cards:
             for channel_idx, var in enumerate(card.variable_names):
-                writer.writerow(
-                    [card.slot, channel_idx, var, card.card_type, card.num_channels]
-                )
+                writer.writerow([card.slot, channel_idx, var, card.card_type, card.num_channels])
 
     print(f"\nVariable list exported to: {output_file}")
 
 
-def main():
+def main() -> FEPCConfig | None:
     """Main function"""
     print("\n" + "╔" + "═" * 78 + "╗")
     print("║" + " " * 25 + "FEPC CFG FILE ANALYZER" + " " * 31 + "║")
@@ -278,7 +268,7 @@ def main():
     except FileNotFoundError as e:
         print(f"\n❌ Error: {e}")
         return None
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         print(f"\n❌ Error analyzing CFG file: {e}")
         import traceback
 

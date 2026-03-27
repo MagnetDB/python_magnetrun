@@ -2,10 +2,7 @@
 
 """Tests for `python_magnetrun` package."""
 
-
 import unittest
-
-from python_magnetrun import python_magnetrun
 
 
 class TestPython_magnetrun(unittest.TestCase):

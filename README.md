@@ -368,7 +368,32 @@ python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --x
 
 - Parameters identification
 
+# Running tests
 
+Run the standard test suite:
+
+```bash
+pytest
+```
+
+Some tests require actual data files and are excluded from the default run. To include them:
+
+```bash
+pytest --on-demand
+```
+
+Or run a specific on-demand test directly:
+
+```bash
+pytest --on-demand tests/test-paramident.py
+pytest --on-demand tests/test-signature.py
+pytest --on-demand tests/test-fft.py
+pytest --on-demand tests/test-breakpoint-analysis.py
+pytest --on-demand tests/test-fieldfactor.py
+pytest --on-demand tests/test-intercept.py
+pytest --on-demand tests/test-simu.py
+pytest --on-demand tests/test-tin.py
+```
 
 
 

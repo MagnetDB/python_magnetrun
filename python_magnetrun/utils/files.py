@@ -1,17 +1,16 @@
-from __future__ import unicode_literals
+import glob
 import logging
 import os
-import glob
 from datetime import datetime, timedelta
-from numpy.random import f
-import pandas as pd
-import numpy as np
-from natsort import natsorted
 
-logger = logging.getLogger(__name__)
+import numpy as np
+import pandas as pd
+from natsort import natsorted
 
 from ..MagnetRun import MagnetRun
 from .convert import convert_to_timestamp
+
+logger = logging.getLogger(__name__)
 
 
 def expand_input_files(input_patterns: list, datadir: dict) -> list:
@@ -88,8 +87,8 @@ def extract_data(
     extension = os.path.splitext(file)[-1]
     filename = os.path.basename(file).replace(extension, "")
 
-    start_timestamp = float()
-    start_ftimestamp = str()
+    start_timestamp = 0.0
+    start_ftimestamp = ""
     mrun = MagnetRun()
     match extension:
         case ".txt":
@@ -103,8 +102,8 @@ def extract_data(
             if not dry_run:
                 mrun = MagnetRun.fromtxt(site, insert, file)
         case ".tdms":
-            site = str()
-            timestamp = str()
+            site = ""
+            timestamp = ""
             res = filename.split("_")
 
             # regular case
@@ -112,9 +111,7 @@ def extract_data(
                 (site, mode, timestamp) = res
                 date, time = timestamp.split("-")
                 # print(f"data={date}, time={time} (type={type(time)})")
-                (start_timestamp, start_ftimestamp) = convert_to_timestamp(
-                    date, time[0:4]
-                )
+                (start_timestamp, start_ftimestamp) = convert_to_timestamp(date, time[0:4])
             # special for default files
             elif len(res) == 4:
                 (site, mode, timestamp, dmode) = res
@@ -133,13 +130,12 @@ def extract_data(
         case _:
             raise RuntimeError(f"{file}: unsupported {extension}")
 
-    end_ftimestamp = str()
+    end_ftimestamp = ""
     if not dry_run and not skip:
         mdata = mrun.getMData()
-        if key is not None:
-            if key not in mdata.getKeys():
-                print(f"{file}: {key} not found")
-                skip = True
+        if key is not None and key not in mdata.getKeys():
+            print(f"{file}: {key} not found")
+            skip = True
 
         duration = mdata.getDuration()
         end_timestamp = datetime.fromtimestamp(start_timestamp) + pd.to_timedelta(
@@ -147,10 +143,6 @@ def extract_data(
         )
         end_ftimestamp = end_timestamp.strftime("%Y-%m-%d %H:%M:%S")
 
-    # print(
-    #     f"extract_data: file={file}, start={start_ftimestamp}, end={end_ftimestamp}, skip={skip }",
-    #     flush=True,
-    # )
     return (start_ftimestamp, end_ftimestamp, skip)
 
 
@@ -182,20 +174,20 @@ def find_files(args, file, site, date, time):
     filename = os.path.basename(file).replace(extension, "")
     pigbrother = filename.replace("Overview", "Archive")
     archive_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Archive")
-    archive_filter = f"{archive_datadir}/{pigbrother.replace(time,'*.tdms')}"
+    archive_filter = f"{archive_datadir}/{pigbrother.replace(time, '*.tdms')}"
 
     default_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Default")
     trigger_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Manuel_Trig")
     spike_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Spike")
 
     default = filename.replace("Overview", "Default")
-    default_filter = f"{default_datadir}/{default.replace(time,'*.tdms')}"
+    default_filter = f"{default_datadir}/{default.replace(time, '*.tdms')}"
 
     trigger = filename.replace("Overview", "ManuelTrig")
-    trigger_filter = f"{trigger_datadir}/{trigger.replace(time,'*.tdms')}"
+    trigger_filter = f"{trigger_datadir}/{trigger.replace(time, '*.tdms')}"
 
     spike = filename.replace("Overview", "Spikes")
-    spike_filter = f"{spike_datadir}/{spike.replace(time,'*.tdms')}"
+    spike_filter = f"{spike_datadir}/{spike.replace(time, '*.tdms')}"
 
     return pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter
 
@@ -232,8 +224,8 @@ def select_files(files: list, site: str, start: str, end: str):
                 )
 
             case ".tdms":
-                site = str()
-                timestamp = str()
+                site = ""
+                timestamp = ""
                 res = filename.split("_")
 
                 # regular case
@@ -241,9 +233,7 @@ def select_files(files: list, site: str, start: str, end: str):
                     (site, mode, timestamp) = res
                     date, time = timestamp.split("-")
                     # print(f"data={date}, time={time} (type={type(time)})")
-                    (start_timestamp, start_ftimestamp) = convert_to_timestamp(
-                        date, time[0:4]
-                    )
+                    (start_timestamp, start_ftimestamp) = convert_to_timestamp(date, time[0:4])
                 # special for default files
                 elif len(res) == 4:
                     (site, mode, timestamp, dmode) = res

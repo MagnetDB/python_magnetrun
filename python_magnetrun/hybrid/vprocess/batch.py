@@ -10,13 +10,10 @@ Usage:
 """
 
 import argparse
-from pathlib import Path
-from typing import List, Optional
 import logging
+from pathlib import Path
 
 import pandas as pd
-import numpy as np
-
 from vprocess_reader import VProcessFileReader, read_vprocess_file
 
 # Setup logger
@@ -25,10 +22,10 @@ logger = logging.getLogger(__name__)
 
 def find_vprocess_files(
     directory: str, pattern: str = "*.vprocess", recursive: bool = False
-) -> List[Path]:
+) -> list[Path]:
     """
     Find all VProcess files in a directory.
-    
+
     Parameters
     ----------
     directory : str
@@ -37,7 +34,7 @@ def find_vprocess_files(
         File pattern to match (default: *.vprocess)
     recursive : bool
         Whether to search recursively
-    
+
     Returns
     -------
     list of Path
@@ -45,25 +42,22 @@ def find_vprocess_files(
     """
     dir_path = Path(directory)
 
-    if recursive:
-        files = sorted(dir_path.rglob(pattern))
-    else:
-        files = sorted(dir_path.glob(pattern))
+    files = sorted(dir_path.rglob(pattern)) if recursive else sorted(dir_path.glob(pattern))
 
     return files
 
 
-def get_common_variables(file_list: List[Path], verbose: bool = True) -> List[str]:
+def get_common_variables(file_list: list[Path], verbose: bool = True) -> list[str]:
     """
     Get list of variables common to all files.
-    
+
     Parameters
     ----------
     file_list : list of Path
         List of VProcess files
     verbose : bool
         Show progress
-    
+
     Returns
     -------
     list of str
@@ -87,7 +81,7 @@ def get_common_variables(file_list: List[Path], verbose: bool = True) -> List[st
             reader.parse_header()
             file_vars = set(var.name for var in reader.variables)
             common_vars &= file_vars
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             logger.warning(f"Could not read {filepath.name}: {str(e)}")
 
     if verbose:
@@ -97,14 +91,14 @@ def get_common_variables(file_list: List[Path], verbose: bool = True) -> List[st
 
 
 def process_batch(
-    file_list: List[Path],
-    selected_vars: Optional[List[str]] = None,
+    file_list: list[Path],
+    selected_vars: list[str] | None = None,
     merge: bool = False,
     verbose: bool = True,
 ) -> pd.DataFrame:
     """
     Process multiple VProcess files.
-    
+
     Parameters
     ----------
     file_list : list of Path
@@ -115,7 +109,7 @@ def process_batch(
         Whether to merge all files into single DataFrame
     verbose : bool
         Show progress bar
-    
+
     Returns
     -------
     pd.DataFrame
@@ -136,9 +130,7 @@ def process_batch(
             if selected_vars:
                 available_vars = [v for v in selected_vars if v in df.columns]
                 if not available_vars:
-                    logger.warning(
-                        f"None of the selected variables found in {filepath.name}"
-                    )
+                    logger.warning(f"None of the selected variables found in {filepath.name}")
                     continue
                 df = df[available_vars]
 
@@ -148,7 +140,7 @@ def process_batch(
                 # Process individually (could save here)
                 pass
 
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             logger.error(f"Error processing {filepath.name}: {str(e)}")
 
     if merge and dataframes:
@@ -166,10 +158,10 @@ def process_batch(
         return pd.DataFrame()
 
 
-def export_data(df: pd.DataFrame, output_path: str, format: str = "csv"):
+def export_data(df: pd.DataFrame, output_path: str, format: str = "csv") -> None:
     """
     Export DataFrame to various formats.
-    
+
     Parameters
     ----------
     df : pd.DataFrame
@@ -201,19 +193,17 @@ def export_data(df: pd.DataFrame, output_path: str, format: str = "csv"):
         raise ValueError(f"Unsupported format: {format}")
 
 
-def analyze_batch(
-    file_list: List[Path], output_file: Optional[str] = None
-) -> pd.DataFrame:
+def analyze_batch(file_list: list[Path], output_file: str | None = None) -> pd.DataFrame:
     """
     Analyze multiple VProcess files and create summary statistics.
-    
+
     Parameters
     ----------
     file_list : list of Path
         List of VProcess files
     output_file : str, optional
         Path to save analysis results
-    
+
     Returns
     -------
     pd.DataFrame
@@ -244,7 +234,7 @@ def analyze_batch(
 
             results.append(result)
 
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             logger.error(f"Error analyzing {filepath.name}: {str(e)}")
 
     summary_df = pd.DataFrame(results)
@@ -256,7 +246,7 @@ def analyze_batch(
     return summary_df
 
 
-def main():
+def main() -> None:
     """Main function for command-line usage."""
     parser = argparse.ArgumentParser(
         description="Batch process VProcess files",
@@ -265,13 +255,13 @@ def main():
 Examples:
   # Merge all files in directory and export to CSV
   python batch.py --dir ./data --output merged.csv --merge
-  
+
   # Export specific variables to HDF5
   python batch.py --dir ./data --vars TT115A TT508A --format hdf5 --merge
-  
+
   # List common variables across all files
   python batch.py --dir ./data --list-common-vars
-  
+
   # Analyze files and create summary
   python batch.py --dir ./data --analyze --output summary.csv
         """,
@@ -279,11 +269,11 @@ Examples:
 
     parser.add_argument("--dir", required=True, help="Directory containing VProcess files")
     parser.add_argument(
-        "--pattern", default="*.vprocess", help="File pattern to match (default: *.vprocess)"
+        "--pattern",
+        default="*.vprocess",
+        help="File pattern to match (default: *.vprocess)",
     )
-    parser.add_argument(
-        "--recursive", "-r", action="store_true", help="Search recursively"
-    )
+    parser.add_argument("--recursive", "-r", action="store_true", help="Search recursively")
     parser.add_argument("--output", "-o", help="Output file path")
     parser.add_argument(
         "--format",
@@ -292,20 +282,14 @@ Examples:
         help="Output format (default: csv)",
     )
     parser.add_argument("--vars", nargs="+", help="List of variables to extract")
-    parser.add_argument(
-        "--merge", action="store_true", help="Merge all files into single output"
-    )
+    parser.add_argument("--merge", action="store_true", help="Merge all files into single output")
     parser.add_argument(
         "--list-common-vars",
         action="store_true",
         help="List variables common to all files",
     )
-    parser.add_argument(
-        "--analyze", action="store_true", help="Analyze files and create summary"
-    )
-    parser.add_argument(
-        "--quiet", "-q", action="store_true", help="Suppress progress output"
-    )
+    parser.add_argument("--analyze", action="store_true", help="Analyze files and create summary")
+    parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output")
 
     args = parser.parse_args()
 
@@ -319,9 +303,7 @@ Examples:
     file_list = find_vprocess_files(args.dir, args.pattern, args.recursive)
 
     if not file_list:
-        logger.error(
-            f"No VProcess files found in {args.dir} matching pattern {args.pattern}"
-        )
+        logger.error(f"No VProcess files found in {args.dir} matching pattern {args.pattern}")
         return
 
     logger.info(f"Found {len(file_list)} VProcess files")
@@ -343,15 +325,13 @@ Examples:
 
     # Process files
     if args.merge or args.output:
-        df = process_batch(
-            file_list, selected_vars=args.vars, merge=True, verbose=not args.quiet
-        )
+        df = process_batch(file_list, selected_vars=args.vars, merge=True, verbose=not args.quiet)
 
         logger.info(f"\nMerged data shape: {df.shape}")
         if len(df) > 0:
             logger.info(f"Time range: {df.index[0]} to {df.index[-1]}")
             duration = (df.index[-1] - df.index[0]).total_seconds()
-            logger.info(f"Duration: {duration:.1f} seconds ({duration/3600:.2f} hours)")
+            logger.info(f"Duration: {duration:.1f} seconds ({duration / 3600:.2f} hours)")
 
         # Export if output path specified
         if args.output:

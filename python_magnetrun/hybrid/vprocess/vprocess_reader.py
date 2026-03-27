@@ -14,19 +14,20 @@ File Structure:
     - Typical: 1 hour of data (~3600 samples)
 """
 
-import struct
-import re
-from pathlib import Path
-from typing import Dict, List, Tuple, Any, Optional
-from datetime import datetime, timezone
-import pandas as pd
 import logging
+import re
+import struct
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
 
 # Setup logger
 logger = logging.getLogger(__name__)
 
 
-def parse_vprocess_filename(filename: str) -> Optional[Tuple[datetime, datetime]]:
+def parse_vprocess_filename(filename: str) -> tuple[datetime, datetime] | None:
     """
     Parse VProcess filename to extract start and end times.
 
@@ -65,7 +66,7 @@ def parse_vprocess_filename(filename: str) -> Optional[Tuple[datetime, datetime]
 
 def find_vprocess_files_for_date(
     directory: str, date: datetime, pattern: str = "*.vprocess"
-) -> List[Path]:
+) -> list[Path]:
     """
     Find all VProcess files for a specific date.
 
@@ -84,7 +85,7 @@ def find_vprocess_files_for_date(
         Sorted list of VProcess files for the specified date
     """
     dir_path = Path(directory)
-    date_str = date.strftime("%Y%m%d")
+    _date_str = date.strftime("%Y%m%d")
 
     # Find all files matching pattern
     all_files = sorted(dir_path.glob(pattern))
@@ -99,7 +100,6 @@ def find_vprocess_files_for_date(
     return sorted(date_files)
 
 
-
 class VProcessVariable:
     """Represents a variable in the VProcess file."""
 
@@ -107,10 +107,10 @@ class VProcessVariable:
         self,
         name: str,
         var_type: str,
-        unit: Optional[str] = None,
-        min_val: Optional[float] = None,
-        max_val: Optional[float] = None,
-        display_format: Optional[str] = None,
+        unit: str | None = None,
+        min_val: float | None = None,
+        max_val: float | None = None,
+        display_format: str | None = None,
     ):
         self.name = name
         self.var_type = var_type  # 'float32' or 'dig'
@@ -121,7 +121,7 @@ class VProcessVariable:
         self.is_analog = "float" in var_type.lower()
         self.byte_size = 4 if self.is_analog else 1
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"VProcessVariable({self.name}, {self.var_type}, {self.unit})"
 
 
@@ -140,10 +140,10 @@ class VProcessFileReader:
             Endianness: 'big' or 'little' (default: 'little' for vprocess)
         """
         self.filepath = Path(filepath)
-        self.header_lines: List[str] = []
-        self.variables: List[VProcessVariable] = []
-        self.metadata: Dict[str, Any] = {}
-        self.data: Optional[pd.DataFrame] = None
+        self.header_lines: list[str] = []
+        self.variables: list[VProcessVariable] = []
+        self.metadata: dict[str, Any] = {}
+        self.data: pd.DataFrame | None = None
         self.endian = "<" if endian == "little" else ">"
 
     def parse_header(self) -> None:
@@ -151,9 +151,9 @@ class VProcessFileReader:
         with open(self.filepath, "rb") as f:
             header_lines = []
             while True:
-                line = f.readline()
-                if line.startswith(b"#"):
-                    decoded_line = line.decode("utf-8", errors="ignore").strip()
+                raw_line = f.readline()
+                if raw_line.startswith(b"#"):
+                    decoded_line = raw_line.decode("utf-8", errors="ignore").strip()
                     header_lines.append(decoded_line)
                 else:
                     break
@@ -206,7 +206,7 @@ class VProcessFileReader:
                     properties[key.strip()] = value.strip()
 
             var_type = properties.get("type", "float32")
-            unit = properties.get("unit", None)
+            unit = properties.get("unit")
             min_val = (
                 float(properties["min"])
                 if "min" in properties and properties["min"] != "_"
@@ -217,7 +217,7 @@ class VProcessFileReader:
                 if "max" in properties and properties["max"] != "_"
                 else None
             )
-            display_format = properties.get("df", None)
+            display_format = properties.get("df")
 
             variable = VProcessVariable(
                 name=var_name,
@@ -254,9 +254,7 @@ class VProcessFileReader:
                 self.metadata["start_time"] = datetime.strptime(
                     start_str.split(".")[0], date_format
                 )
-                self.metadata["end_time"] = datetime.strptime(
-                    end_str.split(".")[0], date_format
-                )
+                self.metadata["end_time"] = datetime.strptime(end_str.split(".")[0], date_format)
 
     def _parse_frequency(self, line: str) -> None:
         """Parse the frequency line."""
@@ -308,7 +306,7 @@ class VProcessFileReader:
 
         # Prepare data arrays
         timestamps = []
-        data_arrays = {var.name: [] for var in self.variables}
+        data_arrays: dict[str, list] = {var.name: [] for var in self.variables}
 
         # Read samples
         for i in range(num_samples):
@@ -316,10 +314,8 @@ class VProcessFileReader:
             sample_data = binary_data[sample_start : sample_start + sample_width]
 
             # Parse timestamp (8 bytes, double)
-            timestamp_raw = struct.unpack(
-                f"{self.endian}d", sample_data[:timestamp_size]
-            )[0]
-            timestamp = datetime.fromtimestamp(timestamp_raw, tz=timezone.utc)
+            timestamp_raw = struct.unpack(f"{self.endian}d", sample_data[:timestamp_size])[0]
+            timestamp = datetime.fromtimestamp(timestamp_raw, tz=UTC)
             timestamps.append(timestamp)
 
             # Parse variable data
@@ -327,9 +323,7 @@ class VProcessFileReader:
             for var in self.variables:
                 if var.is_analog:
                     # Float32 (4 bytes)
-                    value = struct.unpack(
-                        f"{self.endian}f", sample_data[offset : offset + 4]
-                    )[0]
+                    value = struct.unpack(f"{self.endian}f", sample_data[offset : offset + 4])[0]
                     offset += 4
                 else:
                     # Digital (1 byte)
@@ -380,7 +374,7 @@ class VProcessFileReader:
 
         return pd.DataFrame(var_info_list)
 
-    def get_metadata(self) -> Dict[str, Any]:
+    def get_metadata(self) -> dict[str, Any]:
         """
         Get file metadata.
 
@@ -410,7 +404,7 @@ class VProcessFileReader:
             print("\nFirst 10 variables:")
             for i, var in enumerate(self.variables[:10]):
                 unit_str = f" ({var.unit})" if var.unit else ""
-                print(f"  {i+1:2d}. {var.name:20s} [{var.var_type}]{unit_str}")
+                print(f"  {i + 1:2d}. {var.name:20s} [{var.var_type}]{unit_str}")
 
             if len(self.variables) > 10:
                 print(f"  ... and {len(self.variables) - 10} more")
@@ -443,9 +437,7 @@ def read_vprocess_file(filepath: str, endian: str = "little") -> pd.DataFrame:
     return reader.read()
 
 
-def get_vprocess_info(
-    filepath: str, endian: str = "little"
-) -> Tuple[Dict[str, Any], pd.DataFrame]:
+def get_vprocess_info(filepath: str, endian: str = "little") -> tuple[dict[str, Any], pd.DataFrame]:
     """
     Get metadata and variable information from a VProcess file.
 
@@ -476,7 +468,7 @@ __all__ = [
 ]
 
 
-def main():
+def main() -> None:
     """Main function for CLI usage."""
     import argparse
 

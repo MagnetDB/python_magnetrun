@@ -2,9 +2,10 @@
 
 import argparse
 import os
+from collections.abc import Callable
 
 
-def validate_file_extension(allowed_extensions):
+def validate_file_extension(allowed_extensions: list[str]) -> Callable[[str], str]:
     """Create a validator function for file extensions.
 
     :param allowed_extensions: List of allowed extensions (e.g., ['.tdms', '.txt'])
@@ -13,18 +14,18 @@ def validate_file_extension(allowed_extensions):
     :rtype: function
     """
 
-    def validator(filepath):
+    def validator(filepath: str) -> str:
         ext = os.path.splitext(filepath)[-1]
         if ext not in allowed_extensions:
             raise argparse.ArgumentTypeError(
-                f"Invalid file extension '{ext}'. Allowed: {', '.join(allowed_extensions)}"
+                f"Invalid file extension '{ext}'. Allowed: {', '.join(allowed_extensions)}"  # noqa: E501
             )
         return filepath
 
     return validator
 
 
-def get_datadir_mapping(args):
+def get_datadir_mapping(args: argparse.Namespace) -> dict[str, str]:
     """Get the directory mapping for different file extensions.
 
     :param args: Parsed command line arguments
@@ -38,7 +39,7 @@ def get_datadir_mapping(args):
     }
 
 
-def create_common_plot_parser():
+def create_common_plot_parser() -> argparse.ArgumentParser:
     """Create parser with common plotting arguments.
 
     :return: ArgumentParser with plotting arguments
@@ -62,13 +63,11 @@ def create_common_plot_parser():
         nargs="+",
         action="append",
     )
-    parser.add_argument(
-        "--normalize", help="normalize data before plot", action="store_true"
-    )
+    parser.add_argument("--normalize", help="normalize data before plot", action="store_true")
     return parser
 
 
-def create_hybrid_parser():
+def create_hybrid_parser() -> argparse.ArgumentParser:
     """Create parser with hybrid data arguments.
 
     :return: ArgumentParser with hybrid data arguments
@@ -103,7 +102,7 @@ def create_hybrid_parser():
     return parser
 
 
-def create_common_smoothing_parser():
+def create_common_smoothing_parser() -> argparse.ArgumentParser:
     """Create parser with common smoothing arguments.
 
     :return: ArgumentParser with smoothing arguments
@@ -112,27 +111,23 @@ def create_common_smoothing_parser():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--smoother",
-        help="smooth selected data with selected methods: [ag, bell_kernel, statsmodel_sm, savgol]",
+        help="smooth selected data with selected methods: [ag, bell_kernel, statsmodel_sm, savgol]",  # noqa: E501
         type=str,
         choices=["ag", "bell_kernel", "statsmodel_sm", "savgol"],
     )
     parser.add_argument("--window", help="size of rolling window", type=int, default=10)
-    parser.add_argument(
-        "--smoothing_f", help="set smoothing_f", type=float, default=0.7
-    )
-    parser.add_argument(
-        "--smoothing_tau", help="set smoothing_tau", type=float, default=400
-    )
-    parser.add_argument(
-        "--smoothing_iter", help="set smoothing_iter", type=int, default=3
-    )
+    parser.add_argument("--smoothing_f", help="set smoothing_f", type=float, default=0.7)
+    parser.add_argument("--smoothing_tau", help="set smoothing_tau", type=float, default=400)
+    parser.add_argument("--smoothing_iter", help="set smoothing_iter", type=int, default=3)
     return parser
 
 
-def create_base_parser(allowed_extensions=None):
+def create_base_parser(
+    allowed_extensions: list[str] | None = None,
+) -> argparse.ArgumentParser:
     """Create base parser with common arguments.
 
-    :param allowed_extensions: Optional list of allowed file extensions (e.g., ['.tdms', '.txt'])
+    :param allowed_extensions: Optional list of allowed file extensions (e.g., ['.tdms', '.txt'])  # noqa: E501
     :type allowed_extensions: list or None
     :return: ArgumentParser with base arguments
     :rtype: argparse.ArgumentParser
@@ -181,7 +176,7 @@ def create_base_parser(allowed_extensions=None):
     return parser
 
 
-def create_managed_plots_parser():
+def create_managed_plots_parser() -> argparse.ArgumentParser:
     """Create parser with managed plot options (save and show).
 
     :return: ArgumentParser with save and show arguments
@@ -189,13 +184,11 @@ def create_managed_plots_parser():
     """
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
-    parser.add_argument(
-        "--show", help="display graphs (require X11)", action="store_true"
-    )
+    parser.add_argument("--show", help="display graphs (require X11)", action="store_true")
     return parser
 
 
-def create_main_parser():
+def create_main_parser() -> argparse.ArgumentParser:
     """Create the main argument parser for python_magnetrun.
 
     :return: Configured ArgumentParser with all subcommands
@@ -209,9 +202,7 @@ def create_main_parser():
 
     parser = argparse.ArgumentParser(parents=[base_parser])
 
-    subparsers = parser.add_subparsers(
-        title="commands", dest="command", help="sub-command help"
-    )
+    subparsers = parser.add_subparsers(title="commands", dest="command", help="sub-command help")
 
     # Info subcommand
     parser_info = subparsers.add_parser("info", help="info help")
@@ -220,7 +211,9 @@ def create_main_parser():
 
     # Add subcommand (with plot capabilities)
     parser_add = subparsers.add_parser(
-        "add", help="add help", parents=[plot_parser, hybrid_parser, managed_plots_parser]
+        "add",
+        help="add help",
+        parents=[plot_parser, hybrid_parser, managed_plots_parser],
     )
     parser_add.add_argument(
         "--formula", help="add new column with associated formula", type=str, default=""
@@ -229,17 +222,15 @@ def create_main_parser():
     parser_add.add_argument("--plot", help="plot", action="store_true")
 
     # Plot subcommand
-    parser_plot = subparsers.add_parser(
-        "plot", help="plot help", parents=[plot_parser, hybrid_parser, managed_plots_parser]
+    _parser_plot = subparsers.add_parser(
+        "plot",
+        help="plot help",
+        parents=[plot_parser, hybrid_parser, managed_plots_parser],
     )
 
     # Select subcommand
-    parser_select = subparsers.add_parser(
-        "select", help="select help", parents=[smoothing_parser]
-    )
-    parser_select.add_argument(
-        "--output_time", nargs="+", help="output key(s) for time"
-    )
+    parser_select = subparsers.add_parser("select", help="select help", parents=[smoothing_parser])
+    parser_select.add_argument("--output_time", nargs="+", help="output key(s) for time")
     parser_select.add_argument(
         "--output_timerange",
         help="set time range to extract (start;end)",
@@ -257,17 +248,11 @@ def create_main_parser():
         help="dump key(s) to file",
         action="append",
     )
-    parser_select.add_argument(
-        "--convert", help="convert file to csv", action="store_true"
-    )
+    parser_select.add_argument("--convert", help="convert file to csv", action="store_true")
 
     # Stats subcommand
-    parser_stats = subparsers.add_parser(
-        "stats", help="stats help", parents=[managed_plots_parser]
-    )
-    parser_stats.add_argument(
-        "--detect_bkpts", help="find breaking points", action="store_true"
-    )
+    parser_stats = subparsers.add_parser("stats", help="stats help", parents=[managed_plots_parser])
+    parser_stats.add_argument("--detect_bkpts", help="find breaking points", action="store_true")
     parser_stats.add_argument("--localmax", help="find local max", action="store_true")
     parser_stats.add_argument("--plateau", help="find plateau", action="store_true")
     parser_stats.add_argument(
@@ -293,15 +278,13 @@ def create_main_parser():
         type=float,
         default=10,
     )
-    parser_stats.add_argument(
-        "--window", help="size of rolling window", type=int, default=10
-    )
+    parser_stats.add_argument("--window", help="size of rolling window", type=int, default=10)
     parser_stats.add_argument("--level", help="select level", type=int, default=90)
 
     return parser
 
 
-def create_analysis_parser():
+def create_analysis_parser() -> argparse.ArgumentParser:
     """Create the argument parser for analysis-refactor.
 
     :return: Configured ArgumentParser for analysis
@@ -341,13 +324,9 @@ def create_analysis_parser():
         help="compute lag between pupitre and pigbrother data",
         action="store_true",
     )
-    parser.add_argument(
-        "--distance", help="compute distance between series", action="store_true"
-    )
+    parser.add_argument("--distance", help="compute distance between series", action="store_true")
     parser.add_argument("--bins", help="set bins for histograms", type=int, default=10)
-    parser.add_argument(
-        "--window", help="set rolling window size", type=int, default=50
-    )
+    parser.add_argument("--window", help="set rolling window size", type=int, default=50)
     parser.add_argument("--levels", help="set levels", type=int, default=4)
     parser.add_argument(
         "--plot-percent",

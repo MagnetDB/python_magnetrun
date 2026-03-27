@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -48,7 +47,7 @@ class HydraulicData:
     flow_rate: np.ndarray
     pressure: np.ndarray
     back_pressure: np.ndarray
-    imax: Optional[float] = None
+    imax: float | None = None
     name: str = ""
 
 
@@ -132,7 +131,7 @@ def detect_imax_from_plateaus(
     plateau_threshold: float = 0.01,
     window: int = 20,
     min_plateau_samples: int = 10,
-) -> Optional[float]:
+) -> float | None:
     """
     Detect Imax by identifying the onset of a plateau in the pump speed curve.
 
@@ -204,13 +203,7 @@ def detect_imax_from_plateaus(
     # Require min_plateau_samples consecutive plateau points to filter noise.
     # rolling(min_plateau_samples).min() == 1.0 means every sample in the
     # window was True.
-    confirmed = (
-        in_plateau.astype(float)
-        .rolling(min_plateau_samples)
-        .min()
-        .fillna(0.0)
-        .astype(bool)
-    )
+    confirmed = in_plateau.astype(float).rolling(min_plateau_samples).min().fillna(0.0).astype(bool)
 
     if not confirmed.any():
         logger.info("No plateau detected in pump speed curve for '%s'.", data.name)
@@ -234,7 +227,7 @@ def detect_imax_from_plateaus(
 def compute_waterflow(
     data: HydraulicData,
     method: str = "simple",
-) -> "WaterFlow":  # noqa: F821
+) -> WaterFlow:  # noqa: F821
     """
     Full pipeline: HydraulicData → fit → WaterFlow.
 
@@ -308,9 +301,9 @@ def compute_waterflow_from_run(
     pressure_in_col: str,
     pressure_out_col: str,
     method: str = "simple",
-    imax: Optional[float] = None,
+    imax: float | None = None,
     current_threshold: float = 300.0,
-) -> "WaterFlow":  # noqa: F821
+) -> WaterFlow:  # noqa: F821
     """
     End-to-end convenience function: MagnetRun → HydraulicData → WaterFlow.
 
@@ -396,9 +389,7 @@ def main() -> None:
     import argparse
     import json
 
-    parser = argparse.ArgumentParser(
-        description="Fit hydraulic pump curves from a MagnetRun file."
-    )
+    parser = argparse.ArgumentParser(description="Fit hydraulic pump curves from a MagnetRun file.")
     parser.add_argument("run_file", help="Path to the MagnetRun data file.")
     parser.add_argument("--current-col", default="IH", help="Current column name.")
     parser.add_argument("--rpm-col", default="Rpm", help="Pump speed column name.")
@@ -418,9 +409,7 @@ def main() -> None:
         default=300.0,
         help="Minimum current threshold [A] for filtering.",
     )
-    parser.add_argument(
-        "--output", default="waterflow.json", help="Output JSON file path."
-    )
+    parser.add_argument("--output", default="waterflow.json", help="Output JSON file path.")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)

@@ -8,29 +8,29 @@ import sys
 from pathlib import Path
 
 
-def test_cfg_parsing(cfg_path):
+def test_cfg_parsing(cfg_path: str) -> bool:
     """Test parsing a CFG file"""
     print("=" * 70)
     print("FEPC CFG File Parser - Quick Test")
     print("=" * 70)
     print(f"\nTesting file: {cfg_path}")
-    
+
     # Check file exists
     if not Path(cfg_path).exists():
         print(f"❌ ERROR: File not found: {cfg_path}")
         return False
-    
+
     print("✓ File found")
-    
+
     # Try to parse
     try:
         from fepc_reader import parse_cfg_file
-        
+
         print("\nParsing configuration...")
         config = parse_cfg_file(cfg_path)
-        
+
         print("✓ Parsing successful!")
-        
+
         # Display summary
         print("\n" + "-" * 70)
         print("CONFIGURATION SUMMARY")
@@ -39,11 +39,11 @@ def test_cfg_parsing(cfg_path):
         print(f"Total Cards:  {config.num_cards}")
         print(f"Analog Slots: {config.get_analog_slots()}")
         print(f"Digital Slots: {config.get_digital_slots()}")
-        
+
         print("\n" + "-" * 70)
         print("SLOT DETAILS")
         print("-" * 70)
-        
+
         for card in config.cards:
             print(f"\nSlot {card.slot}: {card.card_type} card")
             print(f"  - Channels: {card.num_channels}")
@@ -51,35 +51,36 @@ def test_cfg_parsing(cfg_path):
             if card.variable_names:
                 print(f"  - First variable: {card.variable_names[0]}")
                 print(f"  - Last variable: {card.variable_names[-1]}")
-        
+
         print("\n" + "=" * 70)
         print("✓ TEST PASSED - Configuration parsed successfully!")
         print("=" * 70)
-        
+
         return True
-        
-    except Exception as e:
+
+    except (OSError, ValueError, RuntimeError) as e:
         print(f"\n❌ ERROR during parsing: {e}")
         import traceback
+
         print("\nFull traceback:")
         traceback.print_exc()
         return False
 
 
-def show_raw_file(cfg_path, num_lines=20):
+def show_raw_file(cfg_path: str, num_lines: int = 20) -> None:
     """Display first few lines of CFG file"""
     print("\n" + "=" * 70)
     print(f"RAW FILE CONTENT (first {num_lines} lines)")
     print("=" * 70)
-    
+
     try:
-        with open(cfg_path, 'r', encoding='utf-8', errors='replace') as f:
+        with open(cfg_path, encoding="utf-8", errors="replace") as f:
             for i, line in enumerate(f, 1):
                 if i > num_lines:
                     print("...")
                     break
                 print(f"{i:3d}: {line.rstrip()}")
-    except Exception as e:
+    except OSError as e:
         print(f"Error reading file: {e}")
 
 
@@ -90,15 +91,15 @@ if __name__ == "__main__":
     else:
         cfg_file = "HOST_1_DATA.CFG"
         print(f"No file specified, using default: {cfg_file}")
-        print(f"Usage: python test_cfg_parser.py <path_to_cfg_file>\n")
-    
+        print("Usage: python test_cfg_parser.py <path_to_cfg_file>\n")
+
     # Show raw content first
     if Path(cfg_file).exists():
         show_raw_file(cfg_file, num_lines=15)
-    
+
     # Test parsing
     success = test_cfg_parsing(cfg_file)
-    
+
     if success:
         print("\n✓ Your CFG file is compatible with this reader!")
         print("\nNext steps:")

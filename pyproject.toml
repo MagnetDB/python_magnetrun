@@ -23,20 +23,20 @@ readme = "README.md"
 dependencies = [
     "iapws>=1.3.4",
     "lxml>=4.9.2",
-    "matplotlib>=3.3.4",
-    "seaborn>=0.11.1",
-    "numpy>=2.2.1",
+    "matplotlib>=3.10.1",
+    "seaborn>=0.13.2",
+    "numpy>=2.2.4",
     "scipy>=1.14.1",
-    "pandas>=2.2.1",
+    "pandas>=2.2.3,<3.0",
     "nptdms>=1.7.0",
     "pint>=0.17",
     "requests>=2.32.3",
-    "statsmodels>=0.12.2",
+    "statsmodels>=0.14.4",
     "tabulate>=0.9.0",
-    "natsort>=7.1.1",
+    "natsort>=8.0.2",
     "nlopt>=2.7.0",
     "pytz>=2024.1",
-    "python_magnetcooling",
+    "python_magnetcooling[fitting]",
 ]
 
 [project.optional-dependencies]
@@ -60,6 +60,9 @@ signal = [
 dev = [
     "pytest>=6.2",
     "ruff>=0.4.0",
+    "mypy>=1.9.0",
+    "pre-commit>=3.7.0",
+    "pandas-stubs>=2.2.3",
 ]
 doc = [
     "sphinx>=4.3.0",
@@ -83,11 +86,19 @@ magnetrun-pigbrother-logparser = "python_magnetrun.tdms.log_parser:main"
 include = ["python_magnetrun*"]
 
 [tool.ruff]
-line-length = 88
+line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "BLE"]
+ignore = ["E501", "W293", "F841"]
+
+[tool.mypy]
+python_version = "3.11"
+disallow_untyped_defs = true
+warn_unused_ignores = true
+# Start lenient; tighten over time
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

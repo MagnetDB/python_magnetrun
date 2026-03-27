@@ -12,24 +12,24 @@ This script demonstrates the full workflow using python_magnetrun methods:
 This is a standalone version of the compute() method from flow_params_magnetrun.py
 """
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from typing import Dict, Tuple, List
 import json
 import os
 import sys
 
-# Import python_magnetrun methods
-from python_magnetrun.processing.fit import fit, find_eqn
-from tabulate import tabulate
-from sympy import Symbol
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import pwlf
+from sympy import Symbol
+from tabulate import tabulate
+
+# Import python_magnetrun methods
+from python_magnetrun.processing.fit import find_eqn, fit
 
 # Import the factory module
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from python_magnetcooling.waterflow_factory import from_flow_params
 from python_magnetcooling import WaterFlow
+from python_magnetcooling.waterflow_factory import from_flow_params
 
 
 def generate_synthetic_data(
@@ -119,7 +119,7 @@ def generate_synthetic_data(
     return df
 
 
-def setup_default_params() -> Dict:
+def setup_default_params() -> dict:
     """
     Setup default flow parameters dictionary.
 
@@ -146,7 +146,7 @@ def pwlf_fit_pump_speed(
     max_segments: int = 2,
     show: bool = False,
     debug: bool = False,
-) -> Tuple[pwlf.PiecewiseLinFit, List, float]:
+) -> tuple[pwlf.PiecewiseLinFit, list, float]:
     """
     FIT #1: Pump Speed using Piecewise Linear Fitting (pwlf)
 
@@ -306,7 +306,7 @@ def fit_flow_rate_magnetrun(
     name: str = "flow",
     show: bool = False,
     debug: bool = False,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     FIT #2: Flow Rate using python_magnetrun.fit
 
@@ -362,7 +362,7 @@ def fit_pressure_magnetrun(
     name: str = "pressure",
     show: bool = False,
     debug: bool = False,
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     FIT #3: Pressure using python_magnetrun.fit
 
@@ -415,7 +415,7 @@ def calculate_back_pressure_stats(
     imax: float,
     show: bool = False,
     debug: bool = False,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """
     Calculate statistics for back pressure (roughly constant).
 
@@ -478,7 +478,7 @@ def build_flow_params_dict(
     pmin: float,
     bp: float,
     imax: float,
-) -> Dict:
+) -> dict:
     """
     Build flow_params dictionary in the format expected by waterflow_factory.
 
@@ -507,7 +507,7 @@ def build_flow_params_dict(
     return flow_params
 
 
-def create_waterflow_object(flow_params: Dict) -> WaterFlow:
+def create_waterflow_object(flow_params: dict) -> WaterFlow:
     """
     Create WaterFlow object using waterflow_factory.
 
@@ -557,7 +557,7 @@ def demonstrate_calculations(waterflow: WaterFlow):
     print()
 
 
-def save_flow_params(flow_params: Dict, filename: str = "flow_params_magnetrun_output.json"):
+def save_flow_params(flow_params: dict, filename: str = "flow_params_magnetrun_output.json"):
     """
     Save flow_params to JSON file.
     """

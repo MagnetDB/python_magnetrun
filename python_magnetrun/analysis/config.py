@@ -31,7 +31,6 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 # Module logger
 logger = logging.getLogger("magnetrun.analysis.config")
@@ -186,7 +185,7 @@ class ColorConfig:
         }
         return mapping.get(signal_type, "black")
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         """Convert to dictionary format (backward compatibility)."""
         return {"U": self.up_color, "P": self.plateau_color, "D": self.down_color}
 
@@ -242,12 +241,11 @@ class ChannelMapping:
                 list(mapping.keys()),
             )
             raise KeyError(
-                f"Unknown reference key: {reference_key}. "
-                f"Valid keys: {list(mapping.keys())}"
+                f"Unknown reference key: {reference_key}. Valid keys: {list(mapping.keys())}"
             )
         return mapping[reference_key]
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         """Convert to dictionary format (backward compatibility)."""
         return {
             "Référence_GR1": self.reference_gr1,
@@ -307,7 +305,7 @@ class VoltageChannelMapping:
         }
         return mapping.get(reference_key, ())
 
-    def to_dict(self) -> Dict[str, List[str]]:
+    def to_dict(self) -> dict[str, list[str]]:
         """Convert to dictionary format (backward compatibility)."""
         return {
             "Référence_GR1": list(self.reference_gr1_channels),
@@ -353,7 +351,7 @@ class SiteConfig:
 
     Notes
     -----
-    M9 uses IH/IB for GR1/GR2 respectively (H=High, B=Bas/Bottom).
+    M9 uses IH/IB for GR1/GR2 respectively (H=Helices, B=Bitters).
     M8 and M10 swap this: IB/IH for GR1/GR2.
     """
 
@@ -421,7 +419,7 @@ class SiteConfig:
         }
         return mapping.get(reference_key, ())
 
-    def to_pupitre_dict(self) -> Dict[str, str]:
+    def to_pupitre_dict(self) -> dict[str, str]:
         """
         Convert to pupitre_dict format (backward compatibility).
 
@@ -438,7 +436,7 @@ class SiteConfig:
             "Référence_GR2_Pin": self.reference_gr2_pin,
         }
 
-    def to_upupitre_dict(self) -> Dict[str, List[str]]:
+    def to_upupitre_dict(self) -> dict[str, list[str]]:
         """Convert to upupitre_dict format (backward compatibility)."""
         return {
             "Référence_GR1": list(self.voltage_channels_gr1),
@@ -449,7 +447,7 @@ class SiteConfig:
 # =============================================================================
 # Pre-defined site configurations
 # =============================================================================
-SITE_CONFIGS: Dict[str, SiteConfig] = {
+SITE_CONFIGS: dict[str, SiteConfig] = {
     "M9": SiteConfig(
         name="M9",
         reference_gr1_current="IH",
@@ -520,9 +518,7 @@ def get_site_config(site: str) -> SiteConfig:
     """
     if site not in SITE_CONFIGS:
         logger.error("Unknown site: %s. Available: %s", site, list(SITE_CONFIGS.keys()))
-        raise ValueError(
-            f"Unknown site: {site}. Available: {list(SITE_CONFIGS.keys())}"
-        )
+        raise ValueError(f"Unknown site: {site}. Available: {list(SITE_CONFIGS.keys())}")
     logger.debug("Loading site configuration for %s", site)
     return SITE_CONFIGS[site]
 
@@ -547,7 +543,7 @@ class ThresholdConfig:
         Mapping of channel names to threshold values
     """
 
-    thresholds: Dict[str, float] = field(default_factory=dict)
+    thresholds: dict[str, float] = field(default_factory=dict)
 
     def get(self, key: str, default: float = 0.1) -> float:
         """
@@ -575,12 +571,12 @@ class ThresholdConfig:
         """Allow 'in' operator: 'IH' in config.thresholds."""
         return key in self.thresholds
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> dict[str, float]:
         """Convert to dictionary format (backward compatibility)."""
         return dict(self.thresholds)
 
     @classmethod
-    def default(cls) -> "ThresholdConfig":
+    def default(cls) -> ThresholdConfig:
         """
         Create default threshold configuration.
 
@@ -658,14 +654,12 @@ class AnalysisConfig:
 
     site: SiteConfig
     channels: ChannelMapping = field(default_factory=ChannelMapping)
-    voltage_channels: VoltageChannelMapping = field(
-        default_factory=VoltageChannelMapping
-    )
+    voltage_channels: VoltageChannelMapping = field(default_factory=VoltageChannelMapping)
     thresholds: ThresholdConfig = field(default_factory=ThresholdConfig.default)
     colors: ColorConfig = field(default_factory=ColorConfig)
 
     @classmethod
-    def for_site(cls, site_name: str) -> "AnalysisConfig":
+    def for_site(cls, site_name: str) -> AnalysisConfig:
         """
         Create configuration for a specific site.
 
@@ -733,7 +727,7 @@ class AnalysisConfig:
 # =============================================================================
 # Backward compatibility: setup() function replacement
 # =============================================================================
-def get_legacy_config(site_name: Optional[str] = None) -> tuple:
+def get_legacy_config(site_name: str | None = None) -> tuple:
     """
     Get configuration in the legacy tuple format.
 
@@ -764,12 +758,10 @@ def get_legacy_config(site_name: Optional[str] = None) -> tuple:
 
     # Build pupitre dicts for all sites
     pupitre_dict = {
-        site_name: config.to_pupitre_dict()
-        for site_name, config in SITE_CONFIGS.items()
+        site_name: config.to_pupitre_dict() for site_name, config in SITE_CONFIGS.items()
     }
     upupitre_dict = {
-        site_name: config.to_upupitre_dict()
-        for site_name, config in SITE_CONFIGS.items()
+        site_name: config.to_upupitre_dict() for site_name, config in SITE_CONFIGS.items()
     }
 
     return (
