@@ -210,9 +210,9 @@ class RMSFileReader:
         # Prepare data arrays
         timestamps = []
         data_arrays: dict[str, list] = {var.name: [] for var in self.variables}
-        assert len(data_arrays) == len(
-            self.variables
-        ), f"Data arrays length mismatch: {len(data_arrays)} vs {len(self.variables)}"
+        assert len(data_arrays) == len(self.variables), (
+            f"Data arrays length mismatch: {len(data_arrays)} vs {len(self.variables)}"
+        )
         logger.debug(f"Reading {len(self.variables)} variables")
         logger.debug(f"Analog: {len([var for var in self.variables if var.is_analog])}")
         logger.debug(f"Digital: {len([var for var in self.variables if not var.is_analog])}")

@@ -1106,25 +1106,25 @@ def main():
     if args.command == "plot":
         logger.info("subcommands: plot")
         if args.vs_time:
-            assert len(args.vs_time) == len(
-                extensions.keys()
-            ), f"expected {len(extensions.keys())} vs_time arguments - got {len(args.vs_time)} "
+            assert len(args.vs_time) == len(extensions.keys()), (
+                f"expected {len(extensions.keys())} vs_time arguments - got {len(args.vs_time)} "
+            )
 
             plot_vs_time(input_files, inputs, extensions, args)
 
         if args.key_vs_key:
-            assert len(args.key_vs_key) == len(
-                extensions
-            ), f"expected {len(extensions)} key_vs_key arguments - got {len(args.key_vs_key)} "
+            assert len(args.key_vs_key) == len(extensions), (
+                f"expected {len(extensions)} key_vs_key arguments - got {len(args.key_vs_key)} "
+            )
 
             plot_key_vs_key(input_files, inputs, extensions, args)
 
     if args.command == "select":
         # plot_args = items[extensions[f_extension][0]]
         if args.output_time:
-            assert (
-                len(args.output_time) == len(extensions.keys())
-            ), f"expected {len(extensions.keys())} output_time arguments - got {len(args.output_time)} "
+            assert len(args.output_time) == len(extensions.keys()), (
+                f"expected {len(extensions.keys())} output_time arguments - got {len(args.output_time)} "
+            )
 
             times = args.output_time.split(";")
             logger.info(f"Select data at {times}")
@@ -1132,26 +1132,26 @@ def main():
                 output_time(file, inputs, extensions, times)
 
         if args.output_timerange:
-            assert (
-                len(args.output_timerange) == len(extensions.keys())
-            ), f"expected {len(extensions.keys())} output_timerange arguments - got {len(args.output_timerange)} "
+            assert len(args.output_timerange) == len(extensions.keys()), (
+                f"expected {len(extensions.keys())} output_timerange arguments - got {len(args.output_timerange)} "
+            )
 
             timerange = args.output_timerange.split(";")
             for file in inputs:
                 output_timerange(file, inputs, extensions, args)
 
         if args.output_key:
-            assert (
-                len(args.output_key) == len(extensions.keys())
-            ), f"expected {len(extensions.keys())} output_key arguments - got {len(args.output_key)} "
+            assert len(args.output_key) == len(extensions.keys()), (
+                f"expected {len(extensions.keys())} output_key arguments - got {len(args.output_key)} "
+            )
 
             for file in inputs:
                 output_keys(file, inputs, extensions, args)
 
         if args.extract_pairkeys:
-            assert (
-                len(args.extract_pairkeys) == len(extensions.keys())
-            ), f"expected {len(extensions.keys())} extract_pairkeys arguments - got {len(args.extract_pairkeys)} "
+            assert len(args.extract_pairkeys) == len(extensions.keys()), (
+                f"expected {len(extensions.keys())} extract_pairkeys arguments - got {len(args.extract_pairkeys)} "
+            )
             for file in inputs:
                 extract_pairkeys(file, inputs, extensions, args)
 
