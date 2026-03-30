@@ -1,79 +1,96 @@
-# Python3 `MagnetRun`
+# Python `MagnetRun`
 
-Python `MagnetRun` contains utilities to view and analyze Magnet runs
+Python `MagnetRun` contains utilities to view and analyze Magnet runs from LNCMI control/monitoring systems (`Pupitre`, `PigBrother`, and hybrid FEPC acquisition systems).
 
--   Free software: MIT license
--   Documentation: <https://python-magnetrun.readthedocs.io>.
+- Free software: MIT license
+- Documentation: <https://python-magnetrun.readthedocs.io>
 
-# Installation
+---
 
-# Devcontainer
+## Table of Contents
 
-# Using Python virtual env
+- [Installation](#installation)
+- [Data Sources](#data-sources)
+- [Mounting Data Directories](#mounting-data-directories)
+- [Features](#features)
+- [Basic Usage](#basic-usage)
+- [Analysis](#analysis)
+- [Running Tests](#running-tests)
+- [To-do](#to-do)
+- [Credits](#credits)
 
-To install in a python virtual env on Linux
+---
 
-For Linux/Mac OS X:
+## Installation
 
-```bash
-$ python3 -m venv [--system-site-packages] magnetrun-env
-$ source ./magnetrun-env/bin/activate
-$ cd python_magnetcooling
-$ python3 -m pip install -e ".[dev]"
-$ cd ..
-$ python3 -m pip install -e ".[dev]"
-```
+### Using a Python virtual environment
 
-For windows
-
-```bash
-c:\>C:\Python35\python -m venv c:\path\to\magnetrun-env
-C:\> C:\path\to\magnetrun-env\Scripts\activate.bat
-c:\>C:\Python35\python -m pip install -r requirements.txt
-```
-
-To quit the virtual env, run `deactivate`.
-
-# Data
-
-## `Pupitre`
-
-You can:
-
-* Get data from `Pupitre` using `python_magnetrun.requests.cli` as described in the next section.
-* Or, mount `Pupitre`, using for instance:
+**Linux / macOS:**
 
 ```bash
-sshfs -o uid=$(id -u),gid=$(id -g) -o IdentityFile=/home/LNCMI-G/$USER/.ssh/id_ecdsa $SRVDATA_SERVER:$SRVDATA_DIR ~/LNCMIG-Data/
+python3 -m venv [--system-site-packages] magnetrun-env
+source ./magnetrun-env/bin/activate
+cd python_magnetcooling
+python3 -m pip install -e ".[dev]"
+cd ..
+python3 -m pip install -e ".[dev]"
 ```
 
-> [!NOTE]
-> sshfs is not really stable. It means that it can stop running any time... In that case, you  just need to relaunch the service.
+**Windows:**
 
-## `PigBrother`
-
-To mount `pigbrother` data, you have to:
-
-* create a `pigbrotherdata` directory
-* mount data from `pigbrother` server as `pigbrotherdata`:
-
-```bash
-sudo mount -v -t cifs //pigbrother_server_ip/d $pwd/pigbrotherdata -o user=pbsurv,password=passwd
+```bat
+C:\Python35\python -m venv C:\path\to\magnetrun-env
+C:\path\to\magnetrun-env\Scripts\activate.bat
+C:\Python35\python -m pip install -r requirements.txt
 ```
 
-* mount colddata from `pigbrother` server as `pigbrothercolddata`:
+To leave the virtual environment, run `deactivate`.
 
-```bash
-sudo mount -v -t cifs //pigbrother_server_ip/df $pwd/pigbrothercolddata -o user=pbsurv,password=passwd
+### Devcontainer
+
+A `.devcontainer` configuration is provided for VS Code / GitHub Codespaces.
+
+---
+
+## Data Sources
+
+### `Pupitre`
+
+`Pupitre` is the LNCMI magnet control/monitoring system. It records time-series data for each magnet run (currents, voltages, temperatures, water-flow rates, …) and saves them as plain-text (`.txt`) files named after the magnet site and the start timestamp, e.g.:
+
+```
+M9_2024.05.09---16_34_03.txt
 ```
 
-> [!NOTE]
-> Adapt the script with the proper variables
+Each file contains one row per sample and one column per measured quantity (field, IH, IB, UH, UB, TinH, TinB, FlowH, FlowB, …).
 
-## Hybrid data
+See [Mounting Data Directories](#mounting-data-directories) for how to access `Pupitre` data.
 
-Hybrid data (kHz, RMS, Trigger) is recorded by FEPC acquisition systems and stored as binary files
-organised by date under a base directory with the following layout:
+### `PigBrother`
+
+`PigBrother` is a secondary surveillance/monitoring system that records data independently of `Pupitre`, typically at a higher sampling rate and with a wider set of voltage and current channels. Data are stored as National Instruments TDMS (`.tdms`) files.
+
+Files are organised by magnet site and acquisition type under a base directory:
+
+```
+<pigbrother_datadir>/
+  Fichiers_Data/
+    <housing>/                  e.g. M9/, M10/
+      Overview/              downsampled overview files (one per run)
+        <housing>_Overview_YYMMDD-HHMM.tdms
+      Fichiers_Archive/      full-rate archive files
+        <housing>_Archive_YYMMDD-HHMM.tdms
+      Fichiers_Incidents/    incident (fault) recordings
+        <housing>_Incidents_YYMMDD-HHMM.tdms
+      Fichiers_Spike/        spike / transient recordings
+        <housing>_Spikes_YYMMDD-HHMM.tdms
+```
+
+See [Mounting Data Directories](#mounting-data-directories) for how to access `PigBrother` data.
+
+### Hybrid data (kHz / RMS / Trigger)
+
+Hybrid data from FEPC acquisition systems captures high-frequency (kHz) current waveforms, RMS summaries, and trigger events. It is stored as binary files under:
 
 ```
 <hybrid_datadir>/
@@ -87,67 +104,130 @@ organised by date under a base directory with the following layout:
     ...
 ```
 
-Pass `--hybrid_datadir` and `--hybrid_date` to any `plot` subcommand to overlay hybrid data
-alongside pupitre/pigbrother sources.
+Pass `--hybrid_datadir` and `--hybrid_date` to any `plot` subcommand to overlay hybrid data alongside Pupitre/PigBrother sources.
 
-# Features
+---
 
--   Extract data from control/monitoring system
--   Inject data from control/monitoring system into `magnetdb`
--   Load `txt`, `cvs` and `tdms` files from control/monitoring system
--   Extract field(s)
--   Plot field(s) vs time
--   Plot field vs field
+## Mounting Data Directories
 
-# Examples
+### `Pupitre` — SSHFS
 
-## Basic usage
-
-- To list fields recorded during an experiment:
+Mount the `Pupitre` file server as a local directory:
 
 ```bash
-python3 -m python_magnetrun.python_magnetrun srvdata/M9_2019.02.14---23\:00\:38.txt info --list
-```
-- List records that last at least 60 s and with a magnetic filed above 18:
-
-```bash
-python -m python_magnetrun.examples.get-record srvdata/M8*.txt select --duration 60 --field 18.
+sshfs -o uid=$(id -u),gid=$(id -g) -o IdentityFile=~/.ssh/id_ecdsa \
+    $SRVDATA_SERVER:$SRVDATA_DIR ~/LNCMIG-Data/
 ```
 
-#### Plotting
-
-- To view the magnetic field during an experiment:
-
+To unmount:
 
 ```bash
-python3 -m python_magnetrun.python_magnetrun srvdata/M9_2019.02.14---23\:00\:38.txt plot --vs_time "Field"
+fusermount -u ~/LNCMIG-Data/
 ```
 
-- To view the current in group1 from pigbrother and pupitre files:
+> [!NOTE]
+> SSHFS can be unstable. If it stops, just relaunch the command above.
+
+Alternatively, retrieve files programmatically without mounting:
 
 ```bash
-python -m python_magnetrun.python_magnetrun \
-   srvdata/M10_2025.01.27---*.txt \
-   pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms \
-   plot --key_vs_key timestamp-IH --key_vs_key timestamp-Courants_Alimentations/Référence_GR1
-```
-- View Teb vs timestamp for all M8 records (may crash due to high memory usage):
-
-```bash
-python -m python_magnetrun.examples.get-record srvdata/M8*.txt plot --xfield timestamp --fields teb --show
+python3 -m python_magnetrun.requests.cli --user email --datadir datadir [--save]
 ```
 
-- Plot `pigbrother` and `pupitre` current for Helices insert:
+### `PigBrother` — CIFS
+
+Create the target directories first, then mount:
 
 ```bash
-python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms ~/M9_2024.05.09---16_34_03.txt \
-    plot --vs_time Courants_Alimentations/Courant_GR1 --vs_time IH
+mkdir -p pigbrotherdata pigbrothercolddata
+
+# Main data share
+sudo mount -v -t cifs //pigbrother_server_ip/d ./pigbrotherdata \
+    -o user=pbsurv,password=passwd
+
+# Cold data share
+sudo mount -v -t cifs //pigbrother_server_ip/df ./pigbrothercolddata \
+    -o user=pbsurv,password=passwd
 ```
 
-- Plot `pigbrother`, `pupitre` and `hybrid` (kHz) current together for comparison:
+To unmount:
 
 ```bash
-python -m python_magnetrun.python_magnetrun \
+sudo umount ./pigbrotherdata
+sudo umount ./pigbrothercolddata
+```
+
+> [!NOTE]
+> Replace `pigbrother_server_ip`, `pbsurv`, and `passwd` with the actual server address and credentials.
+
+### Hybrid data — local path
+
+Hybrid data does not require network mounting; simply point `--hybrid_datadir` to the local base directory that follows the layout described in [Data Sources → Hybrid data](#hybrid-data-khz--rms--trigger).
+
+---
+
+## Features
+
+- Load `txt`, `csv`, and `tdms` files from control/monitoring systems
+- Extract and list recorded fields
+- Plot field(s) vs time or field vs field
+- Cross-source comparison (Pupitre vs PigBrother vs hybrid kHz)
+- Statistics and plateau detection
+- Compute derived quantities via formulas (power, busbar losses, etc.)
+- Breakpoint detection and run signature (UPD)
+- Anomaly detection (Z-score, IQR, rolling mean/std, DBSCAN, MAD)
+- Piecewise linear regression (`piecewise_regression`, `pwlf`)
+- Field factor identification via OLS regression
+- Time-series synchronization between data sources
+- Distance and similarity metrics (Euclidean, MAE, MAPE, DTW, TLCC)
+- Extract data from `srv-data-lncmi `
+- Prepare data for injection into `magnetdb`
+
+---
+
+## Basic Usage
+
+### List available fields
+
+```bash
+python3 -m python_magnetrun.python_magnetrun \
+    srvdata/M9_2019.02.14---23:00:38.txt info --list
+```
+
+### Select records by criteria
+
+List records lasting at least 60 s with a magnetic field above 18 T:
+
+```bash
+python3 -m python_magnetrun.examples.get-record \
+    srvdata/M8*.txt select --duration 60 --field 18.
+```
+
+### Plotting
+
+Plot the magnetic field over time:
+
+```bash
+python3 -m python_magnetrun.python_magnetrun \
+    srvdata/M9_2019.02.14---23:00:38.txt \
+    plot --vs_time "Field"
+```
+
+Compare current from PigBrother and Pupitre side by side:
+
+```bash
+python3 -m python_magnetrun.python_magnetrun \
+    srvdata/M10_2025.01.27---*.txt \
+    pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms \
+    plot \
+    --key_vs_key timestamp-IH \
+    --key_vs_key timestamp-Courants_Alimentations/Référence_GR1
+```
+
+Overlay PigBrother, Pupitre, and hybrid (kHz) currents for comparison:
+
+```bash
+python3 -m python_magnetrun.python_magnetrun \
     ~/M9_Overview_240509-1634.tdms \
     ~/M9_2024.05.09---16_34_03.txt \
     --hybrid_datadir /path/to/hybrid \
@@ -161,214 +241,333 @@ python -m python_magnetrun.python_magnetrun \
 
 > [!NOTE]
 > One `--vs_time` argument is required per input file extension type (`.tdms`, `.txt`).
-> Hybrid keys are passed separately via `--vs_time_hybrid` and do not count toward that total.
-> Use `--hybrid_downsample N` to control how many points are rendered from kHz data (default: 50000).
+> Hybrid keys are passed separately via `--vs_time_hybrid`.
+> Use `--hybrid_downsample N` to control how many kHz points are rendered (default: 50000).
 > Use `--fepc_system FEPC-AUX-LNCMI` for the auxiliary FEPC system.
-> Field name correspondence between sources is defined in `python_magnetrun/field_mappings.py`.
+> Field name correspondence between sources is defined in [python_magnetrun/field_mappings.py](python_magnetrun/field_mappings.py).
 
-## Getting data (obsolete)
+### Statistics and plateau detection
 
-- To retrieve `pupitre` data from control/monitoring system
+Compute statistics for all M8 records:
 
 ```bash
-python3 -m  python_magnetrun.requests.cli --user email --datadir datadir [--save]
+python3 -m python_magnetrun.python_magnetrun srvdata/M8*.txt stats
 ```
 
-
-
-<!--
-- To model transient:
-
-```python3 clawtest1.py M9_2019.02.14-23_00_38.txt --npts_per_domain=4437 --duration=3600 --ntimes=360```
-
-- To plot temperature during an experiment and compare with NTU model:
-
-```python3 heatexchanger_primary.py M9_2019.02.14-23_00_38.txt --ohtc=2103.09 --dT=4.93827 [find]```
- -->
-
-
-## stats
-
-- Aggregata Teb data
+Detect plateaux:
 
 ```bash
-python -m python_magnetrun.examples.get-record srvdata/M*---*.txt aggregate --fields teb --show
+python3 -m python_magnetrun.python_magnetrun srvdata/M8*.txt stats --plateau
 ```
 
-- For stats:
+Aggregate a specific field across records:
 
 ```bash
-python -m python_magnetrun.python_magnetrun  srvdata/M8*.txt  stats
+python3 -m python_magnetrun.examples.get-record \
+    srvdata/M*---*.txt aggregate --fields teb --show
 ```
 
-- For all `pupitre` files, perform plateaux detections:
+### Derived quantities
 
+Compute and plot power dissipated in Helices from a Pupitre file:
 
 ```bash
-python -m python_magnetrun.python_magnetrun  srvdata/M8*.txt  stats --plateau
+python3 -m python_magnetrun.python_magnetrun \
+    srvdata/M10_2020.10.03---09:56:20.txt \
+    add --formula "PowerH = IH * UH / 1.e+6" --plot
 ```
 
-## Extra data
-
-- Compute and plot Power dissipated in Helices
+Compute power from a PigBrother TDMS file:
 
 ```bash
-python -m python_magnetrun.python_magnetrun pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_201003-0956.tdms \
-    add --formula "Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2  / 1.e+6" --plot
-```
-
-```bash
-python -m python_magnetrun.python_magnetrun srvdata/M10_2020.10.03---09\:56\:20.txt add --formula "PowerH = IH * UH  / 1.e+6" --plot
-```
-
-- Compute and plot Power dissipated in A2 busbar
-
-```bash
-python -m python_magnetrun.python_magnetrun pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_201003-0956.tdms \
-   add --formula "Tensions_Alimentations/Busbar_A2 = (Tensions_Alimentations/Tension_A2 - Tensions_Aimant/ALL_internes) * Courants_Alimentations/Courant_A2 / 1.e+6"
+python3 -m python_magnetrun.python_magnetrun \
+    pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_201003-0956.tdms \
+    add --formula "Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6" \
     --plot
 ```
-TODO: change symbol and unit for Busbar_A2
 
-## Detect
+---
 
-- Detect Breaking points and Compute Signature (UPD) of record
+## Analysis
 
-We use the following convention for assigning a signature to a record:
-  - U: up
-  - P: Plateau
-  - D: Down
+The `python_magnetrun.analysis` module provides higher-level tools for cross-source analysis, synchronization, and metrics computation.
 
-```bash
-python -m tests.test-signature srvdata/M10_2025.01.27---15:39:29.txt --window=10 --threshold 1.e-2
-```
+### CLI
 
-For overview pigbrother files:
+Process one or more TDMS overview files:
 
 ```bash
-python -m python_magnetrun.analysis  pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250211-*.tdms --key Référence_GR1 --show --synchronize
+python3 -m python_magnetrun.analysis.cli M9_Overview_*.tdms --show
 ```
 
-see also:
+With optional synchronization, lag computation, and distance metrics:
 
 ```bash
-python -m python_magnetrun.analysis-refactor pigbrotherdata/Fichiers_Data/M9/Overview/M9_Overview_250303-*.tdms  --key Référence_GR1 --show --synchronize
+python3 -m python_magnetrun.analysis.cli input.tdms \
+    --synchronize \
+    --lag \
+    --distance \
+    --downsample 10 \
+    --show --save \
+    --debug --log-file analysis.log
 ```
 
-- Detect Breaking points and anomalies:
-
-Example is functional, but the results are good. The method does not work correctly for other examples
+Write structured JSON logs for pipeline integration:
 
 ```bash
-python -m python_magnetrun.python_magnetrun ~/M9_Overview_240509-1634.tdms  stats --show --keys Courants_Alimentations/Référence_GR1 --detect_bkpts --sav
+python3 -m python_magnetrun.analysis.cli input.tdms \
+    --json-log analysis.json --quiet
 ```
 
-Display defauts detected with several methods (Z-score, IQR, rolling mean std):
+---
+
+## Python API
+
+### Configuration
+
+```python
+from python_magnetrun.analysis import AnalysisConfig
+
+# Load pre-defined site configuration (M8, M9, M10)
+config = AnalysisConfig.for_site("M9")
+
+# Access site-specific channel mappings
+print(config.site.reference_gr1_current)   # "IH"
+print(config.site.reference_gr2_current)   # "IB"
+
+# Get threshold for a channel
+threshold = config.thresholds.get("Courant_GR1")
+```
+
+### Loading data
+
+**Single Pupitre file (`.txt`):**
+
+```python
+from python_magnetrun.magnetdata import MagnetData
+
+data = MagnetData.fromtxt("srvdata/M9_2024.05.09---16_34_03.txt")
+print(data.Keys)          # list of available field names
+df = data.Data            # pandas DataFrame
+print(df[["t", "Field", "IH", "IB"]].head())
+```
+
+**Single PigBrother file (`.tdms`):**
+
+```python
+from python_magnetrun.magnetdata import MagnetData
+
+data = MagnetData.fromtdms("pigbrotherdata/Fichiers_Data/M9/Overview/M9_Overview_240509-1634.tdms")
+print(data.Keys)          # list of "Group/Channel" keys
+# Access a specific group as a DataFrame
+df = data.Data["Courants_Alimentations"]
+print(df[["Référence_GR1", "Courant_GR1"]].head())
+```
+
+**Multi-source discovery (overview + archive + pupitre):**
+
+```python
+from python_magnetrun.analysis import load_data, FileDiscovery
+
+# Discover files associated with an overview TDMS
+discovery = FileDiscovery("M9_Overview_250303-1234.tdms", pupitre_datadir="srvdata/")
+file_set = discovery.discover()
+
+# Load DataFrames from a file set
+data = load_data(file_set)
+df_overview = data["overview"]
+df_pupitre  = data["pupitre"]
+```
+
+**Single Hybrid RMS file:**
+
+```python
+from python_magnetrun.hybrid.rms.rms_reader import read_rms_file
+
+# Returns a pandas DataFrame indexed by timestamp
+df = read_rms_file("hybrid/rms/2024-05-09/FEPC-LNCMI/data.rms")
+print(df.columns.tolist())          # list of variable names (analog + digital)
+print(df[["PT205", "TT200A"]].head())
+```
+
+**Single Hybrid kHz file (binary):**
+
+```python
+from python_magnetrun.hybrid.kHz.fepc_reader import parse_cfg_file, read_hour_file
+
+# 1. Parse the configuration file to get card/channel layout
+cfg = parse_cfg_file("hybrid/kHz/2024-05-09/FEPC-LNCMI/HOST_2_DATA.CFG")
+print(f"Analog slots: {cfg.get_analog_slots()}")
+
+# 2. Read one hour of data for a given slot (returns a NumPy array)
+slot = cfg.get_analog_slots()[0]
+card = cfg.get_card_by_slot(slot)
+data = read_hour_file(
+    f"hybrid/kHz/2024-05-09/FEPC-LNCMI/00HOST_2_LIST_{slot}.bin",
+    card.card_type,
+)
+print(f"Shape: {data.shape}")       # (n_samples, n_channels)
+
+# 3. Extract a named channel by index
+ch = card.variable_names.index("I_H1")
+import numpy as np
+time = np.arange(len(data)) / 1000.0   # 1 kHz → seconds
+current = data[:, ch]
+```
+
+**Unified interface (kHz + RMS + Trigger for a full day):**
+
+```python
+from python_magnetrun.hybrid.hybrid_data import HybridData
+
+hd = HybridData(
+    base_dir="/path/to/hybrid",
+    date_str="2024-05-09",
+    fepc_system="FEPC-LNCMI",
+)
+
+# Inspect what is available
+print(hd.Keys)                      # all discoverable keys
+
+# Load RMS data as a DataFrame
+df_rms = hd.load_rms_data("FEPC-LNCMI")
+print(df_rms.head())
+
+# Load kHz configuration and list variables
+cfg = hd.load_khz_config("FEPC-LNCMI")
+print(hd.get_khz_variables("FEPC-LNCMI"))
+```
+
+---
+
+## Advanced Usage
+
+### Time synchronization
+
+```python
+from python_magnetrun.analysis import synchronize_data, compute_lag
+
+# Compute lag between overview and pupitre time series
+lag_result = compute_lag(df_overview["Référence_GR1"], df_pupitre["IH"])
+print(f"Lag: {lag_result.lag_seconds:.2f} s  (reliable: {lag_result.is_reliable})")
+
+# Apply correction and return aligned DataFrames
+sync_result = synchronize_data(df_overview, df_pupitre, key="Référence_GR1")
+```
+
+### Distance and similarity metrics
+
+```python
+from python_magnetrun.analysis import (
+    calc_euclidean, calc_mae, calc_mape,
+    calc_correlation,
+    compute_dtw_distance,
+    compute_tlcc,
+)
+
+series1 = df_overview["Référence_GR1"].values
+series2 = df_pupitre["IH"].values
+
+# Standard distance metrics
+print(calc_euclidean(series1, series2).value)
+print(calc_mae(series1, series2).value)
+print(calc_mape(series1, series2).value)    # percentage
+print(calc_correlation(series1, series2).value)
+
+# Dynamic Time Warping (for shorter series, ≤ 5000 pts)
+dtw = compute_dtw_distance(series1, series2)
+print(f"DTW similarity score: {dtw.similarity_score:.4f}")
+
+# Time-Lagged Cross-Correlation
+tlcc = compute_tlcc(series1, series2, max_lag=50)
+```
+
+### Breakpoint detection and run signature
+
+Each run is assigned a signature based on detected breakpoints:
+- **U** — ramp up
+- **P** — plateau
+- **D** — ramp down
 
 ```bash
-python tests/test-anomalies.py \
-   pigbrotherdata/Fichiers_Data/M9/Fichiers_Spike/M9_Spikes_251207-115319.tdms \
-   --group Courants_Alimentations \
-   [--dry_run]
+python3 -m tests.test-signature \
+    srvdata/M10_2025.01.27---15:39:29.txt \
+    --window=10 --threshold 1.e-2
 ```
 
->[!NOTE]
-> - interactive CLI
->
->```bash
->python script.pytests/test-anomalies.py data.tdms --methods dbscan mad \
->    --method-params dbscan.eps=0.3 mad.threshold=4.0
->```
-
->- with a json string for API/scripting
->```bash
->python tests/test-anomalies.py data.tdms --methods dbscan mad \
->    --method-params-json '{"dbscan": {"eps": 0.3}, "mad": {"threshold": 4.0}}'
->```
-
->- with a config file
->```bash
->python tests/test-anomalies.py data.tdms --config params.json
->```
-
->- combined: config as base, override specific params via CLI
->```bash
->python tests/test-anomalies.py data.tdms --config params.yaml \
->    --method-params dbscan.eps=0.1
->```
-
-
-- check field factor (not working properly since Ih and Ib are "piecewise" dependant)
-
-Better way to do this - see python_magnetrun/corr_Ih_Ib.py with algo=piecewise-regression or pwlf
-once the number of breakpoints are known.
-
+Detect breakpoints in PigBrother overview files and synchronize:
 
 ```bash
-python -m python_magnetrun.test-fieldfactor /home/LNCMI-G/christophe.trophime/M9_2024.05.13---16_30_51.txt
+python3 -m python_magnetrun.analysis \
+    pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250211-*.tdms \
+    --key Référence_GR1 --show --synchronize
 ```
 
-The code returns:
+### Anomaly detection
 
-```
-                            OLS Regression Results
-==============================================================================
-Dep. Variable:                      Z   R-squared:                       1.000
-Model:                            OLS   Adj. R-squared:                  1.000
-Method:                 Least Squares   F-statistic:                 1.656e+13
-Date:                Wed, 19 Jun 2024   Prob (F-statistic):               0.00
-Time:                        14:38:41   Log-Likelihood:                 5472.3
-No. Observations:                 556   AIC:                        -1.094e+04
-Df Residuals:                     553   BIC:                        -1.093e+04
-Df Model:                           2
-Covariance Type:            nonrobust
-==============================================================================
-                 coef    std err          t      P>|t|      [0.025      0.975]
-------------------------------------------------------------------------------
-const        1.62e-06   7.81e-07      2.073      0.039    8.52e-08    3.15e-06
-X              0.0009   1.34e-08   6.63e+04      0.000       0.001       0.001
-Y              0.0004   4.04e-08   9314.560      0.000       0.000       0.000
-==============================================================================
-Omnibus:                        3.831   Durbin-Watson:                   0.358
-Prob(Omnibus):                  0.147   Jarque-Bera (JB):                3.642
-Skew:                          -0.190   Prob(JB):                        0.162
-Kurtosis:                       3.110   Cond. No.                     5.84e+03
-==============================================================================
-
-Notes:
-[1] Standard Errors assume that the covariance matrix of the errors is correctly specified.
-[2] The condition number is large, 5.84e+03. This might indicate that there are
-strong multicollinearity or other numerical problems.
-Intercept: 1.6196286010253166e-06, A: 0.0008915003451151302, B: 0.0003765980765178872
-```
-
-From [MagnetInfo](https://labs.core-cloud.net/ou/UPR3228/MagnetInfo/SitePages/Field-maps.aspx?web=1), we get the field factors in the table for M9: fh=8.915, fB=3.766 unit?
-
-Pb here is that Ih and Ib are actually colinear - at least in piecewise manner.
-
-- Perform piecewise linear regression
-
- - piecewise_regression for Ih and Ib
-```bash
-python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey IH --ykey IB --algo piecewise_regression --breakpoints 2
-```
-
- - piecewise linear regression for Ih(t)
+Detect anomalies with multiple methods (interactive CLI):
 
 ```bash
-python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey t --ykey Field --algo piecewise_regression --breakpoints 8
-python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey t --ykey Field --algo pwlf --breakpoints 11
+python3 tests/test-anomalies.py \
+    pigbrotherdata/Fichiers_Data/M9/Fichiers_Spike/M9_Spikes_251207-115319.tdms \
+    --group Courants_Alimentations \
+    --methods dbscan mad \
+    --method-params dbscan.eps=0.3 mad.threshold=4.0
 ```
 
- - `ruptures` is not working properly ??
- -
+With a JSON config for scripting:
+
 ```bash
-python -m python_magnetrun.corr_Ih_Ib srvdata/M9_2024.11.06---16\:43\:44.txt --xkey t --ykey Field --algo ruptures --breakpoints 11
+python3 tests/test-anomalies.py data.tdms \
+    --methods dbscan mad \
+    --method-params-json '{"dbscan": {"eps": 0.3}, "mad": {"threshold": 4.0}}'
 ```
 
-- Parameters identification
+With a config file (YAML or JSON), optionally overriding specific params:
 
-# Running tests
+```bash
+python3 tests/test-anomalies.py data.tdms \
+    --config params.yaml \
+    --method-params dbscan.eps=0.1
+```
+
+### Piecewise linear regression
+
+Fit a piecewise-linear model for the Ih/Ib relationship:
+
+```bash
+python3 -m python_magnetrun.corr_Ih_Ib \
+    srvdata/M9_2024.11.06---16:43:44.txt \
+    --xkey IH --ykey IB \
+    --algo piecewise_regression --breakpoints 2
+```
+
+Fit Field(t) with multiple breakpoints:
+
+```bash
+python3 -m python_magnetrun.corr_Ih_Ib \
+    srvdata/M9_2024.11.06---16:43:44.txt \
+    --xkey t --ykey Field \
+    --algo pwlf --breakpoints 11
+```
+
+### Field factor identification
+
+Estimate the field factors (fH, fB) for a given magnet site via OLS regression:
+
+```bash
+python3 -m python_magnetrun.test-fieldfactor \
+    ~/M9_2024.05.13---16_30_51.txt
+```
+
+The regression output reports `fh` and `fB` coefficients. Cross-reference with field maps in [MagnetInfo](https://labs.core-cloud.net/ou/UPR3228/MagnetInfo/SitePages/Field-maps.aspx) for validation.
+
+> [!NOTE]
+> Ih and Ib are piecewise collinear. Use `--algo piecewise_regression` or `--algo pwlf` once the number of breakpoints is known for better results.
+
+---
+
+## Running Tests
 
 Run the standard test suite:
 
@@ -376,13 +575,13 @@ Run the standard test suite:
 pytest
 ```
 
-Some tests require actual data files and are excluded from the default run. To include them:
+Some tests require actual data files and are excluded by default. To include them:
 
 ```bash
 pytest --on-demand
 ```
 
-Or run a specific on-demand test directly:
+Run a specific on-demand test:
 
 ```bash
 pytest --on-demand tests/test-paramident.py
@@ -395,60 +594,42 @@ pytest --on-demand tests/test-simu.py
 pytest --on-demand tests/test-tin.py
 ```
 
+---
 
+## To-do
 
-# To-do
+**Refactor:**
+- [ ] Split argparse options into separate Python files
+- [ ] Add an example / a test for each subcommand in `python_magnetrun`
+- [ ] Store stats (plateaus, duration) in a DataFrame, CSV, or database
 
-Refactor:
-- [ ] Split argparse options into separate python files
-- [ ] Add an example / a test for each subcommand in python_magnetrun
-- [ ] Store stats (which? + plateaus?) data (+ duration) in a dataframe, csv file or a db
-
-Docs:
+**Docs:**
 - [X] Docs for aggregate
-- [X] Add a note to mount pigbrother data
-- [ ] Add note to mount pupitre data if applicable
+- [X] Add a note to mount PigBrother data
+- [ ] Add note to mount Pupitre data if applicable
 
-Features:
-- [ ] Magnetrun actually performs "ETL", can I store processed pupitre data into specific file format??
+**Features:**
+- [ ] Store processed Pupitre data in a specific file format (ETL output)
+- [ ] Rewrite `txt2csv` to use methods in `utils` and `plots`
+- [ ] Check `addData` complex formulas (involving `freesteam` / `iapws`) with `pyparsing`
+- [ ] Add columns from `freesteam` or `iapws` (e.g., rho, cp)
+- [ ] Export data to `prettytables`, `tabular`, or `csv2md`
+- [ ] Add support for Origin files (`liborigin` / Python bindings)
+- [ ] Data from M1, M3, M5, M7 for complete stats
+- [ ] Add missing fields (U1, Pe1, Tout1, U2, …) — link with `magnetdb`
+- [ ] For `select`, support multiple field criteria
+- [ ] Cross-lag correlations
+- [ ] Forecast Teb from historical data
+- [ ] Check independent variables (Ih, Teb, Qbrut) on plateau experiments
+- [ ] Link with magnet user DB (`xdds.csv`)
+- [ ] Classification of field profiles
+- [ ] Link with `magnettools`/`hifimagnet` for R(i) and L(i)
+- [ ] Estimate heat exchanger parameters (NTU model)
+- [ ] Calorimetric balance for AC/DC converter dissipated power (Talim)
 
-- [ ] Rewrite txt2csv to use methods in `utils` and `plots` ?done?
-- [X] For `tdms` to pandas see
-    <https://nptdms.readthedocs.io/en/stable/apireference.html>
-- [ ] Check `addData` complex formula (involving `freesteam` or `iapws` for ex) with help of python `pyparsing`??
-- [ ] How to add columns coming from `freesteam` or from ?iapws?, for instance like rho, cp, \.\.??
-- [ ] Export Data to `prettytables`, `tabular` or `cvs2md`?
-- [ ] How to pass option to `matplotlib` within `plotData()`: `*args PARAMETER` TO MAKE OPTIONAL ARGUMENTS?
-- [ ] Add support for origin files (for B experimental profile) - use `labplot`?? `liborigin`?? Python bindings??
+---
 
-- [ ] Data from M1, M3, M5 and M7 for complete stats ???
-- [ ] Get `MagnetRun` files directly from control/monitoring system??
-- [ ] For `MagnetRun` add missing fields [U1, Pe1, Tout1, U2 \...\], `--missing, \--nhelices` - see `txt2csv.py` - link with magnetdb (aka depends on msite configs)
-
-- [ ] For plot with multiple keys, improve legend, save df with only selected fields??
-- [ ] For select, add multiple criteria - actually only one field value or threshold
-
-- [ ] Test piecewise linear regression or polynomial
-- [ ] Cross lag correlations (see chatgpg discussions)
-
-Usage:
-- [ ] systematic check of TinH and TinB?
-- [ ] View teb data on daily, monthly, yearly
-- [ ] teb forecast from previous data??
-- [ ] Check independant variables (Ih, Teb, Qbrut?) on "plateau" exp - as Ib=f(Ih) with f piece wise 1order polynomial
-- [ ] Extract data from magnet confile?
-
-- [ ] Link with magnet user db - see xdds.csv
-- [ ] classification of Field profile
-- [ ] Data from supra??
-- [ ] Link with magnettools/hifimagnet for R(i) and L(i)
-- [ ] extract R(i), L(i) from U, I timeseries - see chatgpt
-- [ ] estimation of heat exhchanger params - see NTU and cooling directory
-- [ ] Talim: calorimetric balance to get/estimate disspated power in AC/DC converters
-
-
-
-# Credits
+## Credits
 
 This package was created with
 [Cookiecutter](https://github.com/audreyr/cookiecutter) and the

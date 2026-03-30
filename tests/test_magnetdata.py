@@ -12,7 +12,12 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
-from python_magnetrun.magnetdata import MagnetData
+from python_magnetrun.magnetdata import (
+    EnsightMagnetData,
+    MagnetData,
+    MagnetDataBase,
+    TdmsMagnetData,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -55,9 +60,9 @@ def simple_magnetdata(simple_df: pd.DataFrame) -> MagnetData:
 
 class TestFromtxt:
     def test_loads_sample_file(self) -> None:
-        """fromtxt should return a MagnetData instance."""
+        """fromtxt should return a MagnetDataBase instance."""
         md = MagnetData.fromtxt(str(SAMPLE_TXT))
-        assert isinstance(md, MagnetData)
+        assert isinstance(md, MagnetDataBase)
 
     def test_type_is_zero(self, txt_magnetdata: MagnetData) -> None:
         """Pupitre files must have Type=0 (pandas)."""
@@ -136,7 +141,7 @@ class TestFromtdms:
         with patch("nptdms.TdmsFile") as MockTdms:
             MockTdms.open.return_value = tdms_mock
             md = MagnetData.fromtdms(tdms_path)
-        assert isinstance(md, MagnetData)
+        assert isinstance(md, MagnetDataBase)
         assert md.getType() == 1
 
     def test_type_is_one(self, tmp_path: Path) -> None:
@@ -288,7 +293,7 @@ class TestGetDataTdms:
                 "Tension_GR1": {"wf_increment": 1.0},
             }
         }
-        return MagnetData("test.tdms", groups, keys, 1, data)
+        return TdmsMagnetData("test.tdms", groups, keys, data)
 
     def test_group_slash_channel(self, tdms_magnetdata: MagnetData) -> None:
         """getData('Group/Channel') should return the channel's DataFrame."""
@@ -317,11 +322,13 @@ class TestGetDataTdms:
                 ]
             )
 
-    def test_unsupported_type_raises(self) -> None:
-        """getData on Type=2 should raise RuntimeError."""
-        md = MagnetData("test.ensight", {}, [], 2, pd.DataFrame())
-        with pytest.raises(RuntimeError, match="not implemented"):
-            md.getData("anything")
+    def test_ensight_getdata_works(self) -> None:
+        """getData on EnsightMagnetData (Type=2) now works via pandas path (bug fixed)."""
+        df = pd.DataFrame({"x": [1.0], "y": [2.0]})
+        md = EnsightMagnetData("test.ensight", {}, ["x", "y"], df)
+        result = md.getData("x")
+        assert isinstance(result, pd.DataFrame)
+        assert list(result.columns) == ["x"]
 
 
 # ---------------------------------------------------------------------------
@@ -340,11 +347,11 @@ class TestGetKeysAndType:
         assert simple_magnetdata.getType() == 0
 
     def test_gettype_tdms(self) -> None:
-        md = MagnetData("x.tdms", {}, [], 1, {})
+        md = TdmsMagnetData("x.tdms", {}, [], {})
         assert md.getType() == 1
 
     def test_gettype_ensight(self) -> None:
-        md = MagnetData("x.ensight", {}, [], 2, pd.DataFrame())
+        md = EnsightMagnetData("x.ensight", {}, [], pd.DataFrame())
         assert md.getType() == 2
 
 
@@ -374,7 +381,7 @@ class TestRenameData:
 
     def test_noop_for_type_1(self) -> None:
         """renameData on TDMS data (Type=1) should do nothing."""
-        md = MagnetData("x.tdms", {}, ["GroupA/ch"], 1, {"GroupA": pd.DataFrame({"ch": [1]})})
+        md = TdmsMagnetData("x.tdms", {}, ["GroupA/ch"], {"GroupA": pd.DataFrame({"ch": [1]})})
         md.renameData({"GroupA/ch": "GroupA/new"})
         assert md.Keys == ["GroupA/ch"]
 
@@ -440,7 +447,7 @@ class TestFromStringIO:
         """fromStringIO should create a valid MagnetData from a string."""
         content = "header line skipped\nA B C\n1 2 3\n4 5 6\n"
         md = MagnetData.fromStringIO(content)
-        assert isinstance(md, MagnetData)
+        assert isinstance(md, MagnetDataBase)
         assert "A" in md.Keys
 
     def test_type_is_zero(self) -> None:
@@ -468,7 +475,7 @@ class TestFromCsv:
 
     def test_loads_csv_file(self, csv_file: Path) -> None:
         md = MagnetData.fromcsv(str(csv_file))
-        assert isinstance(md, MagnetData)
+        assert isinstance(md, MagnetDataBase)
 
     def test_type_is_zero(self, csv_file: Path) -> None:
         md = MagnetData.fromcsv(str(csv_file))
@@ -506,7 +513,7 @@ class TestFromEnsight:
 
     def test_loads_ensight_file(self, ensight_file: Path) -> None:
         md = MagnetData.fromensight(str(ensight_file))
-        assert isinstance(md, MagnetData)
+        assert isinstance(md, MagnetDataBase)
 
     def test_type_is_two(self, ensight_file: Path) -> None:
         md = MagnetData.fromensight(str(ensight_file))
@@ -626,7 +633,7 @@ class TestAddTdmsTime:
             }
         }
         keys = ["Courants_Alimentations/Courant_GR1"]
-        return MagnetData("x.tdms", groups, keys, 1, {"Courants_Alimentations": group_df})
+        return TdmsMagnetData("x.tdms", groups, keys, {"Courants_Alimentations": group_df})
 
     def test_adds_t_column(self, tdms_md: MagnetData) -> None:
         tdms_md.addTdmsTime()
@@ -647,9 +654,9 @@ class TestAddTdmsTime:
         tdms_md.addTdmsTime()
         assert tdms_md.Keys.count("Courants_Alimentations/t") == 1
 
-    def test_raises_for_non_tdms(self, simple_magnetdata: MagnetData) -> None:
-        with pytest.raises(RuntimeError, match="only applicable for Type=1"):
-            simple_magnetdata.addTdmsTime()
+    def test_not_available_on_pandas(self, simple_magnetdata: MagnetData) -> None:
+        """addTdmsTime is a TDMS-only method; pandas-backed objects do not have it."""
+        assert not hasattr(simple_magnetdata, "addTdmsTime")
 
     def test_raises_for_missing_group(self, tdms_md: MagnetData) -> None:
         with pytest.raises(RuntimeError, match="group 'Unknown' not found"):
@@ -680,7 +687,7 @@ class TestExtractData:
     def test_tdms_group_slash_channel(self) -> None:
         group_df = pd.DataFrame({"Courant_GR1": [1.0, 2.0], "Tension_GR1": [3.0, 4.0]})
         groups = {"G": {"Courant_GR1": {"wf_increment": 1.0}, "Tension_GR1": {"wf_increment": 1.0}}}
-        md = MagnetData("x.tdms", groups, ["G/Courant_GR1", "G/Tension_GR1"], 1, {"G": group_df})
+        md = TdmsMagnetData("x.tdms", groups, ["G/Courant_GR1", "G/Tension_GR1"], {"G": group_df})
         df = md.extractData(["G/Courant_GR1", "G/Tension_GR1"])
         assert "Courant_GR1" in df.columns
         assert "Tension_GR1" in df.columns

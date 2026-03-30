@@ -831,7 +831,7 @@ class FileDiscovery:
         logger.debug("  spike: %s", spike_filter)
 
         # Find and filter files
-        file_set = FileSet(overview=[f"{overview_dir}/{overview_file}"])
+        file_set = FileSet(overview=[resolved_overview])
 
         file_set.pupitre = select_files(glob.glob(pupitre_filter), site, start, end)
         file_set.archive = select_files(glob.glob(archive_filter), site, start, end)

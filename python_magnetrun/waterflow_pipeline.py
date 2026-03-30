@@ -185,6 +185,11 @@ def detect_imax_from_plateaus(
         logger.warning("Pump speed is constant — cannot detect plateau onset.")
         return None
 
+    current_range = current.max() - current.min()
+    if current_range == 0.0:
+        logger.warning("Current range is zero — cannot detect plateau onset.")
+        return None
+
     # Rolling slope: delta(Vp) / delta(I) over `window` samples.
     # Using .diff(window) rather than .rolling().apply() is faster and
     # gives the same central-window-free result.
@@ -195,7 +200,9 @@ def detect_imax_from_plateaus(
     with np.errstate(divide="ignore", invalid="ignore"):
         slope = np.where(delta_i != 0, delta_vp / delta_i, np.nan)
 
-    normalised = pd.Series(np.abs(slope) / speed_range)
+    # Normalise to a dimensionless quantity: multiply by current_range/speed_range
+    # so that a perfect linear ramp gives ~1.0 and a true plateau gives ~0.
+    normalised = pd.Series(np.abs(slope) * current_range / speed_range)
 
     # A point is "in plateau" when its normalised slope is below threshold
     in_plateau = normalised < plateau_threshold

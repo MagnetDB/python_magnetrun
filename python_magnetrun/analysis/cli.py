@@ -70,6 +70,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from natsort import natsorted
+
 from .config import (
     DEFAULT_BINS,
     DEFAULT_DATA_DIR,
@@ -77,6 +79,7 @@ from .config import (
     DEFAULT_PIGBROTHER_DATA_DIR,
     DEFAULT_WINDOW_SIZE,
 )
+from .processing import process_overview_file
 
 # =============================================================================
 # Logging configuration
@@ -920,9 +923,6 @@ def main(args: list[str] | None = None) -> int:
     logger.debug("Arguments: %s", parsed_args)
 
     try:
-        # Import here to avoid circular imports and speed up --help
-        from natsort import natsorted
-
         from .config import get_site_config
         from .metrics import (
             calc_correlation,
@@ -934,7 +934,6 @@ def main(args: list[str] | None = None) -> int:
             estimate_downsample_percent,
             plot_data,
         )
-        from .processing import process_overview_file
 
         # Convert args to processing config
         config = args_to_processing_config(parsed_args)

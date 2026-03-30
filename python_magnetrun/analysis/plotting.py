@@ -37,6 +37,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -383,7 +385,6 @@ def plot_data(
     ...     show=True,
     ... )
     """
-    import matplotlib.pyplot as plt
 
     style = style or DEFAULT_STYLE
     colors = colors or DEFAULT_COLORS
@@ -532,7 +533,6 @@ def _show_incident_detail(
     downsample_percent: float,
 ) -> None:
     """Show detailed view of an incident when clicked."""
-    import matplotlib.pyplot as plt
 
     anomaly = metadata["anomaly"]
     idx = metadata["idx"]
@@ -630,7 +630,6 @@ def plot_comparison(
     -------
     Figure or None
     """
-    import matplotlib.pyplot as plt
 
     style = style or DEFAULT_STYLE
 
@@ -782,7 +781,6 @@ def plot_time_series(
     -------
     Figure or None
     """
-    import matplotlib.pyplot as plt
 
     style = style or DEFAULT_STYLE
 
@@ -838,8 +836,6 @@ def setup_matplotlib_defaults() -> None:
 
     Enables LaTeX rendering if available and sets common style options.
     """
-    import matplotlib
-    import matplotlib.pyplot as plt
 
     try:
         matplotlib.rcParams["text.usetex"] = True
@@ -871,7 +867,6 @@ def create_figure_grid(
     Tuple[Figure, np.ndarray]
         Figure and array of axes
     """
-    import matplotlib.pyplot as plt
 
     n_rows = (n_plots + n_cols - 1) // n_cols
     figsize = (figsize_per_plot[0] * n_cols, figsize_per_plot[1] * n_rows)

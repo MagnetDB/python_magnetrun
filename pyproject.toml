@@ -103,3 +103,4 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py", "test-*.py"]
+# norecursedirs = ["python_magnetcooling", "rustfs", "docs", "examples", "notebooks"]

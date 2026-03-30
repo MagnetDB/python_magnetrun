@@ -365,6 +365,7 @@ class TestLogContext:
                 lineno=0,
                 msg="Test",
                 args=(),
+                exc_info=None,
             )
 
             assert hasattr(record, "extra_data")

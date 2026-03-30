@@ -622,7 +622,7 @@ class ThresholdConfig:
 # =============================================================================
 # Complete analysis configuration
 # =============================================================================
-@dataclass
+@dataclass(frozen=True)
 class AnalysisConfig:
     """
     Complete analysis configuration.
