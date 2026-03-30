@@ -6,6 +6,9 @@ Covers:
   - correlations: crosscorr
   - trends: piecewise_linear_approximation
   - stats: stats()
+  - hysteresis: remove_outliers, remove_outliers_by_x_range, hysteresis_model,
+                multi_level_hysteresis, relay_hysteresis, continuous_hysteresis
+  - plateaux: tuple_type
   - breakingpoints: detect_changes (skipped if ruptures not installed)
 """
 
@@ -20,6 +23,20 @@ import pandas as pd
 import pytest
 
 SAMPLE_TXT = Path(__file__).parent / "data" / "sample_pupitre.txt"
+
+# Optional dependency guards — do NOT use pytest.importorskip at module level as it
+# causes the entire file to be skipped when the package is absent.
+
+try:
+    import ruptures as _ruptures  # noqa: F401
+
+    from python_magnetrun.processing.breakingpoints import detect_changes
+
+    _has_ruptures = True
+except ImportError:
+    _has_ruptures = False
+
+needs_ruptures = pytest.mark.skipif(not _has_ruptures, reason="ruptures not installed")
 
 # ---------------------------------------------------------------------------
 # distance.py
@@ -139,7 +156,6 @@ class TestKernelFunction:
         assert kernel_function(np.array([0.5]), 0.5) == pytest.approx(1.0)
 
     def test_decays_away_from_x0(self) -> None:
-        """Values far from x0 should be smaller than at x0."""
         x0 = 0.0
         k_at_x0 = kernel_function(np.array([x0]), x0)
         k_far = kernel_function(np.array([5.0]), x0, tau=0.1)
@@ -168,13 +184,11 @@ class TestSavgol:
         signal = np.sin(x)
         noisy = signal + 0.3 * rng.standard_normal(100)
         smoothed = savgol(noisy, window=15, polyorder=3)
-        # smoothed signal should be closer to the true signal than the noisy one
         noise_err = np.mean((noisy - signal) ** 2)
         smooth_err = np.mean((smoothed - signal) ** 2)
         assert smooth_err < noise_err
 
     def test_derivative_differs_from_signal(self) -> None:
-        """deriv=1 result should differ from the original signal."""
         x = np.linspace(0, 2 * np.pi, 100)
         y = np.sin(x)
         dy = savgol(y, window=11, polyorder=4, deriv=1)
@@ -286,7 +300,6 @@ class TestCrosscorr:
         assert r == pytest.approx(-1.0)
 
     def test_nonzero_lag_shifts_series(self, sine_series: pd.Series) -> None:
-        """A non-zero lag should change the correlation value."""
         r0 = crosscorr(sine_series, sine_series, lag=0)
         r5 = crosscorr(sine_series, sine_series, lag=5)
         assert r0 != pytest.approx(r5, abs=1e-6)
@@ -296,7 +309,6 @@ class TestCrosscorr:
         y = pd.Series([5.0, 4.0, 3.0, 2.0, 1.0])
         r_wrap = crosscorr(x, y, lag=2, wrap=True)
         r_no_wrap = crosscorr(x, y, lag=2, wrap=False)
-        # Both return a scalar; wrap fills NaN differently
         assert isinstance(float(r_wrap), float)
         assert isinstance(float(r_no_wrap), float)
 
@@ -316,7 +328,6 @@ class TestPiecewiseLinearApproximation:
         assert all(isinstance(item, tuple) and len(item) == 2 for item in result)
 
     def test_output_length_equals_input_length(self) -> None:
-        """The function appends one final duplicate, giving len(series) tuples."""
         series = pd.Series([1.0, 2.0, 3.0, 4.0, 5.0])
         result = piecewise_linear_approximation(series, threshold=0.5)
         assert len(result) == len(series)
@@ -324,7 +335,6 @@ class TestPiecewiseLinearApproximation:
     def test_monotone_increasing_all_up(self) -> None:
         series = pd.Series([0.0, 1.0, 2.0, 3.0])
         result = piecewise_linear_approximation(series, threshold=0.5)
-        # First n-1 entries (the loop iterations) should all be "U"
         for trend, _ in result[:-1]:
             assert trend == "U"
 
@@ -361,7 +371,6 @@ class TestPiecewiseLinearApproximation:
         assert result[1][1] == pytest.approx(3.0)
 
     def test_threshold_boundary(self) -> None:
-        """Changes exactly at threshold should be treated as Up/Down."""
         series = pd.Series([0.0, 0.5, 0.0])
         result = piecewise_linear_approximation(series, threshold=0.5)
         assert result[0][0] == "U"
@@ -384,10 +393,7 @@ from python_magnetrun.processing.stats import stats  # noqa: E402
 
 @pytest.fixture(scope="module")
 def pupitre_magnetdata() -> MagnetData:
-    """MagnetData from the sample pupitre txt file — shared across stats tests.
-
-    Units() must be called so that getUnitKey() works.
-    """
+    """MagnetData from the sample pupitre txt file — shared across stats tests."""
     md = MagnetData.fromtxt(str(SAMPLE_TXT))
     md.Units()
     return md
@@ -421,7 +427,6 @@ class TestStats:
         """Field column in sample file is [0.5, 0.6, 0.7, 0.8]; mean=0.65."""
         tables, _ = stats(pupitre_magnetdata, fields=["Field"], display=False)
         row = tables[0]
-        # row: [name, mean, max, min, std, median, mode]
         assert row[1] == pytest.approx(0.65)
 
     def test_field_max_value(self, pupitre_magnetdata: MagnetData) -> None:
@@ -437,18 +442,286 @@ class TestStats:
         assert tables == []
 
     def test_default_fields_when_none(self, pupitre_magnetdata: MagnetData) -> None:
-        """Passing fields=None should fall back to the built-in default list."""
         tables, _ = stats(pupitre_magnetdata, fields=None, display=False)
         assert len(tables) > 0
 
 
 # ---------------------------------------------------------------------------
-# breakingpoints.py — detect_changes (optional dependency: ruptures)
+# plateaux.py — tuple_type (pure stdlib function)
 # ---------------------------------------------------------------------------
 
-ruptures = pytest.importorskip("ruptures", reason="ruptures not installed")
+from python_magnetrun.processing.plateaux import tuple_type  # noqa: E402
 
-from python_magnetrun.processing.breakingpoints import detect_changes  # noqa: E402
+
+class TestTupleType:
+    def test_basic_two_element(self) -> None:
+        result = tuple_type("(Field,Icoil1)")
+        assert result == ("Field", "Icoil1")
+
+    def test_without_parens(self) -> None:
+        result = tuple_type("a,b,c")
+        assert result == ("a", "b", "c")
+
+    def test_single_element(self) -> None:
+        result = tuple_type("(Field)")
+        assert result == ("Field",)
+
+    def test_returns_tuple(self) -> None:
+        assert isinstance(tuple_type("(x,y)"), tuple)
+
+    def test_whitespace_preserved_in_elements(self) -> None:
+        """Elements are mapped as-is; no stripping is done by tuple_type."""
+        result = tuple_type("( x , y )")
+        assert result == (" x ", " y ")
+
+
+# ---------------------------------------------------------------------------
+# hysteresis.py — pure numeric functions
+# ---------------------------------------------------------------------------
+
+from python_magnetrun.processing.hysteresis import (  # noqa: E402
+    continuous_hysteresis,
+    hysteresis_model,
+    multi_level_hysteresis,
+    relay_hysteresis,
+    remove_outliers,
+    remove_outliers_by_x_range,
+)
+
+
+@pytest.fixture
+def clean_xy_df() -> pd.DataFrame:
+    """Small DataFrame with x and y columns, no outliers."""
+    rng = np.random.default_rng(0)
+    x = np.linspace(0.0, 1.0, 40)
+    y = 2.0 * x + rng.normal(0, 0.02, 40)
+    return pd.DataFrame({"x": x, "y": y})
+
+
+@pytest.fixture
+def xy_df_with_spike(clean_xy_df: pd.DataFrame) -> pd.DataFrame:
+    """Same DataFrame with two obvious outliers injected."""
+    df = clean_xy_df.copy()
+    df.loc[5, "y"] = 100.0    # spike high
+    df.loc[10, "y"] = -100.0  # spike low
+    return df
+
+
+class TestRemoveOutliers:
+    def test_returns_dataframe(self, clean_xy_df: pd.DataFrame) -> None:
+        result = remove_outliers(clean_xy_df, method="iqr")
+        assert isinstance(result, pd.DataFrame)
+
+    def test_columns_preserved(self, clean_xy_df: pd.DataFrame) -> None:
+        result = remove_outliers(clean_xy_df, method="iqr")
+        assert "x" in result.columns and "y" in result.columns
+
+    def test_iqr_removes_spikes(self, xy_df_with_spike: pd.DataFrame) -> None:
+        result = remove_outliers(xy_df_with_spike, method="iqr", threshold=1.5)
+        assert len(result) < len(xy_df_with_spike)
+
+    def test_iqr_spike_values_gone(self, xy_df_with_spike: pd.DataFrame) -> None:
+        result = remove_outliers(xy_df_with_spike, method="iqr", threshold=1.5)
+        assert (result["y"].abs() < 10.0).all()
+
+    def test_zscore_removes_spikes(self, xy_df_with_spike: pd.DataFrame) -> None:
+        result = remove_outliers(xy_df_with_spike, method="zscore", threshold=2.0)
+        assert (result["y"].abs() < 10.0).all()
+
+    def test_mad_removes_spikes(self, xy_df_with_spike: pd.DataFrame) -> None:
+        result = remove_outliers(xy_df_with_spike, method="mad", threshold=2.0)
+        assert (result["y"].abs() < 10.0).all()
+
+    def test_unknown_method_raises(self, clean_xy_df: pd.DataFrame) -> None:
+        with pytest.raises(ValueError, match="Unknown method"):
+            remove_outliers(clean_xy_df, method="bogus")
+
+    def test_clean_data_mostly_kept(self, clean_xy_df: pd.DataFrame) -> None:
+        result = remove_outliers(clean_xy_df, method="iqr", threshold=3.0)
+        assert len(result) >= len(clean_xy_df) * 0.9
+
+    def test_reset_index(self, xy_df_with_spike: pd.DataFrame) -> None:
+        result = remove_outliers(xy_df_with_spike, method="iqr")
+        assert result.index.tolist() == list(range(len(result)))
+
+
+class TestRemoveOutliersByXRange:
+    def test_removes_below_x_min(self, clean_xy_df: pd.DataFrame) -> None:
+        result = remove_outliers_by_x_range(clean_xy_df, x_min=0.5)
+        assert (result["x"] >= 0.5).all()
+
+    def test_removes_above_x_max(self, clean_xy_df: pd.DataFrame) -> None:
+        result = remove_outliers_by_x_range(clean_xy_df, x_max=0.5)
+        assert (result["x"] <= 0.5).all()
+
+    def test_both_bounds(self, clean_xy_df: pd.DataFrame) -> None:
+        result = remove_outliers_by_x_range(clean_xy_df, x_min=0.2, x_max=0.8)
+        assert (result["x"] >= 0.2).all() and (result["x"] <= 0.8).all()
+
+    def test_no_bounds_returns_all(self, clean_xy_df: pd.DataFrame) -> None:
+        result = remove_outliers_by_x_range(clean_xy_df)
+        assert len(result) == len(clean_xy_df)
+
+    def test_returns_dataframe(self, clean_xy_df: pd.DataFrame) -> None:
+        assert isinstance(remove_outliers_by_x_range(clean_xy_df, x_min=0.0), pd.DataFrame)
+
+    def test_reset_index(self, clean_xy_df: pd.DataFrame) -> None:
+        result = remove_outliers_by_x_range(clean_xy_df, x_min=0.3)
+        assert result.index.tolist() == list(range(len(result)))
+
+
+class TestHysteresisModel:
+    def test_output_length(self) -> None:
+        x = np.array([0.0, 0.5, 1.0, 0.5, 0.0])
+        out = hysteresis_model(x, ascending_threshold=0.8, descending_threshold=0.2)
+        assert len(out) == len(x)
+
+    def test_stays_low_below_ascending_threshold(self) -> None:
+        x = np.linspace(0.0, 0.7, 20)
+        out = hysteresis_model(x, ascending_threshold=0.8, descending_threshold=0.2)
+        assert (out == 0.0).all()
+
+    def test_switches_high_above_ascending_threshold(self) -> None:
+        x = np.array([0.0, 0.9, 0.9])
+        out = hysteresis_model(x, ascending_threshold=0.8, descending_threshold=0.2)
+        assert out[-1] == pytest.approx(1.0)
+
+    def test_switches_low_below_descending_threshold(self) -> None:
+        x = np.array([0.0, 0.9, 0.1])
+        out = hysteresis_model(x, ascending_threshold=0.8, descending_threshold=0.2)
+        assert out[-1] == pytest.approx(0.0)
+
+    def test_hysteresis_band_stays_high(self) -> None:
+        """Inside [desc, asc] band, state should not change."""
+        x = np.array([0.0, 0.9, 0.5])  # 0.9 → high, 0.5 is in [0.2, 0.8] → stays high
+        out = hysteresis_model(x, ascending_threshold=0.8, descending_threshold=0.2)
+        assert out[-1] == pytest.approx(1.0)
+
+    def test_custom_output_values(self) -> None:
+        x = np.array([0.0, 0.9])
+        out = hysteresis_model(x, ascending_threshold=0.8, descending_threshold=0.2,
+                               low_value=5.0, high_value=10.0)
+        assert out[-1] == pytest.approx(10.0)
+
+    def test_invalid_thresholds_raises(self) -> None:
+        with pytest.raises(ValueError):
+            hysteresis_model(np.array([0.5]), ascending_threshold=0.2, descending_threshold=0.8)
+
+    def test_full_cycle_returns_to_low(self) -> None:
+        x = np.concatenate([np.linspace(0.0, 1.0, 50), np.linspace(1.0, 0.0, 50)])
+        out = hysteresis_model(x, ascending_threshold=0.8, descending_threshold=0.2)
+        assert out[-1] == pytest.approx(0.0)
+
+
+class TestMultiLevelHysteresis:
+    @pytest.fixture
+    def two_level_params(self) -> dict:
+        return {
+            "thresholds": [(0.4, 0.1), (0.7, 0.3)],
+            "low_values": [0.0, 0.5],
+            "high_values": [0.5, 1.0],
+        }
+
+    def test_output_length(self, two_level_params: dict) -> None:
+        x = np.linspace(0.0, 1.0, 30)
+        out = multi_level_hysteresis(x, **two_level_params)
+        assert len(out) == len(x)
+
+    def test_mismatched_lengths_raises(self) -> None:
+        with pytest.raises(ValueError):
+            multi_level_hysteresis(
+                np.array([0.5]),
+                thresholds=[(0.4, 0.1)],
+                low_values=[0.0, 0.5],
+                high_values=[1.0],
+            )
+
+    def test_unordered_ascending_thresholds_raises(self) -> None:
+        with pytest.raises(ValueError, match="ascending thresholds must be in ascending order"):
+            multi_level_hysteresis(
+                np.array([0.5]),
+                thresholds=[(0.7, 0.1), (0.4, 0.3)],
+                low_values=[0.0, 0.5],
+                high_values=[0.5, 1.0],
+            )
+
+    def test_descending_not_less_than_ascending_raises(self) -> None:
+        with pytest.raises(ValueError):
+            multi_level_hysteresis(
+                np.array([0.5]),
+                thresholds=[(0.4, 0.5), (0.7, 0.8)],  # desc >= asc
+                low_values=[0.0, 0.5],
+                high_values=[0.5, 1.0],
+            )
+
+    def test_ramp_up_reaches_highest_level(self, two_level_params: dict) -> None:
+        x = np.linspace(0.0, 1.0, 100)
+        out = multi_level_hysteresis(x, **two_level_params)
+        assert out[-1] == pytest.approx(1.0)
+
+    def test_ramp_down_returns_to_low(self, two_level_params: dict) -> None:
+        x = np.concatenate([np.linspace(0.0, 1.0, 50), np.linspace(1.0, 0.0, 50)])
+        out = multi_level_hysteresis(x, **two_level_params)
+        assert out[-1] == pytest.approx(0.0)
+
+
+class TestRelayHysteresis:
+    def test_output_length(self) -> None:
+        x = np.linspace(-1.0, 1.0, 50)
+        out = relay_hysteresis(x, center=0.0, width=0.4)
+        assert len(out) == len(x)
+
+    def test_starts_low(self) -> None:
+        x = np.array([-0.5, -0.4, -0.3])
+        out = relay_hysteresis(x, center=0.0, width=0.2)
+        assert out[0] == pytest.approx(0.0)
+
+    def test_switches_to_high_above_upper_edge(self) -> None:
+        # center=0, width=0.4 → upper edge = center + width/2 = 0.2
+        x = np.array([-1.0, 0.3])
+        out = relay_hysteresis(x, center=0.0, width=0.4)
+        assert out[-1] == pytest.approx(1.0)
+
+    def test_switches_to_low_below_lower_edge(self) -> None:
+        x = np.array([-1.0, 0.5, -0.5])
+        out = relay_hysteresis(x, center=0.0, width=0.4)
+        assert out[-1] == pytest.approx(0.0)
+
+    def test_custom_output_values(self) -> None:
+        x = np.array([-1.0, 0.5])
+        out = relay_hysteresis(x, center=0.0, width=0.4, low_value=2.0, high_value=7.0)
+        assert out[-1] == pytest.approx(7.0)
+
+
+class TestContinuousHysteresis:
+    def test_output_length(self) -> None:
+        x = np.linspace(-1.0, 1.0, 50)
+        out = continuous_hysteresis(x, center=0.0, width=0.4)
+        assert len(out) == len(x)
+
+    def test_output_bounded(self) -> None:
+        x = np.linspace(-2.0, 2.0, 100)
+        out = continuous_hysteresis(x, center=0.0, width=0.6, low_value=0.0, high_value=1.0)
+        assert out.min() >= 0.0 - 1e-6
+        assert out.max() <= 1.0 + 1e-6
+
+    def test_custom_output_values_bounded(self) -> None:
+        x = np.linspace(-2.0, 2.0, 100)
+        out = continuous_hysteresis(x, center=0.0, width=0.4, low_value=3.0, high_value=8.0)
+        assert out.min() >= 3.0 - 1e-6
+        assert out.max() <= 8.0 + 1e-6
+
+    def test_transitions_are_smooth(self) -> None:
+        """No consecutive output jump should be discontinuously large."""
+        x = np.linspace(-1.0, 1.0, 200)
+        out = continuous_hysteresis(x, center=0.0, width=0.4, slope=5)
+        max_jump = np.max(np.abs(np.diff(out)))
+        assert max_jump < 0.2
+
+
+# ---------------------------------------------------------------------------
+# breakingpoints.py — detect_changes (skipped if ruptures not installed)
+# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -463,13 +736,13 @@ def constant_series() -> pd.Series:
     return pd.Series(np.ones(60), name="constant")
 
 
+@needs_ruptures
 class TestDetectChanges:
     def test_returns_list(self, step_series: pd.Series) -> None:
         changes = detect_changes(step_series, algoname="Binseg", model="l2", n_bkps=1)
         assert isinstance(changes, list)
 
     def test_all_changes_within_bounds(self, step_series: pd.Series) -> None:
-        """No change point index should equal len(signal) (excluded by the code)."""
         changes = detect_changes(step_series, algoname="Binseg", model="l2", n_bkps=2)
         assert all(c < len(step_series) for c in changes)
 
@@ -483,7 +756,6 @@ class TestDetectChanges:
         assert len(changes) <= 2
 
     def test_dynp_algorithm(self) -> None:
-        """Dynp algorithm should also detect a step change."""
         data = np.concatenate([np.zeros(40), np.ones(40) * 5])
         ts = pd.Series(data)
         changes = detect_changes(ts, algoname="Dynp", model="l2", n_bkps=1)
@@ -491,7 +763,6 @@ class TestDetectChanges:
         assert all(c < len(ts) for c in changes)
 
     def test_multiple_steps_detected(self) -> None:
-        """Three-level step series should yield at least two change points."""
         data = np.concatenate([np.zeros(30), np.ones(30) * 5, np.ones(30) * 10])
         ts = pd.Series(data)
         changes = detect_changes(ts, algoname="Binseg", model="l2", n_bkps=2)
