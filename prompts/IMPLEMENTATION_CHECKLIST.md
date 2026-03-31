@@ -1,6 +1,6 @@
 # Implementation Checklist — python_magnetrun
 
-*Last updated: 2026-03-30 — branch `separate-cooling`*
+*Last updated: 2026-03-30 — branch `separate-cooling` — commit `10ef4a4`*
 
 Tracks progress against [ROADMAP.md](ROADMAP.md).
 
@@ -26,7 +26,7 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 | Meaningful assertions in `test_python_magnetrun.py` | ⬜ Pending | File has 18 lines and **0 assertions** |
 | Unit tests for `magnetdata.py` |  ✅ Done | `fromtdms`, `fromtxt`, `getData`, column renaming |
 | Unit tests for `processing/` |  ✅ Done | `smoothers`, `trends`, `peaks`, `stats` — pure functions |
-| Integration smoke-tests for CLI entry points | ✅ Done | tests/test_cli_entrypoints.py added |
+| Integration smoke-tests for CLI entry points | ✅ Done | `dcbdde5` — `tests/test_cli_entrypoints.py` added |
 | CI pipeline (GitHub Actions) | ⬜ Pending | No `.github/workflows/` directory yet |
 | `mypy` pre-commit hook | ⬜ Pending | Present in `.pre-commit-config.yaml` but commented out |
 
@@ -89,7 +89,7 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 
 | File | Status | Notes |
 |------|--------|-------|
-| `magnetdata.py` (~1500 lines) | ⬜ Pending | Split into `io.py`, `transform.py`, `query.py` |
+| `magnetdata.py` (~1500 lines) | ✅ Done | `10ef4a4` — split into `magnetdata_base.py` (175 l), `magnetdata_pandas.py` (683 l), `magnetdata_tdms.py` (471 l); `magnetdata.py` is now a thin 235-line facade |
 | `python_magnetrun.py` (~1300 lines) | ⬜ Pending | Split into `cli.py`, `commands/plot.py`, etc. |
 
 ### Phase 3B — Type hints
@@ -150,7 +150,7 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 9. **`CHANNEL_ALIASES` registry** in `analysis/config.py`
 
 ### Lower priority / ongoing
-10. Break up `magnetdata.py` and `python_magnetrun.py`
+10. ~~Break up `magnetdata.py`~~ **Done** (`10ef4a4`); break up `python_magnetrun.py` remains
 11. Backfill type hints on public APIs
 12. `pathlib.Path` migration (opportunistic, per-file-touched)
 13. `pydantic.BaseSettings` for site configs
