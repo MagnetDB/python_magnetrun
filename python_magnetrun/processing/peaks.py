@@ -26,14 +26,11 @@ def detect_peaks(
     debug: bool = False,
 ) -> pd.Series:
     # use rolling() to calculate the rolling minimum
-    print(
-        f"Rolling windows for {channel}: window_size={window_size}, show={not save}",
-        flush=True,
-    )
+    logger.info(f"Rolling windows for {channel}: window_size={window_size}, show={not save}")
     rolling_mean = ts.rolling(window_size).mean()
-    print(f"rolling_mean: {rolling_mean.describe()}")
+    logger.debug(f"rolling_mean: {rolling_mean.describe()}")
     rolling_std = ts.rolling(window_size).std()
-    print(f"rolling_std: {rolling_std.describe()}")
+    logger.debug(f"rolling_std: {rolling_std.describe()}")
 
     # find picks
     from scipy.signal import find_peaks, peak_prominences
@@ -44,11 +41,11 @@ def detect_peaks(
     x = rolling_std.to_numpy()
     peaks, peaks_properties = find_peaks(x, height=height)
     if peaks.shape[0] != 0:
-        print(f"peaks: {peaks.shape}")
+        logger.debug(f"peaks: {peaks.shape}")
         # print(f'peaks: {peaks.tolist()}')
         # print(f'peaks heights: {peaks_properties["peak_heights"]}, type={type(peaks_properties["peak_heights"])}')
         prominences = peak_prominences(x, peaks)[0]
-        print(
+        logger.debug(
             f"prominences:  min={prominences.min()}, mean={prominences.mean()}, max={prominences.max()}, std={prominences.std()}"
         )
 

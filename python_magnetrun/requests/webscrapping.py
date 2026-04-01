@@ -544,7 +544,7 @@ def getMagnetPart(
     Confs[magnet] = files
     if save:
         for file in files:
-            print(f"file={file}")
+            logger.info(f"file={file}")
             r = download(
                 session,
                 url_data=url_confs,

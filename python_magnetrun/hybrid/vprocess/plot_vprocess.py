@@ -471,8 +471,8 @@ Examples:
         )
 
     else:
-        print("Please specify --vars, --overview, --compare, or --heatmap")
-        print("Use --help for more information")
+        logger.warning("Please specify --vars, --overview, --compare, or --heatmap")
+        logger.warning("Use --help for more information")
 
 
 if __name__ == "__main__":

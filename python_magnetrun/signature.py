@@ -275,4 +275,4 @@ class Signature:
             del data["times"]
             del data["values"]
             json.dump(data, file, indent=4)
-        print(f"Signature saved to {os.path.abspath(sfilename)}")
+        logger.info(f"Signature saved to {os.path.abspath(sfilename)}")

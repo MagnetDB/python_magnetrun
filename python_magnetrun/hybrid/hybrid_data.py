@@ -192,7 +192,9 @@ class HybridData:
                         # Store trigger files
                         if system not in self._info.trigger_files:
                             self._info.trigger_files[system] = []
-                        self._info.trigger_files[system].extend(list(system_dir.glob("*")))
+                        self._info.trigger_files[system].extend(
+                            list(system_dir.glob("*"))
+                        )
 
         # Build groups and keys
         self._build_groups()
@@ -277,40 +279,40 @@ class HybridData:
 
     def print_summary(self) -> None:
         """Print summary of available data"""
-        print(f"HybridData Summary for {self.date_str}")
-        print("=" * 60)
-        print(f"Base directory: {self.base_dir}")
-        print(f"FEPC Systems: {', '.join(self._info.fepc_systems)}")
-        print()
+        logger.info(f"HybridData Summary for {self.date_str}")
+        logger.info("=" * 60)
+        logger.info(f"Base directory: {self.base_dir}")
+        logger.info(f"FEPC Systems: {', '.join(self._info.fepc_systems)}")
 
-        print("Data availability:")
-        print(f"  kHz data:     {'✓' if self._info.khz_available else '✗'}")
-        print(f"  RMS data:     {'✓' if self._info.rms_available else '✗'}")
-        print(f"  Trigger data: {'✓' if self._info.trigger_available else '✗'}")
-        print()
+        logger.info("Data availability:")
+        logger.info(f"  kHz data:     {'yes' if self._info.khz_available else 'no'}")
+        logger.info(f"  RMS data:     {'yes' if self._info.rms_available else 'no'}")
+        logger.info(
+            f"  Trigger data: {'yes' if self._info.trigger_available else 'no'}"
+        )
 
         if self._info.khz_available:
-            print("kHz files:")
+            logger.info("kHz files:")
             for system, files in self._info.khz_files.items():
                 if not system.endswith("_cfg"):
-                    print(f"  {system}: {len(files)} files")
+                    logger.info(f"  {system}: {len(files)} files")
 
         if self._info.rms_available:
-            print("RMS files:")
+            logger.info("RMS files:")
             for system, files in self._info.rms_files.items():
-                print(f"  {system}: {len(files)} files")
+                logger.info(f"  {system}: {len(files)} files")
 
         if self._info.trigger_available:
-            print("Trigger directories:")
+            logger.info("Trigger directories:")
             for system, dirs in self._info.trigger_dirs.items():
-                print(f"  {system}: {len(dirs)} trigger events")
+                logger.info(f"  {system}: {len(dirs)} trigger events")
                 for d in dirs:
                     # Extract time from directory name (TRIGGER__YYYY-MM-DD__HH-MM)
                     time_part = d.name.split("__")[-1] if "__" in d.name else ""
-                    print(f"    - {time_part}")
-            print("Trigger files:")
+                    logger.info(f"    - {time_part}")
+            logger.info("Trigger files:")
             for system, files in self._info.trigger_files.items():
-                print(f"  {system}: {len(files)} files")
+                logger.info(f"  {system}: {len(files)} files")
 
     # -------------------------------------------------------------------------
     # kHz Data Methods
@@ -389,7 +391,7 @@ class HybridData:
         system: str,
         variable: str,
         slot: int | None = None,
-        hours: list[int] | None = None,
+        hours: range | list[int] | None = None,
         apply_calib: bool = True,
         cnv_dir: str | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
@@ -404,7 +406,7 @@ class HybridData:
             Variable name
         slot : int, optional
             Card slot number (auto-detected if not provided)
-        hours : list of int, optional
+        hours : range or list of int, optional
             Hours to read (default: all available)
         apply_calib : bool, optional
             Apply calibration (default: True)
@@ -416,6 +418,9 @@ class HybridData:
         tuple
             (data_array, time_array)
         """
+        print(
+            f"read_kHz_variable: system={system}, variable={variable}, slot={slot}, hours={hours}, apply_calib={apply_calib}, cnv_dir={cnv_dir}"
+        )
         logger.debug(f"read_khz_variable: system={system}, variable={variable}")
 
         if read_hour_file is None or calibrate_channel is None:
@@ -430,7 +435,10 @@ class HybridData:
         var_channel = None
         var_card = None
 
-        for card in config.cards:
+        for _i, card in enumerate(config.cards):
+            logger.debug(
+                f"Checking card slot {card.slot} with variables: {card.variable_names}"
+            )
             if variable in card.variable_names:
                 var_slot = card.slot
                 var_channel = card.variable_names.index(variable)
@@ -456,6 +464,7 @@ class HybridData:
                         filtered_files.append(f)
                 except ValueError:
                     pass
+            print(f"filtered_files: {filtered_files}")
             bin_files = filtered_files
 
         if not bin_files:
@@ -469,7 +478,9 @@ class HybridData:
         debug = logger.isEnabledFor(logging.DEBUG)
         for bin_file in bin_files:
             logger.debug(f"Reading {bin_file.name}...")
-            hour_data = read_hour_file(str(bin_file), card_type, endian=self.endian, debug=debug)
+            hour_data = read_hour_file(
+                str(bin_file), card_type, endian=self.endian, debug=debug
+            )
             all_data.append(hour_data[:, var_channel])
 
         data = np.concatenate(all_data)
@@ -514,7 +525,9 @@ class HybridData:
 
         rms_files = self._info.rms_files[system]
         if file_idx >= len(rms_files):
-            raise ValueError(f"File index {file_idx} out of range (max: {len(rms_files) - 1})")
+            raise ValueError(
+                f"File index {file_idx} out of range (max: {len(rms_files) - 1})"
+            )
 
         rms_file = rms_files[file_idx]
         reader = RMSFileReader(str(rms_file), endian=self.endian)
@@ -622,7 +635,7 @@ class HybridData:
         system: str,
         variable: str,
         file_idx: int | None = None,
-        hours: list[int] | None = None,
+        hours: range | list[int] | None = None,
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Read RMS data for a specific variable
@@ -635,7 +648,7 @@ class HybridData:
             Variable name
         file_idx : int, optional
             Index of a specific RMS file to load. If provided, only this file is loaded.
-        hours : list of int, optional
+        hours : range or list of int, optional
             List of hours to load (0-23). Files are selected based on their filename start hour.
 
         If both file_idx and hours are None, all available RMS files are loaded.
@@ -645,7 +658,9 @@ class HybridData:
         tuple
             (data_array, time_array) where time is in seconds from start
         """
-        logger.debug(f"read_rms_variable: system={system}, variable={variable}, hours={hours}")
+        logger.debug(
+            f"read_rms_variable: system={system}, variable={variable}, hours={hours}"
+        )
         if RMSFileReader is None:
             raise ImportError("rms_reader module not available")
 
@@ -660,7 +675,9 @@ class HybridData:
         if file_idx is not None:
             # Load specific file by index
             if file_idx >= len(rms_files):
-                raise ValueError(f"File index {file_idx} out of range (max: {len(rms_files) - 1})")
+                raise ValueError(
+                    f"File index {file_idx} out of range (max: {len(rms_files) - 1})"
+                )
             files_to_load = [rms_files[file_idx]]
         elif hours is not None:
             # Filter files by hour
@@ -797,7 +814,11 @@ class HybridData:
     # MagnetData-like Interface Methods
     # -------------------------------------------------------------------------
 
-    def getData(self, key: str | None = None) -> Any:
+    def getData(
+        self,
+        key: str | None = None,
+        hours: range | list[int] | None = None,
+    ) -> Any:
         """
         Get data for a specific key (MagnetData-compatible interface)
 
@@ -805,6 +826,8 @@ class HybridData:
         ----------
         key : str, optional
             Data key in format 'type/system' or 'type/system/variable'
+        hours : range or list of int, optional
+            Hours to read (default: all available)
 
         Returns
         -------
@@ -814,6 +837,7 @@ class HybridData:
             return self.Data
 
         parts = key.split("/")
+        print(f"hybrid_data.getData: key={key}, parts={parts}, hours={hours}")
         if len(parts) < 2:
             raise ValueError(f"Invalid key format: {key}")
 
@@ -823,7 +847,7 @@ class HybridData:
         if data_type == "kHz":
             if len(parts) >= 3:
                 variable = parts[2]
-                return self.read_khz_variable(system, variable)
+                return self.read_khz_variable(system, variable, hours=hours)
             else:
                 return self.get_khz_variables(system)
 
@@ -856,7 +880,7 @@ class HybridData:
         self,
         system: str,
         variable: str,
-        hours: list[int] | None = None,
+        hours: range | list[int] | None = None,
         apply_calib: bool = True,
         cnv_dir: str | None = None,
         ax=None,
@@ -878,7 +902,7 @@ class HybridData:
             FEPC system name
         variable : str
             Variable name
-        hours : list of int, optional
+        hours : range or list of int, optional
             Hours to read (default: all available)
         apply_calib : bool, optional
             Apply calibration (default: True)
@@ -939,7 +963,7 @@ class HybridData:
         self,
         system: str,
         variables: list[str],
-        hours: list[int] | None = None,
+        hours: range | list[int] | None = None,
         apply_calib: bool = True,
         cnv_dir: str | None = None,
         layout: str = "subplots",
@@ -962,7 +986,7 @@ class HybridData:
             FEPC system name
         variables : list of str
             List of variable names to plot
-        hours : list of int, optional
+        hours : range or list of int, optional
             Hours to read (default: all available)
         apply_calib : bool, optional
             Apply calibration (default: True)
@@ -1028,7 +1052,7 @@ class HybridData:
         system: str,
         variable: str,
         file_idx: int | None = None,
-        hours: list[int] | None = None,
+        hours: range | list[int] | None = None,
         ax=None,
         show: bool = True,
         save: str | None = None,
@@ -1050,7 +1074,7 @@ class HybridData:
             Variable name
         file_idx : int, optional
             Index of RMS file to load (used if hours is None, default: 0)
-        hours : list of int, optional
+        hours : range or list of int, optional
             List of hours to load (0-23). If provided, file_idx is ignored.
         ax : matplotlib.axes.Axes, optional
             Axes to plot on (creates new figure if None)
@@ -1079,7 +1103,9 @@ class HybridData:
         outlier_result = None
         if remove_outliers_method:
             # Read data for outlier detection
-            data, _ = self.read_rms_variable(system, variable, file_idx=file_idx, hours=hours)
+            data, _ = self.read_rms_variable(
+                system, variable, file_idx=file_idx, hours=hours
+            )
             outlier_result = detect_outliers(
                 data,
                 method=remove_outliers_method,
@@ -1105,7 +1131,7 @@ class HybridData:
         system: str,
         variables: list[str],
         file_idx: int | None = None,
-        hours: list[int] | None = None,
+        hours: range | list[int] | None = None,
         layout: str = "subplots",
         share_x: bool = True,
         show: bool = True,
@@ -1128,7 +1154,7 @@ class HybridData:
             List of variable names to plot
         file_idx : int, optional
             Index of RMS file to load
-        hours : list of int, optional
+        hours : range or list of int, optional
             List of hours to load (0-23)
         layout : str, optional
             Plot layout: 'subplots' (default) or 'overlay'
@@ -1160,7 +1186,9 @@ class HybridData:
         if remove_outliers_method:
             outlier_results = {}
             for var in variables:
-                data, _ = self.read_rms_variable(system, var, file_idx=file_idx, hours=hours)
+                data, _ = self.read_rms_variable(
+                    system, var, file_idx=file_idx, hours=hours
+                )
                 outlier_results[var] = detect_outliers(
                     data,
                     method=remove_outliers_method,
@@ -1187,10 +1215,10 @@ class HybridData:
         system: str,
         khz_variable: str,
         rms_variable: str | None = None,
-        hours: list[int] | None = None,
+        hours: range | list[int] | None = None,
         apply_calib: bool = True,
         rms_file_idx: int | None = None,
-        rms_hours: list[int] | None = None,
+        rms_hours: range | list[int] | None = None,
         show: bool = True,
         save: str | None = None,
     ):
@@ -1207,13 +1235,13 @@ class HybridData:
             kHz variable name
         rms_variable : str, optional
             RMS variable name (defaults to khz_variable if None)
-        hours : list of int, optional
+        hours : range or list of int, optional
             Hours to read for kHz data (also used for RMS if rms_hours is None)
         apply_calib : bool, optional
             Apply calibration to kHz data (default: True)
         rms_file_idx : int, optional
             Index of RMS file to load (ignored if rms_hours is provided)
-        rms_hours : list of int, optional
+        rms_hours : range or list of int, optional
             Hours to read for RMS data (defaults to hours if None)
         show : bool, optional
             Show plot (default: True)

@@ -6,23 +6,18 @@ This script reads and plots specific variables from trigger binary files.
 
 import argparse
 import logging
-import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Import trigger reader
-from trigger_reader import (
+from ..kHz.fepc_reader import CalibrationInfo
+from .trigger_reader import (
     create_time_array,
     find_trigger_directories,
     parse_trigger_directory,
     read_trigger_data,
 )
-
-# Import calibration from kHz module
-sys.path.insert(0, str(Path(__file__).parent.parent / "kHz"))
-from fepc_reader import CalibrationInfo
 
 # Setup logger
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
@@ -344,19 +339,19 @@ def main():
         epilog="""
 Examples:
   # Plot single trigger
-  python plot_trigger_data.py --trigger-dir /data/hybrid/trigger/TRIGGER_2025-11-05_08-16 \\
+  python -m python_magnetrun.hybrid.trigger.plot_trigger_data --trigger-dir /data/hybrid/trigger/TRIGGER_2025-11-05_08-16 \\
                                --system FEPC-LNCMI --variable I_H1
 
   # Plot all triggers for a date
-  python plot_trigger_data.py --base-dir /data/hybrid --date 2025-11-05 \\
+  python -m python_magnetrun.hybrid.trigger.plot_trigger_data --base-dir /data/hybrid --date 2025-11-05 \\
                                --system FEPC-LNCMI --variable I_H1 --all
 
   # Save plot
-  python plot_trigger_data.py --trigger-dir /data/hybrid/trigger/TRIGGER_2025-11-05_08-16 \\
+  python -m python_magnetrun.hybrid.trigger.plot_trigger_data --trigger-dir /data/hybrid/trigger/TRIGGER_2025-11-05_08-16 \\
                                --system FEPC-LNCMI --variable I_H1 --save trigger_plot.png
 
   # Skip calibration
-  python plot_trigger_data.py --trigger-dir /data/hybrid/trigger/TRIGGER_2025-11-05_08-16 \\
+  python -m python_magnetrun.hybrid.trigger.plot_trigger_data --trigger-dir /data/hybrid/trigger/TRIGGER_2025-11-05_08-16 \\
                                --system FEPC-LNCMI --variable I_H1 --no-calib
         """,
     )
@@ -419,7 +414,7 @@ Examples:
         if args.all:
             # Plot all triggers for date
             if not args.base_dir or not args.date:
-                print("Error: --base-dir and --date required for --all mode")
+                logger.error("Error: --base-dir and --date required for --all mode")
                 return
 
             plot_multiple_triggers(
@@ -438,7 +433,7 @@ Examples:
         else:
             # Plot single trigger
             if not args.trigger_dir:
-                print("Error: --trigger-dir required")
+                logger.error("Error: --trigger-dir required")
                 return
 
             plot_trigger_variable(

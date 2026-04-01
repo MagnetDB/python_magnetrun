@@ -4,7 +4,7 @@ import logging
 import os
 
 import matplotlib.pyplot as plt
-from pint import UnitRegistry
+from pint import UnitRegistry  # noqa: I001
 
 from python_magnetcooling.water_properties import get_cp, get_rho
 

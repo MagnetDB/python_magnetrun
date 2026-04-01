@@ -29,8 +29,10 @@ class TdmsMagnetData(MagnetDataBase):
 
     def getTdmsData(self, group: str, channel: str | list[str] | None) -> pd.DataFrame:
         if not isinstance(self.Data, dict):
-            raise Exception(f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict")
-        if channel is None:
+            raise Exception(
+                f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict"
+            )
+        if channel is None or not channel:
             return self.Data[group]
         return self.Data[group][channel]
 
@@ -129,7 +131,9 @@ class TdmsMagnetData(MagnetDataBase):
             elif key == "timestamp":
                 return ("time", None)
             else:
-                raise RuntimeError(f"{key} not defined in data - available keys are {self.Keys}")
+                raise RuntimeError(
+                    f"{key} not defined in data - available keys are {self.Keys}"
+                )
         (group, channel) = key.split("/")
         return self.PigBrotherUnits(group)
 
@@ -142,7 +146,7 @@ class TdmsMagnetData(MagnetDataBase):
         self, key: str, formula: str, unit: str | None = None, debug: bool = False
     ) -> int:
         (group, channel) = key.split("/")
-        print(f"add: key={key} - group={group}, channel={channel}")
+        logger.debug(f"add: key={key} - group={group}, channel={channel}")
 
         nformula = formula.replace(f"{group}/", "")
 
@@ -151,10 +155,10 @@ class TdmsMagnetData(MagnetDataBase):
         match = re.findall(r"(\w+)/(\w+)", nformula)
         if match:
             for matched in match:
-                print(f"matched={matched[0]}/{matched[1]}")
+                logger.debug(f"matched={matched[0]}/{matched[1]}")
                 self.Data[group][matched[1]] = self.Data[matched[0]][matched[1]]  # type: ignore[index]
                 nformula = nformula.replace(f"{matched[0]}/", "")
-        print(f"formula: {nformula}")
+        logger.debug(f"formula: {nformula}")
 
         try:
             self.Data[group].eval(nformula, inplace=True)  # type: ignore[index]
@@ -180,31 +184,51 @@ class TdmsMagnetData(MagnetDataBase):
         unit: tuple | None = None,
         debug: bool = False,
     ) -> None:
-        raise RuntimeError(f"computeData: key={key} not implemented for pigbrother file")
+        raise RuntimeError(
+            f"computeData: key={key} not implemented for pigbrother file"
+        )
 
     # --- time utilities ----------------------------------------------
 
     def getStartDate(self, group: str | None = None) -> tuple:  # noqa: N802
         if group is None:
+            group = next(
+                (g for g in self.Groups if g != "Infos" and self.Groups[g]),
+                None,
+            )
+        if group is None:
             return ()
+
         channel = list(self.Groups[group].keys())[0]
-        start_t = self.Groups[group][channel]["wf_start_time"].astype(datetime)
-        offset_t = self.Groups[group][channel]["wf_start_offset"]
-        print(
-            f"getStartDate: tdms start_t={start_t} (type={type(start_t)}), offset_t={offset_t} (type={type(offset_t)})"
-        )
+        props = self.Groups[group][channel]
+        if "wf_start_time" not in props:
+            return ()
+
+        start_t = props["wf_start_time"].astype(datetime)
+        logger.debug(f"getStartDate: tdms start_t={start_t} (type={type(start_t)})")
+
+        from datetime import timedelta
+
+        duration_s = self.getDuration(group)
+        end_t = start_t + timedelta(seconds=duration_s)
 
         dformat = "%Y.%m.%d"
         tformat = "%H:%M:%S"
-        start_date = datetime.strptime(start_t, dformat)
-        start_time = datetime.strptime(start_t, tformat)
-        end_date = datetime.strptime(start_t, dformat)
-        end_time = datetime.strptime(start_t, tformat)
-        return (start_date, start_time, end_date, end_time)
+        return (
+            start_t.strftime(dformat),
+            start_t.strftime(tformat),
+            end_t.strftime(dformat),
+            end_t.strftime(tformat),
+        )
 
     def getDuration(self, group: str | None = None) -> float:  # noqa: N802
         if group is None:
-            group = "Tensions_Aimant"
+            group = next(
+                (g for g in self.Groups if g != "Infos" and self.Groups[g]),
+                None,
+            )
+        if group is None:
+            return 0.0
         channel = list(self.Groups[group].keys())[0]
         ordered_dict = self.Groups[group][channel]
         dt = ordered_dict["wf_increment"]
@@ -230,7 +254,9 @@ class TdmsMagnetData(MagnetDataBase):
             if gname == "Infos":
                 continue
             if "t" in self.Data[gname].columns:
-                logger.debug(f"addTdmsTime: 't' already present in group '{gname}', skipping")
+                logger.debug(
+                    f"addTdmsTime: 't' already present in group '{gname}', skipping"
+                )
                 continue
 
             group_channels = self.Groups.get(gname, {})
@@ -295,7 +321,7 @@ class TdmsMagnetData(MagnetDataBase):
     # --- extract -----------------------------------------------------
 
     def extractData(self, keys: list[str]) -> pd.DataFrame:  # noqa: N802
-        print(f"extractData: filename={self.FileName}, keys={keys}", end="", flush=True)
+        logger.debug(f"extractData: filename={self.FileName}, keys={keys}")
         groups: list[str] = []
         channels: list[str] = []
         dfs: list[pd.DataFrame] = []
@@ -325,7 +351,9 @@ class TdmsMagnetData(MagnetDataBase):
 
         return result
 
-    def extractDataThreshold(self, key: str, threshold: float) -> pd.DataFrame:  # noqa: N802
+    def extractDataThreshold(
+        self, key: str, threshold: float
+    ) -> pd.DataFrame:  # noqa: N802
         (group, channel) = key.split("/")
         return self.Data[group][channel].loc[self.Data[group][channel] >= threshold]  # type: ignore[index]
 
@@ -333,7 +361,7 @@ class TdmsMagnetData(MagnetDataBase):
         self, timerange: str, group: str | None = None
     ) -> pd.DataFrame:
         trange = timerange.split(";")
-        print(f"Select data from {trange[0]} to {trange[1]}")
+        logger.debug(f"Select data from {trange[0]} to {trange[1]}")
         return self.Data[group]["timestamp"].between(trange[0], trange[1], inclusive="both")  # type: ignore[index]
 
     # --- persist / display -------------------------------------------
@@ -414,12 +442,12 @@ class TdmsMagnetData(MagnetDataBase):
     def stats(self, key: str | None = None) -> pd.DataFrame | None:
         from tabulate import tabulate
 
-        print("magnetdata.stats")
+        logger.info("magnetdata.stats")
         if key is not None:
             (group, channel) = key.split("/")
             if group in self.Data:
                 if channel in self.Data[group]:  # type: ignore[index]
-                    print(
+                    logger.info(
                         tabulate(
                             self.Data[group][channel].describe(),  # type: ignore[index]
                             headers="keys",
@@ -428,14 +456,16 @@ class TdmsMagnetData(MagnetDataBase):
                     )
                     return self.Data[group][channel].describe()  # type: ignore[index]
                 else:
-                    raise RuntimeError(f"magnetdata/stats: cannot find channel {channel}")
+                    raise RuntimeError(
+                        f"magnetdata/stats: cannot find channel {channel}"
+                    )
             else:
                 raise RuntimeError(f"magnetdata/stats: cannot find group {group}")
         else:
             for group in self.Data:
-                print(f"stats[{group}]: ")
+                logger.info(f"stats[{group}]: ")
                 df = self.Data[group].describe(include="all")  # type: ignore[index]
-                print(tabulate(df, headers="keys", tablefmt="psql"))
+                logger.info(tabulate(df, headers="keys", tablefmt="psql"))
         return None
 
     def info(self) -> None:
@@ -443,7 +473,7 @@ class TdmsMagnetData(MagnetDataBase):
 
         from tabulate import tabulate
 
-        print(f"magnetdata: {self.FileName}, Type={self.Type}")
+        logger.info(f"magnetdata: {self.FileName}, Type={self.Type}")
         headers = [
             "Group",
             "Channel",

@@ -8,8 +8,9 @@ import os
 import pandas as pd
 import statsmodels.api as sm
 
-from python_magnetrun.MagnetRun import MagnetRun, prepareData_legacy
+from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.smoothers import savgol
+from python_magnetrun.runetl import prepareData_legacy
 
 _default_input = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "data", "M9_2019.02.14-23_00_38.txt"
@@ -34,7 +35,7 @@ site = filename.split("_")[0]
 insert = "tutu"
 mrun = MagnetRun.fromtxt(site, insert, file)
 mdata = mrun.getMData()
-prepareData_legacy(mdata, site, debug=True)
+prepareData_legacy(mdata, site)
 
 
 B = mdata.Data["Field"]

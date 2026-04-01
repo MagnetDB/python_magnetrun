@@ -1,6 +1,6 @@
 # Implementation Checklist — python_magnetrun
 
-*Last updated: 2026-03-30 — branch `separate-cooling` — commit `10ef4a4`*
+*Last updated: 2026-03-31 — branch `separate-cooling` — commit `f553287`*
 
 Tracks progress against [ROADMAP.md](ROADMAP.md).
 
@@ -14,7 +14,7 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 |------|--------|-------|
 | Fix 5 bare `except:` clauses | ✅ Done | `6253de6` — no bare excepts remain in key files |
 | Add `ruff` pre-commit hook | ✅ Done | `64ea699` — `.pre-commit-config.yaml` in place |
-| Add file-format validation before parsing | ⬜ Pending | `analysis/loaders.py`, `magnetdata.py` |
+| Add file-format validation before parsing | 🔶 Done (uncommitted) | `utils/validation.py` (164 l) — `FileFormatError`, validators for txt/csv/tdms/rms/fepc/vprocess; `tests/test_file_validation.py` (261 l); not yet committed — see [FILE_FORMAT_VALIDATION.md](FILE_FORMAT_VALIDATION.md) |
 | Replace `print()` with `logger.*` | ⬜ Pending | 1477 `print()` calls remain; 706 logger usages already present |
 | Migrate file paths to `pathlib.Path` | ⬜ Partial | ~90 occurrences so far; most code still uses string concatenation |
 
@@ -37,6 +37,13 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 | Remove / formally deprecate `prepareData_legacy()` | ⬜ Partial | Marked deprecated with warning in `MagnetRun.py:32`, but still actively called in `utils/txt2csv.py` and `MagnetRun.py:229,268` |
 | Remove placeholder CLI code | ⬜ Pending | `requests/cli.py` |
 | Clean up WIP example scripts | ⬜ Pending | |
+
+### Phase 1D — Documentation
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Format reference docs | ✅ Done | `d819026` — `docs/pupitre.md`, `docs/pigbrother.md`, `docs/Hybride.md`, `docs/bprofile.md`, `docs/feelpp_csv.md`, `docs/magnettools_csv.md` |
+| File-format validation design doc | ✅ Done | `76fb08b` — `prompts/FILE_FORMAT_VALIDATION.md` |
 
 ---
 
@@ -137,11 +144,12 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 ## Quick Summary — What Remains
 
 ### Highest priority (do first)
-1. **CI pipeline** — add `.github/workflows/ci.yml` running `ruff` + `pytest`
-2. **Add assertions** to `tests/test_python_magnetrun.py` (currently 0)
-3. **Enable `mypy`** pre-commit hook
-4. **Finish `prepareData_legacy` removal** — update `utils/txt2csv.py` to not call it
-5. **`print()` → `logger.*`** migration (1477 occurrences)
+1. **Commit `validation.py` + `test_file_validation.py`** — file-format validation is done but untracked
+2. **CI pipeline** — add `.github/workflows/ci.yml` running `ruff` + `pytest`
+3. **Add assertions** to `tests/test_python_magnetrun.py` (currently 0)
+4. **Enable `mypy`** pre-commit hook
+5. **Finish `prepareData_legacy` removal** — update `utils/txt2csv.py` to not call it
+6. **`print()` → `logger.*`** migration (1477 occurrences)
 
 ### Medium priority
 6. **`DataProvider` protocol enforcement** — verify `MagnetRun` and `HybridRun` satisfy it

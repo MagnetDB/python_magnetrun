@@ -79,7 +79,7 @@ from .config import (
     DEFAULT_PIGBROTHER_DATA_DIR,
     DEFAULT_WINDOW_SIZE,
 )
-from .processing import process_overview_file
+from .processing import print_record_summary, process_overview_file
 
 # =============================================================================
 # Logging configuration
@@ -87,9 +87,6 @@ from .processing import process_overview_file
 
 # Root logger for the analysis module
 ROOT_LOGGER_NAME = "magnetrun.analysis"
-
-# Setup logger
-logger = logging.getLogger(__name__)
 
 # Default log format
 DEFAULT_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
@@ -149,7 +146,9 @@ class ColoredFormatter(logging.Formatter):
             # Format with detailed info
             if self.use_colors and record.levelname in COLORS:
                 original_levelname = record.levelname
-                record.levelname = f"{COLORS[record.levelname]}{record.levelname}{COLORS['RESET']}"
+                record.levelname = (
+                    f"{COLORS[record.levelname]}{record.levelname}{COLORS['RESET']}"
+                )
                 result = detailed_formatter.format(record)
                 record.levelname = original_levelname
                 return result
@@ -159,7 +158,9 @@ class ColoredFormatter(logging.Formatter):
         if self.use_colors and record.levelname in COLORS:
             # Store original levelname
             original_levelname = record.levelname
-            record.levelname = f"{COLORS[record.levelname]}{record.levelname}{COLORS['RESET']}"
+            record.levelname = (
+                f"{COLORS[record.levelname]}{record.levelname}{COLORS['RESET']}"
+            )
             result = super().format(record)
             # Restore original
             record.levelname = original_levelname
@@ -395,6 +396,7 @@ def set_log_level(level: int | str) -> None:
 
 
 def log_exception(
+    logger: logging.Logger,
     message: str,
     exception: Exception,
     logger_instance: logging.Logger | None = None,
@@ -908,7 +910,6 @@ def main(args: list[str] | None = None) -> int:
         Exit code (0 for success, non-zero for errors)
     """
     parsed_args = parse_arguments(args)
-    print(parsed_args.input_file)
 
     # Setup logging
     logger = setup_logging(
@@ -920,7 +921,8 @@ def main(args: list[str] | None = None) -> int:
     )
 
     logger.info("Starting magnetrun analysis")
-    logger.debug("Arguments: %s", parsed_args)
+    logger.debug(f"Arguments: {parsed_args}")
+    logger.debug(f"input_file: {parsed_args.input_file}")  # noqa: F823
 
     try:
         from .config import get_site_config
@@ -942,7 +944,7 @@ def main(args: list[str] | None = None) -> int:
         #
         # Sort input files naturally
         input_files = natsorted(parsed_args.input_file)
-        print(input_files)
+        logger.debug(f"input_files: {input_files}")
         logger.info("Processing %d input files", len(input_files))
 
         # Create output directory
@@ -961,13 +963,11 @@ def main(args: list[str] | None = None) -> int:
             with timed_operation(f"Processing {Path(input_file).name}", logger):
                 try:
                     record = process_overview_file(input_file, config)
+                    print_record_summary(record)
+
                     results.append(record)
                     logger.info(
-                        "Processed %s: site=%s,duration=%.1fs, has_pupitre=%s",
-                        record.site,
-                        record.filename,
-                        record.duration,
-                        record.has_data("pupitre"),
+                        f"Processed {record.filename}: site={record.site}, duration={record.duration:.1f}s, has_pupitre={record.has_data('pupitre')}"
                     )
 
                     # Skip further processing if dry run
@@ -991,14 +991,24 @@ def main(args: list[str] | None = None) -> int:
 
                     # Get DataFrames
                     df_overview = record.get_overview()
+                    print(f"df_overview columns: {df_overview.columns.tolist()}")
                     df_archive = record.get_archive()
+                    print(f"df_archive columns: {df_archive.columns.tolist()}")
                     df_pupitre = record.get_pupitre()
+                    print(f"df_pupitre columns: {df_pupitre.columns.tolist()}")
                     df_incidents = record.get_incidents()
+                    for key, _dfs in df_incidents.items():
+                        print(f"df_incidents[{key}]:")
+                        for _df in _dfs:
+                            print(f"columns: {_df.columns.tolist()}")
                     logger.info("get database done")
                     logger.info(f"df_archive: {df_archive.head()}")
 
                     # Determine keys to analyze
-                    keys = ["Référence_GR1", "Référence_GR2"]
+                    keys = [
+                        "Référence_GR1",
+                        "Référence_GR2",
+                    ]
 
                     # Process each key
                     for key in keys:
@@ -1032,7 +1042,10 @@ def main(args: list[str] | None = None) -> int:
 
                                 # Sync message
                                 msg = "(nosync)"
-                                if config.synchronize and "timeshift_seconds" in record.sync_info:
+                                if (
+                                    config.synchronize
+                                    and "timeshift_seconds" in record.sync_info
+                                ):
                                     shift = record.sync_info["timeshift_seconds"]
                                     msg = f"(sync: {shift:.2f}s)"
 
@@ -1051,7 +1064,9 @@ def main(args: list[str] | None = None) -> int:
                                     msg=msg,
                                     show=parsed_args.show,
                                     save=parsed_args.save,
-                                    output_path=(str(output_path) if output_path else None),
+                                    output_path=(
+                                        str(output_path) if output_path else None
+                                    ),
                                     downsample_percent=downsample_pct,
                                 )
 
@@ -1059,9 +1074,15 @@ def main(args: list[str] | None = None) -> int:
                                     logger.info("Saved plot to %s", output_path)
 
                         # === DISTANCE METRICS ===
-                        if parsed_args.distance and pupitre_key and record.has_data("pupitre"):
+                        if (
+                            parsed_args.distance
+                            and pupitre_key
+                            and record.has_data("pupitre")
+                        ):
                             if pupitre_key in df_pupitre.columns:
-                                with timed_operation(f"Computing metrics for {key}", logger):
+                                with timed_operation(
+                                    f"Computing metrics for {key}", logger
+                                ):
                                     # Get aligned time series
                                     # Use overview as reference
                                     series1 = df_overview[key].values
@@ -1074,7 +1095,9 @@ def main(args: list[str] | None = None) -> int:
                                         # Simple resampling by interpolation
                                         x_orig = np.linspace(0, 1, len(pupitre_values))
                                         x_new = np.linspace(0, 1, len(series1))
-                                        series2 = np.interp(x_new, x_orig, pupitre_values)
+                                        series2 = np.interp(
+                                            x_new, x_orig, pupitre_values
+                                        )
                                     else:
                                         series2 = pupitre_values
 
@@ -1102,7 +1125,9 @@ def main(args: list[str] | None = None) -> int:
 
                                     # DTW (can be slow for large datasets)
                                     if len(series1) <= 5000:
-                                        dtw_result = compute_dtw_distance(series1, series2)
+                                        dtw_result = compute_dtw_distance(
+                                            series1, series2
+                                        )
                                         # print(dtw_result.distance)           # The DTW distance
                                         # print(dtw_result.path)               # The warping path
                                         # print(dtw_result.normalized_distance) # Normalized by length
@@ -1112,7 +1137,9 @@ def main(args: list[str] | None = None) -> int:
                                             key,
                                             dtw_result.similarity_score,
                                         )
-                                        record.metrics[key]["dtw"] = dtw_result.similarity_score
+                                        record.metrics[key][
+                                            "dtw"
+                                        ] = dtw_result.similarity_score
                                     else:
                                         logger.info(
                                             "Skipping DTW for %s (dataset too large: %d points)",

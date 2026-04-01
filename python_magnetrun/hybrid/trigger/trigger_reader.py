@@ -11,16 +11,14 @@ Trigger files contain:
 
 import logging
 import struct
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 
-# Import FEPC config parser from kHz module
-sys.path.insert(0, str(Path(__file__).parent.parent / "kHz"))
-from fepc_reader import FEPCConfig, parse_cfg_file
+from ...utils.validation import FileFormatError
+from ..kHz.fepc_reader import FEPCConfig, parse_cfg_file
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -141,7 +139,9 @@ def parse_trigger_directory(trigger_dir: Path) -> TriggerInfo:
         # Format: 06/06/2025-05:44:16.921 UTC[+0000]
         timestamp_str = metadata["trig.timestamp.approx"].split("[")[0].strip()
         try:
-            trig_timestamp = datetime.strptime(timestamp_str, "%d/%m/%Y-%H:%M:%S.%f UTC")
+            trig_timestamp = datetime.strptime(
+                timestamp_str, "%d/%m/%Y-%H:%M:%S.%f UTC"
+            )
         except ValueError:
             logger.warning(f"Could not parse trigger timestamp: {timestamp_str}")
 
@@ -229,13 +229,15 @@ def read_trigger_file(
     # Check file size
     file_size = filepath.stat().st_size
     if file_size != expected_size:
-        logger.warning(
-            f"File size mismatch for {filepath.name}: expected {expected_size}, got {file_size}"
+        raise FileFormatError(
+            f"{filepath.name}: file size mismatch: expected {expected_size}, got {file_size}"
         )
 
     # Determine actual number of samples
     if num_samples is None:
-        actual_samples = (file_size - 8) // (16 * 2) if card_type == "ANA" else (file_size - 8) // 4
+        actual_samples = (
+            (file_size - 8) // (16 * 2) if card_type == "ANA" else (file_size - 8) // 4
+        )
         num_samples = actual_samples
 
     # Read data
@@ -258,7 +260,9 @@ def read_trigger_file(
     return data, timestamp
 
 
-def load_trigger_config(trigger_dir: Path, system: str = "FEPC-LNCMI") -> FEPCConfig | None:
+def load_trigger_config(
+    trigger_dir: Path, system: str = "FEPC-LNCMI"
+) -> FEPCConfig | None:
     """
     Load FEPC configuration from trigger directory
 
@@ -295,7 +299,9 @@ def load_trigger_config(trigger_dir: Path, system: str = "FEPC-LNCMI") -> FEPCCo
     return parse_cfg_file(str(cfg_file))
 
 
-def list_trigger_files(trigger_dir: Path, system: str = "FEPC-LNCMI") -> list[TriggerFileInfo]:
+def list_trigger_files(
+    trigger_dir: Path, system: str = "FEPC-LNCMI"
+) -> list[TriggerFileInfo]:
     """
     List all trigger binary files in a directory
 
@@ -527,7 +533,9 @@ Examples:
         "--base-dir", type=Path, help="Base directory containing trigger subdirectory"
     )
 
-    parser.add_argument("--trigger-dir", type=Path, help="Path to specific trigger directory")
+    parser.add_argument(
+        "--trigger-dir", type=Path, help="Path to specific trigger directory"
+    )
 
     parser.add_argument("--date", type=str, help="Date in YYYY-MM-DD format")
 
@@ -543,7 +551,9 @@ Examples:
 
     parser.add_argument("--slot", type=int, help="Slot number to read")
 
-    parser.add_argument("--list-triggers", action="store_true", help="List all trigger directories")
+    parser.add_argument(
+        "--list-triggers", action="store_true", help="List all trigger directories"
+    )
 
     parser.add_argument("--info", action="store_true", help="Show trigger information")
 
@@ -555,7 +565,9 @@ Examples:
         help="Endianness of binary data",
     )
 
-    parser.add_argument("--num-samples", type=int, help="Number of samples to read (default: all)")
+    parser.add_argument(
+        "--num-samples", type=int, help="Number of samples to read (default: all)"
+    )
 
     args = parser.parse_args()
 
@@ -565,51 +577,53 @@ Examples:
     # List triggers
     if args.list_triggers:
         if not args.base_dir:
-            print("Error: --base-dir required for --list-triggers")
+            logger.error("--base-dir required for --list-triggers")
             return
 
         triggers = find_trigger_directories(args.base_dir, args.date)
 
         if not triggers:
-            print("No trigger directories found")
+            logger.info("No trigger directories found")
             return
 
-        print(f"\nFound {len(triggers)} trigger(s):")
+        logger.info(f"\nFound {len(triggers)} trigger(s):")
         for trig in triggers:
-            print(f"  {trig.name}")
+            logger.info(f"  {trig.name}")
         return
 
     # Show trigger info
     if args.info:
         if not args.trigger_dir:
-            print("Error: --trigger-dir required for --info")
+            logger.error("--trigger-dir required for --info")
             return
 
         try:
             trigger_info = parse_trigger_directory(args.trigger_dir)
 
-            print("\n" + "=" * 60)
-            print("TRIGGER INFORMATION")
-            print("=" * 60)
-            print(f"Trigger: {trigger_info.trigger_name}")
-            print(f"Timestamp: {trigger_info.timestamp}")
-            print(f"Sample index: {trigger_info.sample_idx}")
-            print(f"RT Block ID: {trigger_info.rtblock_id}")
-            print(f"RT Block Phase: {trigger_info.rtblock_phase}")
+            logger.info("\n" + "=" * 60)
+            logger.info("TRIGGER INFORMATION")
+            logger.info("=" * 60)
+            logger.info(f"Trigger: {trigger_info.trigger_name}")
+            logger.info(f"Timestamp: {trigger_info.timestamp}")
+            logger.info(f"Sample index: {trigger_info.sample_idx}")
+            logger.info(f"RT Block ID: {trigger_info.rtblock_id}")
+            logger.info(f"RT Block Phase: {trigger_info.rtblock_phase}")
             if trigger_info.trigger_approx_timestamp:
-                print(f"Approx timestamp: {trigger_info.trigger_approx_timestamp}")
-            print(f"PRE samples: {trigger_info.pre_samples}")
-            print(f"POST samples: {trigger_info.post_samples}")
-            print(f"Total samples: {trigger_info.total_samples}")
+                logger.info(
+                    f"Approx timestamp: {trigger_info.trigger_approx_timestamp}"
+                )
+            logger.info(f"PRE samples: {trigger_info.pre_samples}")
+            logger.info(f"POST samples: {trigger_info.post_samples}")
+            logger.info(f"Total samples: {trigger_info.total_samples}")
 
             # List files
             for system in ["FEPC-LNCMI", "FEPC-AUX-LNCMI"]:
                 files = list_trigger_files(args.trigger_dir, system)
                 if files:
-                    print(f"\n{system} files:")
+                    logger.info(f"\n{system} files:")
                     for tf in files:
                         size_mb = tf.file_size / (1024**2)
-                        print(
+                        logger.info(
                             f"  Slot {tf.slot} ({tf.card_type}): {tf.filepath.name} ({size_mb:.1f} MB)"
                         )
 
@@ -617,16 +631,16 @@ Examples:
             for system in ["FEPC-LNCMI", "FEPC-AUX-LNCMI"]:
                 config = load_trigger_config(args.trigger_dir, system)
                 if config:
-                    print(f"\n{system} configuration:")
-                    print(f"  FEPC: {config.fepc_name}")
-                    print(f"  Cards: {config.num_cards}")
+                    logger.info(f"\n{system} configuration:")
+                    logger.info(f"  FEPC: {config.fepc_name}")
+                    logger.info(f"  Cards: {config.num_cards}")
                     for card in config.cards:
-                        print(
+                        logger.info(
                             f"    Slot {card.slot} ({card.card_type}): {len(card.variable_names)} channels"
                         )
 
         except (OSError, ValueError, RuntimeError) as e:
-            print(f"Error: {e}")
+            logger.error(f"Error: {e}")
             import traceback
 
             traceback.print_exc()
@@ -636,7 +650,7 @@ Examples:
     # Read data
     if args.variable or args.slot is not None:
         if not args.trigger_dir:
-            print("Error: --trigger-dir required")
+            logger.error("--trigger-dir required")
             return
 
         try:
@@ -649,19 +663,21 @@ Examples:
                 args.num_samples,
             )
 
-            print(f"\nData shape: {data.shape}")
-            print(f"Data type: {data.dtype}")
-            print(f"Trigger timestamp: {timestamp}")
+            logger.info(f"\nData shape: {data.shape}")
+            logger.info(f"Data type: {data.dtype}")
+            logger.info(f"Trigger timestamp: {timestamp}")
 
             if data.ndim == 1:
-                print(f"Data range: [{data.min()}, {data.max()}]")
-                print(f"First 10 samples: {data[:10]}")
+                logger.info(f"Data range: [{data.min()}, {data.max()}]")
+                logger.info(f"First 10 samples: {data[:10]}")
             else:
-                print(f"Number of channels: {data.shape[1]}")
-                print(f"Data range (channel 0): [{data[:, 0].min()}, {data[:, 0].max()}]")
+                logger.info(f"Number of channels: {data.shape[1]}")
+                logger.info(
+                    f"Data range (channel 0): [{data[:, 0].min()}, {data[:, 0].max()}]"
+                )
 
         except (OSError, ValueError, RuntimeError) as e:
-            print(f"Error: {e}")
+            logger.error(f"Error: {e}")
             import traceback
 
             traceback.print_exc()
@@ -669,7 +685,7 @@ Examples:
         return
 
     # No action specified
-    print("No action specified. Use --help for usage information.")
+    logger.info("No action specified. Use --help for usage information.")
     parser.print_help()
 
 

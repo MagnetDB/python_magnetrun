@@ -18,6 +18,7 @@ from python_magnetrun.magnetdata import (
     MagnetDataBase,
     TdmsMagnetData,
 )
+from python_magnetrun.utils.validation import FileFormatError
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -90,10 +91,10 @@ class TestFromtxt:
         assert md.FileName == str(SAMPLE_TXT)
 
     def test_wrong_extension_raises(self, tmp_path: Path) -> None:
-        """fromtxt with a non-.txt extension should raise RuntimeError."""
+        """fromtxt with a non-.txt extension should raise FileFormatError."""
         bad_file = tmp_path / "data.csv"
         bad_file.write_text("a,b\n1,2\n")
-        with pytest.raises(RuntimeError, match="expect a txt filename"):
+        with pytest.raises(FileFormatError, match="expected .txt extension"):
             MagnetData.fromtxt(str(bad_file))
 
     def test_missing_file_raises(self, tmp_path: Path) -> None:
@@ -110,7 +111,7 @@ class TestFromtxt:
 def _make_mock_tdms(tmp_path: Path) -> tuple[str, MagicMock]:
     """Return a fake .tdms file path and a matching TdmsFile mock."""
     tdms_path = tmp_path / "M9_Overview_240101-1200.tdms"
-    tdms_path.touch()
+    tdms_path.write_bytes(b"TDSm")
 
     channel_mock = MagicMock()
     channel_mock.name = "Courant GR1"
@@ -183,7 +184,7 @@ class TestFromtdms:
     def test_missing_courants_group_raises(self, tmp_path: Path) -> None:
         """fromtdms must raise RuntimeError when Courants_Alimentations is absent."""
         tdms_path = tmp_path / "M9_Overview_240101-1200.tdms"
-        tdms_path.touch()
+        tdms_path.write_bytes(b"TDSm")
 
         group_mock = MagicMock()
         group_mock.name = "OtherGroup"
@@ -202,7 +203,7 @@ class TestFromtdms:
         """Overview files should apply a non-zero wf_start_offset."""
         # The t_offset for Overview is 0.5 — verify it is written back
         tdms_path = tmp_path / "M9_Overview_240101-1200.tdms"
-        tdms_path.touch()
+        tdms_path.write_bytes(b"TDSm")
 
         channel_mock = MagicMock()
         channel_mock.name = "Courant GR1"

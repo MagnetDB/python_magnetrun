@@ -23,11 +23,11 @@ def expand_input_files(input_patterns: list, datadir: dict) -> list:
     :return: List of expanded file paths
     :rtype: list
     """
-    print(f"Expanding input files ({input_patterns})...", flush=True)
+    logger.debug(f"Expanding input files ({input_patterns})...")
     expanded_files = []
     for pattern in input_patterns:
         extension = os.path.splitext(pattern)[-1]
-        print(f"pattern: {pattern}, extension: {extension}", flush=True)
+        logger.debug(f"pattern: {pattern}, extension: {extension}")
         # Check if pattern contains a directory component
         if os.path.dirname(pattern):
             # Pattern has a directory, use it as is
@@ -50,18 +50,18 @@ def expand_input_files(input_patterns: list, datadir: dict) -> list:
             else:
                 # Extension not in datadir, use pattern as is
                 search_pattern = pattern
-        print(f"search_pattern: {search_pattern}", flush=True)
+        logger.debug(f"search_pattern: {search_pattern}")
 
         matches = glob.glob(search_pattern)
         if matches:
-            print(f"matches: {matches}", flush=True)
+            logger.debug(f"matches: {matches}")
             expanded_files.extend(matches)
         else:
             # If no matches, keep the original pattern (might be a literal filename)
-            print(f"No matches found for pattern: {pattern}", flush=True)
+            logger.warning(f"No matches found for pattern: {pattern}")
             expanded_files.append(pattern)
 
-    print(f"expanded_files: {expanded_files}", flush=True)
+    logger.debug(f"expanded_files: {expanded_files}")
     return expanded_files
 
 
@@ -125,7 +125,7 @@ def extract_data(
                 try:
                     mrun = MagnetRun.fromtdms(site, insert, file)
                 except RuntimeError as e:
-                    print(f"Error loading tdms file {file}: {e}")
+                    logger.error(f"Error loading tdms file {file}: {e}")
                     skip = True
         case _:
             raise RuntimeError(f"{file}: unsupported {extension}")
@@ -134,7 +134,7 @@ def extract_data(
     if not dry_run and not skip:
         mdata = mrun.getMData()
         if key is not None and key not in mdata.getKeys():
-            print(f"{file}: {key} not found")
+            logger.warning(f"{file}: {key} not found")
             skip = True
 
         duration = mdata.getDuration()
@@ -162,13 +162,13 @@ def find_files(args, file, site, date, time):
     :return: Tuple of filter patterns (pupitre, archive, default, trigger, spike)
     :rtype: tuple
     """
-    print(f"find_files: file={file}, site={site}", flush=True)
+    logger.debug(f"find_files: file={file}, site={site}")
 
     pupitre_datadir = f"{args.pupitre_datadir}/{site}"
     pupitre_filter = f"{pupitre_datadir}/20{date[0:2]}.{date[2:4]}.{date[4:]}*.txt"
-    print(f"find_files: pupitre_datadir: {pupitre_datadir}")
-    print(f"find_files: pupitre_filter: {pupitre_filter}", flush=True)
-    print(f"find_files: file: {file}", flush=True)
+    logger.debug(f"find_files: pupitre_datadir: {pupitre_datadir}")
+    logger.debug(f"find_files: pupitre_filter: {pupitre_filter}")
+    logger.debug(f"find_files: file: {file}")
 
     extension = os.path.splitext(file)[-1]
     filename = os.path.basename(file).replace(extension, "")
@@ -250,13 +250,13 @@ def select_files(files: list, site: str, start: str, end: str):
             end_time_file = datetime.strptime(res[1], tformat)
 
             if start_time >= start_time_file and end_time_file < end_time:
-                print("tdms overlap txt file: start", file, flush=True)
+                logger.debug(f"tdms overlap txt file: start {file}")
                 # how to get timerange for pupitre that starts at start_time?
             if start_time < start_time_file and end_time_file >= end_time:
-                print("tdms overlap txt file: end", file, flush=True)
+                logger.debug(f"tdms overlap txt file: end {file}")
                 # how to get timerange for pupitre that starts at start_time?
             if start_time >= start_time_file and end_time < end_time_file:
-                print("tdms included into txt file:", file, flush=True)
+                logger.debug(f"tdms included into txt file: {file}")
 
         if datetime.strptime(start_ftimestamp, tformat) >= start_time:
             res = extract_data(file, site=site, insert=None, key=None)
@@ -269,7 +269,7 @@ def select_files(files: list, site: str, start: str, end: str):
             if start_time_file >= start_time and end_time_file < end_time:
                 selected.append(file)
                 if extension == ".txt":
-                    print(f"selected tdms file: {file}", flush=True)
+                    logger.debug(f"selected tdms file: {file}")
             # print(f"Difference: {timestamp - itimestamp} seconds")
 
     # print(f"selected: {selected}", flush=True)
@@ -308,7 +308,7 @@ def load_df(file, site, insert, group, keys) -> tuple:
             mrun = MagnetRun.fromtdms(site, insert, file)
             mdata = mrun.getMData()
             if keys[0] not in mdata.Groups[group]:
-                print(f"load_df tdms {group}/{keys[0]} not found in {mdata.FileName}")
+                logger.warning(f"load_df tdms {group}/{keys[0]} not found in {mdata.FileName}")
                 """
                 print(f"available keys are: {mdata.Groups[group].keys()}")
                 for key in mdata.Groups[group]:
@@ -319,7 +319,7 @@ def load_df(file, site, insert, group, keys) -> tuple:
             t0 = mdata.Groups[group][keys[0]]["wf_start_time"]
             dt = mdata.Groups[group][keys[0]]["wf_increment"]
             t_offset = mdata.Groups[group][keys[0]]["wf_start_offset"]
-            print(f"{file}: t0: {t0}, dt: {dt}, t_offset: {t_offset}")
+            logger.debug(f"{file}: t0: {t0}, dt: {dt}, t_offset: {t_offset}")
             df = pd.DataFrame(mdata.getTdmsData(group, keys))
             df["timestamp"] = [
                 np.datetime64(t0).astype(datetime) + timedelta(0, i * dt + t_offset)

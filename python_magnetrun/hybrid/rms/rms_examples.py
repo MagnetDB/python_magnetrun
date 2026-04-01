@@ -7,7 +7,8 @@ This file demonstrates how to use the RMS file reader for FEPC-AUX-LNCMI files.
 
 import matplotlib.pyplot as plt
 import pandas as pd
-from rms_reader import RMSFileReader, read_rms_file
+
+from .rms_reader import RMSFileReader, read_rms_file
 
 
 # Example 1: Quick read - simplest usage

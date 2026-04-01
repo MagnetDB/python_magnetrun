@@ -11,7 +11,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from rms_reader import RMSFileReader
+
+from .rms_reader import RMSFileReader
 
 
 def plot_variables(filepath, variable_names, output_file=None, same_plot=False):

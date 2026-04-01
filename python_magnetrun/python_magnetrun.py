@@ -138,7 +138,9 @@ def plot_bkpts(
 
     if save:
         f_extension = os.path.splitext(file)[-1]
-        plt.savefig(f"{file.replace(f_extension, '')}-{channel}-detect_bkpts.png", dpi=300)
+        plt.savefig(
+            f"{file.replace(f_extension, '')}-{channel}-detect_bkpts.png", dpi=300
+        )
     else:
         plt.show()
     plt.close()
@@ -204,7 +206,9 @@ def output_keys(file, inputs, extensions, args):
                                 iter=args.smoothing_iter,
                             )
                         case "bell_kernel":
-                            y_smoothed = lowess_bell_shape_kern(x, y, args.smoothing_tau)
+                            y_smoothed = lowess_bell_shape_kern(
+                                x, y, args.smoothing_tau
+                            )
                         case "statsmodel_sm":
                             y_smoothed = lowess_sm(
                                 x,
@@ -326,7 +330,7 @@ def add_field(mrun, args):
     logger.debug(mdata.getKeys())
 
     if args.compute:
-        from pint import UnitRegistry
+        from pint import UnitRegistry  # noqa: I001
 
         from python_magnetcooling.water_properties import get_rho
 
@@ -338,7 +342,7 @@ def add_field(mrun, args):
 
         mdata.computeData(nkey_method, nkey, nkey_params, nkey_unit)
         logger.debug(mdata.getKeys())
-        print(mdata.getData("rho").describe())
+        logger.debug(mdata.getData("rho").describe())
 
         if args.plot:
             my_ax = plt.gca()
@@ -539,7 +543,9 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                     logger.debug(f"df_plateaux: {df_plateaux.shape}")
                     if nrows != 0:
                         data.append(
-                            df_plateaux.loc[df_plateaux["duration"].idxmax()].to_numpy().tolist()
+                            df_plateaux.loc[df_plateaux["duration"].idxmax()]
+                            .to_numpy()
+                            .tolist()
                         )
                         # rename column value using symbol and unit
                         df_plateaux.rename(
@@ -552,7 +558,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                             inplace=True,
                         )
                         columns = list(df_plateaux.keys())
-                        print(
+                        logger.info(
                             tabulate(
                                 df_plateaux,
                                 headers="keys",
@@ -571,7 +577,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                                 stats.numpy_NaN,
                             ]
                         )
-                        print(
+                        logger.warning(
                             f"{file.replace(extension, '')}: no peaks detected - duration={mdata.getDuration()}, {mdata.getData(key).describe()}"
                         )
                     # print(f"data: {len(data)}")
@@ -602,12 +608,20 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                     logger.debug(f"std: {abs(smoothed).std()}")
                     quantiles = {}
                     for level in range(5, 100, 5):
-                        quantiles[str(level)] = np.quantile(abs(smoothed), level / 100.0)
+                        quantiles[str(level)] = np.quantile(
+                            abs(smoothed), level / 100.0
+                        )
 
                     level = args.level
-                    max_level_50 = abs(1 - abs(smoothed).max() / quantiles["50"]) * 100.0
-                    max_level_75 = abs(1 - abs(smoothed).max() / quantiles["75"]) * 100.0
-                    logger.debug(f"max_level_50={max_level_50}, max_level_75={max_level_75}")
+                    max_level_50 = (
+                        abs(1 - abs(smoothed).max() / quantiles["50"]) * 100.0
+                    )
+                    max_level_75 = (
+                        abs(1 - abs(smoothed).max() / quantiles["75"]) * 100.0
+                    )
+                    logger.debug(
+                        f"max_level_50={max_level_50}, max_level_75={max_level_75}"
+                    )
                     if max_level_75 >= 5000:
                         logger.debug(f"overwrite level: {level} -> 40")
                         level = 40
@@ -654,7 +668,9 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                     quantiles_der = np.quantile(abs(smoothed_der2), level / 100.0)
 
                     # find peak of der2
-                    peaks, peaks_properties = find_peaks(abs(smoothed_der2), height=quantiles_der)
+                    peaks, peaks_properties = find_peaks(
+                        abs(smoothed_der2), height=quantiles_der
+                    )
 
                     # get peaks where std is above a giventhresold
                     # filtered_std_df = std_ts.gt(10)
@@ -673,7 +689,9 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                             ignore_peaks.append(peak)
                         print(flush=True)
                     """
-                    print(f"{channel}: peaks={peaks.shape[0]}, ignore_peaks={len(ignore_peaks)}")
+                    logger.info(
+                        f"{channel}: peaks={peaks.shape[0]}, ignore_peaks={len(ignore_peaks)}"
+                    )
 
                     plot_bkpts(
                         file,
@@ -696,7 +714,9 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                     if mdata.Type == 1:
                         # select key from GR1 or GR2
                         selected = [
-                            t for t in mdata.Keys if t.startswith("Tensions_Aimant/Interne")
+                            t
+                            for t in mdata.Keys
+                            if t.startswith("Tensions_Aimant/Interne")
                         ]
                         logger.debug(f"selected: {selected}")
                         for key in selected:
@@ -725,7 +745,9 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                                 polyorder=3,
                                 deriv=2,
                             )
-                            quantiles_der = np.quantile(abs(smoothed_der2), level / 100.0)
+                            quantiles_der = np.quantile(
+                                abs(smoothed_der2), level / 100.0
+                            )
                             cpeaks, cpeaks_properties = find_peaks(
                                 abs(smoothed_der2), height=quantiles_der
                             )
@@ -746,18 +768,25 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                                             anomalies.append(cpeaks[i])
 
                                             # calculate the difference array
-                                            difference_array = np.absolute(peaks - cpeaks[i])
+                                            difference_array = np.absolute(
+                                                peaks - cpeaks[i]
+                                            )
 
                                             # find the index of minimum element from the array
                                             index = difference_array.argmin()
                                             msg = f"{i}: closest values in peaks={peaks[index]}, cpeaks[{i}]={cpeaks[i]}"
 
-                                            if abs(peaks[index] - cpeaks[i]) >= args.window:
+                                            if (
+                                                abs(peaks[index] - cpeaks[i])
+                                                >= args.window
+                                            ):
                                                 msg += " **"
                                                 real_anomalies.append(cpeaks[i])
                                             logger.debug(f"{msg}")
 
-                                print(f"anomalies: {len(anomalies)} - likely {len(real_anomalies)}")
+                                logger.info(
+                                    f"anomalies: {len(anomalies)} - likely {len(real_anomalies)}"
+                                )
                                 if real_anomalies:
                                     # if args.verbose:
                                     #     print(f"anomalies: {anomalies}")
@@ -816,7 +845,9 @@ def plot_vs_time(input_files, inputs, extensions, args):
     for i, file in enumerate(input_files):
         f_extension = os.path.splitext(file)[-1]
         plot_args = items[list(extensions.keys()).index(f_extension)]
-        logger.debug(f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}")
+        logger.debug(
+            f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}"
+        )
         if args.log_level == "DEBUG":
             logger.debug(
                 f"plot_args: {plot_args}, f_extension:{f_extension}, {extensions[f_extension]}"
@@ -836,12 +867,16 @@ def plot_vs_time(input_files, inputs, extensions, args):
                 (symbol, unit) = mdata.getUnitKey(key)
                 logger.debug(f"plot {key} [{symbol} {unit:~P}]")
 
-                mdata.plotData(x="t", y=key, ax=my_ax, normalize=args.normalize, offset=delta_t)
-                legends.append(f"{os.path.basename(file).replace(f_extension, '')}: {key}")
+                mdata.plotData(
+                    x="t", y=key, ax=my_ax, normalize=args.normalize, offset=delta_t
+                )
+                legends.append(
+                    f"{os.path.basename(file).replace(f_extension, '')}: {key}"
+                )
                 if args.normalize:
-                    legends[-1] += (
-                        f" max={float(mdata.getData([key]).max().iloc[0]):.3f} [{unit:~P}]"
-                    )
+                    legends[
+                        -1
+                    ] += f" max={float(mdata.getData([key]).max().iloc[0]):.3f} [{unit:~P}]"
                     logger.debug("normalize")
             except RuntimeError:
                 logger.error(f"key: {key} not found in {file}")
@@ -904,7 +939,9 @@ def plot_vs_time(input_files, inputs, extensions, args):
     if not args.save:
         plt.show()
     else:
-        imagefile = f"{file.replace(f_extension, '')}-{key}" if file else f"hybrid-{key}"
+        imagefile = (
+            f"{file.replace(f_extension, '')}-{key}" if file else f"hybrid-{key}"
+        )
         logger.info(f"saveto: {imagefile}_vs_time.png")
         plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
     plt.close()
@@ -940,7 +977,9 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
         f_extension = os.path.splitext(file)[-1]
         legends.append(os.path.basename(file).replace(f_extension, ""))
         plot_args = pairs[list(extensions.keys()).index(f_extension)]
-        logger.debug(f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}")
+        logger.debug(
+            f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}"
+        )
         mrun: MagnetRun = inputs[file]["data"]
         mdata = mrun.getMData()
 
@@ -1013,7 +1052,9 @@ def main():
     for file in input_files:
         f_extension = os.path.splitext(file)[-1]
         if f_extension not in supported_formats:
-            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
+            raise RuntimeError(
+                f"so far file with extension in {supported_formats} are implemented"
+            )
 
         filename = os.path.basename(file)
         insert = args.insert if args.insert else "notdefined"
@@ -1029,7 +1070,9 @@ def main():
                     site = filename[0:index]
                     # print(f"site detected: {site}")
                 except ValueError:
-                    logger.warning(f"{file}: no site detected - use args.site argument instead")
+                    logger.warning(
+                        f"{file}: no site detected - use args.site argument instead"
+                    )
                     continue
                 if args.log_level == "DEBUG":
                     logger.debug(f"site={site}")
@@ -1049,7 +1092,9 @@ def main():
         except (OSError, ValueError, RuntimeError) as error:
             # Print detailed error information with traceback
             tb_str = "".join(traceback.format_exception(*sys.exc_info()))
-            print(f"{file}: an error occurred when loading at {format_exception_location()}")
+            logger.error(
+                f"{file}: an error occurred when loading at {format_exception_location()}"
+            )
             logger.error(f"Error: {error}")
             logger.error(f"Traceback:\n{tb_str}")
             continue
@@ -1095,7 +1140,7 @@ def main():
             )
         except (OSError, ValueError, RuntimeError) as error:
             tb_str = "".join(traceback.format_exception(*sys.exc_info()))
-            print(
+            logger.error(
                 f"hybrid data ({hybrid_datadir}, {hybrid_date}): "
                 f"an error occurred at {format_exception_location()}"
             )
@@ -1106,25 +1151,25 @@ def main():
     if args.command == "plot":
         logger.info("subcommands: plot")
         if args.vs_time:
-            assert len(args.vs_time) == len(extensions.keys()), (
-                f"expected {len(extensions.keys())} vs_time arguments - got {len(args.vs_time)} "
-            )
+            assert len(args.vs_time) == len(
+                extensions.keys()
+            ), f"expected {len(extensions.keys())} vs_time arguments - got {len(args.vs_time)} "
 
             plot_vs_time(input_files, inputs, extensions, args)
 
         if args.key_vs_key:
-            assert len(args.key_vs_key) == len(extensions), (
-                f"expected {len(extensions)} key_vs_key arguments - got {len(args.key_vs_key)} "
-            )
+            assert len(args.key_vs_key) == len(
+                extensions
+            ), f"expected {len(extensions)} key_vs_key arguments - got {len(args.key_vs_key)} "
 
             plot_key_vs_key(input_files, inputs, extensions, args)
 
     if args.command == "select":
         # plot_args = items[extensions[f_extension][0]]
         if args.output_time:
-            assert len(args.output_time) == len(extensions.keys()), (
-                f"expected {len(extensions.keys())} output_time arguments - got {len(args.output_time)} "
-            )
+            assert len(args.output_time) == len(
+                extensions.keys()
+            ), f"expected {len(extensions.keys())} output_time arguments - got {len(args.output_time)} "
 
             times = args.output_time.split(";")
             logger.info(f"Select data at {times}")
@@ -1132,26 +1177,26 @@ def main():
                 output_time(file, inputs, extensions, times)
 
         if args.output_timerange:
-            assert len(args.output_timerange) == len(extensions.keys()), (
-                f"expected {len(extensions.keys())} output_timerange arguments - got {len(args.output_timerange)} "
-            )
+            assert len(args.output_timerange) == len(
+                extensions.keys()
+            ), f"expected {len(extensions.keys())} output_timerange arguments - got {len(args.output_timerange)} "
 
             timerange = args.output_timerange.split(";")
             for file in inputs:
                 output_timerange(file, inputs, extensions, args)
 
         if args.output_key:
-            assert len(args.output_key) == len(extensions.keys()), (
-                f"expected {len(extensions.keys())} output_key arguments - got {len(args.output_key)} "
-            )
+            assert len(args.output_key) == len(
+                extensions.keys()
+            ), f"expected {len(extensions.keys())} output_key arguments - got {len(args.output_key)} "
 
             for file in inputs:
                 output_keys(file, inputs, extensions, args)
 
         if args.extract_pairkeys:
-            assert len(args.extract_pairkeys) == len(extensions.keys()), (
-                f"expected {len(extensions.keys())} extract_pairkeys arguments - got {len(args.extract_pairkeys)} "
-            )
+            assert len(args.extract_pairkeys) == len(
+                extensions.keys()
+            ), f"expected {len(extensions.keys())} extract_pairkeys arguments - got {len(args.extract_pairkeys)} "
             for file in inputs:
                 extract_pairkeys(file, inputs, extensions, args)
 
@@ -1187,11 +1232,11 @@ def main():
         for file in inputs:
             columns, data = display_stats(file, inputs, args, multiindex, columns, data)
 
-        print(
-            "concat tabs:",
-            f"multi_index={len(multiindex[0]), len(multiindex[1])}",
-            f"columns={len(columns)}",
-            f"data={len(data)}",
+        logger.debug(
+            f"concat tabs: "
+            f"multi_index={len(multiindex[0]), len(multiindex[1])}, "
+            f"columns={len(columns)}, "
+            f"data={len(data)}"
         )
         logger.debug(f"multiindex: {multiindex}")
         logger.debug(f"columns: {columns}")
@@ -1205,7 +1250,7 @@ def main():
         print(df.to_markdown(tablefmt="simple"))
 
         # save df to csv
-        print("head:", df.head())
+        logger.debug(f"head: {df.head()}")
         df.to_csv(f"{output}.csv")
 
 

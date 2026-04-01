@@ -23,6 +23,8 @@ from typing import Any
 
 import pandas as pd
 
+from ...utils.validation import validate_vprocess_format
+
 # Setup logger
 logger = logging.getLogger(__name__)
 
@@ -148,6 +150,7 @@ class VProcessFileReader:
 
     def parse_header(self) -> None:
         """Parse the ASCII header from the VProcess file."""
+        validate_vprocess_format(str(self.filepath))
         with open(self.filepath, "rb") as f:
             header_lines = []
             while True:
@@ -254,7 +257,9 @@ class VProcessFileReader:
                 self.metadata["start_time"] = datetime.strptime(
                     start_str.split(".")[0], date_format
                 )
-                self.metadata["end_time"] = datetime.strptime(end_str.split(".")[0], date_format)
+                self.metadata["end_time"] = datetime.strptime(
+                    end_str.split(".")[0], date_format
+                )
 
     def _parse_frequency(self, line: str) -> None:
         """Parse the frequency line."""
@@ -314,7 +319,9 @@ class VProcessFileReader:
             sample_data = binary_data[sample_start : sample_start + sample_width]
 
             # Parse timestamp (8 bytes, double)
-            timestamp_raw = struct.unpack(f"{self.endian}d", sample_data[:timestamp_size])[0]
+            timestamp_raw = struct.unpack(
+                f"{self.endian}d", sample_data[:timestamp_size]
+            )[0]
             timestamp = datetime.fromtimestamp(timestamp_raw, tz=UTC)
             timestamps.append(timestamp)
 
@@ -323,7 +330,9 @@ class VProcessFileReader:
             for var in self.variables:
                 if var.is_analog:
                     # Float32 (4 bytes)
-                    value = struct.unpack(f"{self.endian}f", sample_data[offset : offset + 4])[0]
+                    value = struct.unpack(
+                        f"{self.endian}f", sample_data[offset : offset + 4]
+                    )[0]
                     offset += 4
                 else:
                     # Digital (1 byte)
@@ -387,33 +396,35 @@ class VProcessFileReader:
 
     def print_summary(self) -> None:
         """Print a formatted summary of the file contents."""
-        print("=" * 70)
-        print(f"VProcess File: {self.filepath.name}")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info(f"VProcess File: {self.filepath.name}")
+        logger.info("=" * 70)
 
         if self.metadata:
-            print("\nMetadata:")
+            logger.info("\nMetadata:")
             for key, value in self.metadata.items():
-                print(f"  {key}: {value}")
+                logger.info(f"  {key}: {value}")
 
         if self.variables:
-            print(f"\nVariables: {len(self.variables)}")
-            print("  Analog: ", sum(1 for v in self.variables if v.is_analog))
-            print("  Digital:", sum(1 for v in self.variables if not v.is_analog))
+            logger.info(f"\nVariables: {len(self.variables)}")
+            logger.info("  Analog: %d", sum(1 for v in self.variables if v.is_analog))
+            logger.info(
+                "  Digital: %d", sum(1 for v in self.variables if not v.is_analog)
+            )
 
-            print("\nFirst 10 variables:")
+            logger.info("\nFirst 10 variables:")
             for i, var in enumerate(self.variables[:10]):
                 unit_str = f" ({var.unit})" if var.unit else ""
-                print(f"  {i + 1:2d}. {var.name:20s} [{var.var_type}]{unit_str}")
+                logger.info(f"  {i + 1:2d}. {var.name:20s} [{var.var_type}]{unit_str}")
 
             if len(self.variables) > 10:
-                print(f"  ... and {len(self.variables) - 10} more")
+                logger.info(f"  ... and {len(self.variables) - 10} more")
 
         if self.data is not None:
-            print(f"\nData Shape: {self.data.shape}")
-            print(f"Time Range: {self.data.index[0]} to {self.data.index[-1]}")
+            logger.info(f"\nData Shape: {self.data.shape}")
+            logger.info(f"Time Range: {self.data.index[0]} to {self.data.index[-1]}")
 
-        print("=" * 70)
+        logger.info("=" * 70)
 
 
 # Convenience functions
@@ -437,7 +448,9 @@ def read_vprocess_file(filepath: str, endian: str = "little") -> pd.DataFrame:
     return reader.read()
 
 
-def get_vprocess_info(filepath: str, endian: str = "little") -> tuple[dict[str, Any], pd.DataFrame]:
+def get_vprocess_info(
+    filepath: str, endian: str = "little"
+) -> tuple[dict[str, Any], pd.DataFrame]:
     """
     Get metadata and variable information from a VProcess file.
 
@@ -487,18 +500,18 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    print(f"Reading VProcess file with {args.endian}-endian format...")
+    logger.info(f"Reading VProcess file with {args.endian}-endian format...")
     reader = VProcessFileReader(args.filepath, endian=args.endian)
     reader.print_summary()
 
-    print("\nVariable Information:")
-    print(reader.get_variable_info())
+    logger.info("\nVariable Information:")
+    logger.info(reader.get_variable_info())
 
-    print("\nReading data...")
+    logger.info("\nReading data...")
     df = reader.read()
-    print(f"\nData shape: {df.shape}")
-    print("\nFirst few rows:")
-    print(df.head())
+    logger.info(f"\nData shape: {df.shape}")
+    logger.info("\nFirst few rows:")
+    logger.info(df.head())
 
 
 if __name__ == "__main__":

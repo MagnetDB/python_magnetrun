@@ -81,11 +81,11 @@ class MagnetDataBase(ABC):
 
     def info(self) -> None:
         """Print a one-line summary."""
-        print(f"{self.__class__.__name__}: {self.FileName}")
+        logger.info(f"{self.__class__.__name__}: {self.FileName}")
 
     # Cleanup / reshape — no-op by default; pandas subclass overrides
 
-    def cleanupData_legacy(self, debug: bool = False) -> int:  # noqa: N802
+    def cleanupData_legacy(self) -> int:  # noqa: N802
         return 0
 
     def cleanupData(  # noqa: N802

@@ -257,11 +257,11 @@ Examples:
 
 def run_list_dates(args) -> None:
     """Handle --list-dates command."""
-    print("Available dates:")
+    logger.info("Available dates:")
     for data_type in ["kHz", "rms", "trigger"]:
         dates = list_available_dates(args.base_dir, data_type)
         if dates:
-            print(
+            logger.info(
                 f"  {data_type}: {', '.join(dates[:5])}"
                 + (f" ... ({len(dates)} total)" if len(dates) > 5 else "")
             )
@@ -269,38 +269,38 @@ def run_list_dates(args) -> None:
 
 def run_show_khz_vars(data: HybridData, system: str) -> None:
     """Handle --khz-vars command."""
-    print(f"\nkHz Variables for {system}:")
+    logger.info(f"\nkHz Variables for {system}:")
     vars_info = data.get_khz_variables(system)
-    print(f"  Analog ({len(vars_info['analog'])}):")
+    logger.info(f"  Analog ({len(vars_info['analog'])}):")
     for var in vars_info["analog"][:10]:
-        print(f"    {var}")
+        logger.info(f"    {var}")
     if len(vars_info["analog"]) > 10:
-        print(f"    ... and {len(vars_info['analog']) - 10} more")
-    print(f"  Digital ({len(vars_info['digital'])}):")
+        logger.info(f"    ... and {len(vars_info['analog']) - 10} more")
+    logger.info(f"  Digital ({len(vars_info['digital'])}):")
     for var in vars_info["digital"][:10]:
-        print(f"    {var}")
+        logger.info(f"    {var}")
     if len(vars_info["digital"]) > 10:
-        print(f"    ... and {len(vars_info['digital']) - 10} more")
+        logger.info(f"    ... and {len(vars_info['digital']) - 10} more")
 
 
 def run_show_rms_vars(data: HybridData, system: str) -> None:
     """Handle --rms-vars command."""
-    print(f"\nRMS Variables for {system}:")
+    logger.info(f"\nRMS Variables for {system}:")
     try:
         vars_info = data.get_rms_variables(system)
-        print(f"  Analog ({len(vars_info['analog'])}):")
+        logger.info(f"  Analog ({len(vars_info['analog'])}):")
         for var in vars_info["analog"][:10]:
-            print(f"    {var}")
+            logger.info(f"    {var}")
         if len(vars_info["analog"]) > 10:
-            print(f"    ... and {len(vars_info['analog']) - 10} more")
-        print(f"  Digital ({len(vars_info['digital'])}):")
+            logger.info(f"    ... and {len(vars_info['analog']) - 10} more")
+        logger.info(f"  Digital ({len(vars_info['digital'])}):")
         for var in vars_info["digital"][:10]:
-            print(f"    {var}")
+            logger.info(f"    {var}")
         if len(vars_info["digital"]) > 10:
-            print(f"    ... and {len(vars_info['digital']) - 10} more")
+            logger.info(f"    ... and {len(vars_info['digital']) - 10} more")
     except (OSError, ValueError, RuntimeError, KeyError) as e:
         log_exception("Error showing kHz variables", e, use_print=True, include_traceback=False)
-        print(f"  Error at {format_exception_location()}: {e}")
+        logger.error(f"  Error at {format_exception_location()}: {e}")
 
 
 def parse_hours(hours_str: str) -> list:
@@ -381,13 +381,13 @@ def main() -> None:
         try:
             hours = parse_hours(args.hours)
         except ValueError:
-            print(f"Error: Invalid hours format '{args.hours}'. Use comma-separated integers.")
+            logger.error(f"Error: Invalid hours format '{args.hours}'. Use comma-separated integers.")
             return
 
     # Plot kHz variable(s)
     if args.plot_khz:
         if not args.fepc_system:
-            print("Error: --fepc-system is required for plotting")
+            logger.error("Error: --fepc-system is required for plotting")
             return
         try:
             # Parse comma-separated variables
@@ -395,7 +395,7 @@ def main() -> None:
 
             if len(variables) == 1:
                 # Single variable - use original method
-                print(f"\nPlotting kHz variable: {variables[0]}")
+                logger.info(f"\nPlotting kHz variable: {variables[0]}")
                 data.plot_khz_variable(
                     args.fepc_system,
                     variables[0],
@@ -408,7 +408,7 @@ def main() -> None:
                 )
             else:
                 # Multiple variables - use new multi-variable method
-                print(f"\nPlotting kHz variables: {', '.join(variables)} (layout: {args.layout})")
+                logger.info(f"\nPlotting kHz variables: {', '.join(variables)} (layout: {args.layout})")
                 data.plot_khz_variables(
                     args.fepc_system,
                     variables,
@@ -421,7 +421,7 @@ def main() -> None:
                     layout=args.layout,
                 )
         except ValueError as e:
-            print(f"Value error plotting kHz variable at {format_exception_location()}: {e}")
+            logger.error(f"Value error plotting kHz variable at {format_exception_location()}: {e}")
             return
         except (OSError, RuntimeError) as e:
             log_exception("Error plotting kHz variable", e, use_print=True, include_traceback=True)
@@ -430,7 +430,7 @@ def main() -> None:
     # Plot RMS variable(s)
     if args.plot_rms:
         if not args.fepc_system:
-            print("Error: --fepc-system is required for plotting")
+            logger.error("Error: --fepc-system is required for plotting")
             return
         try:
             # Parse comma-separated variables
@@ -438,7 +438,7 @@ def main() -> None:
 
             if len(variables) == 1:
                 # Single variable - use original method
-                print(f"\nPlotting RMS variable: {variables[0]}")
+                logger.info(f"\nPlotting RMS variable: {variables[0]}")
                 data.plot_rms_variable(
                     args.fepc_system,
                     variables[0],
@@ -446,7 +446,7 @@ def main() -> None:
                 )
             else:
                 # Multiple variables - use new multi-variable method
-                print(f"\nPlotting RMS variables: {', '.join(variables)} (layout: {args.layout})")
+                logger.info(f"\nPlotting RMS variables: {', '.join(variables)} (layout: {args.layout})")
                 data.plot_rms_variables(
                     args.fepc_system,
                     variables,
@@ -459,11 +459,11 @@ def main() -> None:
     # Plot both kHz and RMS
     if args.plot_both:
         if not args.fepc_system:
-            print("Error: --fepc-system is required for plotting")
+            logger.error("Error: --fepc-system is required for plotting")
             return
         try:
             rms_var = args.rms_var if args.rms_var else args.plot_both
-            print(f"\nPlotting kHz ({args.plot_both}) and RMS ({rms_var})")
+            logger.info(f"\nPlotting kHz ({args.plot_both}) and RMS ({rms_var})")
             data.plot_khz_with_rms(
                 args.fepc_system,
                 args.plot_both,
@@ -473,7 +473,7 @@ def main() -> None:
                 save=args.save,
             )
         except ValueError as e:
-            print(f"Value error plotting kHz variable at {format_exception_location()}: {e}")
+            logger.error(f"Value error plotting kHz variable at {format_exception_location()}: {e}")
             return
         except (OSError, RuntimeError) as e:
             log_exception("Error plotting kHz with RMS", e, use_print=True, include_traceback=True)

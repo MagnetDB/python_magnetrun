@@ -311,16 +311,16 @@ Examples:
     # List common variables if requested
     if args.list_common_vars:
         common_vars = get_common_variables(file_list, verbose=not args.quiet)
-        print(f"\nCommon variables ({len(common_vars)}):")
+        logger.info(f"Common variables ({len(common_vars)}):")
         for var in common_vars:
-            print(f"  - {var}")
+            logger.info(f"  - {var}")
         return
 
     # Analyze files if requested
     if args.analyze:
         summary_df = analyze_batch(file_list, output_file=args.output)
-        print("\nFile Analysis Summary:")
-        print(summary_df.to_string(index=False))
+        logger.info("File Analysis Summary:")
+        logger.info(f"{summary_df.to_string(index=False)}")
         return
 
     # Process files
@@ -337,8 +337,8 @@ Examples:
         if args.output:
             export_data(df, args.output, args.format)
     else:
-        print("\nNo action specified. Use --output, --merge, --analyze, or --list-common-vars")
-        print("Use --help for more information")
+        logger.warning("No action specified. Use --output, --merge, --analyze, or --list-common-vars")
+        logger.warning("Use --help for more information")
 
 
 if __name__ == "__main__":

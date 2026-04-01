@@ -83,7 +83,7 @@ class LoadOptions:
     # Time range selection
     start_time: datetime | None = None
     end_time: datetime | None = None
-    hours: list[int] | None = None
+    hours: range | list[int] | None = None
 
     # Calibration
     apply_calib: bool = True
@@ -288,7 +288,9 @@ class LazyKHzLoader(LazyArrayLoader):
 
                 # Copy relevant portion to output
                 block_start = i * self.SAMPLES_PER_BLOCK
-                block_end = min(block_start + self.SAMPLES_PER_BLOCK, num_samples + data_offset)
+                block_end = min(
+                    block_start + self.SAMPLES_PER_BLOCK, num_samples + data_offset
+                )
 
                 src_start = data_offset if i == 0 else 0
                 src_end = src_start + (block_end - block_start)
@@ -313,9 +315,9 @@ class LazyKHzLoader(LazyArrayLoader):
         """Read digital block data and unpack bits"""
         endian_char = ">" if self.endian == "big" else "<"
         dtype = np.dtype(np.uint16).newbyteorder(endian_char)
-        data_uint16 = np.frombuffer(f.read(self.SAMPLES_PER_BLOCK * 4), dtype=dtype).reshape(
-            self.SAMPLES_PER_BLOCK, 2
-        )
+        data_uint16 = np.frombuffer(
+            f.read(self.SAMPLES_PER_BLOCK * 4), dtype=dtype
+        ).reshape(self.SAMPLES_PER_BLOCK, 2)
 
         data = np.zeros((self.SAMPLES_PER_BLOCK, 32), dtype=bool)
         for sample_idx in range(self.SAMPLES_PER_BLOCK):
@@ -570,6 +572,7 @@ class HybridRun:
     def getData(
         self,
         key: str | None = None,
+        hours: range | list[int] | None = None,
         downsample: int | None = None,
         options: LoadOptions | None = None,
     ) -> dict | tuple[np.ndarray, np.ndarray] | pd.DataFrame:
@@ -584,6 +587,8 @@ class HybridRun:
             - 'kHz/FEPC-LNCMI/I_H1' - specific kHz variable
             - 'rms/FEPC-LNCMI/I_H1' - specific RMS variable
             - 'kHz/FEPC-LNCMI' - list of available kHz variables
+        hours : range or list of int, optional
+            Specific hours to load
         downsample : int, optional
             Target number of points for downsampling (for plotting)
         options : LoadOptions, optional
@@ -596,10 +601,17 @@ class HybridRun:
             - For group keys: dict of available variables
             - For None: all loaded data
         """
+        print(
+            f"HybridRun.getData: key={key}, hours={hours},downsample={downsample}, options={options}"
+        )
+
         if self.HybridData is None:
             raise RuntimeError("HybridRun.getData: no HybridData associated")
 
         opts = options or self.default_options
+        if hours is not None:
+            opts.hours = hours
+
         if downsample is not None:
             opts = LoadOptions(
                 lazy=opts.lazy,
@@ -612,9 +624,11 @@ class HybridRun:
                 apply_calib=opts.apply_calib,
                 cnv_dir=opts.cnv_dir,
             )
+            print(f"LoadOptions opts: {opts}")
+        print(f"opts: {opts}")
 
         if key is None:
-            return self.HybridData.Data
+            return self.HybridData  # .Data
 
         # Check cache first
         cache_key = f"{key}:{opts.downsample}:{opts.hours}"
@@ -625,12 +639,18 @@ class HybridRun:
 
         # Parse key
         parts = key.split("/")
+        print("parts:", parts)
         if len(parts) < 2:
-            raise ValueError(f"Invalid key format: {key}. Expected 'type/system[/variable]'")
+            raise ValueError(
+                f"Invalid key format: {key}. Expected 'type/system[/variable]'"
+            )
 
         data_type = parts[0]
+        print("data_type:", data_type)
         system = parts[1]
         variable = parts[2] if len(parts) >= 3 else None
+        print(f"system: {system}")
+        print(f"variable: {variable}")
 
         # Load data based on type
         if data_type == "kHz":
@@ -663,7 +683,9 @@ class HybridRun:
 
         # Apply downsampling if requested
         if opts.downsample and len(data) > opts.downsample:
-            data, time = downsample_data(data, time, opts.downsample, opts.downsample_method)
+            data, time = downsample_data(
+                data, time, opts.downsample, opts.downsample_method
+            )
 
         # Cache result
         if opts.cache:
@@ -750,7 +772,10 @@ class HybridRun:
         size_bytes = data.nbytes + time.nbytes
 
         # Evict old entries if needed
-        while self._cache_size_bytes + size_bytes > self._cache_max_size_bytes and self._cache:
+        while (
+            self._cache_size_bytes + size_bytes > self._cache_max_size_bytes
+            and self._cache
+        ):
             # Remove oldest entry
             oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].loaded_at)
             evicted = self._cache.pop(oldest_key)
@@ -827,7 +852,9 @@ class HybridRun:
         target_seconds = (target_time - day_start).total_seconds()
 
         # Find indices within window
-        mask = (time >= target_seconds - window_seconds) & (time <= target_seconds + window_seconds)
+        mask = (time >= target_seconds - window_seconds) & (
+            time <= target_seconds + window_seconds
+        )
 
         return data[mask], time[mask]
 

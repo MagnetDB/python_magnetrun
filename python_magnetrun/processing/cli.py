@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:
-    print("addtime")
+    logger.debug("addtime")
 
     df = pd.DataFrame(mdata.Data[group][channel])
     t0 = mdata.Groups[group][channel]["wf_start_time"]
@@ -34,7 +34,7 @@ def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:
     df["t"] = [i * dt for i in df.index.to_list()]
 
     df = df.set_index("t")
-    print(df.head())
+    logger.debug(df.head())
     return df
 
 
@@ -103,7 +103,11 @@ def main():
     parser_lag.add_argument("--trange", help="specify a range for t", type=int, default=100)
 
     args = parser.parse_args()
-    print(f"args: {args}")
+    logging.basicConfig(
+        level=logging.DEBUG if args.debug else logging.WARNING,
+        format="%(name)s - %(levelname)s - %(message)s",
+    )
+    logger.debug(f"args: {args}")
 
     threshold = 0.5
     twindows = 10
@@ -129,7 +133,7 @@ def main():
     supported_formats = [".txt", ".tdms"]
     f_extension = os.path.splitext(args.input_file)[-1]
     if f_extension not in supported_formats:
-        print("so far only txt file support is implemented")
+        logger.error("so far only txt file support is implemented")
         sys.exit(0)
 
     insert = "tutut"  # shall be an id from magnetdb
@@ -140,9 +144,9 @@ def main():
         try:
             index = filename.index("_")
             housing = filename[0:index]
-            print(f"site detected: {housing}")
+            logger.info(f"site detected: {housing}")
         except ValueError:
-            print("no site detected - use args.site argument instead")
+            logger.warning("no site detected - use args.site argument instead")
 
     match f_extension:
         case ".txt":
@@ -172,7 +176,7 @@ def main():
             )
 
     if args.command == "smooth":
-        print(f"smooth: {skeys}")
+        logger.info(f"smooth: {skeys}")
         for key in skeys:
             # TODO fix for tdms
             if mdata.Type == 0:
@@ -181,31 +185,31 @@ def main():
                 (group, channel) = key.split("/")
                 selected_df = addtime(mdata, group, channel)
 
-            print(selected_df.head())
+            logger.debug(f"{selected_df.head()}")
             Meanval = selected_df[key].mean()
-            print(Meanval)
+            logger.debug(f"{Meanval}")
 
             # Initializing noisy non linear data
             x = selected_df["t"].to_numpy()  # np.linspace(0,1,100)
             y = selected_df[key].to_numpy()  # np.sin(x * 1.5 * np.pi )
 
-            print("display Weighted Linear Regression")
+            logger.info("display Weighted Linear Regression")
             plt.figure(figsize=(10, 6))
             plt.scatter(x, y, facecolors="none", edgecolor="darkblue", label=key)
 
             #
-            print(f"compute Locally Weighted Linear Regression {args.method}")
+            logger.info(f"compute Locally Weighted Linear Regression {args.method}")
             if args.method == "ag":
                 try:
-                    print(f"f={smoothing_f}, iter={smoothing_iter}")
+                    logger.info(f"f={smoothing_f}, iter={smoothing_iter}")
                     yest = lowess_ag(x, y, f=smoothing_f, iter=smoothing_iter)
                     plt.plot(x, yest, color="orange", label="Loess: A. Gramfort")
                 except (ValueError, RuntimeError) as e:
-                    print(f"Failed to build lowess_ag: {e}")
+                    logger.error(f"Failed to build lowess_ag: {e}")
 
             if args.method == "bell_kernel":
                 try:
-                    print(f"tau={smoothing_tau}")
+                    logger.info(f"tau={smoothing_tau}")
                     yest_bell = lowess_bell_shape_kern(x, y, smoothing_tau)
                     if args.debug:
                         x0 = (x[0] + x[40]) / 2.0
@@ -218,15 +222,15 @@ def main():
                         )
                     plt.plot(x, yest_bell, color="red", label="Loess: bell shape kernel")
                 except (ValueError, RuntimeError) as e:
-                    print(f"Failed to build bell: {e}")
+                    logger.error(f"Failed to build bell: {e}")
 
             if args.method == "statsmodel_sm":
                 try:
-                    print(f"f={smoothing_f}, iter={smoothing_iter}")
+                    logger.info(f"f={smoothing_f}, iter={smoothing_iter}")
                     yest_sm = lowess_sm(x, y, f=smoothing_f, iter=smoothing_iter)
                     plt.plot(x, yest_sm, color="magenta", label="Loess: statsmodel")  # marker="o",
                 except (ValueError, RuntimeError) as e:
-                    print(f"Failed to build sm: {e}")
+                    logger.error(f"Failed to build sm: {e}")
 
             plt.grid()
             plt.legend()
@@ -249,7 +253,7 @@ def main():
             plt.close()
 
     if args.command == "lag":
-        print("lag: not implemented yet -- see analysis-refactor.py for proper use")
+        logger.warning("lag: not implemented yet -- see analysis-refactor.py for proper use")
         # for key in skeys:
         #     df = mrun.getData()
         #     for t in range(args.trange):

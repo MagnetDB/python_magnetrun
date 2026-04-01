@@ -33,9 +33,8 @@ def nplateaus(
     detect plateau vs index aka time
     """
 
-    print(
-        f"nplateaus: xField={xField}, yField={yField}, threshold={threshold}, num_points_threshold={num_points_threshold}",
-        flush=True,
+    logger.info(
+        f"nplateaus: xField={xField}, yField={yField}, threshold={threshold}, num_points_threshold={num_points_threshold}"
     )
 
     ykey = ""
@@ -57,9 +56,8 @@ def nplateaus(
     yunit = yField[2]
     xunit = xField[2]
 
-    if verbose:
-        print(f"nplateau for {ykey}: type=={type(df[ykey].describe())}", flush=True)
-        print(df[ykey].describe(), flush=True)
+    logger.debug(f"nplateau for {ykey}: type=={type(df[ykey].describe())}")
+    logger.debug(df[ykey].describe())
 
     # filter and group plateaus
     max_difference = threshold
@@ -106,11 +104,9 @@ def nplateaus(
 
         plateau_idx += 1
         plateau_data.append(pdata)
-        if verbose:
-            print(
-                f"plateau[{plateau_idx}]: {plateau_data[-1]}, duration={abs(_start - _end)} {xField[1]}",
-                flush=True,
-            )
+        logger.debug(
+            f"plateau[{plateau_idx}]: {plateau_data[-1]}, duration={abs(_start - _end)} {xField[1]}"
+        )
 
         plt.plot(
             group_data[xField[0]],
@@ -145,8 +141,7 @@ def nplateaus(
 
     plt.close()
 
-    if verbose:
-        print(f"detected plateaux: {plateau_idx}", flush=True)
+    logger.debug(f"detected plateaux: {plateau_idx}")
 
     drop_plateau = []
     for i in range(1, len(plateau_data)):
@@ -181,7 +176,7 @@ def nplateaus(
                 drop_plateau.append(i)
 
     if drop_plateau:
-        print(f"{len(drop_plateau)} plateau marked has to be concatened")
+        logger.info(f"{len(drop_plateau)} plateau marked has to be concatened")
 
         for i in reversed(drop_plateau):
             del plateau_data[i]
@@ -302,7 +297,7 @@ def plateaus(
     # time_d_min = time_d / datetime.timedelta(minutes=1)
     # time_d_ms  = time_d / datetime.timedelta(milliseconds=1)
     plateaux = regimes_in_source(0)
-    print(f"Field plateaus(thresold={threshold}: {len(plateaux)})")
+    logger.info(f"Field plateaus(thresold={threshold}: {len(plateaux)})")
     actual_plateaux = []
     for p in plateaux:
         if Data.Type == 0:
@@ -333,7 +328,7 @@ def plateaus(
         ):
             actual_plateaux.append([start_time, end_time, dt.total_seconds(), b0, b1])
 
-    print(
+    logger.info(
         f"Field plateaus(threshold={threshold:g}, b_threshold={b_threshold:g}, duration>={duration:g} s): {len(actual_plateaux)} over {len(plateaux)}"
     )
     tables = []
@@ -342,19 +337,18 @@ def plateaus(
         tables.append([p[0], p[1], p[2], p[3], p[4], b_diff * 100.0])
 
     pics = list_sequence(B_list, [1.0, -1.0])
-    print(f" \nField pics (aka sequence[1,-1]): {len(pics)}")
+    logger.info(f"Field pics (aka sequence[1,-1]): {len(pics)}")
     pics = list_sequence(B_list, [1.0, 0, -1.0, 0, 1.0])
-    print(f" \nField pics (aka sequence[1,0,-1,0,1]): {len(pics)}")
+    logger.info(f"Field pics (aka sequence[1,0,-1,0,1]): {len(pics)}")
 
     # remove adjacent duplicate
     import itertools
 
     B_ = [x[0] for x in itertools.groupby(B_list)]
     logger.debug(f"B_={B_}, count(0)={B_.count(0)}")
-    print(
+    logger.info(
         f"Field commisionning ? (aka sequence [1.0,0,-1.0,0.0,-1.0]): {len(list_sequence(B_, [1.0, 0, -1.0, 0.0, -1.0]))}"
     )
-    print("\n\n")
 
     from tabulate import tabulate
 
@@ -366,7 +360,7 @@ def plateaus(
         f"{ysymbol}1[{yunit}]",
         "\u0394[%]",
     ]
-    print(tabulate(tables, headers, tablefmt="simple"), "\n")
+    logger.info(tabulate(tables, headers, tablefmt="simple"))
 
     return 0
 
@@ -403,7 +397,7 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"input_files: {args.input_files}")
+    logger.info(f"input_files: {args.input_files}")
     xField = args.xField
     yField = args.yField
 

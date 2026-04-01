@@ -1,4 +1,7 @@
 import argparse
+import logging
+
+logger = logging.getLogger(__name__)
 
 site_dict = {
     "17": "M7",
@@ -40,12 +43,12 @@ def main() -> None:
 
     # get config from: https://srv-data-install.lncmi.cnrs.fr/cirrus/A1/xml/
     for file in input_files:
-        print(file)
+        logger.info(f"{file}")
         with open(file) as f:
             xml = f.read()
             config_dict = xmltodict.parse(xml)
             if args.debug:
-                print(json.dumps(config_dict, indent=4))
+                logger.debug(json.dumps(config_dict, indent=4))
 
         # @version_config
         # @date
@@ -57,7 +60,7 @@ def main() -> None:
         # what about rapport_entre_boucle (lien entre A1 et A2 - aka GR1 - , lien entre A3 et A4 - aka GR2)?
         version = config_dict["configuration"]["@version_config"]
         date = config_dict["configuration"]["@date"]
-        print(f"Version: {version}, Date: {date}")
+        logger.info(f"Version: {version}, Date: {date}")
 
         config_regs = config_dict["configuration"]["CIRRUS_CP"]["analogique"]["regs"]
         for _i, reg_value in enumerate(config_regs["regulateur"]):
@@ -75,7 +78,7 @@ def main() -> None:
             # print(f'looking for numero={numero} (type={type(numero)})')
 
             if numero == str(1) and numero_jeu in site_dict:
-                print(
+                logger.info(
                     f"Current PID {site_dict[numero_jeu]}: Numero Seuil: {numero_seuil}, Ki: {Ki}, Kp: {Kp}, Kd: {Kd}, Rapport Entre Boucle: {rapport_entre_boucle}"
                 )
 

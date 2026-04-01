@@ -18,14 +18,21 @@ import os
 
 import pandas as pd
 
-from .magnetdata_base import MagnetDataBase  # re-export
-from .magnetdata_pandas import (  # noqa: F401  (re-exported for convenience)
+from .magnetdata_base import MagnetDataBase
+from .magnetdata_pandas import (
     BProfileMagnetData,
     EnsightMagnetData,
     FeelppMagnetData,
     PandasMagnetData,
 )
-from .magnetdata_tdms import TdmsMagnetData  # noqa: F401
+from .magnetdata_tdms import TdmsMagnetData
+from .utils.validation import (
+    FileFormatError,
+    validate_csv_format,
+    validate_file_exists,
+    validate_tdms_format,
+    validate_txt_format,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +44,7 @@ __all__ = [
     "BProfileMagnetData",
     "FeelppMagnetData",
     "TdmsMagnetData",
+    "FileFormatError",
 ]
 
 
@@ -104,6 +112,7 @@ class MagnetData(PandasMagnetData):
 
         if f_extension != ".tdms":
             raise RuntimeError(f"fromtdms: expect a tdms filename - got {name}")
+        validate_tdms_format(name)
 
         # add t_offset to account for tdms downsampled data
         t_offset: float = 0.0
@@ -156,24 +165,25 @@ class MagnetData(PandasMagnetData):
                 + Data["Courants_Alimentations"]["Référence_A2"]
             )
             Keys.append("Courants_Alimentations/Référence_GR1")
-            Groups["Courants_Alimentations"]["Référence_GR1"] = Groups["Courants_Alimentations"][
-                "Référence_A1"
-            ]
+            Groups["Courants_Alimentations"]["Référence_GR1"] = Groups[
+                "Courants_Alimentations"
+            ]["Référence_A1"]
         if "Référence_A3" in Data["Courants_Alimentations"]:
             Data["Courants_Alimentations"]["Référence_GR2"] = (
                 Data["Courants_Alimentations"]["Référence_A3"]
                 + Data["Courants_Alimentations"]["Référence_A4"]
             )
             Keys.append("Courants_Alimentations/Référence_GR2")
-            Groups["Courants_Alimentations"]["Référence_GR2"] = Groups["Courants_Alimentations"][
-                "Référence_A3"
-            ]
+            Groups["Courants_Alimentations"]["Référence_GR2"] = Groups[
+                "Courants_Alimentations"
+            ]["Référence_A3"]
 
         return TdmsMagnetData(name, Groups, Keys, Data)
 
     @classmethod
     def fromtxt(cls, name: str) -> "PandasMagnetData":
         """Create from a pupitre .txt file."""
+        validate_txt_format(name)
         with open(name) as f:
             f_extension = os.path.splitext(name)[-1]
             if f_extension == ".txt":
@@ -186,6 +196,7 @@ class MagnetData(PandasMagnetData):
     @classmethod
     def fromensight(cls, name: str) -> "EnsightMagnetData":
         """Create from a CSV ensight file."""
+        validate_file_exists(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=",", engine="python", skiprows=2)
             Keys = Data.columns.values.tolist()
@@ -194,6 +205,7 @@ class MagnetData(PandasMagnetData):
     @classmethod
     def fromcsv(cls, name: str) -> "PandasMagnetData":
         """Create from a CSV file."""
+        validate_csv_format(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=",", engine="python", skiprows=0)
             Keys = Data.columns.values.tolist()
@@ -209,10 +221,12 @@ class MagnetData(PandasMagnetData):
         Data = pd.DataFrame()
         Keys: list[str] = []
         try:
-            Data = pd.read_csv(StringIO(name), sep=sep, engine="python", skiprows=skiprows)
+            Data = pd.read_csv(
+                StringIO(name), sep=sep, engine="python", skiprows=skiprows
+            )
             Keys = Data.columns.values.tolist()
         except (pd.errors.ParserError, ValueError, OSError):
-            print("magnetdata.fromStringIO: trouble loading data")
+            logger.error("magnetdata.fromStringIO: trouble loading data")
             with open("wrongdata.txt", "w", newline="\n") as fo:
                 fo.write(name)
 
@@ -221,6 +235,7 @@ class MagnetData(PandasMagnetData):
     @classmethod
     def frombprofile(cls, name: str) -> "BProfileMagnetData":
         """Create from a bprofile CSV file (Index, Position, Profile columns)."""
+        validate_csv_format(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=0)
             Keys = Data.columns.values.tolist()
@@ -229,6 +244,7 @@ class MagnetData(PandasMagnetData):
     @classmethod
     def fromfeelpp(cls, name: str, skiprows: int = 0) -> "FeelppMagnetData":
         """Create from a feelpp simulation CSV file."""
+        validate_csv_format(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=",", engine="python", skiprows=skiprows)
             Keys = Data.columns.values.tolist()

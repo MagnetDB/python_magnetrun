@@ -58,7 +58,7 @@ def normalize_cad_ref(value: str) -> str:
 
 
 def cleanup(remove_site: list, msg: str, site_names: dict, Sites: dict):
-    print(f"Remove Site in {remove_site}: {msg}")
+    logger.info(f"Remove Site in {remove_site}: {msg}")
     for item in remove_site:
         Sites.pop(item)
         if item in site_names:
@@ -153,7 +153,7 @@ def main():
     if sys.stdin.isatty():
         password = getpass.getpass("Using getpass: ")
     else:
-        print("Using readline")
+        logger.info("Using readline")
         password = sys.stdin.readline().rstrip()
 
     if args.datadir != "." and not os.path.exists(args.datadir):
@@ -191,12 +191,12 @@ def main():
         # test connection
         r = s.get(url=url_status, verify=True)
         if r.url == url_logging:
-            print("check connection failed: Wrong credentials")
+            logger.error("check connection failed: Wrong credentials")
             sys.exit(1)
 
         # Load cirrus logs and XMLs if requested
         if args.load_cirrus:
-            print(f"Loading cirrus files for feed: {args.cirrus_feed}")
+            logger.info(f"Loading cirrus files for feed: {args.cirrus_feed}")
             cirrus_data = getCirrusFiles(
                 s,
                 url_cirrus,
@@ -239,7 +239,7 @@ def main():
 
         _data = {}
         _counter = {}
-        print("Load site history from M9_M10-history.csv")
+        logger.info("Load site history from M9_M10-history.csv")
         with open("M9_M10-history.csv") as f:
             _raw = csv.reader(f)
 
@@ -309,7 +309,7 @@ def main():
                     logger.warning(f"problem loading: {row} - {str(e)} - skipped")
                     pass
 
-        print("db_Sites: definition", end="")
+        logger.info("db_Sites: definition")
         for item, values in db_Sites.items():
             housing = values["housing"]
             name = values["name"]
@@ -327,14 +327,14 @@ def main():
         for item, values in db_Sites.items():
             logger.debug(f"site={item}: {values}")
         # TODO rename site with housing
-        print(f" {len(db_Sites)} sites loaded", flush=True)
+        logger.info(f" {len(db_Sites)} sites loaded")
 
         for _site, values in db_Sites.items():
             status = values["status"]
             for magnet in values["magnets"]:
                 Magnets[magnet] = HMagnet(magnet, "", status, parts=[])
 
-        print(f"Magnets: {len(Magnets)} loaded", flush=True)
+        logger.info(f"Magnets: {len(Magnets)} loaded")
         for magnet in Magnets:
             logger.debug(f"{magnet}: {Magnets[magnet]}")
 
@@ -364,16 +364,16 @@ def main():
 
         # Get CAD ref for Parts
         PartsCAD = {}
-        print("Loading CAD references for helices from Helice.php", end="")
+        logger.info("Loading CAD references for helices from Helice.php")
         getPartCADref(s, url_helicescad, PartsCAD, part_type="helix", debug=debug)
         if debug:
             logger.debug("\ngetPartCADref (Helices):")
             for key in PartsCAD:
                 logger.debug(f"{key}: {PartsCAD[key]}")
-        print(f" Done; {len(PartsCAD)} CAD references loaded", flush=True)
+        logger.info(f"Done; {len(PartsCAD)} CAD references loaded")
 
         # Get CAD ref for Rings from Bague.php
-        print("Loading CAD references for rings from Bague.php", end="")
+        logger.info("Loading CAD references for rings from Bague.php")
         getRingCADref(s, url_ringscad, PartsCAD, debug=debug)
         if debug:
             logger.debug("\ngetRingCADref (Rings):")
@@ -381,13 +381,13 @@ def main():
                 if len(PartsCAD[key]) > 3 and PartsCAD[key][3] == "ring":
                     logger.debug(f"{key}: {PartsCAD[key]}")
         rings_count = sum(1 for v in PartsCAD.values() if v and v[-1] == "ring")
-        print(f" Done; {rings_count} CAD references loaded", flush=True)
+        logger.info(f"Done; {rings_count} CAD references loaded")
 
         # List parts if requested
         if args.list_parts:
-            print("\n" + "=" * 80)
-            print(f"Parts from srv-data server: {args.server}")
-            print("=" * 80)
+            logger.info("\n" + "=" * 80)
+            logger.info(f"Parts from srv-data server: {args.server}")
+            logger.info("=" * 80)
 
             # Separate parts by type
             helices = {k: v for k, v in PartsCAD.items() if len(v) > 3 and v[3] == "helix"}
@@ -395,11 +395,11 @@ def main():
 
             # Display based on filter
             if args.part_type in ["helix", "all"]:
-                print(f"\n{'=' * 80}")
-                print(f"HELICES ({len(helices)} found)")
-                print(f"{'=' * 80}")
-                print(f"{'Name':<20} {'CAD Ref':<20} {'Material':<15} {'Geometry':<20}")
-                print("-" * 80)
+                logger.info(f"\n{'=' * 80}")
+                logger.info(f"HELICES ({len(helices)} found)")
+                logger.info(f"{'=' * 80}")
+                logger.info(f"{'Name':<20} {'CAD Ref':<20} {'Material':<15} {'Geometry':<20}")
+                logger.info("-" * 80)
                 for name, data in sorted(helices.items()):
                     cad_ref = data[0] if len(data) > 0 else "N/A"
                     material = data[1] if len(data) > 1 else "N/A"
@@ -412,14 +412,14 @@ def main():
                         geometry = data[2][:-1]  # Remove "X"
                     else:
                         geometry = data[2] if len(data) > 2 else "N/A"  # No suffix letter
-                    print(f"{name:<20} {cad_ref:<20} {material:<15} {geometry:<20}")
+                    logger.info(f"{name:<20} {cad_ref:<20} {material:<15} {geometry:<20}")
 
             if args.part_type in ["ring", "all"]:
-                print(f"\n{'=' * 80}")
-                print(f"RINGS ({len(rings)} found)")
-                print(f"{'=' * 80}")
-                print(f"{'Name':<20} {'CAD Ref':<20} {'Material':<15} {'Geometry':<20}")
-                print("-" * 80)
+                logger.info(f"\n{'=' * 80}")
+                logger.info(f"RINGS ({len(rings)} found)")
+                logger.info(f"{'=' * 80}")
+                logger.info(f"{'Name':<20} {'CAD Ref':<20} {'Material':<15} {'Geometry':<20}")
+                logger.info("-" * 80)
                 for name, data in sorted(rings.items()):
                     cad_ref = data[0] if len(data) > 0 else "N/A"
                     material = data[1] if len(data) > 1 else "N/A"
@@ -429,11 +429,11 @@ def main():
                         geometry = data[2][:-1]  # Remove "X"
                     else:
                         geometry = data[2] if len(data) > 2 else "N/A"  # No suffix letter
-                    print(f"{name:<20} {cad_ref:<20} {material:<15} {geometry:<20}")
+                    logger.info(f"{name:<20} {cad_ref:<20} {material:<15} {geometry:<20}")
 
-            print(f"\n{'=' * 80}")
-            print(f"Total: {len(helices)} helices, {len(rings)} rings")
-            print(f"{'=' * 80}\n")
+            logger.info(f"\n{'=' * 80}")
+            logger.info(f"Total: {len(helices)} helices, {len(rings)} rings")
+            logger.info(f"{'=' * 80}\n")
 
             # Exit after listing if no other operations requested
             if not args.check and not args.save:
@@ -449,7 +449,7 @@ def main():
 
         # Create Parts from Magnets
         diameter = {14: 34, 12: 50, 6: 170}
-        print(f"Magnets ({len(Magnets)}): create and attached to site", end="")
+        logger.info(f"Magnets ({len(Magnets)}): create and attached to site")
         PartName = {}
         db_Magnets = {}
         for magnet in Magnets:
@@ -493,18 +493,18 @@ def main():
                 logger.info(f"{magnet}: {db_Magnets[magnet]} - should add {nhelices - 1} rings ")
             else:
                 db_Magnets[magnet]["description"] = "Phi = 400 mm"
-        print(" Done", flush=True)
+        logger.info("Done")
 
         # Create Parts from Materials because in control/monitoring part==mat
         # TODO once Parts is complete no longer necessary
         # ['name', 'description', 'status', 'type', 'design_office_reference', 'material_id'
-        print(f"MParts ({len(PartsCAD)}):", end="")
+        logger.info(f"MParts ({len(PartsCAD)}):")
         db_Parts = {}
         cad_Parts = {}
         for part in PartsCAD:
             # PartsCAD[part] = [cad_ref, material, geometry, part_type]
             part_type = PartsCAD[part][3] if len(PartsCAD[part]) > 3 else "helix"
-            print(f" {part} ({part_type}) -- {part in PartName}")
+            logger.info(f" {part} ({part_type}) -- {part in PartName}")
             carac = {
                 "name": part,
                 "description": "",
@@ -527,10 +527,10 @@ def main():
                     cad_Parts[cad] = [part]
             logger.debug(f"{part}: {carac}")
             db_Parts[part] = carac
-        print(" Done", flush=True)
+        logger.info("Done")
 
         if args.geometry_csv:
-            print(f"Applying geometry overrides from {args.geometry_csv}", flush=True)
+            logger.info(f"Applying geometry overrides from {args.geometry_csv}")
             import csv
 
             geometry_override = {}
@@ -550,10 +550,10 @@ def main():
         ordered_data = OrderedDict(sorted(cad_Parts.items(), key=lambda x: x))
         for cad, values in ordered_data.items():
             logger.debug(f"{cad} parts={values}")
-        print(f"cad/Parts ({len(cad_Parts)}): Done", flush=True)
+        logger.info(f"cad/Parts ({len(cad_Parts)}): Done")
 
         getMaterial(s, None, url_materials, Mats, debug=debug)
-        print(f"Materials ({len(Mats)}): definitions", end="")
+        logger.info(f"Materials ({len(Mats)}): definitions")
         db_Materials = {}
         for mat in Mats:
             carac = {
@@ -576,10 +576,10 @@ def main():
                 carac["nuance"] = Mats[mat].material["nuance"]
             logger.debug(f"{mat}: {carac}")
             db_Materials[Mats[mat].name] = carac
-        print(" Done", flush=True)
+        logger.info("Done")
 
         # Try to read and make some stats on records
-        print("Records:", end="")
+        logger.info("Records:")
         page = s.get(url=url_records, verify=True)
 
         housing_names = []
@@ -625,7 +625,7 @@ def main():
 
                     logger.debug(f"nlink={nlink}")
             logger.info(f"records: {url_housing} - found {len(record_names)} records")
-        print(f" {len(record_names)} records found", flush=True)
+        logger.info(f" {len(record_names)} records found")
 
         # Assign records to site from timestamps
         # Create a panda datafram with ['link','timestamp']
@@ -636,7 +636,7 @@ def main():
 
         # for each site
         #     get record with a timestamp in between site.commisionned_at and site.decommisioned_at
-        print("Assign records to sites based on timestamps:\n", end="")
+        logger.info("Assign records to sites based on timestamps:")
         for site, values in db_Sites.items():
             housing = values["housing"]
             t0 = values["commissioned_at"]
@@ -667,13 +667,12 @@ def main():
             last_record = (
                 values["records"][-1].getDataFilename() if len(values["records"]) > 0 else "N/A"
             )
-            print(
-                f'site={site}, housing="{housing}, t0={t0}, t1={t1}, assigned records={len(values["records"])} from {first_record} to {last_record}',
-                flush=True,
+            logger.info(
+                f'site={site}, housing="{housing}, t0={t0}, t1={t1}, assigned records={len(values["records"])} from {first_record} to {last_record}'
             )
-        print("Assign records to sites based on timestamps Done", flush=True)
+        logger.info("Assign records to sites based on timestamps Done")
 
-        print("Save records and Check if requested:\n", end="")
+        logger.info("Save records and Check if requested:")
         for site, values in db_Sites.items():
             sname = site.split("_")[0]
             for record in values["records"]:
@@ -706,7 +705,7 @@ def main():
                     logger.info(
                         f"Saved record {record} for site {site} to {args.datadir}, filename={record.getDataFilename()}"
                     )
-        print("Save records and Check if requested Done", flush=True)
+        logger.info("Save records and Check if requested Done")
 
         """
         # Get orphan records
@@ -752,7 +751,7 @@ def main():
                     link = orphan
                     ts_str = link.split("/")[-1].replace("%20", " ").replace(".txt", "").strip()
                     timestamp = datetime.datetime.strptime(ts_str, "%Y.%m.%d - %H:%M:%S")
-                    print(f"orphan record: {orphan}, timestamp={timestamp}")
+                    logger.info(f"orphan record: {orphan}, timestamp={timestamp}")
                     orecord = MRecord(timestamp, housing, site, link)
                     logger.debug(f"{orecord}")
                     filepath = os.path.join(args.datadir, orecord.getDataFilename())
@@ -890,14 +889,14 @@ def main():
                 f.write(json.dumps(mvalues, indent=4))
             magnet_json_files.append(filename)
 
-        print("\nCreated magnet JSON files:")
+        logger.info("\nCreated magnet JSON files:")
         for f in natsorted(magnet_json_files):
-            print(f"  {f}")
+            logger.info(f"  {f}")
 
         site_status = {"en service": "in_operation", "en stock": "decommisioned"}
         site_json_files = []
 
-        print("\nGenerate files for import in MagnetDB:")
+        logger.info("\nGenerate files for import in MagnetDB:")
         for site, svalues in sorted(
             db_Sites.items(),
             key=lambda x: (x[1]["commissioned_at"] is None, x[1]["commissioned_at"]),
@@ -949,10 +948,10 @@ def main():
                 f.write(json.dumps(svalues, indent=4))
             site_json_files.append(filename)
 
-        print("\nCreated site JSON files:")
+        logger.info("\nCreated site JSON files:")
         for f in natsorted(site_json_files):
-            print(f"  {f}")
-        print("\nDone.")
+            logger.info(f"  {f}")
+        logger.info("\nDone.")
 
 
 if __name__ == "__main__":

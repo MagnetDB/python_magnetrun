@@ -420,7 +420,9 @@ def find_files(
 
     # Pupitre pattern: /datadir/M9/2024.11.06*.txt
     pupitre_site_dir = pupitre_datadir / site
-    pupitre_filter = str(pupitre_site_dir / f"20{date[0:2]}.{date[2:4]}.{date[4:]}*.txt")
+    pupitre_filter = str(
+        pupitre_site_dir / f"20{date[0:2]}.{date[2:4]}.{date[4:]}*.txt"
+    )
 
     # Get base paths from overview file
     extension = os.path.splitext(overview_file)[-1]
@@ -574,10 +576,14 @@ def load_df(
         if extension == ".txt":
             mrun = MagnetRun.fromtxt(site, insert, file)
             mdata = mrun.getMData()
+            print(
+                f"load_df --pupitre -- {file}: mdata keys={mdata.getKeys()}", flush=True
+            )
             t0 = mdata.Data["timestamp"].iloc[0]
             selected_keys = ["t", "timestamp"]
             if keys is not None:
                 selected_keys += keys
+            print(f"load_df: selected_keys={selected_keys}", flush=True)
             df = pd.DataFrame(mdata.getData(selected_keys))
 
         elif extension == ".tdms":
@@ -586,14 +592,16 @@ def load_df(
 
             # Load data
             channels = list(mdata.Data[group].keys())
-            print(f"load_df: channels={channels}", flush=True)
+            logger.debug(f"load_df: channels={channels}")
             df = pd.DataFrame(mdata.getTdmsData(group, keys))
 
             # Check if first key exists
             first_key = channels[0] if keys is None or not keys else keys[0]
-            print(f"first_key: {first_key}", flush=True)
-            if keys is not None and keys[0] not in mdata.Groups.get(group, {}):
-                logger.debug(f"load_df: {group}/{keys[0]} not found in {mdata.FileName}")
+            logger.debug(f"first_key: {first_key}")
+            if keys is not None and keys and keys[0] not in mdata.Groups.get(group, {}):
+                logger.debug(
+                    f"load_df: {group}/{keys[0]} not found in {mdata.FileName}"
+                )
                 return df, t0
 
             # Get timing information
@@ -605,7 +613,8 @@ def load_df(
 
             # Add timestamp column
             df["timestamp"] = [
-                np.datetime64(t0).astype(datetime) + timedelta(seconds=i * dt + t_offset)
+                np.datetime64(t0).astype(datetime)
+                + timedelta(seconds=i * dt + t_offset)
                 for i in df.index.to_list()
             ]
         else:
@@ -650,7 +659,9 @@ def load_data(
     >>> files = ["archive1.tdms", "archive2.tdms"]
     >>> dfs = load_data(files, "M9", "", "Courants_Alimentations", ["Courant_GR1"])
     """
-    logger.info(f"load_data: files={files}, group={group}, keys={keys}")
+    logger.info(
+        f"load_data: files={files}, site={site}, insert={insert}, group={group}, keys={keys}"
+    )
 
     df_list = []
     for file in files:
@@ -779,11 +790,15 @@ class FileDiscovery:
                 if candidate_path.exists():
                     resolved_overview = str(candidate_path)
                     overview_dir = str(candidate_dir)
-                    logger.debug("Resolved overview %s -> %s", overview_file, resolved_overview)
+                    logger.debug(
+                        "Resolved overview %s -> %s", overview_file, resolved_overview
+                    )
                 else:
                     # Keep original (may be relative to cwd)
                     overview_dir = ""
-        logger.info(f"discover overview_dir={overview_dir}, resolved_overview={resolved_overview}")
+        logger.info(
+            f"discover overview_dir={overview_dir}, resolved_overview={resolved_overview}"
+        )
 
         # Extract site, mode, timestamp from filename
         parts = filename.split("_")
@@ -821,7 +836,9 @@ class FileDiscovery:
             time,
             pupitre_datadir=self.pupitre_datadir,
         )
-        pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter = filters
+        pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter = (
+            filters
+        )
 
         logger.debug("File patterns:")
         logger.debug("  pupitre: %s", pupitre_filter)

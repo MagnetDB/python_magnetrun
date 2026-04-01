@@ -27,17 +27,17 @@ def fit(
 
     result = df.query(f"{Ikey} <= {threshold}")  # , inplace=True)
     if result is not None and debug:
-        print(f"df: nrows={df.shape[0]}, results: nrows={result.shape[0]}")
-        print(f"result max: {result[Ikey].max()}")
+        logger.debug(f"df: nrows={df.shape[0]}, results: nrows={result.shape[0]}")
+        logger.debug(f"result max: {result[Ikey].max()}")
 
     x_data = result[f"{Ikey}"].to_numpy()
     y_data = result[Okey].to_numpy()
     params, params_covariance = optimize.curve_fit(fit_function, x_data, y_data)
 
-    print(f"Fit: {Ostring}({Ikey}) ")
-    print(f"\tparams: {params}")
+    logger.info(f"Fit: {Ostring}({Ikey}) ")
+    logger.info(f"\tparams: {params}")
     # print(f"\tcovariance: {params_covariance}")
-    print(f"\tstderr: {np.sqrt(np.diag(params_covariance))}")
+    logger.info(f"\tstderr: {np.sqrt(np.diag(params_covariance))}")
 
     plot_df(
         filename,

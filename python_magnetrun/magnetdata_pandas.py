@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import warnings
 from datetime import datetime
 from typing import Any
 
@@ -131,18 +132,30 @@ class PandasMagnetData(MagnetDataBase):
             elif key == "timestamp":
                 return ("time", None)
             else:
-                raise RuntimeError(f"{key} not defined in data - available keys are {self.Keys}")
+                raise RuntimeError(
+                    f"{key} not defined in data - available keys are {self.Keys}"
+                )
         return self.units[key]
 
     # --- cleanup / reshape -------------------------------------------
 
-    def cleanupData_legacy(self, debug: bool = False) -> int:  # noqa: N802
+    def cleanupData_legacy(self) -> int:  # noqa: N802
         """Remove empty/duplicate columns (legacy implementation)."""
-        logger.debug(f"Clean up Data (legacy): filename={self.FileName}, keys={self.Keys}")
+        warnings.warn(
+            "prepareData_legacy is deprecated and will be removed in a future version. "
+            "Use prepareData instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        logger.debug(
+            f"Clean up Data (legacy): filename={self.FileName}, keys={self.Keys}"
+        )
         assert isinstance(self.Data, pd.DataFrame)
         import re
 
-        init_Ikeys = natsorted([_key for _key in self.Keys if re.match(r"Icoil\d+", _key)])
+        init_Ikeys = natsorted(
+            [_key for _key in self.Keys if re.match(r"Icoil\d+", _key)]
+        )
         logger.debug(f"init_Ikeys: {init_Ikeys}")
         Fkeys = [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
         Fkeys += [_key for _key in self.Keys if re.match(r"Rpm\w+", _key)]
@@ -150,6 +163,11 @@ class PandasMagnetData(MagnetDataBase):
         Fkeys += [_key for _key in self.Keys if re.match(r"\w+_ref", _key)]
         Fkeys += [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
         Fkeys += [_key for _key in self.Keys if re.match(r"Ptot", _key)]
+        Fkeys += [
+            "teb",
+            "tsb",
+            "debitbrut",
+        ]
 
         def getDuplicateColumns(df: pd.DataFrame) -> list[str]:
             duplicateColumnNames: set[str] = set()
@@ -170,7 +188,9 @@ class PandasMagnetData(MagnetDataBase):
             for col in self.Data.columns[(self.Data == 0).all()].values.tolist()
             if not col.startswith("Flow") and not col.startswith("Field")
         ]
-        _empty_Ikeys = natsorted([_key for _key in empty_cols if re.match(r"Icoil\d+", _key)])
+        _empty_Ikeys = natsorted(
+            [_key for _key in empty_cols if re.match(r"Icoil\d+", _key)]
+        )
         _df = self.Data
         if empty_cols:
             _df = self.Data.drop(empty_cols, axis=1)
@@ -182,7 +202,11 @@ class PandasMagnetData(MagnetDataBase):
         _df.drop(really_dropped_columns, axis=1, inplace=True)
 
         Ukeys = natsorted(
-            [str(_key) for _key in _df.columns.values.tolist() if re.match(r"Ucoil\d+", _key)]
+            [
+                str(_key)
+                for _key in _df.columns.values.tolist()
+                if re.match(r"Ucoil\d+", _key)
+            ]
         )
 
         from itertools import groupby
@@ -203,7 +227,11 @@ class PandasMagnetData(MagnetDataBase):
             logger.debug(f"UB: {UB}")
 
         Ikeys = natsorted(
-            [_key for _key in _df.columns.values.tolist() if re.match(r"Icoil\d+", _key)]
+            [
+                _key
+                for _key in _df.columns.values.tolist()
+                if re.match(r"Icoil\d+", _key)
+            ]
         )
         logger.debug(f"IKeys = {Ikeys} ({len(Ikeys)})")
         if Ikeys:
@@ -295,6 +323,7 @@ class PandasMagnetData(MagnetDataBase):
         self.Data = _df
         self.Keys = self.Data.columns.values.tolist()
         logger.debug(f"--> self.Keys = {self.Keys}")
+        print(f"cleanupData_legacy: final keys = {self.Keys}")
         return 0
 
     def cleanupData(  # noqa: N802
@@ -324,7 +353,9 @@ class PandasMagnetData(MagnetDataBase):
                 logger.warning(
                     f"cleanupData: keys {missing_keys} not found in DataFrame, cannot rename"
                 )
-            target_exists = [new_key for new_key in keys_to_rename.values() if new_key in self.Keys]
+            target_exists = [
+                new_key for new_key in keys_to_rename.values() if new_key in self.Keys
+            ]
             if target_exists:
                 logger.warning(
                     f"cleanupData: target keys {target_exists} already exist in DataFrame, will be overwritten"
@@ -371,7 +402,7 @@ class PandasMagnetData(MagnetDataBase):
             if not col.startswith("Flow") and not col.startswith("Field")
         ]
         _empty_Ikeys = natsorted([_key for _key in empty_cols])
-        print(f"empty cols: {natsorted(empty_cols)}")
+        logger.info(f"empty cols: {natsorted(empty_cols)}")
 
         _df = self.Data
         if empty_cols:
@@ -381,7 +412,9 @@ class PandasMagnetData(MagnetDataBase):
         really_dropped_columns = natsorted(
             [col for col in dropped_columns if not col.startswith("Ucoil")]
         )
-        print(f"duplicate columns (others than Ucoil*): {natsorted(really_dropped_columns)}")
+        logger.info(
+            f"duplicate columns (others than Ucoil*): {natsorted(really_dropped_columns)}"
+        )
 
         return 0
 
@@ -391,13 +424,17 @@ class PandasMagnetData(MagnetDataBase):
             if key in self.Keys:
                 del self.Data[key]
             else:
-                logger.warning(f"removeData: cannot remove '{key}', key not found - skipping")
+                logger.warning(
+                    f"removeData: cannot remove '{key}', key not found - skipping"
+                )
         self.Keys = self.Data.columns.values.tolist()
         return 0
 
     def renameData(self, columns: dict) -> None:  # noqa: N802
         assert isinstance(self.Data, pd.DataFrame)
-        existing_renames = {old: new for old, new in columns.items() if old in self.Keys}
+        existing_renames = {
+            old: new for old, new in columns.items() if old in self.Keys
+        }
         if len(existing_renames) < len(columns):
             missing = [old for old in columns if old not in self.Keys]
             logger.warning(f"renameData: keys {missing} not found, skipping")
@@ -412,7 +449,9 @@ class PandasMagnetData(MagnetDataBase):
     ) -> int:
         assert isinstance(self.Data, pd.DataFrame)
         if key in self.Keys:
-            logger.warning(f"addData: key '{key}' already exists in DataFrame, skipping addition")
+            logger.warning(
+                f"addData: key '{key}' already exists in DataFrame, skipping addition"
+            )
         else:
             self.Data.eval(formula, inplace=True)
             self.Keys = self.Data.columns.values.tolist()
@@ -432,7 +471,7 @@ class PandasMagnetData(MagnetDataBase):
     ) -> None:
         logger.debug(f"computeData: Key={key}")
         if key in self.Keys:
-            print(f"Key {key} already exists in DataFrame")
+            logger.warning(f"Key {key} already exists in DataFrame")
             return
         assert isinstance(self.Data, pd.DataFrame)
         data = []
@@ -466,8 +505,8 @@ class PandasMagnetData(MagnetDataBase):
             dt = end_time - start_time
             duration = float(dt.seconds)
         else:
-            print("magnetdata.getDuration: no timestamp key")
-            print(f"available keys are: {self.Keys}")
+            logger.warning("magnetdata.getDuration: no timestamp key")
+            logger.warning(f"available keys are: {self.Keys}")
         return duration
 
     def addTime(self) -> int:  # noqa: N802
@@ -478,7 +517,9 @@ class PandasMagnetData(MagnetDataBase):
             )
 
         try:
-            self.Data["Date"] = pd.to_datetime(self.Data.Date, cache=True, format="%Y.%m.%d")
+            self.Data["Date"] = pd.to_datetime(
+                self.Data.Date, cache=True, format="%Y.%m.%d"
+            )
         except (ValueError, TypeError):
             raise RuntimeError(
                 f"MagnetData/AddTime {self.FileName}: failed to convert Date"
@@ -533,12 +574,8 @@ class PandasMagnetData(MagnetDataBase):
             )
         assert isinstance(self.Data, pd.DataFrame)
         tformat = "%Y.%m.%d %H:%M:%S"
-        start_str = (
-            f"{self.Data['Date'].iloc[0]} {self.Data['Time'].iloc[0]}"
-        )
-        end_str = (
-            f"{self.Data['Date'].iloc[-1]} {self.Data['Time'].iloc[-1]}"
-        )
+        start_str = f"{self.Data['Date'].iloc[0]} {self.Data['Time'].iloc[0]}"
+        end_str = f"{self.Data['Date'].iloc[-1]} {self.Data['Time'].iloc[-1]}"
         start_dt = datetime.strptime(start_str, tformat)
         end_dt = datetime.strptime(end_str, tformat)
         return (start_dt, end_dt)
@@ -546,16 +583,18 @@ class PandasMagnetData(MagnetDataBase):
     # --- extract -----------------------------------------------------
 
     def extractData(self, keys: list[str]) -> pd.DataFrame:  # noqa: N802
-        print(f"extractData: filename={self.FileName}, keys={keys}", end="", flush=True)
+        logger.debug(f"extractData: filename={self.FileName}, keys={keys}")
         for key in keys:
             if key not in self.Keys:
                 raise RuntimeError(
                     f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {key} key"
                 )
-        print("-> Done", flush=True)
+        logger.debug("extractData: Done")
         return pd.concat([self.Data[key] for key in keys], axis=1)  # type: ignore[index]
 
-    def extractDataThreshold(self, key: str, threshold: float) -> pd.DataFrame:  # noqa: N802
+    def extractDataThreshold(
+        self, key: str, threshold: float
+    ) -> pd.DataFrame:  # noqa: N802
         assert isinstance(self.Data, pd.DataFrame)
         if key not in self.Keys:
             raise RuntimeError(
@@ -568,8 +607,10 @@ class PandasMagnetData(MagnetDataBase):
     ) -> pd.DataFrame:
         assert isinstance(self.Data, pd.DataFrame)
         trange = timerange.split(";")
-        print(f"Select data from {trange[0]} to {trange[1]}")
-        return self.Data[self.Data["Time"].between(trange[0], trange[1], inclusive="both")]
+        logger.debug(f"Select data from {trange[0]} to {trange[1]}")
+        return self.Data[
+            self.Data["Time"].between(trange[0], trange[1], inclusive="both")
+        ]
 
     # --- persist / display -------------------------------------------
 
@@ -631,25 +672,27 @@ class PandasMagnetData(MagnetDataBase):
     def stats(self, key: str | None = None) -> pd.DataFrame | None:
         from tabulate import tabulate
 
-        print("magnetdata.stats")
+        logger.info("magnetdata.stats")
         assert isinstance(self.Data, pd.DataFrame)
         if key is not None:
             if key in self.Keys:
-                print(tabulate(self.Data[key].describe(), headers="keys", tablefmt="psql"))
+                logger.info(
+                    tabulate(self.Data[key].describe(), headers="keys", tablefmt="psql")
+                )
             else:
                 raise RuntimeError(
                     f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {key} key"
                 )
         else:
             df = self.Data.describe(include="all")
-            print(tabulate(df, headers="keys", tablefmt="psql"))
+            logger.info(tabulate(df, headers="keys", tablefmt="psql"))
         return None
 
     def info(self) -> None:
-        print(f"magnetdata: {self.FileName}, Type={self.Type}")
-        print("keys:")
+        logger.info(f"magnetdata: {self.FileName}, Type={self.Type}")
+        logger.info("keys:")
         for key in self.Keys:
-            print(f"\t{key}")
+            logger.info(f"\t{key}")
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(Type={self.Type!r}, Groups={self.Groups!r}, Keys={self.Keys!r}, Data={self.Data!r})"

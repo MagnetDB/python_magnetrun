@@ -14,7 +14,8 @@ import sys
 from pathlib import Path
 
 import numpy as np
-from trigger_reader import (
+
+from .trigger_reader import (
     list_trigger_files,
     load_trigger_config,
     parse_trigger_directory,

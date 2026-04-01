@@ -114,7 +114,7 @@ MODE_INTERCEPT_TOLERANCE: float = 10.0
 # =============================================================================
 DEFAULT_DATA_DIR: str = os.environ.get(
     "MAGNETRUN_DATA_DIR",
-    "/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install",
+    "/mnt/LNCMIG-Data/records/srv-data-install",
 )
 """
 Default directory for pupitre and log data files.
@@ -124,12 +124,22 @@ Can be overridden by setting the MAGNETRUN_DATA_DIR environment variable.
 
 DEFAULT_PIGBROTHER_DATA_DIR: str = os.environ.get(
     "MAGNETRUN_PIGBROTHER_DATA_DIR",
-    "/home/LNCMI-G/christophe.trophime/github/python_magnetrun/pigbrotherdata/Fichiers_Data",
+    "/mnt/LNCMIG-Data/records/pbsurv",
 )
 """
-Default directory for pupitre and log data files.
+Default directory for pigbrother TDMS data files.
 
-Can be overridden by setting the MAGNETRUN_DATA_DIR environment variable.
+Can be overridden by setting the MAGNETRUN_PIGBROTHER_DATA_DIR environment variable.
+"""
+
+DEFAULT_HYBRID_DATA_DIR: str = os.environ.get(
+    "MAGNETRUN_HYBRID_DATA_DIR",
+    "/mnt/LNCMIG-Data/records/CEA",
+)
+"""
+Default directory for hybrid (kHz) data files.
+
+Can be overridden by setting the MAGNETRUN_HYBRID_DATA_DIR environment variable.
 """
 
 
@@ -458,7 +468,23 @@ SITE_CONFIGS: dict[str, SiteConfig] = {
         reference_gr2_rpm="RpmB",
         reference_gr1_pin="HPH",
         reference_gr2_pin="HPB",
-        voltage_channels_gr1=("UH",),
+        voltage_channels_gr1=(
+            "UH",
+            "Ucoil1",
+            "Ucoil2",
+            "Ucoil3",
+            "Ucoil4",
+            "Ucoil5",
+            "Ucoil6",
+            "Ucoil7",
+            "Ucoil8",
+            "Ucoil9",
+            "Ucoil10",
+            "Ucoil11",
+            "Ucoil12",
+            "Ucoil13",
+            "Ucoil14",
+        ),
         voltage_channels_gr2=("UB", "Ucoil15", "Ucoil16"),
     ),
     "M8": SiteConfig(
@@ -472,7 +498,23 @@ SITE_CONFIGS: dict[str, SiteConfig] = {
         reference_gr1_pin="HPB",
         reference_gr2_pin="HPH",
         voltage_channels_gr1=("UB", "Ucoil15", "Ucoil16"),  # Note: swapped
-        voltage_channels_gr2=("UH",),
+        voltage_channels_gr2=(
+            "UH",
+            "Ucoil1",
+            "Ucoil2",
+            "Ucoil3",
+            "Ucoil4",
+            "Ucoil5",
+            "Ucoil6",
+            "Ucoil7",
+            "Ucoil8",
+            "Ucoil9",
+            "Ucoil10",
+            "Ucoil11",
+            "Ucoil12",
+            "Ucoil13",
+            "Ucoil14",
+        ),
     ),
     "M10": SiteConfig(
         name="M10",
@@ -485,7 +527,23 @@ SITE_CONFIGS: dict[str, SiteConfig] = {
         reference_gr1_pin="HPB",
         reference_gr2_pin="HPH",
         voltage_channels_gr1=("UB", "Ucoil15", "Ucoil16"),
-        voltage_channels_gr2=("UH",),
+        voltage_channels_gr2=(
+            "UH",
+            "Ucoil1",
+            "Ucoil2",
+            "Ucoil3",
+            "Ucoil4",
+            "Ucoil5",
+            "Ucoil6",
+            "Ucoil7",
+            "Ucoil8",
+            "Ucoil9",
+            "Ucoil10",
+            "Ucoil11",
+            "Ucoil12",
+            "Ucoil13",
+            "Ucoil14",
+        ),
     ),
 }
 """Pre-defined configurations for measurement sites M8, M9, and M10."""
@@ -518,7 +576,9 @@ def get_site_config(site: str) -> SiteConfig:
     """
     if site not in SITE_CONFIGS:
         logger.error("Unknown site: %s. Available: %s", site, list(SITE_CONFIGS.keys()))
-        raise ValueError(f"Unknown site: {site}. Available: {list(SITE_CONFIGS.keys())}")
+        raise ValueError(
+            f"Unknown site: {site}. Available: {list(SITE_CONFIGS.keys())}"
+        )
     logger.debug("Loading site configuration for %s", site)
     return SITE_CONFIGS[site]
 
@@ -654,7 +714,9 @@ class AnalysisConfig:
 
     site: SiteConfig
     channels: ChannelMapping = field(default_factory=ChannelMapping)
-    voltage_channels: VoltageChannelMapping = field(default_factory=VoltageChannelMapping)
+    voltage_channels: VoltageChannelMapping = field(
+        default_factory=VoltageChannelMapping
+    )
     thresholds: ThresholdConfig = field(default_factory=ThresholdConfig.default)
     colors: ColorConfig = field(default_factory=ColorConfig)
 
@@ -758,10 +820,12 @@ def get_legacy_config(site_name: str | None = None) -> tuple:
 
     # Build pupitre dicts for all sites
     pupitre_dict = {
-        site_name: config.to_pupitre_dict() for site_name, config in SITE_CONFIGS.items()
+        site_name: config.to_pupitre_dict()
+        for site_name, config in SITE_CONFIGS.items()
     }
     upupitre_dict = {
-        site_name: config.to_upupitre_dict() for site_name, config in SITE_CONFIGS.items()
+        site_name: config.to_upupitre_dict()
+        for site_name, config in SITE_CONFIGS.items()
     }
 
     return (

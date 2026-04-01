@@ -23,7 +23,7 @@ def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False)
 
     counts = df[key].value_counts()
     if (counts > 1).any():
-        print(f"Duplicates found in {key}:")
-        print(counts[counts > 1])
+        logger.warning(f"Duplicates found in {key}:")
+        logger.warning(f"{counts[counts > 1]}")
     df_clean = df.drop_duplicates(subset=[key])
     return df_clean

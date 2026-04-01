@@ -152,6 +152,7 @@ M*.conf
 
 # Archive tarballs
 *.zip
+*.tar
 *.tar.*
 *.tgz
 

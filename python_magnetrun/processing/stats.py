@@ -97,12 +97,12 @@ def stats(
 
     else:
         for group, df in Data.Data.items():
-            print(f"stats for {group}: ", flush=True)
+            logger.info(f"stats for {group}: ")
             tables = df.describe()
             headers = "keys"
 
     if display:
-        print("Statistics:\n")
-        print(tabulate(tables, headers, tablefmt=fmt), "\n")
+        logger.info("Statistics:")
+        logger.info(f"{tabulate(tables, headers, tablefmt=fmt)}")
 
     return (tables, headers)

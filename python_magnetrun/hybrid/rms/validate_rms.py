@@ -8,7 +8,7 @@ This script validates RMS files and checks for common issues.
 import sys
 from pathlib import Path
 
-from rms_reader import RMSFileReader
+from .rms_reader import RMSFileReader
 
 
 def validate_rms_file(filepath: str) -> bool:

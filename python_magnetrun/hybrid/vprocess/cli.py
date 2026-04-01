@@ -110,16 +110,16 @@ def cmd_batch(args):
     # List common variables
     if args.list_common_vars:
         common_vars = get_common_variables(file_list, verbose=not args.quiet)
-        print(f"\nCommon variables ({len(common_vars)}):")
+        logger.info(f"Common variables ({len(common_vars)}):")
         for var in common_vars:
-            print(f"  - {var}")
+            logger.info(f"  - {var}")
         return 0
 
     # Analyze files
     if args.analyze:
         summary_df = analyze_batch(file_list, output_file=args.output)
-        print("\nFile Analysis Summary:")
-        print(summary_df.to_string(index=False))
+        logger.info("File Analysis Summary:")
+        logger.info(f"{summary_df.to_string(index=False)}")
         return 0
 
     # Process and merge

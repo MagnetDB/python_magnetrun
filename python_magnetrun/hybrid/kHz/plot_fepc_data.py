@@ -2,28 +2,24 @@
 FEPC Data Plotter - Read and plot data from binary files
 
 This tool reads FEPC binary data files and plots specific variables.
-Example: python plot_fepc_data.py -c HOST_2_DATA.CFG -v ALIM1_J1 -s 4
+Example: python -m python_magnetrun.hybrid.kHz.plot_fepc_data -c HOST_2_DATA.CFG -v ALIM1_J1 -s 4
 """
 
 import argparse
 import re
-import sys
 from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from cfg_analyzer import analyze_cfg_file, extract_host_number
-from fepc_reader import (
+
+from ..utils import remove_outliers
+from .cfg_analyzer import analyze_cfg_file, extract_host_number
+from .fepc_reader import (
     KHZ_SAMPLING_FREQUENCY,
     apply_calibration,
     read_hour_file,
 )
-
-# Import remove_outliers from parent utils module
-# Add parent directory to path for relative import when running as script
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from utils import remove_outliers
 
 
 def find_bin_files(cfg_path: str, slot: int, date_range: tuple[str, str] | None = None) -> list:
@@ -252,7 +248,7 @@ def apply_variable_calibration(
     """
     from pathlib import Path
 
-    from fepc_reader import load_calibration
+    from .fepc_reader import load_calibration
 
     try:
         card = config.get_card_by_slot(slot)
