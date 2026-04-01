@@ -13,8 +13,9 @@ This shows:
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-from plot_trigger_data import plot_trigger_variable
-from trigger_reader import (
+
+from python_magnetrun.hybbrid.trigger.plot_trigger_data import plot_trigger_variable
+from python_magnetrun.hybrid.trigger.trigger_reader import (
     create_time_array,
     find_trigger_directories,
     list_trigger_files,
@@ -69,8 +70,12 @@ def example_trigger_info():
         print(f"Approx timestamp: {trigger_info.trigger_approx_timestamp}")
 
     print("\nData windows:")
-    print(f"  PRE: {trigger_info.pre_samples} samples ({trigger_info.pre_samples / 10000:.1f}s)")
-    print(f"  POST: {trigger_info.post_samples} samples ({trigger_info.post_samples / 10000:.1f}s)")
+    print(
+        f"  PRE: {trigger_info.pre_samples} samples ({trigger_info.pre_samples / 10000:.1f}s)"
+    )
+    print(
+        f"  POST: {trigger_info.post_samples} samples ({trigger_info.post_samples / 10000:.1f}s)"
+    )
     print(
         f"  Total: {trigger_info.total_samples} samples ({trigger_info.total_samples / 10000:.1f}s)"
     )
@@ -159,7 +164,9 @@ def example_read_variable():
 
     try:
         # Read data
-        data, timestamp, config = read_trigger_data(trigger_dir, system, variable_name=variable)
+        data, timestamp, config = read_trigger_data(
+            trigger_dir, system, variable_name=variable
+        )
 
         print("\nData successfully read!")
         print(f"  Shape: {data.shape}")
@@ -253,7 +260,9 @@ def example_analyze_windows():
 
     try:
         # Read data
-        data, timestamp, config = read_trigger_data(trigger_dir, system, variable_name=variable)
+        data, timestamp, config = read_trigger_data(
+            trigger_dir, system, variable_name=variable
+        )
 
         # Split into PRE and POST
         trigger_info = parse_trigger_directory(trigger_dir)
@@ -309,7 +318,9 @@ def example_plot_trigger():
 
     try:
         # Plot with calibration
-        plot_trigger_variable(trigger_dir, system, variable, show_plot=True, apply_calib=True)
+        plot_trigger_variable(
+            trigger_dir, system, variable, show_plot=True, apply_calib=True
+        )
 
     except (OSError, ValueError, RuntimeError) as e:
         print(f"\nError plotting: {e}")
@@ -336,7 +347,9 @@ def example_custom_analysis():
 
     try:
         # Read data
-        data, timestamp, config = read_trigger_data(trigger_dir, system, variable_name=variable)
+        data, timestamp, config = read_trigger_data(
+            trigger_dir, system, variable_name=variable
+        )
 
         # Create time array
         time = create_time_array(len(data))

@@ -11,7 +11,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from fepc_reader import (
+
+from python_magnetrun.hybrid.kHz.fepc_reader import (
     parse_cfg_file,
     read_analog_block,
     read_hour_file,
@@ -232,9 +233,7 @@ def example_calibration():
             params = f"CNV: {calib.cnv_file}"
         else:
             calib_type = "Linear"
-            params = (
-                f"A={calib.a:.3e}, B={calib.b:.3e}, Ca={calib.coef_a:.3f}, Cb={calib.coef_b:.3f}"
-            )
+            params = f"A={calib.a:.3e}, B={calib.b:.3e}, Ca={calib.coef_a:.3f}, Cb={calib.coef_b:.3f}"
         print(f"{i:<4} {var_name:<20} {calib_type:<12} {params}")
 
     # Read some data
@@ -249,15 +248,21 @@ def example_calibration():
 
     # Apply calibration to first channel
     channel_idx = 0
-    print(f"\nApplying calibration to channel {channel_idx}: {card.variable_names[channel_idx]}")
+    print(
+        f"\nApplying calibration to channel {channel_idx}: {card.variable_names[channel_idx]}"
+    )
 
     raw_channel = raw_data[:, channel_idx]
     print(f"Raw data range: [{raw_channel.min()}, {raw_channel.max()}]")
 
     # Try to calibrate
     try:
-        calibrated = calibrate_channel(raw_channel, card, channel_idx, cnv_directory=".")
-        print(f"Calibrated data range: [{calibrated.min():.3f}, {calibrated.max():.3f}]")
+        calibrated = calibrate_channel(
+            raw_channel, card, channel_idx, cnv_directory="."
+        )
+        print(
+            f"Calibrated data range: [{calibrated.min():.3f}, {calibrated.max():.3f}]"
+        )
 
         # Show first few values
         print("\nFirst 5 samples:")
@@ -270,7 +275,9 @@ def example_calibration():
         print("Using linear calibration from CFG parameters")
         calib = card.calibrations[channel_idx]
         calibrated = apply_calibration(raw_channel, calib_info=calib)
-        print(f"Calibrated data range: [{calibrated.min():.3f}, {calibrated.max():.3f}]")
+        print(
+            f"Calibrated data range: [{calibrated.min():.3f}, {calibrated.max():.3f}]"
+        )
 
 
 def main():
@@ -289,7 +296,9 @@ def main():
 
         if not has_data_files:
             print(f"\n⚠ Warning: Data file '{sample_file}' not found")
-            print("Place your data files in the same directory to run data reading examples")
+            print(
+                "Place your data files in the same directory to run data reading examples"
+            )
 
             # Still run calibration example to show parameters
             print("\n" + "=" * 60)
