@@ -17,15 +17,14 @@ The script uses dictionaries to map field names between data sources:
 
 ### Hybrid to Pupitre Mapping
 
+Setup for M8 housing:
+
 ```python
 HYBRID_TO_PUPITRE_MAP = {
-    # FEPC-AUX-LNCMI channels
-    "kHz/FEPC-AUX-LNCMI/ALIM1_J1": "IH",  # Helix current
-    "kHz/FEPC-AUX-LNCMI/ALIM1_J2": "IB",  # Bottom coil current
-    
-    # FEPC-LNCMI channels
-    "kHz/FEPC-LNCMI/I_H1": "IH",
-    "kHz/FEPC-LNCMI/I_B1": "IB",
+    "kHz/FEPC-AUX-LNCMI/ALIM1_J1": "Idcct1",
+    "kHz/FEPC-AUX-LNCMI/ALIM1_J2": "Idcct2",
+    "kHz/FEPC-AUX-LNCMI/ALIM2_J1": "Idcct3",
+    "kHz/FEPC-AUX-LNCMI/ALIM2_J2": "Idcct4",
 }
 ```
 
@@ -33,11 +32,10 @@ HYBRID_TO_PUPITRE_MAP = {
 
 ```python
 HYBRID_TO_TDMS_MAP = {
-    "kHz/FEPC-AUX-LNCMI/ALIM1_J1": "Référence_GR1",
-    "kHz/FEPC-AUX-LNCMI/ALIM1_J2": "Référence_GR2",
-    
-    "kHz/FEPC-LNCMI/I_H1": "Référence_GR1",
-    "kHz/FEPC-LNCMI/I_B1": "Référence_GR2",
+    "kHz/FEPC-AUX-LNCMI/ALIM1_J1": "Courant_A1",
+    "kHz/FEPC-AUX-LNCMI/ALIM1_J2": "Courant_A2",
+    "kHz/FEPC-AUX-LNCMI/ALIM2_J1": "Courant_A3",
+    "kHz/FEPC-AUX-LNCMI/ALIM2_J2": "Courant_A4",
 }
 ```
 
@@ -106,10 +104,10 @@ Plot FEPC-AUX-LNCMI data for a specific date:
 
 ```bash
 python plot_hybrid_with_pupitre_tdms.py \
-    -d 2025-01-27 \
+    -d 2025-11-02 \
     -s FEPC-AUX-LNCMI \
     -k ALIM1_J1 \
-    --site M10 \
+    --site M8 \
     --show
 ```
 
