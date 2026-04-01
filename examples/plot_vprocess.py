@@ -21,7 +21,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
-from vprocess_reader import VProcessFileReader, read_vprocess_file
+
+from python_magnetrun.hybrid.vprocess.vprocess_reader import VProcessFileReader, read_vprocess_file
+from python_magnetrun.log_utils import setup_logging
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -426,13 +428,15 @@ Examples:
     )
     parser.add_argument("--save", "-s", help="Save figure to file")
     parser.add_argument(
-        "--no-show", action="store_true", help="Do not display plot (useful with --save)"
+        "--no-show",
+        action="store_true",
+        help="Do not display plot (useful with --save)",
     )
 
     args = parser.parse_args()
 
     # Configure logging
-    logging.basicConfig(level=logging.INFO)
+    setup_logging()
 
     # Choose plot type
     if args.heatmap:

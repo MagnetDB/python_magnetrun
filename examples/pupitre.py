@@ -5,9 +5,9 @@ import re
 import matplotlib
 from natsort import natsorted
 
-from .MagnetRun import MagnetRun
-from .processing.correlations import lag_correlation
-from .processing.trends import trends
+from python_magnetrun.MagnetRun import MagnetRun
+from python_magnetrun.processing.correlations import lag_correlation
+from python_magnetrun.processing.trends import trends
 
 logger = logging.getLogger(__name__)
 matplotlib.rcParams["text.usetex"] = True

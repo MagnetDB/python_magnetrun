@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from natsort import natsorted
 
-from .MagnetRun import MagnetRun
+from python_magnetrun.MagnetRun import MagnetRun
 
 logger = logging.getLogger(__name__)
 

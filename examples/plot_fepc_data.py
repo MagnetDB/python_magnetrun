@@ -13,13 +13,13 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ..utils import remove_outliers
-from .cfg_analyzer import analyze_cfg_file, extract_host_number
-from .fepc_reader import (
+from python_magnetrun.hybrid.kHz.cfg_analyzer import analyze_cfg_file, extract_host_number
+from python_magnetrun.hybrid.kHz.fepc_reader import (
     KHZ_SAMPLING_FREQUENCY,
     apply_calibration,
     read_hour_file,
 )
+from python_magnetrun.hybrid.utils import remove_outliers
 
 
 def find_bin_files(cfg_path: str, slot: int, date_range: tuple[str, str] | None = None) -> list:

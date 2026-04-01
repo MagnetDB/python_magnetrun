@@ -11,16 +11,15 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from ..kHz.fepc_reader import CalibrationInfo
-from .trigger_reader import (
+from python_magnetrun.hybrid.kHz.fepc_reader import CalibrationInfo
+from python_magnetrun.hybrid.trigger.trigger_reader import (
     create_time_array,
     find_trigger_directories,
     parse_trigger_directory,
     read_trigger_data,
 )
+from python_magnetrun.log_utils import SIMPLE_FORMAT, setup_logging
 
-# Setup logger
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -121,7 +120,9 @@ def plot_trigger_variable(
     if card is None:
         raise ValueError(f"Variable {variable} not found in configuration")
 
-    assert channel is not None, f"Variable {variable} found in card but channel index is None"
+    assert (
+        channel is not None
+    ), f"Variable {variable} found in card but channel index is None"
 
     # Apply calibration if requested
     if apply_calib and card.calibrations and channel < len(card.calibrations):
@@ -300,7 +301,9 @@ def plot_multiple_triggers(
             ax.grid(True, alpha=0.3)
 
             # Add trigger time as title
-            ax.set_title(trigger_info.timestamp.strftime("%H:%M:%S"), fontsize=10, loc="left")
+            ax.set_title(
+                trigger_info.timestamp.strftime("%H:%M:%S"), fontsize=10, loc="left"
+            )
 
         except (OSError, ValueError, RuntimeError) as e:
             logger.error(f"Error processing {trigger_dir.name}: {e}")
@@ -362,9 +365,13 @@ Examples:
         help="Base directory containing trigger subdirectory (for --all mode)",
     )
 
-    parser.add_argument("--trigger-dir", type=Path, help="Path to specific trigger directory")
+    parser.add_argument(
+        "--trigger-dir", type=Path, help="Path to specific trigger directory"
+    )
 
-    parser.add_argument("--date", type=str, help="Date in YYYY-MM-DD format (for --all mode)")
+    parser.add_argument(
+        "--date", type=str, help="Date in YYYY-MM-DD format (for --all mode)"
+    )
 
     parser.add_argument(
         "--system",
@@ -374,9 +381,13 @@ Examples:
         help="FEPC system name",
     )
 
-    parser.add_argument("--variable", type=str, required=True, help="Variable name to plot")
+    parser.add_argument(
+        "--variable", type=str, required=True, help="Variable name to plot"
+    )
 
-    parser.add_argument("--all", action="store_true", help="Plot all triggers for specified date")
+    parser.add_argument(
+        "--all", action="store_true", help="Plot all triggers for specified date"
+    )
 
     parser.add_argument(
         "--endian",
@@ -388,11 +399,15 @@ Examples:
 
     parser.add_argument("--save", type=Path, help="Save plot to file")
 
-    parser.add_argument("--no-show", action="store_true", help="Do not show interactive plot")
+    parser.add_argument(
+        "--no-show", action="store_true", help="Do not show interactive plot"
+    )
 
     parser.add_argument("--no-calib", action="store_true", help="Skip calibration")
 
-    parser.add_argument("--cnv-dir", type=Path, help="Directory containing CNV calibration files")
+    parser.add_argument(
+        "--cnv-dir", type=Path, help="Directory containing CNV calibration files"
+    )
 
     parser.add_argument(
         "--fig-size",
@@ -402,6 +417,7 @@ Examples:
     )
 
     args = parser.parse_args()
+    setup_logging(fmt=SIMPLE_FORMAT)
 
     # Parse figure size
     try:

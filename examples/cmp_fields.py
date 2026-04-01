@@ -10,8 +10,8 @@ from natsort import natsorted
 from scipy import stats
 from tabulate import tabulate
 
-from .MagnetRun import MagnetRun
-from .processing.smoothers import lowess_bell_shape_kern
+from python_magnetrun.MagnetRun import MagnetRun
+from python_magnetrun.processing.smoothers import lowess_bell_shape_kern
 
 logger = logging.getLogger(__name__)
 

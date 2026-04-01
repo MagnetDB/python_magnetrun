@@ -1,4 +1,4 @@
-import argparse
+import argparse  # noqa: I001
 import glob
 import logging
 import os
@@ -7,8 +7,7 @@ import matplotlib.pyplot as plt
 from pint import UnitRegistry  # noqa: I001
 
 from python_magnetcooling.water_properties import get_cp, get_rho
-
-from .MagnetRun import MagnetRun
+from python_magnetrun.MagnetRun import MagnetRun
 
 logger = logging.getLogger(__name__)
 command_line = None

@@ -5,7 +5,7 @@ import pandas as pd
 from scipy import stats
 from sklearn.ensemble import IsolationForest
 
-from .MagnetRun import MagnetRun
+from python_magnetrun.MagnetRun import MagnetRun
 
 logger = logging.getLogger(__name__)
 

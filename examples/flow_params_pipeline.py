@@ -23,7 +23,7 @@ import numpy as np
 from scipy import optimize
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from python_magnetcooling import WaterFlow
+from python_magnetcooling import WaterFlow  # noqa: I001
 from python_magnetcooling.waterflow_factory import from_flow_params
 
 

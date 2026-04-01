@@ -10,7 +10,7 @@ This shows:
 6. Comparing PRE/POST windows
 """
 
-from pathlib import Path
+from pathlib import Path  # noqa: I001
 
 import matplotlib.pyplot as plt
 
