@@ -13,24 +13,26 @@ The script uses the data directories as defined in python_magnetrun analysis con
 
 import argparse
 import glob
+import logging
 from datetime import datetime
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 from python_magnetrun.analysis.config import (
     DEFAULT_DATA_DIR,
     DEFAULT_HYBRID_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
 )
-
-# Import from hybrid module
 from python_magnetrun.hybrid.hybrid_run import HybridRun
 from python_magnetrun.hybrid.utils import format_exception_location, log_exception
-
-# Import from python_magnetrun
+from python_magnetrun.log_utils import setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
+
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # Field name mapping dictionaries
@@ -62,13 +64,29 @@ HYBRID_TO_TDMS_MAP = {
 # =============================================================================
 
 
-def parse_date_from_filename(filename):
+def parse_date_from_filename(filename: str | Path) -> datetime:
     """
     Parse date from hybrid data directory or Overview filename.
 
-    Examples:
-        - "2025-01-06" -> returns datetime
-        - "M9_Overview_250127-1605.tdms" -> returns datetime(2025, 1, 27)
+    Parameters
+    ----------
+    filename : str or Path
+        Filename or directory name to parse the date from.
+
+    Returns
+    -------
+    datetime
+        Parsed date.
+
+    Raises
+    ------
+    ValueError
+        If the date cannot be parsed from the filename.
+
+    Examples
+    --------
+    - "2025-01-06" -> returns datetime(2025, 1, 6)
+    - "M9_Overview_250127-1605.tdms" -> returns datetime(2025, 1, 27)
     """
     from datetime import datetime
 
@@ -97,8 +115,11 @@ def parse_date_from_filename(filename):
 
 
 def find_pupitre_files(
-    date, site, pupitre_datadir, hours: range | list[int] | None = None
-):
+    date: datetime,
+    site: str,
+    pupitre_datadir: str | Path,
+    hours: range | list[int] | None = None,
+) -> list[str]:
     """
     Find pupitre files for a given date and site.
 
@@ -134,14 +155,17 @@ def find_pupitre_files(
     for f in files:
         t0 = t0_from_filename(f)
         if int(t0 // 3600) in hours:
-            print(f"Included pupitre file: {f} (t0={t0} seconds)")
+            logger.debug("Included pupitre file: %s (t0=%s seconds)", f, t0)
             filtered.append(f)
     return filtered
 
 
 def find_tdms_overview_files(
-    date, site, pigbrother_datadir, hours: range | list[int] | None = None
-):
+    date: datetime,
+    site: str,
+    pigbrother_datadir: str | Path,
+    hours: range | list[int] | None = None,
+) -> list[str]:
     """
     Find Overview TDMS files for a given date and site.
 
@@ -178,7 +202,7 @@ def find_tdms_overview_files(
     for f in files:
         t0 = t0_from_tdms_filename(f)
         if int(t0 // 3600) in hours:
-            print(f"Included TDMS file: {f} (t0={t0} seconds)")
+            logger.debug("Included TDMS file: %s (t0=%s seconds)", f, t0)
             filtered.append(f)
     return filtered
 
@@ -196,14 +220,16 @@ def t0_from_filename(filename: str) -> float:
         Seconds elapsed since midnight of the recording day.
     """
     stem = Path(filename).stem
-    print(f"Parsing t0 from filename: {filename}, stem: {stem}")
+    logger.debug("Parsing t0 from filename: %s, stem: %s", filename, stem)
     try:
         dt = datetime.strptime(stem, "%Y.%m.%d - %H:%M:%S")
-        print(f"hours: {dt.hour}, minutes: {dt.minute}, seconds: {dt.second}")
+        logger.debug(
+            "hours: %d, minutes: %d, seconds: %d", dt.hour, dt.minute, dt.second
+        )
         return dt.hour * 3600 + dt.minute * 60 + dt.second
     except ValueError:
-        print(
-            f"t0_from_filename: Warning: could not parse t0 from filename '{stem}', using 0"
+        logger.warning(
+            "t0_from_filename: could not parse t0 from filename '%s', using 0", stem
         )
         return 0.0
 
@@ -221,19 +247,26 @@ def t0_from_tdms_filename(filename: str) -> float:
         Seconds elapsed since midnight of the recording day.
     """
     stem = Path(filename).stem
-    print(
-        f"t0_from_tdms_filename: Parsing t0 from TDMS filename: {filename}, stem: {stem}"
+    logger.debug(
+        "t0_from_tdms_filename: Parsing t0 from TDMS filename: %s, stem: %s",
+        filename,
+        stem,
     )
     try:
         date_part = stem.rsplit("_", 1)[-1]  # '251105-0949'
         dt = datetime.strptime(date_part, "%y%m%d-%H%M")
         return dt.hour * 3600 + dt.minute * 60
     except ValueError:
-        print(f"Warning: could not parse t0 from TDMS filename '{stem}', using 0")
+        logger.warning(
+            "t0_from_tdms_filename: could not parse t0 from TDMS filename '%s', using 0",
+            stem,
+        )
         return 0.0
 
 
-def load_pupitre_data(pupitre_file, site, insert="Unknown"):
+def load_pupitre_data(
+    pupitre_file: str | Path, site: str, insert: str = "Unknown"
+) -> MagnetRun:
     """
     Load pupitre data from a text file.
 
@@ -251,11 +284,13 @@ def load_pupitre_data(pupitre_file, site, insert="Unknown"):
     MagnetRun
         MagnetRun object containing the pupitre data
     """
-    print(f"Loading pupitre data from: {pupitre_file}")
+    logger.info(f"Loading pupitre data from: {pupitre_file}")
     return MagnetRun.fromtxt(site, insert, str(pupitre_file))
 
 
-def load_tdms_data(tdms_file, site, insert="Unknown"):
+def load_tdms_data(
+    tdms_file: str | Path, site: str, insert: str = "Unknown"
+) -> MagnetRun:
     """
     Load TDMS data from a pigbrother Overview file.
 
@@ -273,46 +308,83 @@ def load_tdms_data(tdms_file, site, insert="Unknown"):
     MagnetRun
         MagnetRun object containing the TDMS data
     """
-    print(f"Loading TDMS data from: {tdms_file}")
+    logger.info(f"Loading TDMS data from: {tdms_file}")
     return MagnetRun.fromtdms(site, insert, str(tdms_file))
 
 
-def normalize_signal(data):
-    """Normalize a signal by its maximum absolute value. Returns data unchanged if max is 0."""
+def normalize_signal(data: np.ndarray) -> np.ndarray:
+    """
+    Normalize a signal by its maximum absolute value.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Input signal data.
+
+    Returns
+    -------
+    np.ndarray
+        Signal divided by its maximum absolute value, or unchanged if max is 0.
+    """
     max_abs = np.max(np.abs(data))
     if max_abs == 0:
         return data
     return data / max_abs
 
 
+def binarize_signal(data: np.ndarray, tolerance: float = 0.5) -> np.ndarray:
+    """
+    Return a binary array: 0 where |data| <= tolerance, 1 otherwise.
+
+    Parameters
+    ----------
+    data : array-like
+        Input signal data.
+    tolerance : float, optional
+        Values with absolute value <= tolerance are considered zero (default: 1e-6).
+
+    Returns
+    -------
+    np.ndarray
+        Integer array of 0s and 1s.
+    """
+    data = np.asarray(data)
+    return np.where(np.abs(data) <= tolerance, 0, 1)
+
+
 def plot_comparison(
-    hybrid_data,
-    pupitre_data,
-    tdms_data,
-    hybrid_key,
-    site,
-    hours=None,
-    normalize=False,
-):
+    hybrid_data: HybridRun,
+    pupitre_data: list[MagnetRun],
+    tdms_data: list[MagnetRun],
+    hybrid_key: str,
+    site: str,
+    hours: range | list[int] | None = None,
+    normalize: bool = False,
+) -> tuple[Figure, Axes]:
     """
     Plot hybrid, pupitre, and TDMS data on the same graph.
 
     Parameters
     ----------
     hybrid_data : HybridRun
-        Hybrid run data
+        Hybrid run data.
     pupitre_data : list of MagnetRun
-        Pupitre data list (can be empty)
+        Pupitre data list (can be empty).
     tdms_data : list of MagnetRun
-        TDMS data list (can be empty)
+        TDMS data list (can be empty).
     hybrid_key : str
-        Key for hybrid data (e.g., 'kHz/FEPC-AUX-LNCMI/ALIM1_J1')
+        Key for hybrid data (e.g., 'kHz/FEPC-AUX-LNCMI/ALIM1_J1').
     site : str
-        Site name for field mapping
-    hours : list of int, optional
-        Specific hours to plot
+        Site name for field mapping.
+    hours : range, list of int, or None, optional
+        Hours to restrict the plot to.
     normalize : bool, optional
-        If True, normalize each signal by its maximum absolute value before plotting
+        If True, normalize each signal by its maximum absolute value before plotting.
+
+    Returns
+    -------
+    tuple[Figure, Axes]
+        The matplotlib Figure and Axes objects.
     """
     fig, ax = plt.subplots(figsize=(14, 6))
 
@@ -324,13 +396,28 @@ def plot_comparison(
     t0 = 0.0
     if hours is not None and len(hours) > 0:
         t0 = hours[0] * 3600  # Convert first hour to seconds
-        print(f"Plotting data starting from hour {hours[0]} (t0={t0} seconds)")
+        logger.debug(f"Plotting data starting from hour {hours[0]} (t0={t0} seconds)")
 
     # Plot hybrid kHz data
     print(f"Loading hybrid data for key: {hybrid_key}")
     try:
+        res = hybrid_key.split("/")
+        logger.debug(f"hybrid_key parts: {res}")
+        hybrid_type = res[0]
+        hybrid_system = None
+        if res and len(res) > 1:
+            hybrid_system = res[1]
+        logger.debug(f"Hybrid data keys:\n{hybrid_data.getKeys()}")
+        # print(
+        #     f"Hybrid data keys: system={hybrid_system}, data_type={hybrid_type}\n",
+        #     json.dumps(
+        #         hybrid_data.getKeys(),
+        #         indent=2,
+        #     ),
+        #     flush=True,
+        # )
         data, time = hybrid_data.getData(hybrid_key, downsample=10000, hours=hours)
-        print(
+        logger.debug(
             f"Hybrid data loaded: {len(data)} points, time range: {time[0]} to {time[-1]} seconds"
         )
         # Convert time to relative seconds if it's datetime
@@ -356,13 +443,17 @@ def plot_comparison(
         )
 
         # Add V for Bitters (BITTER_V1, BITTER_V2), V for Helices (from PH_V8 to PH_V14) if available
-        for vkey in ["BITTER_V1", "BITTER_V2", "PH_V8"]:
-            data, time = hybrid_data.getData(
-                f"kHz/FEPC-AUX-LNCMI/{vkey}", downsample=10000, hours=hours
-            )
-            print(
-                f"Hybrid data loaded: {len(data)} points, time range: {time[0]} to {time[-1]} seconds"
-            )
+        if "Alim" in hybrid_key:
+            for vkey in ["BITTER_V2", "PH_V8"]:
+                data, time = hybrid_data.getData(
+                    f"kHz/FEPC-AUX-LNCMI/{vkey}", downsample=10000, hours=hours
+                )
+                logger.debug(
+                    "Hybrid data loaded: %d points, time range: %s to %s seconds",
+                    len(data),
+                    time[0],
+                    time[-1],
+                )
             # Convert time to relative seconds if it's datetime
             if len(time) > 0:
                 if hasattr(time[0], "timestamp"):
@@ -380,7 +471,7 @@ def plot_comparison(
                 label += f" [max={max_abs:.4g}]"
             ax.plot(
                 time_seconds,
-                normalize_signal(data) if normalize else data,
+                binarize_signal(data) if normalize else data,
                 "y-",
                 alpha=0.7,
                 linewidth=0.5,
@@ -391,10 +482,10 @@ def plot_comparison(
         log_exception(
             "Warning: Could not load hybrid data",
             e,
-            use_print=True,
+            logger_instance=logger,
             include_traceback=False,
         )
-        print(f"  Error at {format_exception_location()}: {e}")
+        logger.debug("  Error at %s: %s", format_exception_location(), e)
 
     # Plot pupitre data if available
     if pupitre_data and pupitre_field:
@@ -404,7 +495,7 @@ def plot_comparison(
                 if pupitre_field in mdata.getKeys():
                     pupitre_values = mdata.getData(pupitre_field)
                     pupitre_t0 = t0_from_filename(mdata.FileName)
-                    print(f"Pupitre t0 from filename: {pupitre_t0} seconds")
+                    logger.debug("Pupitre t0 from filename: %s seconds", pupitre_t0)
                     pupitre_time = mdata.getData("t") + (
                         pupitre_t0 - t0
                     )  # Shift to absolute seconds from midnight
@@ -426,15 +517,15 @@ def plot_comparison(
                         label=label,
                     )
                 else:
-                    print(f"Warning: Pupitre field '{pupitre_field}' not found")
+                    logger.warning("Pupitre field '%s' not found", pupitre_field)
             except (OSError, ValueError, RuntimeError, KeyError) as e:
                 log_exception(
                     "Warning: Could not plot pupitre data",
                     e,
-                    use_print=True,
+                    logger_instance=logger,
                     include_traceback=False,
                 )
-                print(f"  Error at {format_exception_location()}: {e}")
+                logger.debug("  Error at %s: %s", format_exception_location(), e)
 
     # Plot TDMS data if available
     if tdms_data and tdms_field:
@@ -448,10 +539,10 @@ def plot_comparison(
 
                     # TDMS typically uses 't' for time
                     tdms_t0 = t0_from_tdms_filename(mdata.FileName)
-                    print(f"TDMS t0 from filename: {tdms_t0} seconds")
-                    print(mdata.getKeys())
+                    logger.debug("TDMS t0 from filename: %s seconds", tdms_t0)
+                    logger.debug("TDMS keys: %s", mdata.getKeys())
                     mdata.addTdmsTime(tdms_field.split("/")[0])
-                    print(mdata.getKeys())
+                    logger.debug("TDMS keys after addTdmsTime: %s", mdata.getKeys())
                     group = tdms_field.split("/")[0]
                     tdms_time = mdata.getData(f"{group}/t") + (tdms_t0 - t0)
                     prefix = "TDMS" if i == 0 else f"TDMS {i+1}"
@@ -467,17 +558,19 @@ def plot_comparison(
                         label=label,
                     )
                 else:
-                    print(
-                        f"Warning: TDMS field '{tdms_field}' not found. Available: {tdms_keys[:10]}"
+                    logger.warning(
+                        "TDMS field '%s' not found. Available: %s",
+                        tdms_field,
+                        tdms_keys[:10],
                     )
             except (OSError, ValueError, RuntimeError, KeyError) as e:
                 log_exception(
                     "Warning: Could not plot TDMS data",
                     e,
-                    use_print=True,
+                    logger_instance=logger,
                     include_traceback=False,
                 )
-                print(f"  Error at {format_exception_location()}: {e}")
+                logger.debug("  Error at %s: %s", format_exception_location(), e)
 
     ax.set_xlabel("Time (seconds)")
     ax.set_ylabel("Normalized value (a.u.)" if normalize else "Value")
@@ -494,7 +587,8 @@ def plot_comparison(
 # =============================================================================
 
 
-def main():
+def main() -> int:
+    """Entry point: parse arguments, load data, and generate the comparison plot."""
     parser = argparse.ArgumentParser(
         description="Plot hybrid kHz data with corresponding pupitre and TDMS data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -587,14 +681,28 @@ Examples:
 
     parser.add_argument("--save", type=Path, help="Save plot to file")
 
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set the logging level (default: INFO)",
+    )
+    parser.add_argument("--log-file", type=Path, help="Write logs to file")
+
     args = parser.parse_args()
-    print(f"args: {args}")
+
+    setup_logging(
+        level=args.log_level,
+        log_file=args.log_file if args.log_file else None,
+    )
+
+    logger.debug("args: %s", args)
     housing = "M8"
 
     # Parse date
     date = datetime.strptime(args.date, "%Y-%m-%d")
     print(f"Date: {date.strftime('%Y-%m-%d')}")
-    print(f"housing: {housing}")
+    print(f"Housing: {housing}")
     print(f"Site: {args.site}")
     print(f"FEPC System: {args.fepc_system}")
 
@@ -606,14 +714,14 @@ Examples:
             hours = range(int(parts[0]), int(parts[1]))
         else:
             hours = [int(h.strip()) for h in args.hours.split(",")]
-        print(f"Hours: {list(hours)}")
+        logger.debug("Hours: %s", list(hours))
 
     # Construct hybrid key
     hybrid_key = f"kHz/{args.fepc_system}/{args.key}"
-    print(f"Hybrid key: {hybrid_key}")
+    logger.debug(f"Hybrid key: {hybrid_key}")
 
     # Load hybrid data
-    print(f"\nLoading hybrid data from: {args.hybrid_dir}")
+    print(f"Loading hybrid data from: {args.hybrid_dir}")
     try:
         hrun = HybridRun.fromdir(
             base_dir=str(args.hybrid_dir),
@@ -621,15 +729,18 @@ Examples:
             fepc_system=args.fepc_system,
             site=args.site,
         )
-        print("Hybrid data loaded successfully")
-        print(f"Available keys: {hrun.getKeys()[:10]}...")  # Show first 10 keys
-        print(f"hrun:\n {hrun}\n")  # Print hrun summary
-        print(type(hrun))
-        print(f"hrun.HybridData:\n {hrun.getData()}\n")  # Print hrun summary
-        # hrun.print_summary
+        logger.info("Hybrid data loaded successfully")
+        logger.debug(f"Available keys: {hrun.getKeys()[:10]}...")
+        logger.debug(f"hrun:\n{hrun}")
+        logger.debug(f"hrun type: {type(hrun)}")
+        logger.debug(f"hrun.HybridData:\n{hrun.getData()}")
+        # print(hrun.HybridData.getInfo())
     except (OSError, ValueError, RuntimeError) as e:
         log_exception(
-            "Error loading hybrid data", e, use_print=True, include_traceback=True
+            "Error loading hybrid data",
+            e,
+            logger_instance=logger,
+            include_traceback=True,
         )
         return 1
 
@@ -637,22 +748,22 @@ Examples:
     pupitre_data = []
     pupitre_files = find_pupitre_files(date, housing, args.pupitre_dir, hours=hours)
     if pupitre_files:
-        print(f"\nFound {len(pupitre_files)} pupitre file(s)")
+        print(f"Found {len(pupitre_files)} pupitre file(s)")
         for pupitre_file in pupitre_files:
             try:
                 pdata = load_pupitre_data(pupitre_file, args.site, args.insert)
-                print(f"Pupitre keys: {pdata.getMData().getKeys()[:10]}...")
+                logger.debug(f"Pupitre keys: {pdata.getMData().getKeys()[:10]}...")
                 pupitre_data.append(pdata)
             except (OSError, ValueError, RuntimeError) as e:
                 log_exception(
                     "Warning: Could not load pupitre data",
                     e,
-                    use_print=True,
+                    logger_instance=logger,
                     include_traceback=False,
                 )
-                print(f"  Error at {format_exception_location()}: {e}")
+                logger.debug(f"  Error at {format_exception_location()}: {e}")
     else:
-        print(f"\nNo pupitre files found for {date.strftime('%Y-%m-%d')}")
+        logger.info(f"No pupitre files found for {date.strftime('%Y-%m-%d')}")
 
     # Find and load TDMS data
     tdms_data = []
@@ -660,25 +771,25 @@ Examples:
         date, housing, args.pigbrother_dir, hours=hours
     )
     if tdms_files:
-        print(f"\nFound {len(tdms_files)} TDMS Overview file(s)")
+        print(f"Found {len(tdms_files)} TDMS Overview file(s)")
         for tdms_file in tdms_files:
             try:
                 tdata = load_tdms_data(tdms_file, args.site, args.insert)
-                print(f"TDMS keys: {tdata.getMData().getKeys()[:10]}...")
+                logger.debug(f"TDMS keys: {tdata.getMData().getKeys()[:10]}...")
                 tdms_data.append(tdata)
             except (OSError, ValueError, RuntimeError) as e:
                 log_exception(
                     "Warning: Could not load TDMS data",
                     e,
-                    use_print=True,
+                    logger_instance=logger,
                     include_traceback=False,
                 )
-                print(f"  Error at {format_exception_location()}: {e}")
+                logger.debug(f"  Error at {format_exception_location()}: {e}")
     else:
-        print(f"\nNo TDMS Overview files found for {date.strftime('%Y-%m-%d')}")
+        logger.info(f"No TDMS Overview files found for {date.strftime('%Y-%m-%d')}")
 
     # Plot comparison
-    print("\nGenerating comparison plot...")
+    print("Generating comparison plot...")
     fig, _ = plot_comparison(
         hrun,
         pupitre_data,
@@ -691,17 +802,19 @@ Examples:
 
     # Save or show plot
     if args.save:
-        print(f"Saving plot to: {args.save}")
+        logger.info("Saving plot to: %s", args.save)
         fig.savefig(args.save, dpi=150, bbox_inches="tight")
 
     if args.show:
-        print("Displaying plot...")
+        logger.debug("Displaying plot...")
         plt.show()
 
     if not args.save and not args.show:
-        print("No output specified. Use --show to display or --save to save the plot.")
+        logger.warning(
+            "No output specified. Use --show to display or --save to save the plot."
+        )
 
-    print("\nDone!")
+    logger.info("Done!")
     return 0
 
 
