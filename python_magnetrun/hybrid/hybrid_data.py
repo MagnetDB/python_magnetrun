@@ -33,6 +33,8 @@ import numpy as np
 import pandas as pd
 from natsort import natsorted
 
+from ..magnetdata_base import DataType
+
 # Local imports
 
 # Setup logger
@@ -130,7 +132,7 @@ class HybridData:
         self.FileName = f"HybridData_{date_str}"
         self.Groups: dict[str, dict] = {}
         self.Keys: list[str] = []
-        self.Type = 3  # New type for hybrid data
+        self.Type = DataType.HYBRID
         self.Data: dict[str, Any] = {}
         self.units: dict[str, tuple] = {}
 

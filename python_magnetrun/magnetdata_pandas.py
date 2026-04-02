@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from natsort import natsorted
 
-from .magnetdata_base import MagnetDataBase
+from .magnetdata_base import DataType, MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class PandasMagnetData(MagnetDataBase):
     ``self.Type`` is ``0`` unless overridden by a subclass.
     """
 
-    _TYPE: int = 0  # overridden by EnsightMagnetData → 2
+    _TYPE: DataType = DataType.PUPITRE  # overridden by EnsightMagnetData → ENSIGHT
 
     def __init__(
         self,
@@ -38,7 +38,7 @@ class PandasMagnetData(MagnetDataBase):
     # --- abstract property -------------------------------------------
 
     @property
-    def Type(self) -> int:  # type: ignore[override]
+    def Type(self) -> DataType:
         return self._TYPE
 
     # --- core data access --------------------------------------------
@@ -684,14 +684,14 @@ class PandasMagnetData(MagnetDataBase):
                 )
         else:
             df = self.Data.describe(include="all")
-            logger.info(tabulate(df, headers="keys", tablefmt="psql"))
+            print(tabulate(df, headers="keys", tablefmt="psql"))
         return None
 
     def info(self) -> None:
-        logger.info(f"magnetdata: {self.FileName}, Type={self.Type}")
-        logger.info("keys:")
+        print(f"magnetdata: {self.FileName}, Type={self.Type.name}")
+        print("keys:")
         for key in self.Keys:
-            logger.info(f"\t{key}")
+            print(f"\t{key}")
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(Type={self.Type!r}, Groups={self.Groups!r}, Keys={self.Keys!r}, Data={self.Data!r})"
@@ -710,16 +710,16 @@ class EnsightMagnetData(PandasMagnetData):
     is fixed here by simply inheriting the working pandas implementation.
     """
 
-    _TYPE: int = 2
+    _TYPE: DataType = DataType.ENSIGHT
 
 
 class BProfileMagnetData(PandasMagnetData):
     """B-profile CSV data (Index, Position, Profile columns, Type=0)."""
 
-    _TYPE: int = 0
+    _TYPE: DataType = DataType.PUPITRE
 
 
 class FeelppMagnetData(PandasMagnetData):
     """feelpp simulation CSV data (Type=0)."""
 
-    _TYPE: int = 0
+    _TYPE: DataType = DataType.PUPITRE

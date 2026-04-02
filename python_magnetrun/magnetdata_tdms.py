@@ -9,7 +9,7 @@ from typing import Any
 
 import pandas as pd
 
-from .magnetdata_base import MagnetDataBase
+from .magnetdata_base import DataType, MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +18,12 @@ class TdmsMagnetData(MagnetDataBase):
     """TDMS-backed magnet data.
 
     ``self.Data`` is a ``dict[str, pd.DataFrame]`` keyed by group name.
-    ``self.Type`` is ``1``.
+    ``self.Type`` is :attr:`DataType.TDMS`.
     """
 
     @property
-    def Type(self) -> int:  # type: ignore[override]
-        return 1
+    def Type(self) -> DataType:
+        return DataType.TDMS
 
     # --- core data access --------------------------------------------
 
@@ -473,7 +473,7 @@ class TdmsMagnetData(MagnetDataBase):
 
         from tabulate import tabulate
 
-        logger.info(f"magnetdata: {self.FileName}, Type={self.Type}")
+        logger.info(f"magnetdata: {self.FileName}, Type={self.Type.name}")
         headers = [
             "Group",
             "Channel",

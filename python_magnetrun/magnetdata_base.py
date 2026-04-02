@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from enum import IntEnum
 from typing import Any
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+class DataType(IntEnum):
+    PUPITRE = 0
+    TDMS = 1
+    ENSIGHT = 2
+    HYBRID = 3
 
 
 class MagnetDataBase(ABC):
@@ -48,8 +56,8 @@ class MagnetDataBase(ABC):
 
     @property
     @abstractmethod
-    def Type(self) -> int:
-        """Integer data-type discriminator (0=Pandas, 1=TDMS, 2=Ensight)."""
+    def Type(self) -> DataType:
+        """Data-type discriminator."""
 
     @abstractmethod
     def getData(self, key: list[str] | str | None = None) -> pd.DataFrame:
@@ -75,8 +83,8 @@ class MagnetDataBase(ABC):
     # Concrete default implementations
     # ------------------------------------------------------------------
 
-    def getType(self) -> int:
-        """Return the integer type discriminator."""
+    def getType(self) -> DataType:
+        """Return the data-type discriminator."""
         return self.Type
 
     def info(self) -> None:
