@@ -9,250 +9,15 @@ Usage:
     python -m python_magnetrun.hybrid.cli --base-dir /data/hybrid --date 2025-01-06
 """
 
-import argparse
 import logging
 
-from .hybrid_data import FEPC_SYSTEMS, HybridData
+from ..log_utils import setup_logging
+from .args import create_parser
+from .hybrid_data import HybridData
 from .utils import format_exception_location, list_available_dates, log_exception
 
 # Setup logger
 logger = logging.getLogger(__name__)
-
-
-def create_base_parser():
-    """Create parser with base arguments.
-
-    :return: ArgumentParser with base arguments
-    :rtype: argparse.ArgumentParser
-    """
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument(
-        "--base-dir",
-        "-b",
-        type=str,
-        default=None,
-        help="Base directory containing kHz, rms, trigger subdirectories",
-    )
-    parser.add_argument(
-        "--date",
-        "-d",
-        type=str,
-        help="Date in YYYY-MM-DD format",
-    )
-    parser.add_argument(
-        "--fepc-system",
-        "-s",
-        type=str,
-        choices=FEPC_SYSTEMS,
-        help="FEPC system to use",
-    )
-    parser.add_argument(
-        "--endian",
-        "-e",
-        type=str,
-        choices=["big", "little"],
-        default="big",
-        help="Endianness of binary data (default: big)",
-    )
-    parser.add_argument(
-        "--log-level",
-        "-l",
-        type=str,
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        default="WARNING",
-        help="Set logging level (default: WARNING)",
-    )
-    parser.add_argument(
-        "--log-file",
-        type=str,
-        help="Path to log file (if not specified, logs to console)",
-    )
-    return parser
-
-
-def create_info_parser():
-    """Create parser with info/listing arguments.
-
-    :return: ArgumentParser with info arguments
-    :rtype: argparse.ArgumentParser
-    """
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument(
-        "--list-dates",
-        action="store_true",
-        help="List available dates",
-    )
-    parser.add_argument(
-        "--khz-vars",
-        type=str,
-        metavar="SYSTEM",
-        help="Show kHz variables for a FEPC system",
-    )
-    parser.add_argument(
-        "--rms-vars",
-        type=str,
-        metavar="SYSTEM",
-        help="Show RMS variables for a FEPC system",
-    )
-    return parser
-
-
-def create_plot_parser():
-    """Create parser with plotting arguments.
-
-    :return: ArgumentParser with plotting arguments
-    :rtype: argparse.ArgumentParser
-    """
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument(
-        "--plot-khz",
-        type=str,
-        metavar="VARIABLE",
-        help="Plot kHz variable(s) (requires --fepc-system). "
-        "Use comma-separated list for multiple variables (e.g., 'I,V,T')",
-    )
-    parser.add_argument(
-        "--plot-rms",
-        type=str,
-        metavar="VARIABLE",
-        help="Plot RMS variable(s) (requires --fepc-system). "
-        "Use comma-separated list for multiple variables (e.g., 'I,V,T')",
-    )
-    parser.add_argument(
-        "--plot-both",
-        type=str,
-        metavar="VARIABLE",
-        help="Plot kHz and RMS data together (requires --fepc-system)",
-    )
-    parser.add_argument(
-        "--rms-var",
-        type=str,
-        metavar="VARIABLE",
-        help="RMS variable name for --plot-both (defaults to kHz variable name)",
-    )
-    parser.add_argument(
-        "--layout",
-        type=str,
-        choices=["subplots", "overlay"],
-        default="subplots",
-        help="Layout for multi-variable plots: 'subplots' (separate plots) or 'overlay' (same axes). Default: subplots",
-    )
-    parser.add_argument(
-        "--hours",
-        type=str,
-        metavar="HOURS",
-        help="Hours to plot for kHz data (comma-separated, e.g., '0,1,2')",
-    )
-    parser.add_argument(
-        "--no-calib",
-        action="store_true",
-        help="Do not apply calibration to kHz data",
-    )
-    parser.add_argument(
-        "--save",
-        type=str,
-        metavar="FILE",
-        help="Save plot to file",
-    )
-    return parser
-
-
-def create_outlier_parser():
-    """Create parser with outlier removal arguments.
-
-    :return: ArgumentParser with outlier arguments
-    :rtype: argparse.ArgumentParser
-    """
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument(
-        "--remove-outliers",
-        type=str,
-        metavar="METHOD",
-        choices=["iqr", "zscore", "mad", "percentile"],
-        help="Remove outliers using specified method (iqr, zscore, mad, percentile)",
-    )
-    parser.add_argument(
-        "--outlier-threshold",
-        type=float,
-        default=1.5,
-        metavar="THRESHOLD",
-        help="Threshold for outlier detection (default: 1.5 for IQR, 3.0 for zscore)",
-    )
-    parser.add_argument(
-        "--outlier-window",
-        type=int,
-        metavar="SIZE",
-        help="Rolling window size for local outlier detection (optional)",
-    )
-    return parser
-
-
-def create_parser() -> argparse.ArgumentParser:
-    """
-    Create the argument parser for the hybrid CLI.
-
-    :return: Configured ArgumentParser with all arguments
-    :rtype: argparse.ArgumentParser
-    """
-    base_parser = create_base_parser()
-    info_parser = create_info_parser()
-    plot_parser = create_plot_parser()
-    outlier_parser = create_outlier_parser()
-
-    parser = argparse.ArgumentParser(
-        parents=[base_parser, info_parser, plot_parser, outlier_parser],
-        description="Read hybrid magnet data (kHz, RMS, Trigger)",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-    # List available dates
-    python -m hybrid.cli --base-dir /data/hybrid --list-dates
-
-    # Show summary for a specific date
-    python -m hybrid.cli --base-dir /data/hybrid --date 2025-01-06
-
-    # Show kHz variables
-    python -m hybrid.cli --base-dir /data/hybrid --date 2025-01-06 --khz-vars FEPC-LNCMI
-
-    # Show RMS variables
-    python -m hybrid.cli --base-dir /data/hybrid --date 2025-01-06 --rms-vars FEPC-LNCMI
-
-    # Plot a single kHz variable
-    python -m hybrid.cli -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1
-
-    # Plot multiple kHz variables (subplots)
-    python -m hybrid.cli -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1,ALIM2_J1 --layout subplots
-
-    # Plot multiple kHz variables (overlay on same axes)
-    python -m hybrid.cli -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1,ALIM2_J1 --layout overlay
-
-    # Plot a kHz variable for specific hours without calibration
-    python -m hybrid.cli -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1 --hours 0,1,2 --no-calib
-
-    # Plot a single RMS variable
-    python -m hybrid.cli -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-rms ALIM1_J1
-
-    # Plot multiple RMS variables
-    python -m hybrid.cli -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-rms ALIM1_J1,ALIM2_J1 --layout overlay
-
-    # Plot kHz and RMS together
-    python -m hybrid.cli -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-both ALIM1_J1
-
-    # Save plot to file
-    python -m hybrid.cli -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1 --save output.png
-
-    # Plot with outlier removal (IQR method)
-    python -m hybrid.cli -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1 --remove-outliers iqr
-
-    # Plot with outlier removal (zscore method, custom threshold)
-    python -m hybrid.cli -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1 --remove-outliers zscore --outlier-threshold 3.0
-
-    # Plot with rolling window outlier removal
-    python -m hybrid.cli -d 2025-01-06 -s FEPC-AUX-LNCMI --plot-khz ALIM1_J1 --remove-outliers mad --outlier-window 1000
-        """,
-    )
-
-    return parser
 
 
 def run_list_dates(args) -> None:
@@ -299,7 +64,9 @@ def run_show_rms_vars(data: HybridData, system: str) -> None:
         if len(vars_info["digital"]) > 10:
             logger.info(f"    ... and {len(vars_info['digital']) - 10} more")
     except (OSError, ValueError, RuntimeError, KeyError) as e:
-        log_exception("Error showing kHz variables", e, use_print=True, include_traceback=False)
+        log_exception(
+            "Error showing kHz variables", e, use_print=True, include_traceback=False
+        )
         logger.error(f"  Error at {format_exception_location()}: {e}")
 
 
@@ -332,14 +99,7 @@ def main() -> None:
 
     # Configure logging level
     log_level = getattr(logging, args.log_level.upper(), logging.WARNING)
-    logging_config = {
-        "level": log_level,
-        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    }
-    if args.log_file:
-        logging_config["filename"] = args.log_file
-        logging_config["filemode"] = "a"
-    logging.basicConfig(**logging_config)
+    setup_logging(level=log_level, log_file=args.log_file if args.log_file else None)
     logger.setLevel(log_level)
 
     # List dates
@@ -361,7 +121,9 @@ def main() -> None:
             endian=args.endian,
         )
     except (OSError, ValueError, RuntimeError) as e:
-        log_exception("Error creating HybridData", e, use_print=True, include_traceback=True)
+        log_exception(
+            "Error creating HybridData", e, use_print=True, include_traceback=True
+        )
         return
 
     # Show summary
@@ -381,7 +143,9 @@ def main() -> None:
         try:
             hours = parse_hours(args.hours)
         except ValueError:
-            logger.error(f"Error: Invalid hours format '{args.hours}'. Use comma-separated integers.")
+            logger.error(
+                f"Error: Invalid hours format '{args.hours}'. Use comma-separated integers."
+            )
             return
 
     # Plot kHz variable(s)
@@ -408,7 +172,9 @@ def main() -> None:
                 )
             else:
                 # Multiple variables - use new multi-variable method
-                logger.info(f"\nPlotting kHz variables: {', '.join(variables)} (layout: {args.layout})")
+                logger.info(
+                    f"\nPlotting kHz variables: {', '.join(variables)} (layout: {args.layout})"
+                )
                 data.plot_khz_variables(
                     args.fepc_system,
                     variables,
@@ -421,10 +187,14 @@ def main() -> None:
                     layout=args.layout,
                 )
         except ValueError as e:
-            logger.error(f"Value error plotting kHz variable at {format_exception_location()}: {e}")
+            logger.error(
+                f"Value error plotting kHz variable at {format_exception_location()}: {e}"
+            )
             return
         except (OSError, RuntimeError) as e:
-            log_exception("Error plotting kHz variable", e, use_print=True, include_traceback=True)
+            log_exception(
+                "Error plotting kHz variable", e, use_print=True, include_traceback=True
+            )
             return
 
     # Plot RMS variable(s)
@@ -446,7 +216,9 @@ def main() -> None:
                 )
             else:
                 # Multiple variables - use new multi-variable method
-                logger.info(f"\nPlotting RMS variables: {', '.join(variables)} (layout: {args.layout})")
+                logger.info(
+                    f"\nPlotting RMS variables: {', '.join(variables)} (layout: {args.layout})"
+                )
                 data.plot_rms_variables(
                     args.fepc_system,
                     variables,
@@ -454,7 +226,9 @@ def main() -> None:
                     layout=args.layout,
                 )
         except (OSError, ValueError, RuntimeError) as e:
-            log_exception("Error plotting RMS variable", e, use_print=True, include_traceback=True)
+            log_exception(
+                "Error plotting RMS variable", e, use_print=True, include_traceback=True
+            )
 
     # Plot both kHz and RMS
     if args.plot_both:
@@ -473,10 +247,14 @@ def main() -> None:
                 save=args.save,
             )
         except ValueError as e:
-            logger.error(f"Value error plotting kHz variable at {format_exception_location()}: {e}")
+            logger.error(
+                f"Value error plotting kHz variable at {format_exception_location()}: {e}"
+            )
             return
         except (OSError, RuntimeError) as e:
-            log_exception("Error plotting kHz with RMS", e, use_print=True, include_traceback=True)
+            log_exception(
+                "Error plotting kHz with RMS", e, use_print=True, include_traceback=True
+            )
 
 
 if __name__ == "__main__":

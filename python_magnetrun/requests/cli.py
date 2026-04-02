@@ -25,6 +25,7 @@ import requests
 import requests.exceptions
 from natsort import natsorted
 
+from ..log_utils import setup_logging
 from ..utils.list import flatten
 from .connect import createSession
 from .HMagnet import HMagnet
@@ -134,14 +135,7 @@ def main():
 
     # Configure logging level
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
-    logging_kwargs = dict(
-        level=log_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
-    if args.log_file:
-        logging_kwargs["filename"] = args.log_file
-        logging_kwargs["filemode"] = "a"
-    logging.basicConfig(**logging_kwargs)
+    setup_logging(level=log_level, log_file=args.log_file if args.log_file else None)
     logger.setLevel(log_level)
 
     # Infer debug mode from log level
@@ -174,7 +168,9 @@ def main():
     url_materials = base_url + "site/sba/pages/" + "Mat.php"
     url_confs = base_url + "site/sba/pages/downloadM.php"
     url_cirrus = base_url + "site/sba/pages/" + "cirrus.php"
-    url_query = base_url + "site/sba/vendor/jqueryFileTree/connectors/jqueryFileTree.php"
+    url_query = (
+        base_url + "site/sba/vendor/jqueryFileTree/connectors/jqueryFileTree.php"
+    )
 
     # Fill in your details here to be posted to the login form.
     payload = {"email": args.user, "password": password}
@@ -390,7 +386,9 @@ def main():
             logger.info("=" * 80)
 
             # Separate parts by type
-            helices = {k: v for k, v in PartsCAD.items() if len(v) > 3 and v[3] == "helix"}
+            helices = {
+                k: v for k, v in PartsCAD.items() if len(v) > 3 and v[3] == "helix"
+            }
             rings = {k: v for k, v in PartsCAD.items() if len(v) > 3 and v[3] == "ring"}
 
             # Display based on filter
@@ -398,7 +396,9 @@ def main():
                 logger.info(f"\n{'=' * 80}")
                 logger.info(f"HELICES ({len(helices)} found)")
                 logger.info(f"{'=' * 80}")
-                logger.info(f"{'Name':<20} {'CAD Ref':<20} {'Material':<15} {'Geometry':<20}")
+                logger.info(
+                    f"{'Name':<20} {'CAD Ref':<20} {'Material':<15} {'Geometry':<20}"
+                )
                 logger.info("-" * 80)
                 for name, data in sorted(helices.items()):
                     cad_ref = data[0] if len(data) > 0 else "N/A"
@@ -411,14 +411,20 @@ def main():
                     elif re.search(r"[A-Za-z]$", data[2]):
                         geometry = data[2][:-1]  # Remove "X"
                     else:
-                        geometry = data[2] if len(data) > 2 else "N/A"  # No suffix letter
-                    logger.info(f"{name:<20} {cad_ref:<20} {material:<15} {geometry:<20}")
+                        geometry = (
+                            data[2] if len(data) > 2 else "N/A"
+                        )  # No suffix letter
+                    logger.info(
+                        f"{name:<20} {cad_ref:<20} {material:<15} {geometry:<20}"
+                    )
 
             if args.part_type in ["ring", "all"]:
                 logger.info(f"\n{'=' * 80}")
                 logger.info(f"RINGS ({len(rings)} found)")
                 logger.info(f"{'=' * 80}")
-                logger.info(f"{'Name':<20} {'CAD Ref':<20} {'Material':<15} {'Geometry':<20}")
+                logger.info(
+                    f"{'Name':<20} {'CAD Ref':<20} {'Material':<15} {'Geometry':<20}"
+                )
                 logger.info("-" * 80)
                 for name, data in sorted(rings.items()):
                     cad_ref = data[0] if len(data) > 0 else "N/A"
@@ -428,8 +434,12 @@ def main():
                     elif re.search(r"[A-Za-z]$", data[2]):
                         geometry = data[2][:-1]  # Remove "X"
                     else:
-                        geometry = data[2] if len(data) > 2 else "N/A"  # No suffix letter
-                    logger.info(f"{name:<20} {cad_ref:<20} {material:<15} {geometry:<20}")
+                        geometry = (
+                            data[2] if len(data) > 2 else "N/A"
+                        )  # No suffix letter
+                    logger.info(
+                        f"{name:<20} {cad_ref:<20} {material:<15} {geometry:<20}"
+                    )
 
             logger.info(f"\n{'=' * 80}")
             logger.info(f"Total: {len(helices)} helices, {len(rings)} rings")
@@ -487,10 +497,12 @@ def main():
                             ]
 
                     nhelices = len(db_Magnets[magnet]["parts"])
-                    db_Magnets[magnet]["description"] = (
-                        f"{nhelices} Helices, Phi = {diameter[nhelices]} mm"
-                    )
-                logger.info(f"{magnet}: {db_Magnets[magnet]} - should add {nhelices - 1} rings ")
+                    db_Magnets[magnet][
+                        "description"
+                    ] = f"{nhelices} Helices, Phi = {diameter[nhelices]} mm"
+                logger.info(
+                    f"{magnet}: {db_Magnets[magnet]} - should add {nhelices - 1} rings "
+                )
             else:
                 db_Magnets[magnet]["description"] = "Phi = 400 mm"
         logger.info("Done")
@@ -544,7 +556,9 @@ def main():
             for part, carac in db_Parts.items():
                 geom = carac.get("geometry")
                 if geom in geometry_override:
-                    logger.debug(f"{part}: geometry overridden {geom} -> {geometry_override[geom]}")
+                    logger.debug(
+                        f"{part}: geometry overridden {geom} -> {geometry_override[geom]}"
+                    )
                     carac["geometry"] = geometry_override[geom]
 
         ordered_data = OrderedDict(sorted(cad_Parts.items(), key=lambda x: x))
@@ -563,7 +577,9 @@ def main():
                 "volumic_mass": 9e3,
                 "specific_heat": 385,
                 "alpha": 3.6e-3,
-                "electrical_conductivity": float(Mats[mat].material["sigma0"].replace(",", "."))
+                "electrical_conductivity": float(
+                    Mats[mat].material["sigma0"].replace(",", ".")
+                )
                 * 1e6,
                 "thermal_conductivity": 380,
                 "magnet_permeability": 1,
@@ -613,7 +629,9 @@ def main():
 
                     timestamp: str = ""
                     try:
-                        timestamp = link.split("/")[-1].replace("%20", "").replace(".txt", "")
+                        timestamp = (
+                            link.split("/")[-1].replace("%20", "").replace(".txt", "")
+                        )
                         # print(timestamp)
                         parsed_ts = datetime.datetime.strptime(timestamp, tformat)
                         record_names.append(nlink)
@@ -630,7 +648,8 @@ def main():
         # Assign records to site from timestamps
         # Create a panda datafram with ['link','timestamp']
         df_records = pd.DataFrame(
-            list(zip(record_names, record_timestamps, strict=False)), columns=["name", "timestamp"]
+            list(zip(record_names, record_timestamps, strict=False)),
+            columns=["name", "timestamp"],
         )
         df_records.to_csv("df_records.csv")
 
@@ -649,7 +668,9 @@ def main():
 
             selected = None
             if t1 is not None:
-                selected = df_records[df_records["timestamp"].between(t0, t1, inclusive="left")]
+                selected = df_records[
+                    df_records["timestamp"].between(t0, t1, inclusive="left")
+                ]
                 # logger.info(f"{site}: records={len(selected.index)}")
             else:
                 selected = df_records[df_records["timestamp"] >= t0]
@@ -662,10 +683,14 @@ def main():
                     record = MRecord(timestamp, housing, site, link)
                     values["records"].append(record)
             first_record = (
-                values["records"][0].getDataFilename() if len(values["records"]) > 0 else "N/A"
+                values["records"][0].getDataFilename()
+                if len(values["records"]) > 0
+                else "N/A"
             )
             last_record = (
-                values["records"][-1].getDataFilename() if len(values["records"]) > 0 else "N/A"
+                values["records"][-1].getDataFilename()
+                if len(values["records"]) > 0
+                else "N/A"
             )
             logger.info(
                 f'site={site}, housing="{housing}, t0={t0}, t1={t1}, assigned records={len(values["records"])} from {first_record} to {last_record}'
@@ -679,7 +704,9 @@ def main():
                 if args.save:
                     filepath = os.path.join(args.datadir, record.getDataFilename())
                     if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
-                        logger.info(f"File {filepath} already exists, skipping download")
+                        logger.info(
+                            f"File {filepath} already exists, skipping download"
+                        )
                         continue
                     data = record.getData(s, url_downloads)
                     if args.check:
@@ -731,13 +758,17 @@ def main():
                     for site in db_Sites
                     if housing == db_Sites[site]["housing"]
                 ]
-                record_name_sites = [record.getLink() for record in flatten(record_sites)]
+                record_name_sites = [
+                    record.getLink() for record in flatten(record_sites)
+                ]
                 search_housing = f"/{housing}/"
                 record_names_housing = [
                     record for record in record_names if search_housing in record
                 ]
                 orphan_records = list(
-                    set(record_names_housing).symmetric_difference(set(flatten(record_name_sites)))
+                    set(record_names_housing).symmetric_difference(
+                        set(flatten(record_name_sites))
+                    )
                 )
 
                 logger.info(
@@ -749,14 +780,23 @@ def main():
                     logger.debug(f"{orphan} ({type(orphan)})")
                     site = "unknown"
                     link = orphan
-                    ts_str = link.split("/")[-1].replace("%20", " ").replace(".txt", "").strip()
-                    timestamp = datetime.datetime.strptime(ts_str, "%Y.%m.%d - %H:%M:%S")
+                    ts_str = (
+                        link.split("/")[-1]
+                        .replace("%20", " ")
+                        .replace(".txt", "")
+                        .strip()
+                    )
+                    timestamp = datetime.datetime.strptime(
+                        ts_str, "%Y.%m.%d - %H:%M:%S"
+                    )
                     logger.info(f"orphan record: {orphan}, timestamp={timestamp}")
                     orecord = MRecord(timestamp, housing, site, link)
                     logger.debug(f"{orecord}")
                     filepath = os.path.join(args.datadir, orecord.getDataFilename())
                     if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
-                        logger.debug(f"File {filepath} already exists, skipping download")
+                        logger.debug(
+                            f"File {filepath} already exists, skipping download"
+                        )
                         continue
                     data = orecord.getData(s, url_downloads)
                     iodata = StringIO(data)
@@ -806,22 +846,34 @@ def main():
             plt.show()
 
         # Get orphan part/material
-        logger.info("\nOrphaned magnet/part/material - Generate files for import in MagnetDB:")
+        logger.info(
+            "\nOrphaned magnet/part/material - Generate files for import in MagnetDB:"
+        )
         magnet_names = [db_Magnets[magnet]["name"] for magnet in db_Magnets]
         site_magnets = [
-            svalues["magnets"] for site, svalues in db_Sites.items() if "magnets" in svalues
+            svalues["magnets"]
+            for site, svalues in db_Sites.items()
+            if "magnets" in svalues
         ]
-        orphan_magnets = list(set(magnet_names).symmetric_difference(set(flatten(site_magnets))))
+        orphan_magnets = list(
+            set(magnet_names).symmetric_difference(set(flatten(site_magnets)))
+        )
 
         part_names = [db_Parts[part]["name"] for part in db_Parts]
         part_magnets = [
-            mvalues["parts"] for magnet, mvalues in db_Magnets.items() if "parts" in mvalues
+            mvalues["parts"]
+            for magnet, mvalues in db_Magnets.items()
+            if "parts" in mvalues
         ]
-        orphan_parts = list(set(part_names).symmetric_difference(set(flatten(part_magnets))))
+        orphan_parts = list(
+            set(part_names).symmetric_difference(set(flatten(part_magnets)))
+        )
 
         material_names = [mvalues["name"] for material, mvalues in db_Materials.items()]
         part_materials = [pvalues["material"] for part, pvalues in db_Parts.items()]
-        orphan_materials = list(set(material_names).symmetric_difference(set(part_materials)))
+        orphan_materials = list(
+            set(material_names).symmetric_difference(set(part_materials))
+        )
 
         logger.debug(f"orphan_materials={orphan_materials}")
         for mat in orphan_materials:

@@ -132,6 +132,7 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
 
     # First line contains the header with FEPC info
     header = lines[0]
+    logger.debug(f"header: {header}")
 
     # Parse header to get FEPC name and basic structure
     # Format: FEPC_NAME;num_cards;freq1;pre1;post1;type1;nchannels1;...
@@ -139,11 +140,11 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
 
     # Extract FEPC name (usually first element before numbers)
     fepc_name = parts[0].split("|")[0] if "|" in parts[0] else parts[0]
-    logger.debug(f"FEPC Name: {fepc_name}")
+    logger.info(f"FEPC Name: {fepc_name}")
 
     # Extract number of cards from parts[1]
     num_cards = int(parts[1]) if len(parts) > 1 else len(lines) - 1
-    logger.debug(f"Number of cards: {num_cards}")
+    logger.info(f"Number of cards: {num_cards}")
 
     # Parse card descriptions from header
     # Each card has 5 fields: freq, pre, post, type, nchannels
@@ -166,7 +167,7 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
                     "nchannels": nchannels,
                 }
             )
-            logger.debug(
+            logger.info(
                 f"Card {card_idx}: freq={freq}, pre={pre}, post={post}, type={card_type}, nchannels={nchannels}"
             )
             header_idx += 5
@@ -180,6 +181,9 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
                     "card_type": "ANA" if card_idx < 6 else "DIG",
                     "nchannels": ANALOG_CHANNELS if card_idx < 6 else DIGITAL_CHANNELS,
                 }
+            )
+            logger.info(
+                f"Card {card_idx}: freq={10000}, pre={20}, post={50}, type={'ANA' if card_idx < 6 else 'DIG'}, nchannels={ANALOG_CHANNELS if card_idx < 6 else DIGITAL_CHANNELS} (fallback)"
             )
 
     # Parse each card's information

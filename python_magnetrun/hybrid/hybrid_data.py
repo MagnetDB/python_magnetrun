@@ -31,6 +31,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from natsort import natsorted
 
 # Local imports
 
@@ -199,8 +200,21 @@ class HybridData:
         # Build groups and keys
         self._build_groups()
 
+    def _build_group_keys(self, group: str, system: str) -> dict:
+        """Build data keys for a specific group"""
+
+        if group == "kHz":
+            return self.get_khz_variables(system)
+        elif group == "rms":
+            return self.get_rms_variables(system)
+        elif group == "trigger":
+            raise NotImplementedError("Trigger group keys not implemented yet")
+        else:
+            raise ValueError(f"Unknown group: {group}")
+
     def _build_groups(self) -> None:
         """Build Groups and Keys from discovered data"""
+        logging.info(f"Building groups and keys for HybridData on {self.date_str}")
         self.Groups = {}
         self.Keys = []
 
@@ -213,7 +227,9 @@ class HybridData:
                     "system": system,
                     "files": self._info.khz_files[system],
                 }
-                self.Keys.append(group_name)
+                keys = self._build_group_keys("kHz", system)["analog"] if system else []
+                logging.info(f"getKeys: kHz keys for system={system}: {keys}")
+                self.Keys += [f"kHz/{system}/{key}" for key in keys]
 
             # RMS group
             if system in self._info.rms_files:
@@ -223,7 +239,9 @@ class HybridData:
                     "system": system,
                     "files": self._info.rms_files[system],
                 }
-                self.Keys.append(group_name)
+                keys = self._build_group_keys("rms", system)["analog"] if system else []
+                logging.info(f"getKeys: RMS keys for system={system}: {keys}")
+                self.Keys += [f"rms/{system}/{key}" for key in keys]
 
             # Trigger group
             if system in self._info.trigger_files:
@@ -270,7 +288,7 @@ class HybridData:
         return self.Type
 
     def getKeys(self) -> list[str]:
-        """Return list of available data keys"""
+        logger.debug(f"HybridData/getKeys: keys={self.Keys}")
         return self.Keys
 
     def getInfo(self) -> HybridDataInfo:
@@ -279,40 +297,40 @@ class HybridData:
 
     def print_summary(self) -> None:
         """Print summary of available data"""
-        logger.info(f"HybridData Summary for {self.date_str}")
-        logger.info("=" * 60)
-        logger.info(f"Base directory: {self.base_dir}")
-        logger.info(f"FEPC Systems: {', '.join(self._info.fepc_systems)}")
+        print(f"HybridData Summary for {self.date_str}")
+        print("=" * 60)
+        print(f"Base directory: {self.base_dir}")
+        print(f"FEPC Systems: {', '.join(self._info.fepc_systems)}")
 
-        logger.info("Data availability:")
-        logger.info(f"  kHz data:     {'yes' if self._info.khz_available else 'no'}")
-        logger.info(f"  RMS data:     {'yes' if self._info.rms_available else 'no'}")
-        logger.info(
-            f"  Trigger data: {'yes' if self._info.trigger_available else 'no'}"
-        )
+        print("Data availability:")
+        print(f"  kHz data:     {'yes' if self._info.khz_available else 'no'}")
+        print(f"  RMS data:     {'yes' if self._info.rms_available else 'no'}")
+        print(f"  Trigger data: {'yes' if self._info.trigger_available else 'no'}")
 
         if self._info.khz_available:
-            logger.info("kHz files:")
+            print("kHz files:")
             for system, files in self._info.khz_files.items():
                 if not system.endswith("_cfg"):
-                    logger.info(f"  {system}: {len(files)} files")
+                    print(f"  {system}: {len(files)} files")
 
         if self._info.rms_available:
-            logger.info("RMS files:")
+            print("RMS files:")
             for system, files in self._info.rms_files.items():
-                logger.info(f"  {system}: {len(files)} files")
+                print(f"  {system}: {len(files)} files")
 
         if self._info.trigger_available:
-            logger.info("Trigger directories:")
+            print("Trigger directories:")
             for system, dirs in self._info.trigger_dirs.items():
-                logger.info(f"  {system}: {len(dirs)} trigger events")
+                print(f"  {system}: {len(dirs)} trigger events")
                 for d in dirs:
                     # Extract time from directory name (TRIGGER__YYYY-MM-DD__HH-MM)
                     time_part = d.name.split("__")[-1] if "__" in d.name else ""
-                    logger.info(f"    - {time_part}")
-            logger.info("Trigger files:")
+                    print(f"    - {time_part}")
+            print("Trigger files:")
             for system, files in self._info.trigger_files.items():
-                logger.info(f"  {system}: {len(files)} files")
+                print(f"  {system}: {len(files)} files")
+
+        print(flush=True)
 
     # -------------------------------------------------------------------------
     # kHz Data Methods
@@ -379,12 +397,14 @@ class HybridData:
         for card in config.cards:
             if card.card_type == "ANA":
                 for var in card.variable_names:
-                    analog_vars.append(f"slot{card.slot}/{var}")
+                    # analog_vars.append(f"slot{card.slot}/{var}")
+                    analog_vars.append(var)
             else:
                 for var in card.variable_names:
-                    digital_vars.append(f"slot{card.slot}/{var}")
+                    # digital_vars.append(f"slot{card.slot}/{var}")
+                    digital_vars.append(var)
 
-        return {"analog": analog_vars, "digital": digital_vars}
+        return {"analog": natsorted(analog_vars), "digital": natsorted(digital_vars)}
 
     def read_khz_variable(
         self,
@@ -418,11 +438,9 @@ class HybridData:
         tuple
             (data_array, time_array)
         """
-        print(
+        logger.debug(
             f"read_kHz_variable: system={system}, variable={variable}, slot={slot}, hours={hours}, apply_calib={apply_calib}, cnv_dir={cnv_dir}"
         )
-        logger.debug(f"read_khz_variable: system={system}, variable={variable}")
-
         if read_hour_file is None or calibrate_channel is None:
             raise ImportError("fepc_reader module not available")
 
@@ -464,7 +482,7 @@ class HybridData:
                         filtered_files.append(f)
                 except ValueError:
                     pass
-            print(f"filtered_files: {filtered_files}")
+            logger.debug(f"filtered_files: {filtered_files}")
             bin_files = filtered_files
 
         if not bin_files:
@@ -572,7 +590,7 @@ class HybridData:
             else:
                 digital_vars.append(row["name"])
 
-        return {"analog": analog_vars, "digital": digital_vars}
+        return {"analog": natsorted(analog_vars), "digital": natsorted(digital_vars)}
 
     def get_rms_variable_info(self, system: str, file_idx: int = 0) -> pd.DataFrame:
         """
@@ -837,7 +855,7 @@ class HybridData:
             return self.Data
 
         parts = key.split("/")
-        print(f"hybrid_data.getData: key={key}, parts={parts}, hours={hours}")
+        logger.debug(f"hybrid_data.getData: key={key}, parts={parts}, hours={hours}")
         if len(parts) < 2:
             raise ValueError(f"Invalid key format: {key}")
 
@@ -860,6 +878,11 @@ class HybridData:
         elif data_type == "trigger":
             return self.list_trigger_files(system)
 
+        elif data_type == "vprocess":
+            # Placeholder for future processed data
+            raise NotImplementedError(
+                "HyBridData.getData: vprocess data not implemented yet"
+            )
         else:
             raise ValueError(f"Unknown data type: {data_type}")
 

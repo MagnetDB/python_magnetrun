@@ -14,6 +14,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from .log_utils import setup_logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -210,7 +212,13 @@ def detect_imax_from_plateaus(
     # Require min_plateau_samples consecutive plateau points to filter noise.
     # rolling(min_plateau_samples).min() == 1.0 means every sample in the
     # window was True.
-    confirmed = in_plateau.astype(float).rolling(min_plateau_samples).min().fillna(0.0).astype(bool)
+    confirmed = (
+        in_plateau.astype(float)
+        .rolling(min_plateau_samples)
+        .min()
+        .fillna(0.0)
+        .astype(bool)
+    )
 
     if not confirmed.any():
         logger.info("No plateau detected in pump speed curve for '%s'.", data.name)
@@ -396,7 +404,9 @@ def main() -> None:
     import argparse
     import json
 
-    parser = argparse.ArgumentParser(description="Fit hydraulic pump curves from a MagnetRun file.")
+    parser = argparse.ArgumentParser(
+        description="Fit hydraulic pump curves from a MagnetRun file."
+    )
     parser.add_argument("run_file", help="Path to the MagnetRun data file.")
     parser.add_argument("--current-col", default="IH", help="Current column name.")
     parser.add_argument("--rpm-col", default="Rpm", help="Pump speed column name.")
@@ -416,10 +426,12 @@ def main() -> None:
         default=300.0,
         help="Minimum current threshold [A] for filtering.",
     )
-    parser.add_argument("--output", default="waterflow.json", help="Output JSON file path.")
+    parser.add_argument(
+        "--output", default="waterflow.json", help="Output JSON file path."
+    )
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    setup_logging()
 
     from python_magnetrun.MagnetRun import MagnetRun  # type: ignore[import]
 

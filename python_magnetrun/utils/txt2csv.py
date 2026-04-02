@@ -5,6 +5,7 @@ import sys
 import matplotlib
 import pandas as pd
 
+from ..log_utils import SIMPLE_FORMAT, setup_logging
 from ..magnetdata import MagnetData
 from ..runetl import prepareData_legacy
 from ..thermal_pipeline import (
@@ -34,7 +35,9 @@ def concat_files(
     :param keys: optional subset of columns to keep before concatenation
     :return: prepared DataFrame
     """
-    logger.debug(f"concat_files: input_files={input_files}, housing={housing}, keys={keys}")
+    logger.debug(
+        f"concat_files: input_files={input_files}, housing={housing}, keys={keys}"
+    )
 
     dfs: list[pd.DataFrame] = []
     for f in input_files:
@@ -90,12 +93,16 @@ def main():
         type=str,
         default="M9",
     )
-    parser.add_argument("--plot_vs_time", help='select key(s) to plot (ex. "Field[;Ucoil1]")')
+    parser.add_argument(
+        "--plot_vs_time", help='select key(s) to plot (ex. "Field[;Ucoil1]")'
+    )
     parser.add_argument(
         "--plot_key_vs_key", help='select pair(s) of keys to plot (ex. "Field-Icoil1")'
     )
     parser.add_argument("--output_time", help="output key(s) for time")
-    parser.add_argument("--output_timerange", help="set time range to extract (start;end)")
+    parser.add_argument(
+        "--output_timerange", help="set time range to extract (start;end)"
+    )
     parser.add_argument("--output_key", help="output key(s)")
     parser.add_argument("--extract_pairkeys", help="dump key(s) to file")
     parser.add_argument(
@@ -107,9 +114,9 @@ def main():
     parser.add_argument("--convert", help="convert file to csv", action="store_true")
     parser.add_argument("--debug", help="activate debug logging", action="store_true")
     args = parser.parse_args()
-    logging.basicConfig(
+    setup_logging(
         level=logging.DEBUG if args.debug else logging.WARNING,
-        format="%(name)s - %(levelname)s - %(message)s",
+        fmt=SIMPLE_FORMAT,
     )
 
     df = concat_files(args.input_files, args.housing)
@@ -175,7 +182,9 @@ def main():
         file_name += "_from" + str(timerange[0].replace(":", "-"))
         file_name += "_to" + str(timerange[1].replace(":", "-")) + ".csv"
 
-        selected_df = df[df["Time"].between(timerange[0], timerange[1], inclusive="both")]
+        selected_df = df[
+            df["Time"].between(timerange[0], timerange[1], inclusive="both")
+        ]
         if args.output_key:
             cols = args.output_key.split(";")
             cols.insert(0, "Time")

@@ -16,6 +16,7 @@ from scipy.signal import find_peaks
 from tabulate import tabulate
 
 from .hybrid import HybridRun
+from .log_utils import setup_logging
 from .MagnetRun import MagnetRun
 from .processing.smoothers import savgol
 from .utils.files import expand_input_files
@@ -1007,21 +1008,14 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
 
 
 def main():
-    from .cli_args import create_main_parser, get_datadir_mapping
+    from .args import create_argument_parser, get_datadir_mapping
 
-    parser = create_main_parser()
+    parser = create_argument_parser()
     args = parser.parse_args()
 
     # Configure logging level
     log_level = getattr(logging, args.log_level.upper(), logging.WARNING)
-    logging_config = {
-        "level": log_level,
-        "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    }
-    if args.log_file:
-        logging_config["filename"] = args.log_file
-        logging_config["filemode"] = "a"
-    logging.basicConfig(**logging_config)
+    setup_logging(level=log_level, log_file=args.log_file if args.log_file else None)
     logger.setLevel(log_level)
 
     logger.debug(f"args: {args}")

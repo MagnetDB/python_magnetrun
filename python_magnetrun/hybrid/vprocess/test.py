@@ -18,6 +18,8 @@ import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from ...log_utils import BARE_FORMAT, setup_logging
+
 # Setup logger
 logger = logging.getLogger(__name__)
 
@@ -92,7 +94,9 @@ def create_mock_vprocess_file(
     header_lines.append("# timestamp = absolute")
 
     # Data helper (offset will be calculated)
-    data_helper_line = f"# data-helper [offset:PLACEHOLDER - time:8(B) - width:{sample_width}(B)]"
+    data_helper_line = (
+        f"# data-helper [offset:PLACEHOLDER - time:8(B) - width:{sample_width}(B)]"
+    )
     header_lines.append(data_helper_line)
 
     # Write file
@@ -384,17 +388,18 @@ def main() -> int:
         "--output", "-o", default="mock_data.vprocess", help="Output file for mock data"
     )
     parser.add_argument("--samples", type=int, default=3600, help="Number of samples")
-    parser.add_argument("--analog", type=int, default=10, help="Number of analog variables")
-    parser.add_argument("--digital", type=int, default=2, help="Number of digital variables")
+    parser.add_argument(
+        "--analog", type=int, default=10, help="Number of analog variables"
+    )
+    parser.add_argument(
+        "--digital", type=int, default=2, help="Number of digital variables"
+    )
     parser.add_argument("--test-file", help="Test with specific file instead of mock")
 
     args = parser.parse_args()
 
     # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(message)s",
-    )
+    setup_logging(fmt=BARE_FORMAT)
 
     if args.create_mock:
         # Just create mock file

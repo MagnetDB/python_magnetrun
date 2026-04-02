@@ -190,7 +190,7 @@ Hybrid data does not require network mounting; simply point `--hybrid_datadir` t
 ### List available fields
 
 ```bash
-python3 -m python_magnetrun.python_magnetrun \
+python3 -m python_magnetrun.cli \
     srvdata/M9_2019.02.14---23:00:38.txt info --list
 ```
 
@@ -208,7 +208,7 @@ python3 -m python_magnetrun.examples.get-record \
 Plot the magnetic field over time:
 
 ```bash
-python3 -m python_magnetrun.python_magnetrun \
+python3 -m python_magnetrun.cli \
     srvdata/M9_2019.02.14---23:00:38.txt \
     plot --vs_time "Field"
 ```
@@ -216,7 +216,7 @@ python3 -m python_magnetrun.python_magnetrun \
 Compare current from PigBrother and Pupitre side by side:
 
 ```bash
-python3 -m python_magnetrun.python_magnetrun \
+python3 -m python_magnetrun.cli \
     srvdata/M10_2025.01.27---*.txt \
     pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms \
     plot \
@@ -227,7 +227,7 @@ python3 -m python_magnetrun.python_magnetrun \
 Overlay PigBrother, Pupitre, and hybrid (kHz) currents for comparison:
 
 ```bash
-python3 -m python_magnetrun.python_magnetrun \
+python3 -m python_magnetrun.cli \
     ~/M9_Overview_240509-1634.tdms \
     ~/M9_2024.05.09---16_34_03.txt \
     --hybrid_datadir /path/to/hybrid \
@@ -251,13 +251,13 @@ python3 -m python_magnetrun.python_magnetrun \
 Compute statistics for all M8 records:
 
 ```bash
-python3 -m python_magnetrun.python_magnetrun srvdata/M8*.txt stats
+python3 -m python_magnetrun.cli srvdata/M8*.txt stats
 ```
 
 Detect plateaux:
 
 ```bash
-python3 -m python_magnetrun.python_magnetrun srvdata/M8*.txt stats --plateau
+python3 -m python_magnetrun.cli srvdata/M8*.txt stats --plateau
 ```
 
 Aggregate a specific field across records:
@@ -272,7 +272,7 @@ python3 -m python_magnetrun.examples.get-record \
 Compute and plot power dissipated in Helices from a Pupitre file:
 
 ```bash
-python3 -m python_magnetrun.python_magnetrun \
+python3 -m python_magnetrun.cli \
     srvdata/M10_2020.10.03---09:56:20.txt \
     add --formula "PowerH = IH * UH / 1.e+6" --plot
 ```
@@ -280,7 +280,7 @@ python3 -m python_magnetrun.python_magnetrun \
 Compute power from a PigBrother TDMS file:
 
 ```bash
-python3 -m python_magnetrun.python_magnetrun \
+python3 -m python_magnetrun.cli \
     pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_201003-0956.tdms \
     add --formula "Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6" \
     --plot
@@ -599,7 +599,7 @@ pytest --on-demand tests/test-tin.py
 ## To-do
 
 **Refactor:**
-- [ ] Split argparse options into separate Python files
+- [X] Split argparse options into separate Python files
 - [ ] Add an example / a test for each subcommand in `python_magnetrun`
 - [ ] Store stats (plateaus, duration) in a DataFrame, CSV, or database
 

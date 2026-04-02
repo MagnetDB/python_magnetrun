@@ -69,36 +69,33 @@ class MagnetRun:
         # with open(filename, "r") as f:
         # insert = f.readline().split()[-1]
         data = MagnetData.fromtxt(filename)
-        logger.debug(f"data: {data}")
+        logger.debug(f"MagnetRun/from_txt: data={data}")
         res = data.getStartDate()
-        print("loading raw pupitre data:", data.getKeys())
+        logger.debug(f"MagnetRun.from_txt: getStartDate={res}")
         prepareData_legacy(data, housing)
-        print("after prepareData_legacy: data keys=", data.getKeys())
+        logger.debug(
+            f"MagnetRun/from_txt: after prepareData_legacy - data keys={data.getKeys()}"
+        )
         # TODO: switch to prepareData once legacy is removed:
         # prepareData(data, housing, keys_to_remove=keys_to_remove,
         #             keys_to_rename=keys_to_rename, keys_to_add=keys_to_add)
-        logger.debug(f"res: {res}")
         data.Units()
         (start_date, start_time, end_date, end_time) = res
 
         # print("magnetrun.fromtxt: data=", data)
         # Combine start_date (YYYY.MM.DD) and start_time (HH:MM:SS) into datetime
         start_t = datetime.strptime(f"{start_date} {start_time}", "%Y.%m.%d %H:%M:%S")
-        logger.debug(f"magnetrun.fromtxt: start_t={start_t}, type={type(start_t)}")
+        logger.debug(f"MagnetRun/from_txt: start_t={start_t}, type={type(start_t)}")
         return cls(housing, site, data, start_time=start_t)
 
     @classmethod
-    def fromcsv(
-        cls, housing: str, site: str, filename: str
-    ) -> "MagnetRun":
+    def fromcsv(cls, housing: str, site: str, filename: str) -> "MagnetRun":
         """create from a csv file"""
         data = MagnetData.fromcsv(filename)
         return cls(housing, site, data)
 
     @classmethod
-    def fromStringIO(
-        cls, housing: str, site: str, name: str
-    ) -> "MagnetRun":
+    def fromStringIO(cls, housing: str, site: str, name: str) -> "MagnetRun":
         """create from a stringIO"""
         # print(f'MagnetRun/fromStringIO: housing={housing}, site={site}')
         from io import StringIO

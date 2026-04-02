@@ -21,7 +21,7 @@ import param
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 from matplotlib.figure import Figure
 
-from .python_magnetrun import MagnetRun
+from ..MagnetRun import MagnetRun
 
 # data = pd.read_csv('./datatest.txt')
 mrun = MagnetRun.fromtxt("M9", "../python_magnetsetup/data/mrecords/M9_2019.06.19---17:04:21.txt")

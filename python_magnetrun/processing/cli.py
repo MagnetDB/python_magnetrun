@@ -12,6 +12,7 @@ import sys
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from ..log_utils import SIMPLE_FORMAT, setup_logging
 from ..magnetdata import MagnetData
 from ..MagnetRun import MagnetRun
 
@@ -51,7 +52,9 @@ def main():
     parser.add_argument("--debug", help="activate debug mode", action="store_true")
 
     # define subparser: filter, smooth, lag_correlation
-    subparsers = parser.add_subparsers(title="commands", dest="command", help="sub-command help")
+    subparsers = parser.add_subparsers(
+        title="commands", dest="command", help="sub-command help"
+    )
 
     # parser_plot = subparsers.add_parser('plot', help='plot help')
     parser_filter = subparsers.add_parser("filter", help="filter help")
@@ -59,7 +62,9 @@ def main():
     parser_filter.add_argument(
         "--threshold", help="specify a threshold for filter", type=float, default=0.5
     )
-    parser_filter.add_argument("--twindows", help="specify a window length", type=int, default=10)
+    parser_filter.add_argument(
+        "--twindows", help="specify a window length", type=int, default=10
+    )
     parser_filter.add_argument(
         "--keys",
         nargs="+",
@@ -99,13 +104,17 @@ def main():
         help="specify keys to select (eg: Tin1;Tin2)",
         default="Tin1",
     )
-    parser_lag.add_argument("--target", help="specify a target field", type=str, default="tsb")
-    parser_lag.add_argument("--trange", help="specify a range for t", type=int, default=100)
+    parser_lag.add_argument(
+        "--target", help="specify a target field", type=str, default="tsb"
+    )
+    parser_lag.add_argument(
+        "--trange", help="specify a range for t", type=int, default=100
+    )
 
     args = parser.parse_args()
-    logging.basicConfig(
+    setup_logging(
         level=logging.DEBUG if args.debug else logging.WARNING,
-        format="%(name)s - %(levelname)s - %(message)s",
+        fmt=SIMPLE_FORMAT,
     )
     logger.debug(f"args: {args}")
 
@@ -154,7 +163,9 @@ def main():
         case ".tdms":
             mrun = MagnetRun.fromtdms(housing, insert, args.input_file)
         case _:
-            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
+            raise RuntimeError(
+                f"so far file with extension in {supported_formats} are implemented"
+            )
 
     mdata = mrun.getMData()
     start_timestamp = mdata.getStartDate()
@@ -220,7 +231,9 @@ def main():
                             alpha=0.5,
                             label="Bell shape kernel",
                         )
-                    plt.plot(x, yest_bell, color="red", label="Loess: bell shape kernel")
+                    plt.plot(
+                        x, yest_bell, color="red", label="Loess: bell shape kernel"
+                    )
                 except (ValueError, RuntimeError) as e:
                     logger.error(f"Failed to build bell: {e}")
 
@@ -228,7 +241,9 @@ def main():
                 try:
                     logger.info(f"f={smoothing_f}, iter={smoothing_iter}")
                     yest_sm = lowess_sm(x, y, f=smoothing_f, iter=smoothing_iter)
-                    plt.plot(x, yest_sm, color="magenta", label="Loess: statsmodel")  # marker="o",
+                    plt.plot(
+                        x, yest_sm, color="magenta", label="Loess: statsmodel"
+                    )  # marker="o",
                 except (ValueError, RuntimeError) as e:
                     logger.error(f"Failed to build sm: {e}")
 
@@ -253,7 +268,9 @@ def main():
             plt.close()
 
     if args.command == "lag":
-        logger.warning("lag: not implemented yet -- see analysis-refactor.py for proper use")
+        logger.warning(
+            "lag: not implemented yet -- see analysis-refactor.py for proper use"
+        )
         # for key in skeys:
         #     df = mrun.getData()
         #     for t in range(args.trange):

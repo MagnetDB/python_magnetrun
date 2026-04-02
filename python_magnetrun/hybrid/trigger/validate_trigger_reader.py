@@ -15,6 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ...log_utils import SIMPLE_FORMAT, setup_logging
 from .trigger_reader import (
     list_trigger_files,
     load_trigger_config,
@@ -23,7 +24,6 @@ from .trigger_reader import (
     read_trigger_file,
 )
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -112,9 +112,7 @@ def validate_binary_files(trigger_dir: Path, system: str) -> bool:
         if tf.file_size == tf.expected_size:
             print("  ✓ File size matches expected")
         else:
-            warning = (
-                f"  ⚠ File size mismatch (expected {tf.expected_size:,}, got {tf.file_size:,})"
-            )
+            warning = f"  ⚠ File size mismatch (expected {tf.expected_size:,}, got {tf.file_size:,})"
             warnings.append(warning)
             print(warning)
 
@@ -132,7 +130,9 @@ def validate_binary_files(trigger_dir: Path, system: str) -> bool:
 
         # Try to read first 100 samples
         try:
-            data, timestamp = read_trigger_file(tf.filepath, tf.card_type, num_samples=100)
+            data, timestamp = read_trigger_file(
+                tf.filepath, tf.card_type, num_samples=100
+            )
             print("  ✓ Data read successfully")
             print(f"    Shape: {data.shape}")
             print(f"    Data type: {data.dtype}")
@@ -299,7 +299,9 @@ def validate_data_reading(trigger_dir: Path, system: str) -> bool:
     # Test reading full dataset
     print("\nTest 3: Read full dataset (700,000 samples)")
     try:
-        data, timestamp, config = read_trigger_data(trigger_dir, system, variable_name=variable)
+        data, timestamp, config = read_trigger_data(
+            trigger_dir, system, variable_name=variable
+        )
 
         print("  ✓ Full dataset read successfully")
         print(f"    Shape: {data.shape}")
@@ -345,7 +347,10 @@ def validate_trigger_metadata(trigger_dir: Path) -> bool:
         print(f"  Total samples: {trigger_info.total_samples}")
 
         # Validate sample counts
-        if trigger_info.total_samples != trigger_info.pre_samples + trigger_info.post_samples:
+        if (
+            trigger_info.total_samples
+            != trigger_info.pre_samples + trigger_info.post_samples
+        ):
             errors.append("Total samples != PRE + POST")
 
         if trigger_info.total_samples != 700000:
@@ -428,6 +433,7 @@ def main() -> int:
     parser.add_argument("trigger_dir", type=Path, help="Path to trigger directory")
 
     args = parser.parse_args()
+    setup_logging(fmt=SIMPLE_FORMAT)
 
     if not args.trigger_dir.exists():
         print(f"Error: Trigger directory not found: {args.trigger_dir}")

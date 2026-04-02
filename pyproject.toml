@@ -75,12 +75,13 @@ doc = [
 Homepage = "https://github.com/MagnetDB/python_magnetrun"
 
 [project.scripts]
-python-magnetrun = "python_magnetrun.python_magnetrun:main"
+python-magnetrun = "python_magnetrun.cli:main"
 srvdata-to-magnetrun = "python_magnetrun.requests.cli:main"
 magnetrun-analysis = "python_magnetrun.analysis:main"
 hybrid-magnetrun = "python_magnetrun.hybrid.cli:main"
 magnetrun-alimconfig = "python_magnetrun.configAlims.convertxml:main"
 magnetrun-pigbrother-logparser = "python_magnetrun.tdms.log_parser:main"
+magnetrun-processing = "python_magnetrun.processing.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["python_magnetrun*"]

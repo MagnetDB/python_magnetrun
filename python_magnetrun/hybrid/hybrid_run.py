@@ -601,7 +601,7 @@ class HybridRun:
             - For group keys: dict of available variables
             - For None: all loaded data
         """
-        print(
+        logger.info(
             f"HybridRun.getData: key={key}, hours={hours},downsample={downsample}, options={options}"
         )
 
@@ -624,8 +624,8 @@ class HybridRun:
                 apply_calib=opts.apply_calib,
                 cnv_dir=opts.cnv_dir,
             )
-            print(f"LoadOptions opts: {opts}")
-        print(f"opts: {opts}")
+            logger.debug(f"LoadOptions opts: {opts}")
+        logger.debug(f"opts: {opts}")
 
         if key is None:
             return self.HybridData  # .Data
@@ -639,18 +639,18 @@ class HybridRun:
 
         # Parse key
         parts = key.split("/")
-        print("parts:", parts)
+        # print("parts:", parts)
         if len(parts) < 2:
             raise ValueError(
                 f"Invalid key format: {key}. Expected 'type/system[/variable]'"
             )
 
         data_type = parts[0]
-        print("data_type:", data_type)
+        logger.debug(f"data_type: {data_type}")
         system = parts[1]
         variable = parts[2] if len(parts) >= 3 else None
-        print(f"system: {system}")
-        print(f"variable: {variable}")
+        logger.debug(f"system: {system}")
+        logger.debug(f"variable: {variable}")
 
         # Load data based on type
         if data_type == "kHz":
@@ -696,7 +696,7 @@ class HybridRun:
     def getKeys(self) -> list[str]:
         """Return list of data keys (MagnetRun compatible)"""
         if self.HybridData is not None:
-            return self.HybridData.Keys
+            return self.HybridData.getKeys()
         raise RuntimeError("HybridRun.getKeys: no HybridData associated")
 
     def getUnit(self, key: str = "") -> tuple:

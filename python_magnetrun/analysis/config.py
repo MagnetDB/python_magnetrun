@@ -446,13 +446,6 @@ class SiteConfig:
             "Référence_GR2_Pin": self.reference_gr2_pin,
         }
 
-    def to_upupitre_dict(self) -> dict[str, list[str]]:
-        """Convert to upupitre_dict format (backward compatibility)."""
-        return {
-            "Référence_GR1": list(self.voltage_channels_gr1),
-            "Référence_GR2": list(self.voltage_channels_gr2),
-        }
-
 
 # =============================================================================
 # Pre-defined site configurations
@@ -784,71 +777,3 @@ class AnalysisConfig:
             TDMS current channel name
         """
         return self.channels.get_current_channel(reference_key)
-
-
-# =============================================================================
-# Backward compatibility: setup() function replacement
-# =============================================================================
-def get_legacy_config(site_name: str | None = None) -> tuple:
-    """
-    Get configuration in the legacy tuple format.
-
-    This function provides backward compatibility with code that
-    expects the original setup() function return format.
-
-    Parameters
-    ----------
-    site_name : str, optional
-        If provided, include site-specific pupitre dicts.
-        If None, return all sites' configurations.
-
-    Returns
-    -------
-    tuple
-        (color_dict, channels_dict, uchannels_dict,
-         pupitre_dict, upupitre_dict, threshold_dict)
-
-    Examples
-    --------
-    >>> color_dict, channels_dict, uchannels_dict, \\
-    ...     pupitre_dict, upupitre_dict, threshold_dict = get_legacy_config()
-    """
-    colors = ColorConfig()
-    channels = ChannelMapping()
-    voltage_channels = VoltageChannelMapping()
-    thresholds = ThresholdConfig.default()
-
-    # Build pupitre dicts for all sites
-    pupitre_dict = {
-        site_name: config.to_pupitre_dict()
-        for site_name, config in SITE_CONFIGS.items()
-    }
-    upupitre_dict = {
-        site_name: config.to_upupitre_dict()
-        for site_name, config in SITE_CONFIGS.items()
-    }
-
-    return (
-        colors.to_dict(),
-        channels.to_dict(),
-        voltage_channels.to_dict(),
-        pupitre_dict,
-        upupitre_dict,
-        thresholds.to_dict(),
-    )
-
-
-# Alias for complete backward compatibility
-def setup() -> tuple:
-    """
-    Original setup() function for backward compatibility.
-
-    .. deprecated::
-        Use AnalysisConfig.for_site() instead.
-
-    Returns
-    -------
-    tuple
-        Configuration dictionaries in legacy format
-    """
-    return get_legacy_config()

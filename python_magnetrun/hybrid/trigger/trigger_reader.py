@@ -17,6 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
+from ...log_utils import SIMPLE_FORMAT, setup_logging
 from ...utils.validation import FileFormatError
 from ..kHz.fepc_reader import FEPCConfig, parse_cfg_file
 
@@ -572,7 +573,7 @@ Examples:
     args = parser.parse_args()
 
     # Setup logging
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    setup_logging(fmt=SIMPLE_FORMAT)
 
     # List triggers
     if args.list_triggers:

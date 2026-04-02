@@ -576,14 +576,12 @@ def load_df(
         if extension == ".txt":
             mrun = MagnetRun.fromtxt(site, insert, file)
             mdata = mrun.getMData()
-            print(
-                f"load_df --pupitre -- {file}: mdata keys={mdata.getKeys()}", flush=True
-            )
+            logger.debug(f"load_df --pupitre -- {file}: mdata keys={mdata.getKeys()}")
             t0 = mdata.Data["timestamp"].iloc[0]
             selected_keys = ["t", "timestamp"]
             if keys is not None:
                 selected_keys += keys
-            print(f"load_df: selected_keys={selected_keys}", flush=True)
+            logger.debug(f"load_df: selected_keys={selected_keys}")
             df = pd.DataFrame(mdata.getData(selected_keys))
 
         elif extension == ".tdms":

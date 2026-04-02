@@ -322,8 +322,7 @@ class PandasMagnetData(MagnetDataBase):
 
         self.Data = _df
         self.Keys = self.Data.columns.values.tolist()
-        logger.debug(f"--> self.Keys = {self.Keys}")
-        print(f"cleanupData_legacy: final keys = {self.Keys}")
+        logger.debug(f"cleanupData_legacy: final keys --> self.Keys = {self.Keys}")
         return 0
 
     def cleanupData(  # noqa: N802
