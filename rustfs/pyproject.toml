@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "magnetfs"
+version = "0.1.0"
+description = "RustFS S3 storage integration for magnetrun sensor data"
+requires-python = ">=3.11"
+dependencies = [
+    "polars",
+    "boto3",
+    "botocore",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+dashboard = ["streamlit", "panel"]
+
+[project.scripts]
+magnetfs = "magnetfs.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["magnetfs"]

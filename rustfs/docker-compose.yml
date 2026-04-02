@@ -1,0 +1,70 @@
+services:
+  # The S3 Storage Server
+  rustfs:
+    image: rustfs/rustfs:latest
+    container_name: rustfs_server
+    # Add your UID:GID here (replace 1000 with your actual IDs)
+    user: "${UUID:-1000}:${GID:-1000}"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - RUSTFS_ACCESS_KEY=test_user
+      - RUSTFS_SECRET_KEY=test_password
+    volumes:
+      - ./rustfs_internal_data:/data
+      - ./rustfs_logs:/logs
+    restart: unless-stopped
+
+  # Your Python Testing Environment
+  tester:
+    build: .
+    container_name: python_tester
+    depends_on:
+      - rustfs
+    environment:
+      - RUSTFS_ENDPOINT=http://rustfs:9000
+      - ACCESS_KEY=test_user
+      - SECRET_KEY=test_password
+      # X11 display forwarding — set DISPLAY on the host before starting
+      - DISPLAY=${DISPLAY}
+    volumes:
+      # Map your local scripts so you can edit them without rebuilding
+      - .:/app
+      # IMPORTANT: Map your actual SSHFS mount point here to test "real" data
+      - ../nsrvdata:/mnt/sshfs_data:ro
+      # X11 socket for display forwarding
+      - /tmp/.X11-unix:/tmp/.X11-unix
+
+  # Streamlit web dashboard
+  streamlit:
+    build: .
+    container_name: magnetrun_streamlit
+    depends_on:
+      - rustfs
+    environment:
+      - RUSTFS_ENDPOINT=http://rustfs:9000
+      - ACCESS_KEY=test_user
+      - SECRET_KEY=test_password
+    volumes:
+      - .:/app
+    ports:
+      - "8501:8501"
+    command: streamlit run app_streamlit.py --server.port 8501 --server.address 0.0.0.0
+
+  # Panel web dashboard
+  panel:
+    build: .
+    container_name: magnetrun_panel
+    depends_on:
+      - rustfs
+    environment:
+      - RUSTFS_ENDPOINT=http://rustfs:9000
+      - ACCESS_KEY=test_user
+      - SECRET_KEY=test_password
+    volumes:
+      - .:/app
+    ports:
+      - "5006:5006"
+    command: panel serve app_panel.py --port 5006 --address 0.0.0.0 --allow-websocket-origin=*
+
