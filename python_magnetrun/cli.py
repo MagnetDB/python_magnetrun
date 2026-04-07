@@ -53,21 +53,29 @@ def main():
     datadir = get_datadir_mapping(args)
 
     # Expand glob patterns in input_file arguments
-    expanded_files = expand_input_files(args.input_file, datadir)
-    input_files = natsorted(expanded_files)
-    logger.debug(f"input_files: {input_files}")
+    expanded_files = expand_input_files(
+        args.input_file, datadir, housing=getattr(args, "housing", None)
+    )
+    # Group files by extension, natsort within each group, preserving first-seen order
+    extensions = {}
+    for file in expanded_files:
+        ext = os.path.splitext(file)[-1]
+        extensions.setdefault(ext, []).append(file)
+    for ext in extensions:
+        extensions[ext] = natsorted(extensions[ext])
 
-    inputs = {}
+    input_files = [f for files in extensions.values() for f in files]
+    # Remap extension -> list of indices into input_files
     extensions = {}
     for i, file in enumerate(input_files):
-        f_extension = os.path.splitext(file)[-1]
-        if f_extension not in extensions:
-            extensions[f_extension] = [i]
-        else:
-            extensions[f_extension].append(i)
-    # print(f"extensions: {extensions}, entries: {len(extensions.keys())}")
-    # print(f"args.vs_time: {args.vs_time}, entries: {len(args.vs_time)}")
+        ext = os.path.splitext(file)[-1]
+        extensions.setdefault(ext, []).append(i)
+    logger.debug(f"input_files: {input_files}")
+    logger.debug(f"first file: {input_files[0]}, last file: {input_files[-1]}")
+    logger.debug(f"extensions: {extensions}, entries: {len(extensions.keys())}")
+    # logger.debug(f"args.vs_time: {args.vs_time}, entries: {len(args.vs_time)}")
 
+    inputs = {}
     for file in input_files:
         f_extension = os.path.splitext(file)[-1]
         if f_extension not in supported_formats:
@@ -78,7 +86,7 @@ def main():
         filename = os.path.basename(file)
         insert = args.insert if args.insert else "notdefined"
         housing = args.housing if args.housing else "notdefined"
-        site = "tttt"
+        site = args.site if args.site else "not defined"
         if args.site:
             site = args.site
         else:
@@ -86,7 +94,7 @@ def main():
             if result:
                 try:
                     index = filename.index("_")
-                    site = filename[0:index]
+                    housing = filename[0:index] if housing == "notdefined" else housing
                     # print(f"site detected: {site}")
                 except ValueError:
                     logger.warning(
@@ -99,11 +107,11 @@ def main():
         try:
             match f_extension:
                 case ".txt":
-                    mrun = MagnetRun.fromtxt(site, insert, file)
+                    mrun = MagnetRun.fromtxt(housing=housing, site=site, filename=file)
                 case ".tdms":
-                    mrun = MagnetRun.fromtdms(site, insert, file)
+                    mrun = MagnetRun.fromtdms(housing=housing, site=site, filename=file)
                 case ".csv":
-                    mrun = MagnetRun.fromcsv(site, insert, file)
+                    mrun = MagnetRun.fromcsv(housing=housing, site=site, filename=file)
                 case _:
                     raise RuntimeError(
                         f"so far file with extension in {supported_formats} are implemented"
@@ -172,14 +180,14 @@ def main():
         if args.vs_time:
             assert len(args.vs_time) == len(
                 extensions.keys()
-            ), f"expected {len(extensions.keys())} vs_time arguments - got {len(args.vs_time)} "
+            ), f"expected {len(extensions.keys())} vs_time arguments - got {len(args.vs_time)} - extensions={list(extensions.keys())}"
 
             plot_vs_time(input_files, inputs, extensions, args)
 
         if args.key_vs_key:
             assert len(args.key_vs_key) == len(
-                extensions
-            ), f"expected {len(extensions)} key_vs_key arguments - got {len(args.key_vs_key)} "
+                extensions.keys()
+            ), f"expected {len(extensions.keys())} key_vs_key arguments - got {len(args.key_vs_key)} - extensions={list(extensions.keys())} "
 
             plot_key_vs_key(input_files, inputs, extensions, args)
 

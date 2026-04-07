@@ -17,6 +17,17 @@ from .magnetdata_base import DataType, MagnetDataBase
 logger = logging.getLogger(__name__)
 
 
+def _get_duplicate_columns(df: pd.DataFrame) -> list[str]:
+    """Return column names that are exact duplicates of an earlier column."""
+    duplicates: set[str] = set()
+    for x in range(df.shape[1]):
+        col = df.iloc[:, x]
+        for y in range(x + 1, df.shape[1]):
+            if col.equals(df.iloc[:, y]):
+                duplicates.add(df.columns.values[y])
+    return list(duplicates)
+
+
 class PandasMagnetData(MagnetDataBase):
     """Pandas-backed magnet data (pupitre .txt, .csv, StringIO).
 
@@ -32,8 +43,9 @@ class PandasMagnetData(MagnetDataBase):
         Groups: dict,
         Keys: list[str],
         Data: pd.DataFrame | None = None,
+        defs_file: str | None = None,
     ) -> None:
-        super().__init__(filename, Groups, Keys, Data)
+        super().__init__(filename, Groups, Keys, Data, defs_file)
 
     # --- abstract property -------------------------------------------
 
@@ -71,23 +83,46 @@ class PandasMagnetData(MagnetDataBase):
 
     # --- units -------------------------------------------------------
 
-    def Units(self, debug: bool = False) -> None:  # noqa: N802
-        """Populate ``self.units`` from column names."""
-        from pint import UnitRegistry
-        from pint.errors import UndefinedUnitError
+    def Units(
+        self, debug: bool = False, json_file: str | None = None
+    ) -> None:  # noqa: N802
+        """Populate ``self.units`` from column names.
 
-        ureg: UnitRegistry = UnitRegistry()
-        for defn, unit in [
-            ("percent = 1 / 100 = %", "percent"),
-            ("ppm = 1e-6 = ppm", "ppm"),
-            ("var = 1", "var"),
-        ]:
-            try:
-                ureg.parse_units(unit)
-            except UndefinedUnitError:
-                ureg.define(defn)
+        Resolution order:
+        1. *json_file* argument (explicit override)
+        2. ``self.defs_file`` set at construction time
+        3. Built-in pattern matching (fallback, kept for backward compatibility)
 
+        When a JSON file is resolved the pattern block is still applied for any
+        key not present in the file, so partial JSON files work correctly.
+        """
+        from .magnetdata_base import _make_ureg
+
+        resolved = json_file or self.defs_file
+        if resolved is not None:
+            self.load_units_from_json(resolved, debug=debug)
+
+        ureg = _make_ureg()
+
+        # shall get units from fields_defs.json
+        # if not present in fields_def print a warnig
+        # try to infer unit from pattern matching as fallback (legacy)
         for key in self.Keys:
+            if key in self.units:
+                continue  # already populated from JSON
+            else:
+                logger.error(
+                    f"Units: no unit defined for key '{key}' in JSON file, trying to infer from pattern"
+                )
+                raise RuntimeError(
+                    f"Units: no unit defined for key '{key}' in JSON file, cannot infer from pattern"
+                )
+
+            """
+            Legacy pattern matching (fallback) - kept for backward compatibility,
+            but not recommended for new code.
+            """
+
             if key == "timestamp":
                 self.units[key] = ("time", None)
             elif key == "t":
@@ -169,16 +204,6 @@ class PandasMagnetData(MagnetDataBase):
             "debitbrut",
         ]
 
-        def getDuplicateColumns(df: pd.DataFrame) -> list[str]:
-            duplicateColumnNames: set[str] = set()
-            for x in range(df.shape[1]):
-                col = df.iloc[:, x]
-                for y in range(x + 1, df.shape[1]):
-                    otherCol = df.iloc[:, y]
-                    if col.equals(otherCol):
-                        duplicateColumnNames.add(df.columns.values[y])
-            return list(duplicateColumnNames)
-
         logger.debug(
             f"zero columns: {natsorted(self.Data.columns[(self.Data == 0).all()].values.tolist())}",
         )
@@ -195,7 +220,7 @@ class PandasMagnetData(MagnetDataBase):
         if empty_cols:
             _df = self.Data.drop(empty_cols, axis=1)
 
-        dropped_columns = getDuplicateColumns(_df)
+        dropped_columns = _get_duplicate_columns(_df)
         really_dropped_columns = natsorted(
             [col for col in dropped_columns if not col.startswith("Ucoil")]
         )
@@ -381,16 +406,6 @@ class PandasMagnetData(MagnetDataBase):
         Fkeys += [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
         Fkeys += [_key for _key in self.Keys if re.match(r"Ptot", _key)]
 
-        def getDuplicateColumns(df: pd.DataFrame) -> list[str]:
-            duplicateColumnNames: set[str] = set()
-            for x in range(df.shape[1]):
-                col = df.iloc[:, x]
-                for y in range(x + 1, df.shape[1]):
-                    otherCol = df.iloc[:, y]
-                    if col.equals(otherCol):
-                        duplicateColumnNames.add(df.columns.values[y])
-            return list(duplicateColumnNames)
-
         logger.debug(
             f"zero columns: {natsorted(self.Data.columns[(self.Data == 0).all()].values.tolist())}",
         )
@@ -407,7 +422,7 @@ class PandasMagnetData(MagnetDataBase):
         if empty_cols:
             _df = self.Data.drop(empty_cols, axis=1)
 
-        dropped_columns = getDuplicateColumns(_df)
+        dropped_columns = _get_duplicate_columns(_df)
         really_dropped_columns = natsorted(
             [col for col in dropped_columns if not col.startswith("Ucoil")]
         )

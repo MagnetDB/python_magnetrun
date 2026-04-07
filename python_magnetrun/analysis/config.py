@@ -5,7 +5,9 @@ This module provides structured configuration for the magnetrun analysis pipelin
 replacing the original tuple-based setup() function with typed dataclasses.
 
 The configuration hierarchy is:
+
 - AnalysisConfig: Top-level configuration combining all settings
+
   - SiteConfig: Site-specific channel mappings (M8, M9, M10)
   - ChannelMapping: Reference to current channel mappings
   - VoltageChannelMapping: Voltage probe channels per reference
@@ -29,8 +31,20 @@ Example usage::
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass, field
+
+# SiteConfig and housing defaults live in site_config; re-exported here so
+# all existing callers (analysis/__init__.py, processing.py, cli.py, …)
+# continue to work without any import changes.
+from python_magnetrun.data_dirs import (  # noqa: F401
+    HYBRID_DATA_DIR as DEFAULT_HYBRID_DATA_DIR,
+)
+from python_magnetrun.site_config import (  # noqa: F401
+    ROLE_TO_FIELD,
+    SITE_CONFIGS,
+    SiteConfig,
+    get_site_config,
+)
 
 # Module logger
 logger = logging.getLogger("magnetrun.analysis.config")
@@ -89,7 +103,7 @@ LAG_THRESHOLD_RATIO: float = 0.2
 """
 Threshold ratio for lag detection.
 
-If |lag| / duration >= this ratio, the lag is considered significant
+If ``abs(lag) / duration`` >= this ratio, the lag is considered significant
 and flagged as potentially unreliable.
 """
 
@@ -112,35 +126,9 @@ MODE_INTERCEPT_TOLERANCE: float = 10.0
 # =============================================================================
 # Default paths (can be overridden via environment variables)
 # =============================================================================
-DEFAULT_DATA_DIR: str = os.environ.get(
-    "MAGNETRUN_DATA_DIR",
-    "/mnt/LNCMIG-Data/records/srv-data-install",
-)
-"""
-Default directory for pupitre and log data files.
-
-Can be overridden by setting the MAGNETRUN_DATA_DIR environment variable.
-"""
-
-DEFAULT_PIGBROTHER_DATA_DIR: str = os.environ.get(
-    "MAGNETRUN_PIGBROTHER_DATA_DIR",
-    "/mnt/LNCMIG-Data/records/pbsurv",
-)
-"""
-Default directory for pigbrother TDMS data files.
-
-Can be overridden by setting the MAGNETRUN_PIGBROTHER_DATA_DIR environment variable.
-"""
-
-DEFAULT_HYBRID_DATA_DIR: str = os.environ.get(
-    "MAGNETRUN_HYBRID_DATA_DIR",
-    "/mnt/LNCMIG-Data/records/CEA",
-)
-"""
-Default directory for hybrid (kHz) data files.
-
-Can be overridden by setting the MAGNETRUN_HYBRID_DATA_DIR environment variable.
-"""
+# DEFAULT_DATA_DIR, DEFAULT_PIGBROTHER_DATA_DIR, DEFAULT_HYBRID_DATA_DIR
+# are imported from python_magnetrun.data_dirs above and re-exported here
+# so all existing callers continue to work unchanged.
 
 
 # =============================================================================
@@ -326,254 +314,9 @@ class VoltageChannelMapping:
 # =============================================================================
 # Site-specific configuration
 # =============================================================================
-@dataclass(frozen=True)
-class SiteConfig:
-    """
-    Configuration specific to a measurement site (M8, M9, M10).
-
-    Different sites have different channel naming conventions and
-    probe configurations. This dataclass captures those differences.
-
-    Attributes
-    ----------
-    name : str
-        Site identifier (e.g., "M9")
-    reference_gr1_current : str
-        Pupitre current channel for GR1 reference
-    reference_gr2_current : str
-        Pupitre current channel for GR2 reference
-    reference_gr1_flow : str
-        Flow measurement channel for GR1
-    reference_gr2_flow : str
-        Flow measurement channel for GR2
-    reference_gr1_rpm : str
-        Pump RPM channel for GR1
-    reference_gr2_rpm : str
-        Pump RPM channel for GR2
-    reference_gr1_pin : str
-        Inlet pressure channel for GR1
-    reference_gr2_pin : str
-        Inlet pressure channel for GR2
-    voltage_channels_gr1 : tuple[str, ...]
-        Voltage probe channels for GR1 in pupitre data
-    voltage_channels_gr2 : tuple[str, ...]
-        Voltage probe channels for GR2 in pupitre data
-
-    Notes
-    -----
-    M9 uses IH/IB for GR1/GR2 respectively (H=Helices, B=Bitters).
-    M8 and M10 swap this: IB/IH for GR1/GR2.
-    """
-
-    name: str
-    reference_gr1_current: str
-    reference_gr2_current: str
-    reference_gr1_flow: str
-    reference_gr2_flow: str
-    reference_gr1_rpm: str
-    reference_gr2_rpm: str
-    reference_gr1_pin: str
-    reference_gr2_pin: str
-    voltage_channels_gr1: tuple = field(default_factory=tuple)
-    voltage_channels_gr2: tuple = field(default_factory=tuple)
-
-    def get_pupitre_channel(self, reference_key: str) -> str:
-        """
-        Get pupitre current channel for a reference key.
-
-        Parameters
-        ----------
-        reference_key : str
-            Reference channel name (e.g., "Référence_GR1")
-
-        Returns
-        -------
-        str
-            Corresponding pupitre channel name (e.g., "IH")
-        """
-        mapping = {
-            "Référence_GR1": self.reference_gr1_current,
-            "Référence_GR2": self.reference_gr2_current,
-        }
-        return mapping.get(reference_key, "")
-
-    def get_flow_channel(self, reference_key: str) -> str:
-        """Get flow channel for a reference key."""
-        mapping = {
-            "Référence_GR1": self.reference_gr1_flow,
-            "Référence_GR2": self.reference_gr2_flow,
-        }
-        return mapping.get(reference_key, "")
-
-    def get_rpm_channel(self, reference_key: str) -> str:
-        """Get RPM channel for a reference key."""
-        mapping = {
-            "Référence_GR1": self.reference_gr1_rpm,
-            "Référence_GR2": self.reference_gr2_rpm,
-        }
-        return mapping.get(reference_key, "")
-
-    def get_pin_channel(self, reference_key: str) -> str:
-        """Get inlet pressure channel for a reference key."""
-        mapping = {
-            "Référence_GR1": self.reference_gr1_pin,
-            "Référence_GR2": self.reference_gr2_pin,
-        }
-        return mapping.get(reference_key, "")
-
-    def get_voltage_channels(self, reference_key: str) -> tuple:
-        """Get voltage channels for a reference key."""
-        mapping = {
-            "Référence_GR1": self.voltage_channels_gr1,
-            "Référence_GR2": self.voltage_channels_gr2,
-        }
-        return mapping.get(reference_key, ())
-
-    def to_pupitre_dict(self) -> dict[str, str]:
-        """
-        Convert to pupitre_dict format (backward compatibility).
-
-        Returns the dictionary format used by the original setup() function.
-        """
-        return {
-            "Référence_GR1": self.reference_gr1_current,
-            "Référence_GR2": self.reference_gr2_current,
-            "Référence_GR1_Q": self.reference_gr1_flow,
-            "Référence_GR2_Q": self.reference_gr2_flow,
-            "Référence_GR1_Rpm": self.reference_gr1_rpm,
-            "Référence_GR2_Rpm": self.reference_gr2_rpm,
-            "Référence_GR1_Pin": self.reference_gr1_pin,
-            "Référence_GR2_Pin": self.reference_gr2_pin,
-        }
-
-
-# =============================================================================
-# Pre-defined site configurations
-# =============================================================================
-SITE_CONFIGS: dict[str, SiteConfig] = {
-    "M9": SiteConfig(
-        name="M9",
-        reference_gr1_current="IH",
-        reference_gr2_current="IB",
-        reference_gr1_flow="FlowH",
-        reference_gr2_flow="FlowB",
-        reference_gr1_rpm="RpmH",
-        reference_gr2_rpm="RpmB",
-        reference_gr1_pin="HPH",
-        reference_gr2_pin="HPB",
-        voltage_channels_gr1=(
-            "UH",
-            "Ucoil1",
-            "Ucoil2",
-            "Ucoil3",
-            "Ucoil4",
-            "Ucoil5",
-            "Ucoil6",
-            "Ucoil7",
-            "Ucoil8",
-            "Ucoil9",
-            "Ucoil10",
-            "Ucoil11",
-            "Ucoil12",
-            "Ucoil13",
-            "Ucoil14",
-        ),
-        voltage_channels_gr2=("UB", "Ucoil15", "Ucoil16"),
-    ),
-    "M8": SiteConfig(
-        name="M8",
-        reference_gr1_current="IB",  # Note: swapped from M9
-        reference_gr2_current="IH",
-        reference_gr1_flow="FlowB",
-        reference_gr2_flow="FlowH",
-        reference_gr1_rpm="RpmB",
-        reference_gr2_rpm="RpmH",
-        reference_gr1_pin="HPB",
-        reference_gr2_pin="HPH",
-        voltage_channels_gr1=("UB", "Ucoil15", "Ucoil16"),  # Note: swapped
-        voltage_channels_gr2=(
-            "UH",
-            "Ucoil1",
-            "Ucoil2",
-            "Ucoil3",
-            "Ucoil4",
-            "Ucoil5",
-            "Ucoil6",
-            "Ucoil7",
-            "Ucoil8",
-            "Ucoil9",
-            "Ucoil10",
-            "Ucoil11",
-            "Ucoil12",
-            "Ucoil13",
-            "Ucoil14",
-        ),
-    ),
-    "M10": SiteConfig(
-        name="M10",
-        reference_gr1_current="IB",  # Same as M8
-        reference_gr2_current="IH",
-        reference_gr1_flow="FlowB",
-        reference_gr2_flow="FlowH",
-        reference_gr1_rpm="RpmB",
-        reference_gr2_rpm="RpmH",
-        reference_gr1_pin="HPB",
-        reference_gr2_pin="HPH",
-        voltage_channels_gr1=("UB", "Ucoil15", "Ucoil16"),
-        voltage_channels_gr2=(
-            "UH",
-            "Ucoil1",
-            "Ucoil2",
-            "Ucoil3",
-            "Ucoil4",
-            "Ucoil5",
-            "Ucoil6",
-            "Ucoil7",
-            "Ucoil8",
-            "Ucoil9",
-            "Ucoil10",
-            "Ucoil11",
-            "Ucoil12",
-            "Ucoil13",
-            "Ucoil14",
-        ),
-    ),
-}
-"""Pre-defined configurations for measurement sites M8, M9, and M10."""
-
-
-def get_site_config(site: str) -> SiteConfig:
-    """
-    Get site configuration by name.
-
-    Parameters
-    ----------
-    site : str
-        Site identifier (M8, M9, M10)
-
-    Returns
-    -------
-    SiteConfig
-        Site configuration
-
-    Raises
-    ------
-    ValueError
-        If site is unknown
-
-    Examples
-    --------
-    >>> config = get_site_config("M9")
-    >>> config.reference_gr1_current
-    'IH'
-    """
-    if site not in SITE_CONFIGS:
-        logger.error("Unknown site: %s. Available: %s", site, list(SITE_CONFIGS.keys()))
-        raise ValueError(
-            f"Unknown site: {site}. Available: {list(SITE_CONFIGS.keys())}"
-        )
-    logger.debug("Loading site configuration for %s", site)
-    return SITE_CONFIGS[site]
+# SiteConfig, SITE_CONFIGS, get_site_config and ROLE_TO_FIELD are defined in
+# python_magnetrun.site_config and imported + re-exported at the top of this
+# module.  Nothing more is needed here.
 
 
 # =============================================================================
@@ -739,10 +482,7 @@ class AnalysisConfig:
         >>> config.site.name
         'M9'
         """
-        if site_name not in SITE_CONFIGS:
-            available = ", ".join(sorted(SITE_CONFIGS.keys()))
-            raise ValueError(f"Unknown site: {site_name}. Available sites: {available}")
-        return cls(site=SITE_CONFIGS[site_name])
+        return cls(site=get_site_config(site_name))
 
     def get_pupitre_channel(self, reference_key: str) -> str:
         """

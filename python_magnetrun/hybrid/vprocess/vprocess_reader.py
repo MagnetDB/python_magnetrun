@@ -79,7 +79,7 @@ def find_vprocess_files_for_date(
     date : datetime
         Date to search for
     pattern : str
-        File pattern (default: *.vprocess)
+        File pattern (default: ``*.vprocess``)
 
     Returns
     -------

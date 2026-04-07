@@ -35,10 +35,13 @@ class MagnetRun:
         self.StartTime = start_time
 
     @classmethod
-    def fromtdms(cls, site: str, insert: str, filename: str) -> "MagnetRun":
+    def fromtdms(cls, housing: str, site: str, filename: str) -> "MagnetRun":
         """create from a tdms file"""
         # print(f"MagnetRun:fromtdms: {filename}", flush=True)
         # with open(filename, "r") as f:
+        logger.debug(
+            f"MagnetRun:fromtdms: housing={housing}, site={site}, filename={filename}"
+        )
         data = MagnetData.fromtdms(filename)
         data.Units()
 
@@ -50,7 +53,7 @@ class MagnetRun:
         logger.debug(
             f"magnetrun.fromtdms: start_time={start_time}, type={type(start_time)}"
         )
-        return cls(site, insert, data, start_time=start_time)
+        return cls(housing, site, data, start_time=start_time)
 
     @classmethod
     def fromtxt(

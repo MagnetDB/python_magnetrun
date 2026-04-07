@@ -22,13 +22,15 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from python_magnetrun.analysis.config import (
-    DEFAULT_DATA_DIR,
-    DEFAULT_HYBRID_DATA_DIR,
-    DEFAULT_PIGBROTHER_DATA_DIR,
-)
+from python_magnetrun.cli_args import create_datadir_parser
+from python_magnetrun.data_dirs import HYBRID_DATA_DIR
 from python_magnetrun.hybrid.hybrid_run import HybridRun
-from python_magnetrun.hybrid.utils import format_exception_location, log_exception
+from python_magnetrun.hybrid.utils import (
+    binarize_signal,
+    format_exception_location,
+    log_exception,
+    normalize_signal,
+)
 from python_magnetrun.log_utils import setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 
@@ -312,45 +314,6 @@ def load_tdms_data(
     return MagnetRun.fromtdms(site, insert, str(tdms_file))
 
 
-def normalize_signal(data: np.ndarray) -> np.ndarray:
-    """
-    Normalize a signal by its maximum absolute value.
-
-    Parameters
-    ----------
-    data : np.ndarray
-        Input signal data.
-
-    Returns
-    -------
-    np.ndarray
-        Signal divided by its maximum absolute value, or unchanged if max is 0.
-    """
-    max_abs = np.max(np.abs(data))
-    if max_abs == 0:
-        return data
-    return data / max_abs
-
-
-def binarize_signal(data: np.ndarray, tolerance: float = 0.5) -> np.ndarray:
-    """
-    Return a binary array: 0 where |data| <= tolerance, 1 otherwise.
-
-    Parameters
-    ----------
-    data : array-like
-        Input signal data.
-    tolerance : float, optional
-        Values with absolute value <= tolerance are considered zero (default: 1e-6).
-
-    Returns
-    -------
-    np.ndarray
-        Integer array of 0s and 1s.
-    """
-    data = np.asarray(data)
-    return np.where(np.abs(data) <= tolerance, 0, 1)
-
 
 def plot_comparison(
     hybrid_data: HybridRun,
@@ -589,9 +552,11 @@ def plot_comparison(
 
 def main() -> int:
     """Entry point: parse arguments, load data, and generate the comparison plot."""
+    datadir_parser = create_datadir_parser()
     parser = argparse.ArgumentParser(
         description="Plot hybrid kHz data with corresponding pupitre and TDMS data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        parents=[datadir_parser],
         epilog="""
 Examples:
   # Plot FEPC-AUX-LNCMI data for a specific date
@@ -600,8 +565,8 @@ Examples:
   # Specify custom data directories
   python %(prog)s -d 2025-01-27 -s FEPC-LNCMI -k I_H1 --site Hybrid \\
       --hybrid-dir /path/to/hybrid/data \\
-      --pupitre-dir /path/to/pupitre \\
-      --pigbrother-dir /path/to/pigbrother
+      --pupitre_datadir /path/to/pupitre \\
+      --pigbrother_datadir /path/to/pigbrother
 
   # Plot only specific hours (comma-separated list)
   python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --site Hybrid --hours 10,11,12
@@ -640,22 +605,8 @@ Examples:
     parser.add_argument(
         "--hybrid-dir",
         type=Path,
-        default=Path(DEFAULT_HYBRID_DATA_DIR),
-        help=f"Base directory for hybrid data (default: {DEFAULT_HYBRID_DATA_DIR})",
-    )
-
-    parser.add_argument(
-        "--pupitre-dir",
-        type=Path,
-        default=Path(DEFAULT_DATA_DIR),
-        help=f"Base directory for pupitre data (default: {DEFAULT_DATA_DIR})",
-    )
-
-    parser.add_argument(
-        "--pigbrother-dir",
-        type=Path,
-        default=Path(DEFAULT_PIGBROTHER_DATA_DIR),
-        help=f"Base directory for pigbrother data (default: {DEFAULT_PIGBROTHER_DATA_DIR})",
+        default=Path(HYBRID_DATA_DIR),
+        help=f"Base directory for hybrid data (overrides MAGNETRUN_HYBRID_DATA_DIR, default: {HYBRID_DATA_DIR})",
     )
 
     parser.add_argument(
@@ -746,7 +697,7 @@ Examples:
 
     # Find and load pupitre data
     pupitre_data = []
-    pupitre_files = find_pupitre_files(date, housing, args.pupitre_dir, hours=hours)
+    pupitre_files = find_pupitre_files(date, housing, args.pupitre_datadir, hours=hours)
     if pupitre_files:
         print(f"Found {len(pupitre_files)} pupitre file(s)")
         for pupitre_file in pupitre_files:
@@ -768,7 +719,7 @@ Examples:
     # Find and load TDMS data
     tdms_data = []
     tdms_files = find_tdms_overview_files(
-        date, housing, args.pigbrother_dir, hours=hours
+        date, housing, args.pigbrother_datadir, hours=hours
     )
     if tdms_files:
         print(f"Found {len(tdms_files)} TDMS Overview file(s)")

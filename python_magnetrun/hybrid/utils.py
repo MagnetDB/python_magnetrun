@@ -5,6 +5,7 @@ Includes:
 - Outlier detection and removal
 - Date listing utilities
 - Error logging utilities
+- Signal normalization and binarization
 """
 
 import logging
@@ -310,3 +311,43 @@ def _rolling_outlier_mask(
                 mask[i] = modified_z > threshold
 
     return mask
+
+
+def normalize_signal(data: np.ndarray) -> np.ndarray:
+    """
+    Normalize a signal by its maximum absolute value.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Input signal data.
+
+    Returns
+    -------
+    np.ndarray
+        Signal divided by its maximum absolute value, or unchanged if max is 0.
+    """
+    max_abs = np.max(np.abs(data))
+    if max_abs == 0:
+        return data
+    return data / max_abs
+
+
+def binarize_signal(data: np.ndarray, tolerance: float = 0.5) -> np.ndarray:
+    """
+    Return a binary array: 0 where |data| <= tolerance, 1 otherwise.
+
+    Parameters
+    ----------
+    data : array-like
+        Input signal data.
+    tolerance : float, optional
+        Values with absolute value <= tolerance are considered zero (default: 0.5).
+
+    Returns
+    -------
+    np.ndarray
+        Integer array of 0s and 1s.
+    """
+    data = np.asarray(data)
+    return np.where(np.abs(data) <= tolerance, 0, 1)

@@ -13,52 +13,105 @@ from .convert import convert_to_timestamp
 logger = logging.getLogger(__name__)
 
 
-def expand_input_files(input_patterns: list, datadir: dict) -> list:
+def expand_input_files(
+    input_patterns: list, datadir: dict, housing: str | None = None
+) -> list:
     """Expand glob patterns in input file arguments.
+
+    Search order for patterns without an explicit directory component:
+    1. Current working directory.
+    2. ``datadir[extension]`` (base data directory for the extension).
+    3. ``datadir[extension]/housing`` (housing subdirectory, when *housing* is given).
 
     :param input_patterns: List of file patterns to expand
     :type input_patterns: list
     :param datadir: Dictionary mapping file extensions to their base directories
     :type datadir: dict
+    :param housing: Optional housing identifier (e.g. ``'M9'``) appended to the
+        extension-specific data directory as a fallback search location
+    :type housing: str or None
     :return: List of expanded file paths
     :rtype: list
     """
+    # Mapping from TDMS mode name (2nd underscore-part of filename) to subdirectory name.
+    _TDMS_MODE_DIRS: dict[str, str] = {
+        "Overview": "Overview",
+        "Archive": "Fichiers_Archives",
+        "Default": "Fichiers_Defaults",
+        "Spikes": "Fichiers_Spike",
+        "ManuelTrig": "Fichiers_Manuel_Trig",
+    }
+
     logger.debug(f"Expanding input files ({input_patterns})...")
     expanded_files = []
     for pattern in input_patterns:
         extension = os.path.splitext(pattern)[-1]
         logger.debug(f"pattern: {pattern}, extension: {extension}")
-        # Check if pattern contains a directory component
+
+        # Pattern has an explicit directory — use it directly.
         if os.path.dirname(pattern):
-            # Pattern has a directory, use it as is
             search_pattern = pattern
-        else:
-            # No directory in pattern, prepend appropriate datadir based on extension
-            if extension in datadir:
-                base_datadir = datadir[extension]
+            matches = glob.glob(search_pattern)
+            if matches:
+                logger.debug(f"matches: {matches}")
+                expanded_files.extend(matches)
+            else:
+                logger.warning(f"No matches found for pattern: {pattern}")
+                expanded_files.append(pattern)
+            continue
+
+        # Build candidate search patterns in priority order.
+        candidates: list[str] = []
+
+        # 1. Current working directory.
+        candidates.append(os.path.join(os.getcwd(), pattern))
+
+        # 2 & 3. Extension-specific datadir, with and without housing/site subdir.
+        if extension in datadir:
+            base_datadir = datadir[extension]
+            if base_datadir:
                 if extension == ".tdms":
-                    # Special handling for tdms files: extract site and mode from pattern
+                    # Special handling: extract site and mode from filename.
+                    # Mode maps to a subdirectory (e.g. Overview→Overview,
+                    # Archive→Fichiers_Archives, …).
                     parts = os.path.basename(pattern).split("_")
                     if len(parts) >= 2:
                         site = parts[0]
                         mode = parts[1]
-                        search_pattern = os.path.join(base_datadir, site, mode, pattern)
+                        mode_dir = _TDMS_MODE_DIRS.get(mode, mode)
+                        candidates.append(
+                            os.path.join(base_datadir, site, mode_dir, pattern)
+                        )
                     else:
-                        search_pattern = os.path.join(base_datadir, pattern)
+                        candidates.append(os.path.join(base_datadir, pattern))
                 else:
-                    search_pattern = os.path.join(base_datadir, pattern)
-            else:
-                # Extension not in datadir, use pattern as is
-                search_pattern = pattern
-        logger.debug(f"search_pattern: {search_pattern}")
+                    # For .txt pupitre files: try base_datadir, then base_datadir/<site>
+                    # where site is extracted from the filename (e.g. M10 from M10_…).
+                    candidates.append(os.path.join(base_datadir, pattern))
+                    basename = os.path.basename(pattern)
+                    if basename.startswith("M") and "_" in basename:
+                        site_from_name = basename.split("_")[0]
+                        candidates.append(
+                            os.path.join(base_datadir, site_from_name, pattern)
+                        )
+                    if housing and housing not in ("notdefined", ""):
+                        candidates.append(
+                            os.path.join(base_datadir, housing, pattern)
+                        )
 
-        matches = glob.glob(search_pattern)
-        if matches:
-            logger.debug(f"matches: {matches}")
-            expanded_files.extend(matches)
-        else:
-            # If no matches, keep the original pattern (might be a literal filename)
-            logger.warning(f"No matches found for pattern: {pattern}")
+        logger.debug(f"candidates: {candidates}")
+
+        matched = False
+        for candidate in candidates:
+            matches = glob.glob(candidate)
+            if matches:
+                logger.debug(f"matched '{candidate}': {matches}")
+                expanded_files.extend(matches)
+                matched = True
+                break
+
+        if not matched:
+            logger.warning(f"No matches found for pattern: {pattern} (tried: {candidates})")
             expanded_files.append(pattern)
 
     logger.debug(f"expanded_files: {expanded_files}")

@@ -1,0 +1,17 @@
+{
+  "_comment": "Default housing configuration for M8. M8 runs pupitre + pigbrother + hybrid (resistive + superconductor insert). GR1/GR2 supplies are swapped relative to M9: GR1 = B supply (IB), GR2 = H supply (IH).",
+  "name": "M8",
+  "formats": ["pupitre", "pigbrother", "hybrid"],
+  "reference_gr1_current": "IB",
+  "reference_gr2_current": "IH",
+  "reference_gr1_flow": "FlowB",
+  "reference_gr2_flow": "FlowH",
+  "reference_gr1_rpm": "RpmB",
+  "reference_gr2_rpm": "RpmH",
+  "reference_gr1_pin": "HPB",
+  "reference_gr2_pin": "HPH",
+  "voltage_channels_gr1": ["UB", "Ucoil15", "Ucoil16"],
+  "voltage_channels_gr2": ["UH", "Ucoil1", "Ucoil2", "Ucoil3", "Ucoil4", "Ucoil5",
+                            "Ucoil6", "Ucoil7", "Ucoil8", "Ucoil9", "Ucoil10",
+                            "Ucoil11", "Ucoil12", "Ucoil13", "Ucoil14"]
+}

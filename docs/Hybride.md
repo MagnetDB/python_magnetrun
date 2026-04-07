@@ -1,5 +1,18 @@
 # Hybrid Data
 
+> **Field definitions:** The machine-readable channel list with symbols, units,
+> and cross-format aliases is in
+> [`python_magnetrun/hybrid-defs.json`](../python_magnetrun/hybrid-defs.json).
+> The old key listing in [`docs/Hybrid_keys.md`](Hybrid_keys.md) is superseded
+> by that file — do not edit it directly.
+> See the [main README](../README.md#field-definitions-and-site-configuration)
+> for management tools (`magnetrun-field-defs`).
+>
+> **Site configuration:** Housing-dependent role assignments for hybrid channels
+> (e.g. which FEPC channel maps to GR1 for M8) are in
+> [`python_magnetrun/M8-site-config.json`](../python_magnetrun/M8-site-config.json).
+> Only M8 currently runs hybrid data (resistive + SC combined acquisition).
+
 reference: `ASNet-Structure_données_V2.pdf`
 
 * basedir: `~/LNCMIG-Data/CEA`

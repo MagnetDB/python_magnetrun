@@ -6,17 +6,25 @@ import pandas as pd
 from python_magnetrun.MagnetRun import MagnetRun
 
 _default_input = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "data", "M9_2019.02.14-23_00_38.txt"
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "data",
+    "M9_2019.02.14-23_00_38.txt",
 )
 
 parser = argparse.ArgumentParser()
-parser.add_argument("input_file", nargs="?", default=_default_input, help="enter input file")
 parser.add_argument(
-    "--site", help="specify a site (ex. M8, M9,...)", default="M9"
-)  # use housing instead
+    "input_file", nargs="?", default=_default_input, help="enter input file"
+)
+parser.add_argument(
+    "--housing", help="specify a housing (ex. M8, M9,...)", default="M9"
+)
+parser.add_argument("--site", help="specify a site ", default="not defined")
 parser.add_argument("--key", help="set key to consider", type=str, default="Field")
 parser.add_argument("--window", help="set a window", type=int, default=10)
-parser.add_argument("--threshold", help="set a threshold for detection", type=float, default=1.0e-3)
+parser.add_argument(
+    "--threshold", help="set a threshold for detection", type=float, default=1.0e-3
+)
 parser.add_argument("--save", help="activate plot", action="store_true")
 args, _unknown = parser.parse_known_args()
 print(f"args: {args}", flush=True)
@@ -29,19 +37,22 @@ f_extension = os.path.splitext(file)[-1]
 print(f"filename: {filename}, extension: {f_extension}")
 
 index = filename.index("_")
-site = filename[0:index]
-print(f"site detected: {site}")
+housing = filename[0:index] if args.housing is None else args.housing
+print(f"housing detected: {housing}")
 
-insert = "tututu"
+site = args.site
+insert = args.insert
 tkey = "t"
 
 match f_extension:
     case ".txt":
-        mrun = MagnetRun.fromtxt(site, insert, file)
+        mrun = MagnetRun.fromtxt(housing, site, file)
     case ".tdms":
-        mrun = MagnetRun.fromtdms(site, insert, file)
+        mrun = MagnetRun.fromtdms(housing, site, file)
     case _:
-        raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
+        raise RuntimeError(
+            f"so far file with extension in {supported_formats} are implemented"
+        )
 
 mdata = mrun.getMData()
 

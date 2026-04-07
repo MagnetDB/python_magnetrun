@@ -275,7 +275,8 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
 
     legends = []
     # split pairs in key1, key2
-    # print(f"key_vs_key={args.key_vs_key}")
+    print(f"key_vs_key={args.key_vs_key}", flush=True)
+    print(f"extensions={extensions}", flush=True)
     pairs = args.key_vs_key
     for file in input_files:
         f_extension = os.path.splitext(file)[-1]

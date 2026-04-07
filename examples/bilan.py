@@ -1,5 +1,4 @@
 import argparse  # noqa: I001
-import glob
 import logging
 import os
 
@@ -7,39 +6,28 @@ import matplotlib.pyplot as plt
 from pint import UnitRegistry  # noqa: I001
 
 from python_magnetcooling.water_properties import get_cp, get_rho
+from python_magnetrun.cli_args import create_datadir_parser
 from python_magnetrun.MagnetRun import MagnetRun
+from python_magnetrun.utils.files import expand_input_files
 
 logger = logging.getLogger(__name__)
 command_line = None
-parser = argparse.ArgumentParser("Energy Balance")
-parser.add_argument("input_file", help="input pigbrother file")
+datadir_parser = create_datadir_parser()
+parser = argparse.ArgumentParser("Energy Balance", parents=[datadir_parser])
+parser.add_argument("input_file", help="input pigbrother file (glob patterns allowed)")
 parser.add_argument(
     "--show",
     help="display graphs (requires X11 server active)",
     action="store_true",
 )
-parser.add_argument(
-    "--pigbrother_datadir",
-    help="set srvdata dir (default: )",
-    type=str,
-    default=None,
-)
-parser.add_argument(
-    "--pupitre_datadir",
-    help="set srvdata dir (default: )",
-    type=str,
-    default="srvdata",
-)
 parser.add_argument("--debug", help="activate debug mode", action="store_true")
 args = parser.parse_args(command_line)
 
-# Load pigbrother file
-if args.pigbrother_datadir is None:
-    tdms_file_path = (
-        args.input_file
-    )  # "pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_241014-0951.tdms"
-else:
-    tdms_file_path = os.path.join(args.pigbrother_datadir, args.input_file)
+# Load pigbrother file — expand glob / search in pigbrother_datadir
+tdms_files = expand_input_files(
+    [args.input_file], {".tdms": args.pigbrother_datadir}
+)
+tdms_file_path = tdms_files[0]
 
 filename = os.path.basename(tdms_file_path)
 index = filename.index("_")
@@ -57,11 +45,12 @@ print(f"pupitre={pupitre}")
 print(f"site={site}, ftype={ftype}, date={date}")
 time = date.split("-")
 print(f"time={time}")
-pupitre_datadir = args.pupitre_datadir
-pupitre_filter = f"{pupitre_datadir}/{site}_20{time[0][0:2]}.{time[0][2:4]}.{time[0][4:]}---{time[1][0:2]}:{time[1][2:]}:*.txt"
-print(f'pupitre_filter="{pupitre_filter}"')
+pupitre_pattern = f"{site}_20{time[0][0:2]}.{time[0][2:4]}.{time[0][4:]}---{time[1][0:2]}:{time[1][2:]}:*.txt"
+print(f'pupitre_pattern="{pupitre_pattern}"')
 
-pupitre_files = glob.glob(pupitre_filter)
+pupitre_files = expand_input_files(
+    [pupitre_pattern], {".txt": args.pupitre_datadir}
+)
 # just get the first one for the moment, eg. "srvdata/M10_2024.10.14---09:51:32.txt"
 pupitre_file_path = pupitre_files[0]
 pupitre_data = MagnetRun.fromtxt(site, insert, pupitre_file_path).getMData()

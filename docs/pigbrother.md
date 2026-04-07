@@ -124,6 +124,46 @@ Per supply (`A1`..`A4`), boolean fault and alarm status bits:
             → High field magnets (30000 A/cm²)
 ```
 
+## Field Definitions
+
+The complete, machine-readable channel list with physical symbols, units, and
+cross-format aliases is maintained in
+[`python_magnetrun/pigbrother-defs.json`](../python_magnetrun/pigbrother-defs.json).
+
+Each entry maps a `"Group/Channel"` key to `{description, symbol, unit, aliases}`.
+The `"aliases"` dict contains housing-independent cross-references to the
+equivalent field in other formats:
+
+```json
+"Courants_Alimentations/Courant_A1": {
+  "description": "Supply current, converter A1",
+  "symbol": "I",
+  "unit": "ampere",
+  "aliases": {
+    "pupitre": "Idcct1",
+    "hybrid":  "FEPC-AUX-LNCMI/ALIM1_J1"
+  }
+}
+```
+
+Channels whose GR role depends on housing (e.g. `Référence_GR1` → `IH` on M9,
+`IB` on M8) have no alias here; those mappings live in the per-housing
+site-config files (`<Housing>-site-config.json`).
+
+Manage the file with the `magnetrun-field-defs` CLI:
+
+```bash
+# List all channels (symbols, units, aliases)
+magnetrun-field-defs python_magnetrun/pigbrother-defs.json list
+
+# Show cross-format aliases for one channel
+magnetrun-field-defs python_magnetrun/pigbrother-defs.json alias-show \
+    "Tensions_Aimant/Interne1"
+```
+
+See the [main README](../README.md#field-definitions-and-site-configuration)
+for the full API and CLI reference.
+
 ## Python Interface
 
 TDMS files are loaded into a `TdmsMagnetData` object (Type 1). Data is stored as a `dict[str, pd.DataFrame]` keyed by group name. Channels within a group are accessed with `"Group/Channel"` notation.

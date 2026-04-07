@@ -65,6 +65,7 @@ from ..log_utils import (
     setup_logging,
     timed_operation,
 )
+from ..utils.files import expand_input_files
 from .args import args_to_processing_config, parse_arguments
 from .processing import print_record_summary, process_overview_file
 
@@ -118,10 +119,11 @@ def main(args: list[str] | None = None) -> int:
         # Convert args to processing config
         config = args_to_processing_config(parsed_args)
 
-        # TODO if '*' in args.input_file
-        #
-        # Sort input files naturally
-        input_files = natsorted(parsed_args.input_file)
+        # Expand glob patterns and search data directories for bare filenames.
+        datadir = {".tdms": str(config.pigbrother_datadir)}
+        input_files = natsorted(
+            expand_input_files(parsed_args.input_file, datadir)
+        )
         logger.debug(f"input_files: {input_files}")
         logger.info("Processing %d input files", len(input_files))
 

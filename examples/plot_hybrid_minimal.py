@@ -12,23 +12,21 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Import from python_magnetrun
+from python_magnetrun.data_dirs import HYBRID_DATA_DIR, PIGBROTHER_DATA_DIR, PUPITRE_DATA_DIR
+
 # Import from hybrid module
 from python_magnetrun.hybrid.hybrid_run import HybridRun
 from python_magnetrun.hybrid.utils import log_exception
-
-# Import from python_magnetrun
 from python_magnetrun.MagnetRun import MagnetRun
 
 # =============================================================================
-# Configuration
+# Configuration — override via MAGNETRUN_* env vars or edit here
 # =============================================================================
 
-# Data directories (adjust these to your setup)
-HYBRID_BASE_DIR = "/path/to/hybrid_data"  # Base dir containing kHz/, rms/, trigger/
-PUPITRE_DATADIR = "/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install"
-PIGBROTHER_DATADIR = (
-    "/home/LNCMI-G/christophe.trophime/github/python_magnetrun/pigbrotherdata/Fichiers_Data"
-)
+HYBRID_BASE_DIR = HYBRID_DATA_DIR   # Base dir containing kHz/, rms/, trigger/
+PUPITRE_DATADIR = PUPITRE_DATA_DIR
+PIGBROTHER_DATADIR = PIGBROTHER_DATA_DIR
 
 # Field name mappings: hybrid kHz -> pupitre -> TDMS
 # Customize based on your channel configuration

@@ -18,7 +18,7 @@ import os
 
 import pandas as pd
 
-from .magnetdata_base import MagnetDataBase
+from .magnetdata_base import DataType, MagnetDataBase
 from .magnetdata_pandas import (
     BProfileMagnetData,
     EnsightMagnetData,
@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "MagnetData",
     "MagnetDataBase",
+    "DataType",
     "PandasMagnetData",
     "EnsightMagnetData",
     "BProfileMagnetData",
@@ -71,19 +72,20 @@ class MagnetData(PandasMagnetData):
         filename: str,
         Groups: dict,
         Keys: list[str],
-        Type: int = 0,
+        Type: int | DataType = DataType.PUPITRE,
         Data: pd.DataFrame | dict | None = None,
+        defs_file: str | None = None,
     ) -> None:
         """Default constructor — accepts the legacy 5-argument signature."""
-        self._type = Type
+        self._type: DataType = DataType(Type)
         # Call MagnetDataBase.__init__ directly to avoid PandasMagnetData asserting
         # that Data is always a DataFrame (Type=1/2 passes dict or empty df)
-        MagnetDataBase.__init__(self, filename, Groups, Keys, Data)
+        MagnetDataBase.__init__(self, filename, Groups, Keys, Data, defs_file)
         self.units: dict = {}
 
     @property
-    def Type(self) -> int:  # type: ignore[override]
-        """Integer data-type discriminator (0=Pandas, 1=TDMS, 2=Ensight)."""
+    def Type(self) -> DataType:
+        """Data-type discriminator."""
         return self._type
 
     # ------------------------------------------------------------------
@@ -91,10 +93,11 @@ class MagnetData(PandasMagnetData):
     # ------------------------------------------------------------------
 
     @classmethod
-    def fromtdms(cls, name: str) -> "TdmsMagnetData":
+    def fromtdms(cls, name: str, defs_file: str | None = None) -> "TdmsMagnetData":
         """Create from a pigbrother TDMS file.
 
         :param name: filename with a .tdms extension
+        :param defs_file: optional path to a pigbrother-defs.json field definitions file
         :raises FileNotFoundError: if *name* does not exist
         :raises RuntimeError: if file extension is not .tdms or required group missing
         :return: TdmsMagnetData instance
@@ -125,6 +128,12 @@ class MagnetData(PandasMagnetData):
         for group in rawData.groups():
             gname = group.name.replace(" ", "_")
             gname = gname.replace("_et_Ref.", "")
+            if gname != group.name:
+                logger.warning(
+                    "fromtdms: group name rewritten %r -> %r (old TDMS format)",
+                    group.name,
+                    gname,
+                )
             Groups[gname] = {}
             if gname != "Infos":
                 Data[gname] = {}
@@ -178,10 +187,10 @@ class MagnetData(PandasMagnetData):
                 "Courants_Alimentations"
             ]["Référence_A3"]
 
-        return TdmsMagnetData(name, Groups, Keys, Data)
+        return TdmsMagnetData(name, Groups, Keys, Data, defs_file=defs_file)
 
     @classmethod
-    def fromtxt(cls, name: str) -> "PandasMagnetData":
+    def fromtxt(cls, name: str, defs_file: str | None = None) -> "PandasMagnetData":
         """Create from a pupitre .txt file."""
         validate_txt_format(name)
         with open(name) as f:
@@ -191,29 +200,29 @@ class MagnetData(PandasMagnetData):
                 Keys = Data.columns.values.tolist()
             else:
                 raise RuntimeError(f"fromtxt: expect a txt filename - got {name}")
-        return PandasMagnetData(name, {}, Keys, Data)
+        return PandasMagnetData(name, {}, Keys, Data, defs_file=defs_file)
 
     @classmethod
-    def fromensight(cls, name: str) -> "EnsightMagnetData":
+    def fromensight(cls, name: str, defs_file: str | None = None) -> "EnsightMagnetData":
         """Create from a CSV ensight file."""
         validate_file_exists(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=",", engine="python", skiprows=2)
             Keys = Data.columns.values.tolist()
-        return EnsightMagnetData(name, {}, Keys, Data)
+        return EnsightMagnetData(name, {}, Keys, Data, defs_file=defs_file)
 
     @classmethod
-    def fromcsv(cls, name: str) -> "PandasMagnetData":
+    def fromcsv(cls, name: str, defs_file: str | None = None) -> "PandasMagnetData":
         """Create from a CSV file."""
         validate_csv_format(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=",", engine="python", skiprows=0)
             Keys = Data.columns.values.tolist()
-        return PandasMagnetData(name, {}, Keys, Data)
+        return PandasMagnetData(name, {}, Keys, Data, defs_file=defs_file)
 
     @classmethod
     def fromStringIO(  # noqa: N802
-        cls, name: str, sep: str = r"\s+", skiprows: int = 1
+        cls, name: str, sep: str = r"\s+", skiprows: int = 1, defs_file: str | None = None
     ) -> "PandasMagnetData":
         """Create from a StringIO / in-memory string."""
         from io import StringIO
@@ -230,22 +239,22 @@ class MagnetData(PandasMagnetData):
             with open("wrongdata.txt", "w", newline="\n") as fo:
                 fo.write(name)
 
-        return PandasMagnetData("stringIO", {}, Keys, Data)
+        return PandasMagnetData("stringIO", {}, Keys, Data, defs_file=defs_file)
 
     @classmethod
-    def frombprofile(cls, name: str) -> "BProfileMagnetData":
+    def frombprofile(cls, name: str, defs_file: str | None = None) -> "BProfileMagnetData":
         """Create from a bprofile CSV file (Index, Position, Profile columns)."""
         validate_csv_format(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=0)
             Keys = Data.columns.values.tolist()
-        return BProfileMagnetData(name, {}, Keys, Data)
+        return BProfileMagnetData(name, {}, Keys, Data, defs_file=defs_file)
 
     @classmethod
-    def fromfeelpp(cls, name: str, skiprows: int = 0) -> "FeelppMagnetData":
+    def fromfeelpp(cls, name: str, skiprows: int = 0, defs_file: str | None = None) -> "FeelppMagnetData":
         """Create from a feelpp simulation CSV file."""
         validate_csv_format(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=",", engine="python", skiprows=skiprows)
             Keys = Data.columns.values.tolist()
-        return FeelppMagnetData(name, {}, Keys, Data)
+        return FeelppMagnetData(name, {}, Keys, Data, defs_file=defs_file)

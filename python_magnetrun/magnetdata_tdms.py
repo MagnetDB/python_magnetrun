@@ -92,22 +92,75 @@ class TdmsMagnetData(MagnetDataBase):
 
         return ()
 
-    def Units(self, debug: bool = False) -> None:  # noqa: N802
-        from pint import UnitRegistry
+    def Units(self, debug: bool = False, json_file: str | None = None) -> None:  # noqa: N802
+        """Populate ``self.units``.
+
+        Resolution order:
+
+        1. *json_file* argument (explicit override) / ``self.defs_file``
+           — if a key's embedded TDMS ``unit_string`` disagrees, a warning is
+           printed and the defs_file value is used.
+        2. Embedded ``unit_string`` from TDMS channel properties (for keys not
+           covered by the defs_file).
+        3. ``PigBrotherUnits`` keyword matching (final fallback).
+        """
         from pint.errors import UndefinedUnitError
 
-        ureg: UnitRegistry = UnitRegistry()
-        for defn, unit in [
-            ("percent = 1 / 100 = %", "percent"),
-            ("ppm = 1e-6 = ppm", "ppm"),
-            ("var = 1", "var"),
-        ]:
-            try:
-                ureg.parse_units(unit)
-            except UndefinedUnitError:
-                ureg.define(defn)
+        from .magnetdata_base import _make_ureg
 
+        ureg = _make_ureg()
+
+        # Step 1 — collect embedded unit strings from TDMS channel properties
+        tdms_unit_strs: dict[str, str] = {}
+        for gname, channels in self.Groups.items():
+            if gname == "Infos" or not isinstance(channels, dict):
+                continue
+            for cname, props in channels.items():
+                raw = props.get("unit_string", "") if hasattr(props, "get") else ""
+                if raw and raw.strip():
+                    tdms_unit_strs[f"{gname}/{cname}"] = raw.strip()
+
+        # Step 2 — load defs_file (takes priority); warn on unit mismatch
+        resolved = json_file or self.defs_file
+        if resolved is not None:
+            from .field_defs import load_defs
+
+            field_defs = load_defs(resolved)
+            for key, tdms_unit_str in tdms_unit_strs.items():
+                if key not in field_defs or key.startswith("_"):
+                    continue
+                defs_unit_str = field_defs[key].get("unit")
+                if defs_unit_str is not None and defs_unit_str != tdms_unit_str:
+                    logger.warning(
+                        "Units: %s — TDMS embedded unit %r differs from "
+                        "defs_file unit %r; overriding with defs_file value",
+                        key,
+                        tdms_unit_str,
+                        defs_unit_str,
+                    )
+            self.load_units_from_json(resolved, debug=debug)
+
+        # Step 3 — use embedded TDMS unit_string for keys not set by defs_file
+        for key, unit_str in tdms_unit_strs.items():
+            if key in self.units:
+                continue
+            if key.endswith("/t"):
+                self.units[key] = ("t", ureg.second)
+                continue
+            try:
+                pint_unit = ureg.parse_expression(unit_str)
+                self.units[key] = (key.split("/")[-1], pint_unit)
+            except (ValueError, AttributeError, UndefinedUnitError):
+                logger.debug(
+                    "Units: cannot parse TDMS unit %r for %s, falling back to keyword match",
+                    unit_str,
+                    key,
+                )
+
+        # Step 4 — PigBrotherUnits keyword matching for any remaining entries
         for entry in self.Data:
+            if entry in self.units:
+                continue
             if entry == "t":
                 self.units["t"] = ("t", ureg.second)
             else:
@@ -116,7 +169,10 @@ class TdmsMagnetData(MagnetDataBase):
                     (group, channel) = entry.split("/")
                     if channel == "t":
                         self.units[entry] = ("t", ureg.second)
-                self.units[entry] = self.PigBrotherUnits(group)
+                        continue
+                pig = self.PigBrotherUnits(group)
+                if pig:
+                    self.units[entry] = pig
 
         if debug:
             logger.debug(f"Units: {self.Keys}")
@@ -357,11 +413,67 @@ class TdmsMagnetData(MagnetDataBase):
         (group, channel) = key.split("/")
         return self.Data[group][channel].loc[self.Data[group][channel] >= threshold]  # type: ignore[index]
 
+    def addTdmsTimestamp(self, group: str | None = None) -> int:  # noqa: N802
+        """Add a ``'timestamp'`` column (absolute datetime) to group(s) in Data.
+
+        Requires ``wf_start_time`` and ``wf_increment`` in channel properties.
+        Calls ``addTdmsTime`` first to ensure ``'t'`` column exists.
+        """
+        assert isinstance(self.Data, dict)
+
+        if group is not None and group not in self.Data:
+            raise RuntimeError(
+                f"addTdmsTimestamp {self.FileName}: group '{group}' not found"
+            )
+
+        groups_to_process = [group] if group is not None else list(self.Data.keys())
+
+        for gname in groups_to_process:
+            if gname == "Infos":
+                continue
+            if "timestamp" in self.Data[gname].columns:
+                logger.debug(
+                    f"addTdmsTimestamp: 'timestamp' already in '{gname}', skipping"
+                )
+                continue
+
+            group_channels = self.Groups.get(gname, {})
+            if not group_channels:
+                logger.warning(
+                    f"addTdmsTimestamp: no channel props for '{gname}', skipping"
+                )
+                continue
+
+            first_channel = list(group_channels.keys())[0]
+            props = group_channels[first_channel]
+            if "wf_start_time" not in props:
+                logger.warning(
+                    f"addTdmsTimestamp: no wf_start_time for '{gname}', skipping"
+                )
+                continue
+
+            self.addTdmsTime(group=gname)
+
+            start_dt = props["wf_start_time"].astype(datetime)
+            self.Data[gname]["timestamp"] = pd.Timestamp(start_dt) + pd.to_timedelta(
+                self.Data[gname]["t"], unit="s"
+            )
+
+            key = f"{gname}/timestamp"
+            if key not in self.Keys:
+                self.Keys.append(key)
+
+            if "timestamp" not in self.Groups[gname]:
+                self.Groups[gname]["timestamp"] = {"unit_string": "datetime"}
+
+        return 0
+
     def extractTimeData(  # noqa: N802
         self, timerange: str, group: str | None = None
     ) -> pd.DataFrame:
         trange = timerange.split(";")
         logger.debug(f"Select data from {trange[0]} to {trange[1]}")
+        self.addTdmsTimestamp(group=group)
         return self.Data[group]["timestamp"].between(trange[0], trange[1], inclusive="both")  # type: ignore[index]
 
     # --- persist / display -------------------------------------------

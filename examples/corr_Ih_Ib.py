@@ -46,10 +46,14 @@ if __name__ == "__main__":
         help="set breakpoint algo (pwfl, piecewise)",
         default="pwfl",
     )
-    parser.add_argument("--normalize", help="normalize data before plot", action="store_true")
+    parser.add_argument(
+        "--normalize", help="normalize data before plot", action="store_true"
+    )
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
     parser.add_argument("--debug", help="activate debug mode", action="store_true")
-    parser.add_argument("--find", help="try to automatically find breakpoints", action="store_true")
+    parser.add_argument(
+        "--find", help="try to automatically find breakpoints", action="store_true"
+    )
     args = parser.parse_args()
     print(f"args: {args}", flush=True)
 
@@ -65,15 +69,19 @@ if __name__ == "__main__":
     for file in input_files:
         f_extension = os.path.splitext(file)[-1]
         if f_extension not in supported_formats:
-            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
+            raise RuntimeError(
+                f"so far file with extension in {supported_formats} are implemented"
+            )
 
         filename = os.path.basename(file)
         result = filename.startswith("M")
-        insert = "tututu"
+        insert = args.insert if args.insert else None
+        site = args.site if args.site else None
+        housing = args.housing if args.housing else None
         if result:
             try:
                 index = filename.index("_")
-                site = filename[0:index]
+                housing = filename[0:index] if housing is None else housing
                 # print(f"site detected: {site}")
             except ValueError:
                 print("no site detected - use args.site argument instead")
@@ -81,9 +89,9 @@ if __name__ == "__main__":
 
         match f_extension:
             case ".txt":
-                mrun = MagnetRun.fromtxt(site, insert, file)
+                mrun = MagnetRun.fromtxt(housing, site, file)
             case ".tdms":
-                mrun = MagnetRun.fromtdms(site, insert, file)
+                mrun = MagnetRun.fromtdms(housing, site, file)
 
                 # check keys
                 (group, channel) = ykey.split("/")
@@ -152,7 +160,9 @@ if __name__ == "__main__":
 
             # PAA transformation
             window_size = 4
-            paa = PiecewiseAggregateApproximation(window_size=window_size, overlapping=False)
+            paa = PiecewiseAggregateApproximation(
+                window_size=window_size, overlapping=False
+            )
             X_paa = paa.transform(X)
             print(f"X_paa: {X_paa[0].shape}")
 
@@ -160,7 +170,9 @@ if __name__ == "__main__":
             plt.figure(figsize=(6, 4))
             plt.plot(X[0], "o--", ms=2, label="Original")
             plt.plot(
-                np.arange(window_size // 2, n_timestamps + window_size // 2, window_size),
+                np.arange(
+                    window_size // 2, n_timestamps + window_size // 2, window_size
+                ),
                 X_paa[0],
                 "o--",
                 ms=2,
@@ -187,7 +199,9 @@ if __name__ == "__main__":
             from pyts.approximation import DiscreteFourierTransform
 
             n_coefs = y.shape[0] // 4
-            dft = DiscreteFourierTransform(n_coefs=n_coefs, norm_mean=False, norm_std=False)
+            dft = DiscreteFourierTransform(
+                n_coefs=n_coefs, norm_mean=False, norm_std=False
+            )
             X_dft = dft.fit_transform(X)
 
             # Compute the inverse transformation
@@ -196,12 +210,15 @@ if __name__ == "__main__":
                 imag_idx = np.arange(2, n_coefs, 2)
                 X_dft_new = np.c_[
                     X_dft[:, :1],
-                    X_dft[:, real_idx] + 1j * np.c_[X_dft[:, imag_idx], np.zeros((n_samples,))],
+                    X_dft[:, real_idx]
+                    + 1j * np.c_[X_dft[:, imag_idx], np.zeros((n_samples,))],
                 ]
             else:
                 real_idx = np.arange(1, n_coefs, 2)
                 imag_idx = np.arange(2, n_coefs + 1, 2)
-                X_dft_new = np.c_[X_dft[:, :1], X_dft[:, real_idx] + 1j * X_dft[:, imag_idx]]
+                X_dft_new = np.c_[
+                    X_dft[:, :1], X_dft[:, real_idx] + 1j * X_dft[:, imag_idx]
+                ]
             X_irfft = np.fft.irfft(X_dft_new, n_timestamps)
 
             # Show the results for the first time series
@@ -250,7 +267,9 @@ if __name__ == "__main__":
                 marker="*",
                 label=f"SAX - {n_bins} bins",
             )
-            first_legend = plt.legend(handles=[sax_legend], fontsize=8, loc=(0.76, 0.86))
+            first_legend = plt.legend(
+                handles=[sax_legend], fontsize=8, loc=(0.76, 0.86)
+            )
             ax = plt.gca().add_artist(first_legend)
             plt.legend(loc=(0.81, 0.93), fontsize=8)
             plt.xlabel(xlabel, fontsize=12)
@@ -298,7 +317,9 @@ if __name__ == "__main__":
                     (symbol, unit) = mdata.getUnitKey(ykey)
                     plt.ylabel(f"{symbol} [{unit:~P}]")
 
-                    plt.title(f"{file}: {args.ykey} vs {xkey} (breakpoints={breakpoints})")
+                    plt.title(
+                        f"{file}: {args.ykey} vs {xkey} (breakpoints={breakpoints})"
+                    )
                     plt.grid()
 
                     if not args.save:

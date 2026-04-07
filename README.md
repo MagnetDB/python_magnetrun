@@ -1,9 +1,15 @@
 # Python `MagnetRun`
 
+[![Run Tests](https://github.com/MagnetDB/python_magnetrun/actions/workflows/test.yml/badge.svg)](https://github.com/MagnetDB/python_magnetrun/actions/workflows/test.yml)
+[![Documentation](https://github.com/MagnetDB/python_magnetrun/actions/workflows/docs.yml/badge.svg)](https://magnetdb.github.io/python_magnetrun/)
+[![codecov](https://codecov.io/gh/MagnetDB/python_magnetrun/branch/main/graph/badge.svg)](https://codecov.io/gh/MagnetDB/python_magnetrun)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+
 Python `MagnetRun` contains utilities to view and analyze Magnet runs from LNCMI control/monitoring systems (`Pupitre`, `PigBrother`, and hybrid FEPC acquisition systems).
 
 - Free software: MIT license
-- Documentation: <https://python-magnetrun.readthedocs.io>
+- Documentation: <https://magnetdb.github.io/python_magnetrun/>
 
 ---
 
@@ -182,6 +188,183 @@ Hybrid data does not require network mounting; simply point `--hybrid_datadir` t
 - Distance and similarity metrics (Euclidean, MAE, MAPE, DTW, TLCC)
 - Extract data from `srv-data-lncmi `
 - Prepare data for injection into `magnetdb`
+- Field-definition management (`*-defs.json`) with cross-format aliases
+- Per-housing sensor role configuration (`<Housing>-site-config.json`)
+
+---
+
+## Field definitions and site configuration
+
+### Field definitions (`*-defs.json`)
+
+Every acquisition format has a companion JSON file that maps channel names to
+physical metadata (symbol, unit, description) and cross-format aliases:
+
+| File | Format | Format doc |
+|---|---|---|
+| [`python_magnetrun/pupitre-defs.json`](python_magnetrun/pupitre-defs.json) | Pupitre `.txt` columns | [docs/pupitre.md](docs/pupitre.md) |
+| [`python_magnetrun/pigbrother-defs.json`](python_magnetrun/pigbrother-defs.json) | PigBrother `Group/Channel` keys | [docs/pigbrother.md](docs/pigbrother.md) |
+| [`python_magnetrun/hybrid-defs.json`](python_magnetrun/hybrid-defs.json) | Hybrid `FEPC_system/variable` keys | [docs/Hybride.md](docs/Hybride.md) |
+
+**`"aliases"`** entries express housing-independent name correspondences between
+formats (e.g. `Idcct1` in pupitre = `Courants_Alimentations/Courant_A1` in
+pigbrother = `FEPC-AUX-LNCMI/ALIM1_J1` in hybrid). Housing-dependent mappings
+(e.g. `IH` is GR1 in M9 but GR2 in M8) belong in the site-config files.
+
+#### File resolution
+
+When a bare filename (e.g. `"pupitre-defs.json"`) is passed to any API function
+or CLI command, it is resolved in this order:
+
+1. Absolute path — used directly.
+2. Relative path that exists in the current directory — used as-is.
+3. `~/.config/magnetrun/<filename>` — user override (takes precedence over the bundle).
+4. File bundled with the installed package — the shipped default.
+
+To permanently override a bundled file, drop your edited copy into
+`~/.config/magnetrun/`:
+
+```bash
+cp /path/to/my-pupitre-defs.json ~/.config/magnetrun/pupitre-defs.json
+# All subsequent calls to load_defs("pupitre-defs.json") will use your copy.
+```
+
+Manage defs files with the `magnetrun-field-defs` CLI (bare names work after
+installation — no need to specify the full path to the bundled file):
+
+```bash
+# List all field definitions (including aliases)
+magnetrun-field-defs pupitre-defs.json list
+
+# Add a new field
+magnetrun-field-defs pupitre-defs.json add NewSensor I ampere \
+    --description "New coil current"
+
+# Update an existing field
+magnetrun-field-defs pupitre-defs.json update Field \
+    --symbol Bz --description "Axial field"
+
+# Add a cross-format alias
+magnetrun-field-defs pupitre-defs.json alias-add Idcct1 hybrid \
+    "FEPC-AUX-LNCMI/ALIM1_J1"
+
+# Show aliases for one field
+magnetrun-field-defs pupitre-defs.json alias-show Idcct1
+
+# Build a cross-reference index across all three formats
+magnetrun-field-defs pupitre-defs.json crossref \
+    --format pupitre=pupitre-defs.json \
+    --format pigbrother=pigbrother-defs.json \
+    --format hybrid=hybrid-defs.json
+```
+
+Python API:
+
+```python
+from python_magnetrun.field_defs import (
+    load_defs, add_field_def, update_field_def,
+    add_alias, get_aliases, build_crossref,
+    resolve_defs_file,
+)
+
+# Bare names resolve automatically to the bundled default (or user override)
+aliases = get_aliases("pupitre-defs.json", "Idcct1")
+# {"pigbrother": "Courants_Alimentations/Courant_A1",
+#  "hybrid":     "FEPC-AUX-LNCMI/ALIM1_J1"}
+
+# Inspect where a file resolves to
+p = resolve_defs_file("pupitre-defs.json")
+print(p)   # e.g. /usr/lib/python3.11/site-packages/python_magnetrun/pupitre-defs.json
+
+# Build a unified index across all formats
+index = build_crossref({
+    "pupitre":    "pupitre-defs.json",
+    "pigbrother": "pigbrother-defs.json",
+    "hybrid":     "hybrid-defs.json",
+})
+index["pupitre"]["Ucoil1"]
+# {"pigbrother": "Tensions_Aimant/Interne1",
+#  "hybrid":     "FEPC-AUX-LNCMI/PH_V8"}
+```
+
+### Housing / site configuration (`<Housing>-site-config.json`)
+
+Each housing maps the same physical sensor set to GR roles differently.
+Bundled JSON templates ship with the package and are also hardcoded in the
+`SITE_CONFIGS` dict as an always-available fallback:
+
+| Bundled file | Housing | Format docs |
+|---|---|---|
+| [`python_magnetrun/M9-site-config.json`](python_magnetrun/M9-site-config.json) | M9 (resistive only) | [pupitre](docs/pupitre.md), [pigbrother](docs/pigbrother.md) |
+| [`python_magnetrun/M8-site-config.json`](python_magnetrun/M8-site-config.json) | M8 (resistive + SC insert, hybrid) | [pupitre](docs/pupitre.md), [pigbrother](docs/pigbrother.md), [hybrid](docs/Hybride.md) |
+| [`python_magnetrun/M10-site-config.json`](python_magnetrun/M10-site-config.json) | M10 (resistive only) | [pupitre](docs/pupitre.md), [pigbrother](docs/pigbrother.md) |
+
+#### File resolution
+
+`get_site_config(housing)` resolves configurations in this order:
+
+1. Explicit `json_file` argument — used directly.
+2. `~/.config/magnetrun/<Housing>-site-config.json` — persistent user override.
+3. Hardcoded built-in default from `SITE_CONFIGS`.
+
+To persist a customized config for a housing, copy it to the user config dir:
+
+```bash
+# Start from the bundled template
+magnetrun-site-config M9-site-config.json create M9 --from-builtin M9
+
+# Copy to user config dir so get_site_config("M9") picks it up automatically
+cp M9-site-config.json ~/.config/magnetrun/M9-site-config.json
+
+# Edit in place
+magnetrun-site-config ~/.config/magnetrun/M9-site-config.json update \
+    --gr1-current IB --gr2-current IH
+```
+
+Manage with the `magnetrun-site-config` CLI:
+
+```bash
+# Show a housing config
+magnetrun-site-config M9-site-config.json show
+
+# Create a new housing config initialised from M9 defaults
+magnetrun-site-config M11-site-config.json create M11 --from-builtin M9
+
+# Update role fields in place
+magnetrun-site-config M9-site-config.json update \
+    --gr1-current IB --gr2-current IH
+```
+
+Python API:
+
+```python
+from python_magnetrun.site_config import (
+    get_site_config, load_site_config, save_site_config, update_site_config,
+    get_bundled_site_config_path, get_user_site_config_path,
+)
+
+# Built-in default (also checks ~/.config/magnetrun/ first)
+cfg = get_site_config("M9")
+cfg.reference_gr1_current      # "IH"
+cfg.supports_format("hybrid")  # False
+
+# Find where the bundled template lives (read-only, inside the package)
+get_bundled_site_config_path("M9")
+# PosixPath('.../site-packages/python_magnetrun/M9-site-config.json')
+
+# Find (and create) the user-writable config path
+get_user_site_config_path("M9")
+# PosixPath('/home/you/.config/magnetrun/M9-site-config.json')
+
+# From an explicit file
+cfg = get_site_config("M9", json_file="M9-site-config.json")
+
+# Runtime override (e.g. GR1/GR2 swapped for an atypical run)
+cfg = get_site_config("M9", overrides={"gr1_current": "IB", "gr2_current": "IH"})
+
+# Update a file in place and get the new config back
+cfg = update_site_config("M9-site-config.json", {"gr1_current": "IB"})
+```
 
 ---
 
@@ -199,7 +382,7 @@ python3 -m python_magnetrun.cli \
 List records lasting at least 60 s with a magnetic field above 18 T:
 
 ```bash
-python3 -m python_magnetrun.examples.get-record \
+python3 examples/get-record.py \
     srvdata/M8*.txt select --duration 60 --field 18.
 ```
 
@@ -257,13 +440,33 @@ python3 -m python_magnetrun.cli srvdata/M8*.txt stats
 Detect plateaux:
 
 ```bash
-python3 -m python_magnetrun.cli srvdata/M8*.txt stats --plateau
+python3 -m python_magnetrun.cli srvdata/M8*.txt stats --plateau --keys Field
 ```
+
+#### Plateau detection parameters
+
+The algorithm groups consecutive points whose step-to-step absolute variation stays below `--threshold`, then discards groups shorter than `--dthreshold` seconds.
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `--keys KEY [KEY …]` | — | Channel(s) to analyse (required with `--plateau`) |
+| `--threshold FLOAT` | `1e-3` | Max point-to-point absolute variation to still be considered flat (in signal units, e.g. T for `Field`) |
+| `--dthreshold FLOAT` | `10` | Minimum plateau duration in seconds (`num_points = dthreshold / sampling_period`) |
+
+**Tuning guide:**
+
+| Symptom | Remedy |
+|---|---|
+| Too many short / fragmented plateaus | Increase `--threshold` |
+| Real plateaus not detected or split | Decrease `--threshold` or `--dthreshold` |
+| Short transients wrongly included | Increase `--dthreshold` |
+
+Run with `--log-level DEBUG` to see per-group statistics and the distribution of step differences, which helps calibrate `--threshold` for a given signal.
 
 Aggregate a specific field across records:
 
 ```bash
-python3 -m python_magnetrun.examples.get-record \
+python3 examples/get-record.py \
     srvdata/M*---*.txt aggregate --fields teb --show
 ```
 
@@ -490,7 +693,7 @@ Each run is assigned a signature based on detected breakpoints:
 - **D** — ramp down
 
 ```bash
-python3 -m tests.test-signature \
+python3 tests/test-signature.py \
     srvdata/M10_2025.01.27---15:39:29.txt \
     --window=10 --threshold 1.e-2
 ```
@@ -536,7 +739,7 @@ python3 tests/test-anomalies.py data.tdms \
 Fit a piecewise-linear model for the Ih/Ib relationship:
 
 ```bash
-python3 -m python_magnetrun.corr_Ih_Ib \
+python3 examples/corr_Ih_Ib.py \
     srvdata/M9_2024.11.06---16:43:44.txt \
     --xkey IH --ykey IB \
     --algo piecewise_regression --breakpoints 2
@@ -545,7 +748,7 @@ python3 -m python_magnetrun.corr_Ih_Ib \
 Fit Field(t) with multiple breakpoints:
 
 ```bash
-python3 -m python_magnetrun.corr_Ih_Ib \
+python3 examples/corr_Ih_Ib.py \
     srvdata/M9_2024.11.06---16:43:44.txt \
     --xkey t --ykey Field \
     --algo pwlf --breakpoints 11
@@ -556,7 +759,7 @@ python3 -m python_magnetrun.corr_Ih_Ib \
 Estimate the field factors (fH, fB) for a given magnet site via OLS regression:
 
 ```bash
-python3 -m python_magnetrun.test-fieldfactor \
+python3 tests/test-fieldfactor.py \
     ~/M9_2024.05.13---16_30_51.txt
 ```
 
@@ -598,25 +801,41 @@ pytest --on-demand tests/test-tin.py
 
 ## To-do
 
+**Fix**
+- [ ] Fix time data in Hybrid kHz files
+
 **Refactor:**
 - [X] Split argparse options into separate Python files
 - [ ] Add an example / a test for each subcommand in `python_magnetrun`
 - [ ] Store stats (plateaus, duration) in a DataFrame, CSV, or database
+- [ ] Refactor plot functions to use a common interface and support multiple backends (Matplotlib, Plotly, Seaborn)
+- [ ] Refactor `analysis` module to separate synchronization, metrics, and visualization into distinct classes/functions
 
 **Docs:**
 - [X] Docs for aggregate
 - [X] Add a note to mount PigBrother data
-- [ ] Add note to mount Pupitre data if applicable
+- [X] Add note to mount Pupitre data if applicable
+
+**CI/CD:**
+- [X] Add code coverage with `pytest-cov` (generates `coverage.xml`)
+- [X] Upload coverage reports to [Codecov](https://codecov.io/gh/MagnetDB/python_magnetrun) via `codecov/codecov-action@v5`
+- [ ] Authorize the `MagnetDB/python_magnetrun` repository on [codecov.io](https://codecov.io) (sign in with GitHub) to activate the badge
+
+**Units:**
+- [ ] Use python_magnetunits for unit conversions and dimensional analysis in formulas (e.g. power, busbar losses)
+
+**Dashboard:**
+- [ ] Build a dashboard (e.g. with Streamlit or Dash) for interactive exploration of runs, field profiles, and correlations
+- [ ] Add Jupyter notebooks with examples of data loading, plotting, and analysis
+- [ ] Add Marimo notebooks equivalents
+- [ ] Add standalone voila dashboard for non-technical users -- along with a Dockerfile for easy deployment
 
 **Features:**
 - [ ] Store processed Pupitre data in a specific file format (ETL output)
-- [ ] Rewrite `txt2csv` to use methods in `utils` and `plots`
+- [X] Rewrite `txt2csv` to use methods in `utils` and `plots`
 - [ ] Check `addData` complex formulas (involving `freesteam` / `iapws`) with `pyparsing`
-- [ ] Add columns from `freesteam` or `iapws` (e.g., rho, cp)
-- [ ] Export data to `prettytables`, `tabular`, or `csv2md`
+- [ ] Export data to `great_tables`, `tabular`, `rich` or `csv2md`
 - [ ] Add support for Origin files (`liborigin` / Python bindings)
-- [ ] Data from M1, M3, M5, M7 for complete stats
-- [ ] Add missing fields (U1, Pe1, Tout1, U2, …) — link with `magnetdb`
 - [ ] For `select`, support multiple field criteria
 - [ ] Cross-lag correlations
 - [ ] Forecast Teb from historical data
@@ -624,8 +843,6 @@ pytest --on-demand tests/test-tin.py
 - [ ] Link with magnet user DB (`xdds.csv`)
 - [ ] Classification of field profiles
 - [ ] Link with `magnettools`/`hifimagnet` for R(i) and L(i)
-- [ ] Estimate heat exchanger parameters (NTU model)
-- [ ] Calorimetric balance for AC/DC converter dissipated power (Talim)
 
 ---
 

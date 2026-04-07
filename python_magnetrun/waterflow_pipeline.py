@@ -14,6 +14,8 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from python_magnetcooling.waterflow import WaterFlow
+
 from .log_utils import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -147,7 +149,7 @@ def detect_imax_from_plateaus(
     data : HydraulicData
         Extracted hydraulic data. Arrays must be sorted by current (ascending).
     plateau_threshold : float
-        Maximum normalised slope (|d(Vp)/d(I)| / Vp_range) considered flat.
+        Maximum normalised slope (``abs(d(Vp)/d(I)) / Vp_range``) considered flat.
         Default 0.01 means the slope must be < 1% of the total pump speed
         range per unit current window.
     window : int
@@ -242,7 +244,7 @@ def detect_imax_from_plateaus(
 def compute_waterflow(
     data: HydraulicData,
     method: str = "simple",
-) -> WaterFlow:  # noqa: F821
+) -> WaterFlow:
     """
     Full pipeline: HydraulicData → fit → WaterFlow.
 
@@ -318,7 +320,7 @@ def compute_waterflow_from_run(
     method: str = "simple",
     imax: float | None = None,
     current_threshold: float = 300.0,
-) -> WaterFlow:  # noqa: F821
+) -> WaterFlow:
     """
     End-to-end convenience function: MagnetRun → HydraulicData → WaterFlow.
 

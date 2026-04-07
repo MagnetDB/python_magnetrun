@@ -2,6 +2,7 @@
 
 import argparse
 
+from ..data_dirs import HYBRID_DATA_DIR
 from .hybrid_data import FEPC_SYSTEMS
 
 
@@ -16,8 +17,11 @@ def create_base_parser():
         "--base-dir",
         "-b",
         type=str,
-        default=None,
-        help="Base directory containing kHz, rms, trigger subdirectories",
+        default=HYBRID_DATA_DIR or None,
+        help=(
+            "Base directory containing kHz, rms, trigger subdirectories "
+            "(overrides MAGNETRUN_HYBRID_DATA_DIR / HYBRID_DATADIR)"
+        ),
     )
     parser.add_argument(
         "--date",

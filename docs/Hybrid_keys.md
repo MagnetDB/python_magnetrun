@@ -1,3 +1,18 @@
+<!-- markdownlint-disable -->
+> [!WARNING]
+> **This file is superseded.**
+> It was an informal draft of the hybrid channel list and uses an invalid JSON
+> format (duplicate keys, mixed dict/set notation).
+>
+> The authoritative, machine-readable source is now
+> [`python_magnetrun/hybrid-defs.json`](../python_magnetrun/hybrid-defs.json),
+> which uses the standard `{description, symbol, unit, aliases}` schema and is
+> managed via the `magnetrun-field-defs` CLI.
+>
+> Do **not** edit this file — edit `hybrid-defs.json` instead.
+
+---
+
 {
 "kHz": {
   "FEPC-AUX-LNCMI": {

@@ -3,8 +3,9 @@
 Log parser for LabVIEW/DAQmx acquisition system logs.
 
 Log file format:
-- Records start with: <day_fr> <date> <time>: <message>
-  Example: "jeu. 19-09-2019 16:14:33: Test de présence des boitiers ENET"
+
+- Records start with: ``<day_fr> <date> <time>: <message>``
+  e.g. ``"jeu. 19-09-2019 16:14:33: Test de présence des boitiers ENET"``
 - Day abbreviations are in French: lun., mar., mer., jeu., ven., sam., dim.
 - Messages are a mix of French and English
 - Multi-line records: Error and ENET messages include description lines

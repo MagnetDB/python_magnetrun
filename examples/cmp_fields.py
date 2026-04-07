@@ -53,8 +53,12 @@ if __name__ == "__main__":
         help="select ykey",
         default="IB",
     )
-    parser.add_argument("--lagcorrelation", help="estimate lagcorrelation", action="store_true")
-    parser.add_argument("--range", help="select data from (index value)", type=int, nargs=2)
+    parser.add_argument(
+        "--lagcorrelation", help="estimate lagcorrelation", action="store_true"
+    )
+    parser.add_argument(
+        "--range", help="select data from (index value)", type=int, nargs=2
+    )
     parser.add_argument("--to", help="select data to (index value)", type=int)
     parser.add_argument("--dtw", help="use dtw", action="store_true")
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
@@ -99,26 +103,29 @@ if __name__ == "__main__":
     for file in input_files:
         f_extension = os.path.splitext(file)[-1]
         if f_extension not in supported_formats:
-            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
+            raise RuntimeError(
+                f"so far file with extension in {supported_formats} are implemented"
+            )
 
         filename = os.path.basename(file)
         result = filename.startswith("M")
-        insert = "tututu"
-        site = ""
+        insert = args.insert if args.insert else None
+        housing = args.housing if args.housing else None
+        site = args.site if args.site else None
         if result:
             try:
                 index = filename.index("_")
-                site = filename[0:index]
-                print(f"site detected: {site}")
+                housing = filename[0:index] if housing is None else housing
+                print(f"housing detected: {housing}")
             except ValueError:
-                print("no site detected - use args.site argument instead")
+                print("no housing detected - use args.housing argument instead")
                 pass
 
         match f_extension:
             case ".txt":
-                mrun = MagnetRun.fromtxt(site, insert, file)
+                mrun = MagnetRun.fromtxt(housing=housing, site=site, filename=filename)
             case ".tdms":
-                mrun = MagnetRun.fromtdms(site, insert, file)
+                mrun = MagnetRun.fromtdms(housing=housing, site=site, filename=filename)
             case _:
                 raise RuntimeError(
                     f"so far file with extension in {supported_formats} are implemented"
@@ -262,7 +269,9 @@ if __name__ == "__main__":
 
                 n_samples, n_timestamps = 1, y.shape[0]
                 window_size = 125
-                paa = PiecewiseAggregateApproximation(window_size=window_size, overlapping=False)
+                paa = PiecewiseAggregateApproximation(
+                    window_size=window_size, overlapping=False
+                )
                 try:
                     x_paa = paa.transform(np.array([x]))
                     y_paa = paa.transform(np.array([y]))

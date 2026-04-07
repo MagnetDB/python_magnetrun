@@ -27,6 +27,7 @@ def validate_txt_format(path: str) -> None:
     """Validate a pupitre ``.txt`` file before parsing.
 
     Checks:
+
     - File exists.
     - Extension is ``.txt``.
     - File is non-empty.

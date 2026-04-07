@@ -325,7 +325,7 @@ class TestAnalysisConfig:
 
     def test_for_site_invalid(self):
         """for_site() should raise ValueError for unknown site."""
-        with pytest.raises(ValueError, match="Unknown site"):
+        with pytest.raises(ValueError, match="Unknown housing"):
             AnalysisConfig.for_site("INVALID")
 
     def test_default_components(self):

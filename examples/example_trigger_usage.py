@@ -14,7 +14,7 @@ from pathlib import Path  # noqa: I001
 
 import matplotlib.pyplot as plt
 
-from python_magnetrun.hybbrid.trigger.plot_trigger_data import plot_trigger_variable
+from plot_trigger_data import plot_trigger_variable
 from python_magnetrun.hybrid.trigger.trigger_reader import (
     create_time_array,
     find_trigger_directories,

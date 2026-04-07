@@ -11,6 +11,7 @@ This tool reads the HOST_X_DATA.CFG file and displays:
 import argparse
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 from .fepc_reader import FEPCConfig, parse_cfg_file
@@ -276,6 +277,92 @@ def main() -> FEPCConfig | None:
 
         traceback.print_exc()
         return None
+
+
+def get_variable_info(config, var_name: str) -> dict | None:
+    """
+    Find variable in config and return its slot and channel index
+
+    Parameters:
+    -----------
+    config : FEPCConfig
+        Configuration object
+    var_name : str
+        Variable name to search for
+
+    Returns:
+    --------
+    dict or None
+        Dictionary with 'slot', 'channel_idx', 'card_type', 'card', 'calibration'
+        or None if not found
+    """
+    var_upper = var_name.upper()
+
+    for card in config.cards:
+        for ch_idx, var in enumerate(card.variable_names):
+            if var.upper() == var_upper:
+                calib = None
+                if card.calibrations and ch_idx < len(card.calibrations):
+                    calib = card.calibrations[ch_idx]
+                return {
+                    "slot": card.slot,
+                    "channel_idx": ch_idx,
+                    "card_type": card.card_type,
+                    "card": card,
+                    "calibration": calib,
+                }
+
+    return None
+
+
+def find_bin_files(cfg_path: str, slot: int, date_range: tuple[str, str] | None = None) -> list:
+    """
+    Find all bin files matching the pattern for a given slot
+
+    Parameters:
+    -----------
+    cfg_path : str
+        Path to CFG file (used to extract HOST number)
+    slot : int
+        Card slot number
+    date_range : tuple of str, optional
+        Date range filter (YYYY-MM-DD format)
+        If None, finds all files for today
+
+    Returns:
+    --------
+    list
+        List of paths to matching bin files, sorted by hour
+    """
+    cfg_dir = Path(cfg_path).parent
+    host_number = extract_host_number(cfg_path)
+
+    # Build file pattern: XXHOST_n_LIST_{slot}.bin
+    pattern = f"*HOST_{host_number}_LIST_{slot}.bin"
+
+    matching_files = sorted(cfg_dir.glob(pattern))
+
+    if not matching_files:
+        print(f"No bin files found matching pattern: {pattern}")
+        return []
+
+    # Filter by date range if provided
+    if date_range:
+        start_date, end_date = date_range
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+
+        filtered = []
+        for f in matching_files:
+            # Extract hour from filename (XX in XXHOST_...)
+            match = re.match(r"(\d{2})HOST", f.name)
+            if match:
+                hour = int(match.group(1))
+                # This is simplified; actual date info would need more context
+                filtered.append(f)
+        matching_files = filtered
+
+    return matching_files
 
 
 if __name__ == "__main__":

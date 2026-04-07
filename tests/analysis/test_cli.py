@@ -338,8 +338,6 @@ class TestTimedOperation:
 
     def test_with_exception(self):
         """Test timing when exception occurs."""
-        timing = {}
-
         with (
             pytest.raises(ValueError),
             timed_operation("Test", log_start=False) as timing,
@@ -393,7 +391,7 @@ class TestArgumentParser:
     def test_required_args(self):
         """Test required arguments."""
         args = parse_arguments(["input.tdms"])
-        assert args.input_file[0].name == "input.tdms"
+        assert args.input_file[0] == "input.tdms"
 
     def test_multiple_inputs(self):
         """Test multiple input files."""

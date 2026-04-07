@@ -9,10 +9,9 @@ import logging
 from pathlib import Path
 
 import matplotlib.pyplot as plt
-import numpy as np
 
-from python_magnetrun.hybrid.kHz.fepc_reader import CalibrationInfo
 from python_magnetrun.hybrid.trigger.trigger_reader import (
+    apply_calibration,
     create_time_array,
     find_trigger_directories,
     parse_trigger_directory,
@@ -22,43 +21,6 @@ from python_magnetrun.log_utils import SIMPLE_FORMAT, setup_logging
 
 logger = logging.getLogger(__name__)
 
-
-def apply_calibration(
-    data: np.ndarray, calib: CalibrationInfo, cnv_dir: Path | None = None
-) -> np.ndarray:
-    """
-    Apply calibration to raw data
-
-    Parameters:
-    -----------
-    data : np.ndarray
-        Raw ADC data
-    calib : CalibrationInfo
-        Calibration parameters
-    cnv_dir : Path, optional
-        Directory containing CNV files
-
-    Returns:
-    --------
-    np.ndarray : Calibrated data
-    """
-    if calib.cnv_file and cnv_dir:
-        # Piecewise linear calibration
-        cnv_path = cnv_dir / calib.cnv_file
-        if cnv_path.exists():
-            logger.info(f"Applying piecewise calibration from {calib.cnv_file}")
-            # Load CNV lookup table
-            try:
-                cnv_data = np.loadtxt(cnv_path)
-                # Interpolate
-                calibrated = np.interp(data, cnv_data[:, 0], cnv_data[:, 1])
-                return calibrated
-            except (OSError, ValueError) as e:
-                logger.warning(f"Failed to apply CNV calibration: {e}")
-                # Fall back to linear
-
-    # Linear calibration: y = a * x + b
-    return calib.a * data + calib.b
 
 
 def plot_trigger_variable(

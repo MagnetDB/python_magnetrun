@@ -69,7 +69,7 @@ def lowess_bell_shape_kern(x: np.ndarray, y: np.ndarray, tau: float = 0.005) -> 
     The kernel function is the bell shaped function with parameter tau.
     Larger tau will result in a smoother curve.
 
-        :param x: _description_
+    :param x: _description_
     :type x: _type_
     :param y: _description_
     :type y: _type_

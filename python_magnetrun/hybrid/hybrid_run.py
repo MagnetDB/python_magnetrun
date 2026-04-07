@@ -483,6 +483,7 @@ class HybridRun:
         endian: str = "big",
         housing: str = "Hybrid",
         site: str = "",
+        defs_file: str | None = None,
     ) -> "HybridRun":
         """
         Create HybridRun from a directory for a given date.
@@ -509,7 +510,7 @@ class HybridRun:
         HybridRun
             HybridRun instance
         """
-        data = HybridData(base_dir, date_str, fepc_system, endian)
+        data = HybridData(base_dir, date_str, fepc_system, endian, defs_file=defs_file)
 
         # Determine start time from first available data
         start_time = None
@@ -698,6 +699,13 @@ class HybridRun:
         if self.HybridData is not None:
             return self.HybridData.getKeys()
         raise RuntimeError("HybridRun.getKeys: no HybridData associated")
+
+    def Units(self, debug: bool = False, json_file: str | None = None) -> None:
+        """Populate units — delegates to :meth:`HybridData.Units`."""
+        if self.HybridData is not None:
+            self.HybridData.Units(debug=debug, json_file=json_file)
+        else:
+            raise RuntimeError("HybridRun.Units: no HybridData associated")
 
     def getUnit(self, key: str = "") -> tuple:
         """Return Unit for a key"""

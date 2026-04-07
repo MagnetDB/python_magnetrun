@@ -1026,5 +1026,175 @@ def main():
     return args
 
 
+def read_variable_from_files(
+    bin_files: list,
+    slot: int,
+    channel_idx: int,
+    card_type: str,
+    config=None,
+    endian: str = "big",
+    debug: bool = False,
+    var_name: str = "Variable",
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Read specific variable from all bin files
+
+    Parameters:
+    -----------
+    bin_files : list
+        List of bin file paths
+    slot : int
+        Card slot number
+    channel_idx : int
+        Channel index within the card
+    card_type : str
+        'ANA' for analog or 'DIG' for digital
+    config : FEPCConfig, optional
+        Configuration object for calibration
+    endian : str
+        Endianness: 'big' or 'little' (default: 'big')
+    debug : bool
+        If True, plot data after each block is loaded (default: False)
+    var_name : str
+        Variable name for debug plot title
+
+    Returns:
+    --------
+    data : np.ndarray
+        Concatenated data from all files
+    time : np.ndarray
+        Time array in seconds
+    """
+    import matplotlib.pyplot as plt
+
+    all_data = []
+    total_samples = 0
+
+    # Get sampling frequency
+    sampling_freq = KHZ_SAMPLING_FREQUENCY
+
+    # Setup debug plot if requested
+    fig, ax, line = None, None, None
+    if debug:
+        plt.ion()  # Interactive mode
+        fig, ax = plt.subplots(figsize=(14, 6))
+        ax.set_xlabel("Time (seconds)")
+        ax.set_ylabel(f"{var_name}")
+        ax.set_title(f"Debug: {var_name} (Slot {slot}) - Loading...")
+        ax.grid(True, alpha=0.3)
+        (line,) = ax.plot([], [], linewidth=0.5, alpha=0.8)
+        plt.show(block=False)
+
+    if debug:
+        print(f"Reading {len(bin_files)} files... (endian={endian})", flush=True)
+
+    for file_idx, file_path in enumerate(bin_files):
+        try:
+            # Read complete hour file
+            if debug:
+                print(f"Reading file: {file_path.name}", flush=True)
+            hour_data = read_hour_file(
+                str(file_path),
+                card_type,
+                endian=endian,
+                debug=debug,
+                debug_channel=channel_idx,
+            )
+            all_data.append(hour_data[:, channel_idx])
+            total_samples += len(hour_data)
+            print(f"  ✓ {file_path.name}")
+
+            # Update debug plot
+            if debug:
+                current_data = np.concatenate(all_data)
+                current_time = np.arange(len(current_data)) / sampling_freq
+                if line is not None:
+                    line.set_data(current_time, current_data)
+                if ax is not None:
+                    ax.relim()
+                    ax.autoscale_view()
+                    ax.set_title(
+                        f"Debug: {var_name} (Slot {slot}) - File {file_idx + 1}/{len(bin_files)}"
+                    )
+                if fig is not None:
+                    fig.canvas.draw()
+                if fig is not None:
+                    fig.canvas.flush_events()
+                plt.pause(1)
+
+        except (OSError, ValueError, RuntimeError) as e:
+            print(f"  ✗ Error reading {file_path.name}: {e}")
+
+    if debug:
+        plt.ioff()  # Turn off interactive mode
+        plt.close(fig)
+
+    if not all_data:
+        raise ValueError("No data could be read from bin files")
+
+    # Concatenate all data
+    data = np.concatenate(all_data)
+
+    # Create time array
+    time = np.arange(len(data)) / sampling_freq
+
+    return data, time
+
+
+def apply_variable_calibration(
+    data: np.ndarray, config, slot: int, channel_idx: int, cnv_directory: str = "."
+) -> np.ndarray:
+    """
+    Apply calibration to variable data
+
+    Parameters:
+    -----------
+    data : np.ndarray
+        Raw data
+    config : FEPCConfig
+        Configuration object
+    slot : int
+        Card slot
+    channel_idx : int
+        Channel index
+    cnv_directory : str
+        Directory containing CNV files for piecewise calibration
+
+    Returns:
+    --------
+    np.ndarray
+        Calibrated data
+    """
+    try:
+        card = config.get_card_by_slot(slot)
+        if card.card_type != "ANA":
+            # Digital data doesn't need calibration
+            return data.astype(np.float64)
+
+        if card.calibrations and channel_idx < len(card.calibrations):
+            calib_info = card.calibrations[channel_idx]
+
+            # Check if CNV file calibration should be used
+            if calib_info.cnv_file:
+                cnv_path = Path(cnv_directory) / calib_info.cnv_file
+                if cnv_path.exists():
+                    print(f"  Using CNV file calibration: {calib_info.cnv_file}")
+                    cnv_dict = load_calibration(str(cnv_path))
+                    return apply_calibration(data, cnv_dict=cnv_dict)
+                else:
+                    print(f"  Warning: CNV file {cnv_path} not found, using linear calibration")
+
+            # Use linear calibration
+            print(
+                f"  Using linear calibration: A={calib_info.a}, B={calib_info.b}, COEFA={calib_info.coef_a}, COEFB={calib_info.coef_b}"
+            )
+            return apply_calibration(data, calib_info)
+
+    except (ValueError, IndexError, AttributeError) as e:
+        print(f"  Warning: Could not apply calibration: {e}")
+
+    return data.astype(np.float64)
+
+
 if __name__ == "__main__":
     main()

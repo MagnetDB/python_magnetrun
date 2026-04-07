@@ -19,7 +19,7 @@ import numpy as np
 
 from ...log_utils import SIMPLE_FORMAT, setup_logging
 from ...utils.validation import FileFormatError
-from ..kHz.fepc_reader import FEPCConfig, parse_cfg_file
+from ..kHz.fepc_reader import CalibrationInfo, FEPCConfig, parse_cfg_file
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -688,6 +688,42 @@ Examples:
     # No action specified
     logger.info("No action specified. Use --help for usage information.")
     parser.print_help()
+
+
+def apply_calibration(
+    data: np.ndarray, calib: CalibrationInfo, cnv_dir: Path | None = None
+) -> np.ndarray:
+    """
+    Apply calibration to raw data
+
+    Parameters:
+    -----------
+    data : np.ndarray
+        Raw ADC data
+    calib : CalibrationInfo
+        Calibration parameters
+    cnv_dir : Path, optional
+        Directory containing CNV files
+
+    Returns:
+    --------
+    np.ndarray : Calibrated data
+    """
+    if calib.cnv_file and cnv_dir:
+        # Piecewise linear calibration
+        cnv_path = cnv_dir / calib.cnv_file
+        if cnv_path.exists():
+            logger.info(f"Applying piecewise calibration from {calib.cnv_file}")
+            try:
+                cnv_data = np.loadtxt(cnv_path)
+                calibrated = np.interp(data, cnv_data[:, 0], cnv_data[:, 1])
+                return calibrated
+            except (OSError, ValueError) as e:
+                logger.warning(f"Failed to apply CNV calibration: {e}")
+                # Fall back to linear
+
+    # Linear calibration: y = a * x + b
+    return calib.a * data + calib.b
 
 
 if __name__ == "__main__":

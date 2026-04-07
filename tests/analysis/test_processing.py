@@ -247,7 +247,7 @@ class TestGetSiteConfig:
         with pytest.raises(ValueError) as exc_info:
             get_site_config("INVALID")
 
-        assert "Unknown site" in str(exc_info.value)
+        assert "Unknown housing" in str(exc_info.value)
 
 
 class TestSummarizeRecord:

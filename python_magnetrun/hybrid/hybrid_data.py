@@ -121,12 +121,14 @@ class HybridData:
         date_str: str,
         fepc_system: str | None = None,
         endian: str = "big",
+        defs_file: str | None = None,
     ):
         self.base_dir = Path(base_dir)
         self.date_str = date_str
         self.date = datetime.strptime(date_str, "%Y-%m-%d").date()
         self.fepc_system = fepc_system
         self.endian = endian
+        self.defs_file: str | None = defs_file
 
         # MagnetData-like attributes
         self.FileName = f"HybridData_{date_str}"
@@ -888,10 +890,29 @@ class HybridData:
         else:
             raise ValueError(f"Unknown data type: {data_type}")
 
-    def Units(self, debug: bool = False) -> None:
-        """Set units for data (placeholder for MagnetData compatibility)"""
-        # TODO: Implement unit handling
-        pass
+    def load_units_from_json(self, json_file: str, debug: bool = False) -> None:
+        """Populate ``self.units`` from a JSON field-definition file.
+
+        Delegates to :meth:`MagnetDataBase.load_units_from_json
+        <python_magnetrun.magnetdata_base.MagnetDataBase.load_units_from_json>`;
+        see that method for the JSON format description.
+        """
+        from ..magnetdata_base import MagnetDataBase
+
+        MagnetDataBase.load_units_from_json(self, json_file, debug)  # type: ignore[arg-type]
+
+    def Units(self, debug: bool = False, json_file: str | None = None) -> None:
+        """Populate ``self.units`` from a field-definition JSON file.
+
+        Resolution order:
+        1. *json_file* argument (explicit override)
+        2. ``self.defs_file`` set at construction time
+
+        If neither is set, ``self.units`` remains empty (units are unknown).
+        """
+        resolved = json_file or self.defs_file
+        if resolved is not None:
+            self.load_units_from_json(resolved, debug=debug)
 
     def getUnitKey(self, key: str) -> tuple:
         """Get unit for a specific key"""

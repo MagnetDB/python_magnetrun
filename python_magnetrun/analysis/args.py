@@ -5,11 +5,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from ..cli_args import create_datadir_parser
 from .config import (
     DEFAULT_BINS,
-    DEFAULT_DATA_DIR,
     DEFAULT_LEVELS,
-    DEFAULT_PIGBROTHER_DATA_DIR,
     DEFAULT_WINDOW_SIZE,
 )
 
@@ -23,9 +22,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
     argparse.ArgumentParser
         Configured argument parser
     """
+    datadir_parser = create_datadir_parser()
     parser = argparse.ArgumentParser(
         description="Analyze magnetrun data from TDMS and pupitre files",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        parents=[datadir_parser],
         epilog="""
 Examples:
   %(prog)s M9_Overview_*.tdms --show
@@ -43,26 +44,12 @@ Examples:
     parser.add_argument(
         "input_file",
         nargs="+",
-        type=Path,
-        help="Input TDMS overview files to process",
+        type=str,
+        help="Input TDMS overview files to process (glob patterns allowed)",
     )
 
     # Data directories
     dir_group = parser.add_argument_group("Data directories")
-    dir_group.add_argument(
-        "--pupitre-datadir",
-        type=Path,
-        default=Path(DEFAULT_DATA_DIR),
-        metavar="DIR",
-        help="Directory containing pupitre data files",
-    )
-    dir_group.add_argument(
-        "--pigbrother-datadir",
-        type=Path,
-        default=Path(DEFAULT_PIGBROTHER_DATA_DIR),
-        metavar="DIR",
-        help="Directory containing pigbrother data files",
-    )
     dir_group.add_argument(
         "--output-dir",
         type=Path,

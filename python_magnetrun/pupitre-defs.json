@@ -1,0 +1,568 @@
+{
+  "_comment": "Field definitions for PUPITRE (.txt) data files. Each entry maps a column name to {description, symbol, unit}. unit must be a pint-parseable string; use null for dimensionless/time columns. 'aliases' maps housing-independent cross-references to pigbrother (Group/Channel key) and hybrid (FEPC_system/variable key). Housing-dependent mappings (e.g. IH=GR1 vs GR2 depending on housing) belong in site_config.py.",
+  "timestamp": {
+    "description": "",
+    "symbol": "time",
+    "unit": null
+  },
+  "t": {
+    "description": "",
+    "symbol": "t",
+    "unit": "second"
+  },
+  "Field": {
+    "description": "",
+    "symbol": "B",
+    "unit": "tesla",
+    "aliases": {
+      "pigbrother": "Courants_Alimentations/Champ_magn"
+    }
+  },
+  "Tin1": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tin2": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tout": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "teb": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "tsb": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "HP1": {
+    "description": "",
+    "symbol": "P",
+    "unit": "bar"
+  },
+  "HP2": {
+    "description": "",
+    "symbol": "P",
+    "unit": "bar"
+  },
+  "BP": {
+    "description": "",
+    "symbol": "P",
+    "unit": "bar"
+  },
+  "Flow1": {
+    "description": "",
+    "symbol": "Q",
+    "unit": "liter / second"
+  },
+  "Flow2": {
+    "description": "",
+    "symbol": "Q",
+    "unit": "liter / second"
+  },
+  "debitbrut": {
+    "description": "",
+    "symbol": "Q",
+    "unit": "meter ** 3 / hour"
+  },
+  "Rpm1": {
+    "description": "",
+    "symbol": "Rpm",
+    "unit": "rpm"
+  },
+  "Rpm2": {
+    "description": "",
+    "symbol": "Rpm",
+    "unit": "rpm"
+  },
+  "Idcct1": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere",
+    "aliases": {
+      "pigbrother": "Courants_Alimentations/Courant_A1",
+      "hybrid": "FEPC-AUX-LNCMI/ALIM1_J1"
+    }
+  },
+  "Idcct2": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere",
+    "aliases": {
+      "pigbrother": "Courants_Alimentations/Courant_A2",
+      "hybrid": "FEPC-AUX-LNCMI/ALIM1_J2"
+    }
+  },
+  "Idcct3": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere",
+    "aliases": {
+      "pigbrother": "Courants_Alimentations/Courant_A3",
+      "hybrid": "FEPC-AUX-LNCMI/ALIM2_J1"
+    }
+  },
+  "Idcct4": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere",
+    "aliases": {
+      "pigbrother": "Courants_Alimentations/Courant_A4",
+      "hybrid": "FEPC-AUX-LNCMI/ALIM2_J2"
+    }
+  },
+  "Icoil1": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil2": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil3": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil4": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil5": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil6": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil7": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil8": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil9": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil10": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil11": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil12": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil13": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil14": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil15": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Icoil16": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "Ucoil1": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt",
+    "aliases": {
+      "pigbrother": "Tensions_Aimant/Interne1",
+      "hybrid": "FEPC-AUX-LNCMI/PH_V8"
+    }
+  },
+  "Ucoil2": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt",
+    "aliases": {
+      "pigbrother": "Tensions_Aimant/Interne2",
+      "hybrid": "FEPC-AUX-LNCMI/PH_V9"
+    }
+  },
+  "Ucoil3": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt",
+    "aliases": {
+      "pigbrother": "Tensions_Aimant/Interne3",
+      "hybrid": "FEPC-AUX-LNCMI/PH_V10"
+    }
+  },
+  "Ucoil4": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt",
+    "aliases": {
+      "pigbrother": "Tensions_Aimant/Interne4",
+      "hybrid": "FEPC-AUX-LNCMI/PH_V11"
+    }
+  },
+  "Ucoil5": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt",
+    "aliases": {
+      "pigbrother": "Tensions_Aimant/Interne5",
+      "hybrid": "FEPC-AUX-LNCMI/PH_V12"
+    }
+  },
+  "Ucoil6": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt",
+    "aliases": {
+      "pigbrother": "Tensions_Aimant/Interne6",
+      "hybrid": "FEPC-AUX-LNCMI/PH_V13"
+    }
+  },
+  "Ucoil7": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt",
+    "aliases": {
+      "pigbrother": "Tensions_Aimant/Interne7",
+      "hybrid": "FEPC-AUX-LNCMI/PH_V14"
+    }
+  },
+  "Ucoil8": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt"
+  },
+  "Ucoil9": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt"
+  },
+  "Ucoil10": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt"
+  },
+  "Ucoil11": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt"
+  },
+  "Ucoil12": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt"
+  },
+  "Ucoil13": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt"
+  },
+  "Ucoil14": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt"
+  },
+  "Ucoil15": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt",
+    "aliases": {
+      "pigbrother": "Tensions_Aimant/Externe1",
+      "hybrid": "FEPC-AUX-LNCMI/BITTER_V1"
+    }
+  },
+  "Ucoil16": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt",
+    "aliases": {
+      "pigbrother": "Tensions_Aimant/Externe2",
+      "hybrid": "FEPC-AUX-LNCMI/BITTER_V2"
+    }
+  },
+  "DRcoil1": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil2": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil3": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil4": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil5": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil6": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil7": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil8": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil9": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil10": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil11": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil12": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil13": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil14": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil15": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "DRcoil16": {
+    "description": "",
+    "symbol": "%",
+    "unit": "percent"
+  },
+  "Tcal1": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal2": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal3": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal4": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal5": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal6": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal7": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal8": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal9": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal10": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal11": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal12": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal13": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal14": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal15": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Tcal16": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "Pmagnet": {
+    "description": "",
+    "symbol": "Power",
+    "unit": "megawatt"
+  },
+  "Ptot": {
+    "description": "",
+    "symbol": "Power",
+    "unit": "megawatt"
+  },
+  "Q": {
+    "description": "",
+    "symbol": "Preac",
+    "unit": "megavar"
+  },
+  "IH": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "IB": {
+    "description": "",
+    "symbol": "I",
+    "unit": "ampere"
+  },
+  "UH": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt"
+  },
+  "UB": {
+    "description": "",
+    "symbol": "U",
+    "unit": "volt"
+  },
+  "FlowH": {
+    "description": "",
+    "symbol": "Q",
+    "unit": "liter / second"
+  },
+  "FlowB": {
+    "description": "",
+    "symbol": "Q",
+    "unit": "liter / second"
+  },
+  "RpmH": {
+    "description": "",
+    "symbol": "Rpm",
+    "unit": "rpm"
+  },
+  "RpmB": {
+    "description": "",
+    "symbol": "Rpm",
+    "unit": "rpm"
+  },
+  "TinH": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "TinB": {
+    "description": "",
+    "symbol": "T",
+    "unit": "degC"
+  },
+  "HPH": {
+    "description": "",
+    "symbol": "P",
+    "unit": "bar"
+  },
+  "HPB": {
+    "description": "",
+    "symbol": "P",
+    "unit": "bar"
+  },
+  "Power": {
+    "description": "",
+    "symbol": "Power",
+    "unit": "megawatt"
+  },
+  "PeH": {
+    "description": "",
+    "symbol": "Power",
+    "unit": "megawatt"
+  },
+  "PeB": {
+    "description": "",
+    "symbol": "Power",
+    "unit": "megawatt"
+  }
+}
