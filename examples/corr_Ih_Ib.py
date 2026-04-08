@@ -1,5 +1,6 @@
 """Main module."""
 
+import argparse
 import logging
 import os
 
@@ -8,6 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from natsort import natsorted
 
+from python_magnetrun.cli_args import create_base_parser
+from python_magnetrun.log_utils import setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 
 logger = logging.getLogger(__name__)
@@ -17,10 +20,8 @@ matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input_file", nargs="+", help="enter input file")
+    base_parser = create_base_parser()
+    parser = argparse.ArgumentParser(parents=[base_parser])
     parser.add_argument(
         "--xkey",
         type=str,
@@ -50,12 +51,12 @@ if __name__ == "__main__":
         "--normalize", help="normalize data before plot", action="store_true"
     )
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
-    parser.add_argument("--debug", help="activate debug mode", action="store_true")
     parser.add_argument(
         "--find", help="try to automatically find breakpoints", action="store_true"
     )
     args = parser.parse_args()
-    print(f"args: {args}", flush=True)
+    setup_logging(level=args.log_level, log_file=args.log_file)
+    logger.debug("args: %s", args)
 
     # load df pandas from input_file
     # check extension

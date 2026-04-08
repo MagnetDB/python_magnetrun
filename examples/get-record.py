@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from tabulate import tabulate
 
-from python_magnetrun.cli_args import create_datadir_parser, get_datadir_mapping
+from python_magnetrun.cli_args import create_base_parser, get_datadir_mapping
 from python_magnetrun.log_utils import setup_logging
 from python_magnetrun.magnetdata_base import MagnetDataBase
 from python_magnetrun.MagnetRun import MagnetRun
@@ -25,8 +25,8 @@ def load_record(file: str, args, show: bool = False) -> MagnetDataBase:
     """Load record from a pupitre .txt or pigbrother .tdms file."""
     filename = os.path.basename(file)
     extension = os.path.splitext(filename)[-1]
-    housing = args.housing if args.housing else filename.split("_")[0]
-    site = args.site if args.site else "notdefined"
+    housing = args.housing if args.housing != "notdefined" else filename.split("_")[0]
+    site = args.site
 
     try:
         if extension == ".txt":
@@ -73,15 +73,28 @@ def getTimestamp(file: str, debug: bool = False) -> datetime:
     basename = os.path.basename(file)
     extension = os.path.splitext(basename)[-1]
     stem = basename[: -len(extension)]
-    res = stem.split("_")
-    logger.debug(f"getTimestamp({file}): parts={res}")
+    logger.debug(f"getTimestamp({file}):")
 
     try:
         if extension == ".txt":
-            # pupitre format: site_YYYY.MM.DD---HH:MM:SS
-            (site, date_string) = res
-            timestamp = datetime.strptime(date_string, "%Y.%m.%d---%H:%M:%S")
-            # TODO: handle different timefomrat if data comes from python_magnetrun requests or from raw pupitre storage (see sshfs mount point)
+            # pupitre formats (newest first):
+            #   new standard:  site_YYYY.MM.DD - HH:MM:SS
+            #   alternative:   site_YYYY-MM-DD_HH-MM-SS
+            #   legacy:        site_YYYY.MM.DD---HH:MM:SS
+            res = stem.split("_")
+            for fmt in (
+                "%Y.%m.%d - %H:%M:%S",
+                "%Y-%m-%d_%H-%M-%S",
+                "%Y.%m.%d---%H:%M:%S",
+            ):
+                try:
+                    date_string = res[-1]
+                    timestamp = datetime.strptime(date_string, fmt)
+                    break
+                except ValueError:
+                    continue
+            else:
+                raise ValueError(f"unrecognised pupitre date format: {date_string!r}")
         elif extension == ".tdms":
             # pigbrother format: site_mode_YYMMDD-HHMM[SS]
             timestamp_part = res[2].split("-")
@@ -103,32 +116,8 @@ def getTimestamp(file: str, debug: bool = False) -> datetime:
 
 def main():
     """Console script."""
-    datadir_parser = create_datadir_parser()
-    parser = argparse.ArgumentParser(parents=[datadir_parser])
-    parser.add_argument(
-        "inputfile",
-        help="input file(s) — glob patterns allowed; bare filenames searched in data dirs",
-        nargs="+",
-    )
-    parser.add_argument("--debug", help="enable debug mode", action="store_true")
-    parser.add_argument(
-        "--loglevel",
-        help="set logging level",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        default="INFO",
-    )
-    parser.add_argument(
-        "--housing",
-        help="override housing name (default: extracted from filename)",
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
-        "--site",
-        help="set site name (default: notdefined)",
-        type=str,
-        default=None,
-    )
+    base_parser = create_base_parser()
+    parser = argparse.ArgumentParser(parents=[base_parser])
 
     subparsers = parser.add_subparsers(
         title="commands", dest="command", help="sub-command help"
@@ -197,18 +186,21 @@ def main():
     parser_stats.add_argument("--save", help="enable save mode", action="store_true")
 
     args = parser.parse_args()
+    logger.error(f"get-record: Arguments={args}, pwd={os.getcwd()}")
 
-    setup_logging(level=args.loglevel, debug=args.debug)
+    setup_logging(level=args.log_level, log_file=args.log_file)
+    debug = args.log_level == "DEBUG"
 
     # Always print input parameters for traceability
     logger.info(f"getrecords: Arguments={args}, pwd={os.getcwd()}")
 
     # Expand glob patterns and search configured data directories
     datadir = get_datadir_mapping(args)
-    files = expand_input_files(args.inputfile, datadir)
+    files = expand_input_files(args.input_file, datadir, args.housing)
+    print(f"files: {files}, datadir={datadir}")
 
     # need to be sorted by time??
-    files = sorted(files, key=lambda x: getTimestamp(x, args.debug), reverse=False)
+    files = sorted(files, key=getTimestamp, reverse=False)
     logger.debug(f"sort by time: {files}")
 
     selected_keys = []
@@ -325,7 +317,7 @@ def main():
                 if (
                     args.pearson and data.getDuration() >= min_duration
                 ):  # previous limit 1000:
-                    pearson(data, args.fields, args.save, args.show, args.debug)
+                    pearson(data, args.fields, args.save, args.show, debug)
                 elif (
                     args.pairplot and data.getDuration() >= min_duration
                 ):  # previous limit 1000:
@@ -367,7 +359,7 @@ def main():
 
                 if args.fields:
                     logger.info(f"stats for {args.fields}")
-                    stats(data, args.fields, args.debug)
+                    stats(data, args.fields, debug)
 
             elif args.command == "plot":
                 if args.xfield not in data.Keys:

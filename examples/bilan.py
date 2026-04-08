@@ -6,26 +6,26 @@ import matplotlib.pyplot as plt
 from pint import UnitRegistry  # noqa: I001
 
 from python_magnetcooling.water_properties import get_cp, get_rho
-from python_magnetrun.cli_args import create_datadir_parser
+from python_magnetrun.cli_args import create_base_parser
+from python_magnetrun.log_utils import setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.utils.files import expand_input_files
 
 logger = logging.getLogger(__name__)
 command_line = None
-datadir_parser = create_datadir_parser()
-parser = argparse.ArgumentParser("Energy Balance", parents=[datadir_parser])
-parser.add_argument("input_file", help="input pigbrother file (glob patterns allowed)")
+base_parser = create_base_parser()
+parser = argparse.ArgumentParser("Energy Balance", parents=[base_parser])
 parser.add_argument(
     "--show",
     help="display graphs (requires X11 server active)",
     action="store_true",
 )
-parser.add_argument("--debug", help="activate debug mode", action="store_true")
 args = parser.parse_args(command_line)
+setup_logging(level=args.log_level, log_file=args.log_file)
 
 # Load pigbrother file — expand glob / search in pigbrother_datadir
 tdms_files = expand_input_files(
-    [args.input_file], {".tdms": args.pigbrother_datadir}
+    args.input_file, {".tdms": args.pigbrother_datadir}
 )
 tdms_file_path = tdms_files[0]
 

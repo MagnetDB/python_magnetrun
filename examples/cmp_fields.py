@@ -1,5 +1,6 @@
 """Compare 2 timeseries."""
 
+import argparse
 import logging
 import os
 
@@ -10,6 +11,8 @@ from natsort import natsorted
 from scipy import stats
 from tabulate import tabulate
 
+from python_magnetrun.cli_args import create_base_parser
+from python_magnetrun.log_utils import setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.smoothers import lowess_bell_shape_kern
 
@@ -37,10 +40,8 @@ def calc_correlation(actual, predic):
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input_file", nargs="+", help="enter input file")
+    base_parser = create_base_parser()
+    parser = argparse.ArgumentParser(parents=[base_parser])
     parser.add_argument(
         "--xkey",
         type=str,
@@ -64,7 +65,8 @@ if __name__ == "__main__":
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
     parser.add_argument("--outputdir", type=str, help="enter output directory")
     args = parser.parse_args()
-    print(f"args: {args}", flush=True)
+    setup_logging(level=args.log_level, log_file=args.log_file)
+    logger.debug("args: %s", args)
 
     xkey = args.xkey
     ykey = args.ykey

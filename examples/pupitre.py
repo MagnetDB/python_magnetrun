@@ -1,10 +1,14 @@
+import argparse
 import logging
 import os
 import re
+import sys
 
 import matplotlib
 from natsort import natsorted
 
+from python_magnetrun.cli_args import create_base_parser
+from python_magnetrun.log_utils import setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.correlations import lag_correlation
 from python_magnetrun.processing.trends import trends
@@ -13,23 +17,18 @@ logger = logging.getLogger(__name__)
 matplotlib.rcParams["text.usetex"] = True
 
 if __name__ == "__main__":
-    import sys
-
     # Print all arguments
     print("Script name:", sys.argv[0])
     print("All arguments:", sys.argv[1:])
 
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input_file", nargs="+", help="enter input file pupitre")
-    parser.add_argument("--debug", help="acticate debug", action="store_true")
-
+    base_parser = create_base_parser()
+    parser = argparse.ArgumentParser(parents=[base_parser])
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
     parser.add_argument("--show", help="display graphs (X11 required)", action="store_true")
     parser.add_argument("--window", help="rolling window size", type=int, default=10)
     args = parser.parse_args()
-    print(f"args: {args}", flush=True)
+    setup_logging(level=args.log_level, log_file=args.log_file)
+    logger.debug("args: %s", args)
 
     tkeys = ["t", "timestamp"]
 

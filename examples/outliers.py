@@ -1,5 +1,6 @@
 """Main module."""
 
+import argparse
 import logging
 import os
 
@@ -8,6 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from natsort import natsorted
 
+from python_magnetrun.cli_args import create_base_parser
+from python_magnetrun.log_utils import setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 
 logger = logging.getLogger(__name__)
@@ -27,15 +30,8 @@ def mad(x):
 
 
 if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("input_file", nargs="+", help="enter input file")
-    parser.add_argument(
-        "--site", help="specify a site (ex. M8, M9,...)", default="M9"
-    )  # use housing instead
-    parser.add_argument("--insert", help="specify an insert", default="notdefined")
-    parser.add_argument("--debug", help="acticate debug", action="store_true")
+    base_parser = create_base_parser()
+    parser = argparse.ArgumentParser(parents=[base_parser])
     parser.add_argument("--plot", help="acticate plot", action="store_true")
     parser.add_argument("--save", help="activate plot", action="store_true")
     parser.add_argument("--normalize", help="normalize data", action="store_true")
@@ -48,7 +44,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--window", help="rolling window size", type=int, default=120)
     args = parser.parse_args()
-    print(f"args: {args}", flush=True)
+    setup_logging(level=args.log_level, log_file=args.log_file)
+    logger.debug("args: %s", args)
 
     # load df pandas from input_file
     # check extension
