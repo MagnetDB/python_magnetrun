@@ -46,19 +46,49 @@ __all__ = [
     "FeelppMagnetData",
     "TdmsMagnetData",
     "FileFormatError",
+    "load_magnetdata",
 ]
 
 
+def load_magnetdata(
+    filename: str,
+    defs_file: str | None = None,
+    sep: str = r"\s+",
+    skiprows: int = 1,
+) -> MagnetDataBase:
+    """Load a magnet data file and return the appropriate MagnetDataBase subclass.
+
+    Dispatches on file extension:
+    - ``.tdms``  → :class:`TdmsMagnetData`
+    - ``.txt``   → :class:`PandasMagnetData`
+    - ``.csv``   → :class:`PandasMagnetData`
+
+    :param filename: path to the data file
+    :param defs_file: optional path to a field definitions JSON file
+    :param sep: separator for text files (unused for tdms/csv)
+    :param skiprows: rows to skip for text files (unused for tdms/csv)
+    :return: the loaded data object
+    :raises ValueError: if the file extension is not recognised
+    """
+    ext = os.path.splitext(filename)[-1].lower()
+    if ext == ".tdms":
+        return MagnetData.fromtdms(filename, defs_file=defs_file)
+    elif ext == ".txt":
+        return MagnetData.fromtxt(filename, defs_file=defs_file or "pupitre-defs.json")
+    elif ext == ".csv":
+        return MagnetData.fromcsv(filename, defs_file=defs_file)
+    else:
+        raise ValueError(f"Unsupported file extension: {ext!r}")
+
+
 class MagnetData(PandasMagnetData):
-    """Backward-compatible magnet data container and factory.
+    """Backward-compatible shim — use :func:`load_magnetdata` for new code.
 
-    Extends :class:`PandasMagnetData` so that direct construction
-    ``MagnetData(filename, Groups, Keys, Type, Data)`` continues to work.
-    The ``Type`` parameter is stored via a property; all method logic is
-    inherited from :class:`PandasMagnetData`.
-
-    The ``from*`` classmethods return the appropriate :class:`MagnetDataBase`
-    subclass (e.g. :class:`PandasMagnetData`, :class:`TdmsMagnetData`).
+    .. deprecated::
+        Direct construction ``MagnetData(filename, Groups, Keys, Type, Data)``
+        and the ``from*`` classmethods are retained for backward compatibility.
+        New code should use :func:`load_magnetdata` or the concrete subclasses
+        (:class:`PandasMagnetData`, :class:`TdmsMagnetData`) directly.
 
     FileName: name of the input file
     Data: pandas dataframe

@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 
 from .magnetdata import MagnetData
+from .magnetdata_pandas import PandasMagnetData
 from .runetl import prepareData
 
 logger = logging.getLogger(__name__)
@@ -102,7 +103,7 @@ class MagnetRun:
         from io import StringIO
 
         insert = "Unknown"
-        data = MagnetData(filename="", Groups={}, Keys=[])
+        data = PandasMagnetData(filename="", Groups={}, Keys=[])
         try:
             ioname = StringIO(name)
             # TODO rework: get item 2 otherwise set to unknown

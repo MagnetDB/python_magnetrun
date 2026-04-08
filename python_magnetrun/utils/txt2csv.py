@@ -6,7 +6,7 @@ import matplotlib
 import pandas as pd
 
 from ..log_utils import SIMPLE_FORMAT, setup_logging
-from ..magnetdata import MagnetData
+from ..magnetdata_pandas import PandasMagnetData
 from ..runetl import prepareData
 from ..thermal_pipeline import (
     CoolingCircuitColumns,
@@ -62,16 +62,15 @@ def concat_files(
 
     raw_df = pd.concat(dfs, axis=0).dropna(axis=1, how="all").reset_index(drop=True)
 
-    # Wrap in MagnetData and apply prepareData_legacy:
+    # Wrap in PandasMagnetData and apply prepareData:
     #   - adds t and timestamp columns (via addTime)
     #   - renames Flow/Rpm/Tin/HP with H/B suffixes per housing
     #   - computes UH / UB from Ucoil groups (via cleanupData_legacy)
     #   - renames Icoil1 -> IH, Icoil[-1] -> IB
-    data = MagnetData(
+    data = PandasMagnetData(
         filename=input_files[0],
         Groups={},
         Keys=raw_df.columns.tolist(),
-        Type=0,
         Data=raw_df,
     )
     prepareData(data, housing)

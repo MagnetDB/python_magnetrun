@@ -5,13 +5,12 @@ import re
 
 from natsort import natsorted
 
-from .magnetdata import MagnetData
-from .magnetdata_base import DataType
+from .magnetdata_base import DataType, MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
 
-def _cleanup_pupitre_icoil(data: MagnetData) -> None:
+def _cleanup_pupitre_icoil(data: MagnetDataBase) -> None:
     """Remove zero/duplicate Icoil columns and rename Icoil→IH/IB."""
     import pandas as pd
 
@@ -54,7 +53,7 @@ def _cleanup_pupitre_icoil(data: MagnetData) -> None:
 
 
 def prepareData(
-    data: MagnetData,
+    data: MagnetDataBase,
     housing: str,
     keys_to_remove: list[str] | None = None,
     keys_to_rename: dict[str, str] | None = None,
@@ -73,7 +72,7 @@ def prepareData(
     - **TDMS** (pigbrother): adds ``pigbrother_formula_map`` entries.
     - **HYBRID**: adds hybrid voltage sum formulas.
 
-    :param data: MagnetData object to prepare in-place
+    :param data: MagnetDataBase object to prepare in-place
     :param housing: Housing name (e.g. "M8", "M9", "M10")
     :param keys_to_remove: list of column names to remove, defaults to None
     :param keys_to_rename: dict mapping old column names to new names, defaults to None
