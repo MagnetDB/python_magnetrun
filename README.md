@@ -820,7 +820,7 @@ pytest --on-demand tests/test-tin.py
 
 **Refactor:**
 - [X] Split argparse options into separate Python files
-- [ ] Add an example / a test for each subcommand in `python_magnetrun`
+- [x] Add an example / a test for each subcommand in `python_magnetrun`
 - [ ] Store stats (plateaus, duration) in a DataFrame, CSV, or database
 - [ ] Refactor plot functions to use a common interface and support multiple backends (Matplotlib, Plotly, Seaborn)
 - [ ] Refactor `analysis` module to separate synchronization, metrics, and visualization into distinct classes/functions
@@ -847,7 +847,7 @@ pytest --on-demand tests/test-tin.py
 **Features:**
 - [ ] Store processed Pupitre data in a specific file format (ETL output)
 - [X] Rewrite `txt2csv` to use methods in `utils` and `plots`
-- [ ] Check `addData` complex formulas (involving `freesteam` / `iapws`) with `pyparsing`
+- [ ] Check `addData` complex formulas (involving `freesteam` / `iapws`) -- with `pyparsing` ?
 - [ ] Export data to `great_tables`, `tabular`, `rich` or `csv2md`
 - [ ] Add support for Origin files (`liborigin` / Python bindings)
 - [ ] For `select`, support multiple field criteria
