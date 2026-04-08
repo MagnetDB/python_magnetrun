@@ -6,7 +6,8 @@ from typing import Any
 
 import pandas as pd
 
-from .magnetdata import MagnetData
+from .magnetdata import MagnetData, load_magnetdata
+from .magnetdata_base import MagnetDataBase
 from .magnetdata_pandas import PandasMagnetData
 from .runetl import prepareData
 
@@ -26,7 +27,7 @@ class MagnetRun:
         self,
         housing: str = "unknown",
         site: str = "",
-        data: MagnetData | None = None,
+        data: MagnetDataBase | None = None,
         start_time: datetime | None = None,
     ):
         """default constructor"""
@@ -43,7 +44,7 @@ class MagnetRun:
         logger.debug(
             f"MagnetRun:fromtdms: housing={housing}, site={site}, filename={filename}"
         )
-        data = MagnetData.fromtdms(filename)
+        data = load_magnetdata(filename)
         prepareData(data, housing)
         data.Units()
 
@@ -73,7 +74,7 @@ class MagnetRun:
         )
         # with open(filename, "r") as f:
         # insert = f.readline().split()[-1]
-        data = MagnetData.fromtxt(filename)
+        data = load_magnetdata(filename)
         logger.debug(f"MagnetRun/from_txt: data={data}")
         res = data.getStartDate()
         logger.debug(f"MagnetRun.from_txt: getStartDate={res}")
@@ -93,7 +94,7 @@ class MagnetRun:
     @classmethod
     def fromcsv(cls, housing: str, site: str, filename: str) -> "MagnetRun":
         """create from a csv file"""
-        data = MagnetData.fromcsv(filename)
+        data = load_magnetdata(filename)
         return cls(housing, site, data)
 
     @classmethod
@@ -162,7 +163,7 @@ class MagnetRun:
         else:
             raise RuntimeError("MagnetRun.getType: no MagnetData associated")
 
-    def getMData(self) -> MagnetData:
+    def getMData(self) -> MagnetDataBase:
         """return Magnet Data object"""
         if self.MagnetData is not None:
             return self.MagnetData
