@@ -93,11 +93,12 @@ class MagnetData(PandasMagnetData):
     # ------------------------------------------------------------------
 
     @classmethod
-    def fromtdms(cls, name: str, defs_file: str | None = None) -> "TdmsMagnetData":
+    def fromtdms(cls, name: str, defs_file: str | None = "pigbrother-defs.json") -> "TdmsMagnetData":
         """Create from a pigbrother TDMS file.
 
         :param name: filename with a .tdms extension
-        :param defs_file: optional path to a pigbrother-defs.json field definitions file
+        :param defs_file: path to a field definitions file; defaults to the
+            bundled ``pigbrother-defs.json``
         :raises FileNotFoundError: if *name* does not exist
         :raises RuntimeError: if file extension is not .tdms or required group missing
         :return: TdmsMagnetData instance
@@ -190,7 +191,7 @@ class MagnetData(PandasMagnetData):
         return TdmsMagnetData(name, Groups, Keys, Data, defs_file=defs_file)
 
     @classmethod
-    def fromtxt(cls, name: str, defs_file: str | None = None) -> "PandasMagnetData":
+    def fromtxt(cls, name: str, defs_file: str | None = "pupitre-defs.json") -> "PandasMagnetData":
         """Create from a pupitre .txt file."""
         validate_txt_format(name)
         with open(name) as f:

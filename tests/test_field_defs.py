@@ -165,12 +165,12 @@ class TestAliases:
         defs = load_defs(json_file)
         assert defs["Field"]["aliases"]["hybrid"] == "FEPC-LNCMI/B_HALL"
 
-    def test_add_alias_overwrites_existing_format(self, tmp_path: Path):
-        """add_alias on an existing format key should update its value."""
+    def test_add_alias_duplicate_is_skipped(self, tmp_path: Path):
+        """add_alias on an existing format key should leave the original value unchanged."""
         json_file = _make_minimal_defs(tmp_path / "defs.json")
         add_alias(json_file, "Idcct1", "pigbrother", "Courants_Alimentations/Courant_NEW")
         aliases = get_aliases(json_file, "Idcct1")
-        assert aliases["pigbrother"] == "Courants_Alimentations/Courant_NEW"
+        assert aliases["pigbrother"] == "Courants_Alimentations/Courant_A1"
 
     def test_add_alias_missing_key_raises(self, tmp_path: Path):
         json_file = _make_minimal_defs(tmp_path / "defs.json")

@@ -1,5 +1,15 @@
 {
   "_comment": "Field definitions for PUPITRE (.txt) data files. Each entry maps a column name to {description, symbol, unit}. unit must be a pint-parseable string; use null for dimensionless/time columns. 'aliases' maps housing-independent cross-references to pigbrother (Group/Channel key) and hybrid (FEPC_system/variable key). Housing-dependent mappings (e.g. IH=GR1 vs GR2 depending on housing) belong in site_config.py.",
+  "Date": {
+    "description": "Calendar date (YYYY.MM.DD)",
+    "symbol": "date",
+    "unit": null
+  },
+  "Time": {
+    "description": "Time of day (HH:MM:SS)",
+    "symbol": "time",
+    "unit": null
+  },
   "timestamp": {
     "description": "",
     "symbol": "time",

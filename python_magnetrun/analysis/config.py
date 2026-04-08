@@ -8,7 +8,7 @@ The configuration hierarchy is:
 
 - AnalysisConfig: Top-level configuration combining all settings
 
-  - SiteConfig: Site-specific channel mappings (M8, M9, M10)
+  - HousingConfig: Housing-specific channel mappings (M8, M9, M10)
   - ChannelMapping: Reference to current channel mappings
   - VoltageChannelMapping: Voltage probe channels per reference
   - ThresholdConfig: Detection thresholds for each channel
@@ -16,13 +16,13 @@ The configuration hierarchy is:
 
 Example usage::
 
-    from python_magnetrun.analysis.config import AnalysisConfig, SITE_CONFIGS
+    from python_magnetrun.analysis.config import AnalysisConfig, HOUSING_CONFIGS
 
     # Get complete configuration for M9
-    config = AnalysisConfig.for_site("M9")
+    config = AnalysisConfig.for_housing("M9")
 
-    # Access site-specific mappings
-    current_channel = config.site.reference_gr1_current  # "IH"
+    # Access housing-specific mappings
+    current_channel = config.housing.reference_gr1_current  # "IH"
 
     # Get threshold for signal detection
     threshold = config.thresholds.get("Courant_GR1")  # 0.5
@@ -33,17 +33,17 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-# SiteConfig and housing defaults live in site_config; re-exported here so
-# all existing callers (analysis/__init__.py, processing.py, cli.py, …)
+# HousingConfig and housing defaults live in housing_config; re-exported here
+# so all existing callers (analysis/__init__.py, processing.py, cli.py, …)
 # continue to work without any import changes.
 from python_magnetrun.data_dirs import (  # noqa: F401
     HYBRID_DATA_DIR as DEFAULT_HYBRID_DATA_DIR,
 )
-from python_magnetrun.site_config import (  # noqa: F401
+from python_magnetrun.housing_config import (  # noqa: F401
+    HOUSING_CONFIGS,
     ROLE_TO_FIELD,
-    SITE_CONFIGS,
-    SiteConfig,
-    get_site_config,
+    HousingConfig,
+    get_housing_config,
 )
 
 # Module logger
@@ -314,8 +314,8 @@ class VoltageChannelMapping:
 # =============================================================================
 # Site-specific configuration
 # =============================================================================
-# SiteConfig, SITE_CONFIGS, get_site_config and ROLE_TO_FIELD are defined in
-# python_magnetrun.site_config and imported + re-exported at the top of this
+# HousingConfig, HOUSING_CONFIGS, get_housing_config and ROLE_TO_FIELD are defined in
+# python_magnetrun.housing_config and imported + re-exported at the top of this
 # module.  Nothing more is needed here.
 
 
@@ -428,8 +428,8 @@ class AnalysisConfig:
 
     Attributes
     ----------
-    site : SiteConfig
-        Site-specific configuration
+    housing : HousingConfig
+        Housing-specific configuration
     channels : ChannelMapping
         Reference to current channel mapping
     voltage_channels : VoltageChannelMapping
@@ -441,14 +441,14 @@ class AnalysisConfig:
 
     Examples
     --------
-    >>> config = AnalysisConfig.for_site("M9")
-    >>> print(config.site.reference_gr1_current)
+    >>> config = AnalysisConfig.for_housing("M9")
+    >>> print(config.housing.reference_gr1_current)
     IH
     >>> print(config.thresholds.get("Courant_GR1"))
     0.5
     """
 
-    site: SiteConfig
+    housing: HousingConfig
     channels: ChannelMapping = field(default_factory=ChannelMapping)
     voltage_channels: VoltageChannelMapping = field(
         default_factory=VoltageChannelMapping
@@ -457,32 +457,32 @@ class AnalysisConfig:
     colors: ColorConfig = field(default_factory=ColorConfig)
 
     @classmethod
-    def for_site(cls, site_name: str) -> AnalysisConfig:
+    def for_housing(cls, housing_name: str) -> AnalysisConfig:
         """
-        Create configuration for a specific site.
+        Create configuration for a specific housing.
 
         Parameters
         ----------
-        site_name : str
-            Site identifier (e.g., "M8", "M9", "M10")
+        housing_name : str
+            Housing identifier (e.g., "M8", "M9", "M10")
 
         Returns
         -------
         AnalysisConfig
-            Complete configuration for the specified site
+            Complete configuration for the specified housing
 
         Raises
         ------
         ValueError
-            If site_name is not a known site
+            If housing_name is not a known housing
 
         Examples
         --------
-        >>> config = AnalysisConfig.for_site("M9")
-        >>> config.site.name
+        >>> config = AnalysisConfig.for_housing("M9")
+        >>> config.housing.name
         'M9'
         """
-        return cls(site=get_site_config(site_name))
+        return cls(housing=get_housing_config(housing_name))
 
     def get_pupitre_channel(self, reference_key: str) -> str:
         """
@@ -500,7 +500,7 @@ class AnalysisConfig:
         str
             Pupitre channel name
         """
-        return self.site.get_pupitre_channel(reference_key)
+        return self.housing.get_pupitre_channel(reference_key)
 
     def get_current_channel(self, reference_key: str) -> str:
         """

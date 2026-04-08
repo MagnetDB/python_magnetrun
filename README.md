@@ -189,11 +189,11 @@ Hybrid data does not require network mounting; simply point `--hybrid_datadir` t
 - Extract data from `srv-data-lncmi `
 - Prepare data for injection into `magnetdb`
 - Field-definition management (`*-defs.json`) with cross-format aliases
-- Per-housing sensor role configuration (`<Housing>-site-config.json`)
+- Per-housing sensor role configuration (`<Housing>-housing-config.json`)
 
 ---
 
-## Field definitions and site configuration
+## Field definitions and housing configuration
 
 ### Field definitions (`*-defs.json`)
 
@@ -209,7 +209,7 @@ physical metadata (symbol, unit, description) and cross-format aliases:
 **`"aliases"`** entries express housing-independent name correspondences between
 formats (e.g. `Idcct1` in pupitre = `Courants_Alimentations/Courant_A1` in
 pigbrother = `FEPC-AUX-LNCMI/ALIM1_J1` in hybrid). Housing-dependent mappings
-(e.g. `IH` is GR1 in M9 but GR2 in M8) belong in the site-config files.
+(e.g. `IH` is GR1 in M9 but GR2 in M8) belong in the housing-config files.
 
 #### File resolution
 
@@ -287,83 +287,83 @@ index["pupitre"]["Ucoil1"]
 #  "hybrid":     "FEPC-AUX-LNCMI/PH_V8"}
 ```
 
-### Housing / site configuration (`<Housing>-site-config.json`)
+### Housing configuration (`<Housing>-housing-config.json`)
 
 Each housing maps the same physical sensor set to GR roles differently.
 Bundled JSON templates ship with the package and are also hardcoded in the
-`SITE_CONFIGS` dict as an always-available fallback:
+`HOUSING_CONFIGS` dict as an always-available fallback:
 
 | Bundled file | Housing | Format docs |
 |---|---|---|
-| [`python_magnetrun/M9-site-config.json`](python_magnetrun/M9-site-config.json) | M9 (resistive only) | [pupitre](docs/pupitre.md), [pigbrother](docs/pigbrother.md) |
-| [`python_magnetrun/M8-site-config.json`](python_magnetrun/M8-site-config.json) | M8 (resistive + SC insert, hybrid) | [pupitre](docs/pupitre.md), [pigbrother](docs/pigbrother.md), [hybrid](docs/Hybride.md) |
-| [`python_magnetrun/M10-site-config.json`](python_magnetrun/M10-site-config.json) | M10 (resistive only) | [pupitre](docs/pupitre.md), [pigbrother](docs/pigbrother.md) |
+| [`python_magnetrun/M9-housing-config.json`](python_magnetrun/M9-housing-config.json) | M9 (resistive only) | [pupitre](docs/pupitre.md), [pigbrother](docs/pigbrother.md) |
+| [`python_magnetrun/M8-housing-config.json`](python_magnetrun/M8-housing-config.json) | M8 (resistive + SC insert, hybrid) | [pupitre](docs/pupitre.md), [pigbrother](docs/pigbrother.md), [hybrid](docs/Hybride.md) |
+| [`python_magnetrun/M10-housing-config.json`](python_magnetrun/M10-housing-config.json) | M10 (resistive only) | [pupitre](docs/pupitre.md), [pigbrother](docs/pigbrother.md) |
 
 #### File resolution
 
-`get_site_config(housing)` resolves configurations in this order:
+`get_housing_config(housing)` resolves configurations in this order:
 
 1. Explicit `json_file` argument — used directly.
-2. `~/.config/magnetrun/<Housing>-site-config.json` — persistent user override.
-3. Hardcoded built-in default from `SITE_CONFIGS`.
+2. `~/.config/magnetrun/<Housing>-housing-config.json` — persistent user override.
+3. Hardcoded built-in default from `HOUSING_CONFIGS`.
 
 To persist a customized config for a housing, copy it to the user config dir:
 
 ```bash
 # Start from the bundled template
-magnetrun-site-config M9-site-config.json create M9 --from-builtin M9
+magnetrun-housing-config M9-housing-config.json create M9 --from-builtin M9
 
-# Copy to user config dir so get_site_config("M9") picks it up automatically
-cp M9-site-config.json ~/.config/magnetrun/M9-site-config.json
+# Copy to user config dir so get_housing_config("M9") picks it up automatically
+cp M9-housing-config.json ~/.config/magnetrun/M9-housing-config.json
 
 # Edit in place
-magnetrun-site-config ~/.config/magnetrun/M9-site-config.json update \
+magnetrun-housing-config ~/.config/magnetrun/M9-housing-config.json update \
     --gr1-current IB --gr2-current IH
 ```
 
-Manage with the `magnetrun-site-config` CLI:
+Manage with the `magnetrun-housing-config` CLI:
 
 ```bash
 # Show a housing config
-magnetrun-site-config M9-site-config.json show
+magnetrun-housing-config M9-housing-config.json show
 
 # Create a new housing config initialised from M9 defaults
-magnetrun-site-config M11-site-config.json create M11 --from-builtin M9
+magnetrun-housing-config M11-housing-config.json create M11 --from-builtin M9
 
 # Update role fields in place
-magnetrun-site-config M9-site-config.json update \
+magnetrun-housing-config M9-housing-config.json update \
     --gr1-current IB --gr2-current IH
 ```
 
 Python API:
 
 ```python
-from python_magnetrun.site_config import (
-    get_site_config, load_site_config, save_site_config, update_site_config,
-    get_bundled_site_config_path, get_user_site_config_path,
+from python_magnetrun.housing_config import (
+    get_housing_config, load_housing_config, save_housing_config, update_housing_config,
+    get_bundled_housing_config_path, get_user_housing_config_path,
 )
 
 # Built-in default (also checks ~/.config/magnetrun/ first)
-cfg = get_site_config("M9")
+cfg = get_housing_config("M9")
 cfg.reference_gr1_current      # "IH"
 cfg.supports_format("hybrid")  # False
 
 # Find where the bundled template lives (read-only, inside the package)
-get_bundled_site_config_path("M9")
-# PosixPath('.../site-packages/python_magnetrun/M9-site-config.json')
+get_bundled_housing_config_path("M9")
+# PosixPath('.../site-packages/python_magnetrun/M9-housing-config.json')
 
 # Find (and create) the user-writable config path
-get_user_site_config_path("M9")
-# PosixPath('/home/you/.config/magnetrun/M9-site-config.json')
+get_user_housing_config_path("M9")
+# PosixPath('/home/you/.config/magnetrun/M9-housing-config.json')
 
 # From an explicit file
-cfg = get_site_config("M9", json_file="M9-site-config.json")
+cfg = get_housing_config("M9", json_file="M9-housing-config.json")
 
 # Runtime override (e.g. GR1/GR2 swapped for an atypical run)
-cfg = get_site_config("M9", overrides={"gr1_current": "IB", "gr2_current": "IH"})
+cfg = get_housing_config("M9", overrides={"gr1_current": "IB", "gr2_current": "IH"})
 
 # Update a file in place and get the new config back
-cfg = update_site_config("M9-site-config.json", {"gr1_current": "IB"})
+cfg = update_housing_config("M9-housing-config.json", {"gr1_current": "IB"})
 ```
 
 ---
@@ -531,12 +531,12 @@ python3 -m python_magnetrun.analysis.cli input.tdms \
 ```python
 from python_magnetrun.analysis import AnalysisConfig
 
-# Load pre-defined site configuration (M8, M9, M10)
-config = AnalysisConfig.for_site("M9")
+# Load pre-defined housing configuration (M8, M9, M10)
+config = AnalysisConfig.for_housing("M9")
 
-# Access site-specific channel mappings
-print(config.site.reference_gr1_current)   # "IH"
-print(config.site.reference_gr2_current)   # "IB"
+# Access housing-specific channel mappings
+print(config.housing.reference_gr1_current)   # "IH"
+print(config.housing.reference_gr2_current)   # "IB"
 
 # Get threshold for a channel
 threshold = config.thresholds.get("Courant_GR1")

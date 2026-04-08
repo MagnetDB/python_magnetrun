@@ -20,7 +20,7 @@ under the ``"aliases"`` key of each entry::
     }
 
 Housing-dependent role assignments (e.g. GR1 current = IH for M9 but IB for M8)
-are NOT stored here — they belong in ``site_config.py``.
+are NOT stored here — they belong in ``housing_config.py``.
 
 All public functions are pure file-IO helpers; they have no dependency on any
 MagnetData class so they can be used from CLIs, notebooks, or any data class.
@@ -101,6 +101,7 @@ def resolve_defs_file(
         f"or the package bundle. Searched: {udir}, {bundled.parent}"
     )
 
+
 # Sentinel — distinct from None so update_field_def can tell "not supplied"
 # from "explicitly set to None" (= dimensionless).
 _UNSET = object()
@@ -163,9 +164,7 @@ def add_field_def(
     defs = load_defs(json_file)
     if key in defs and not key.startswith("_"):
         if not overwrite:
-            logger.warning("add_field_def: %r already exists in %s — skipping", key, json_file)
-            print(f"Warning: {key!r} already exists in {json_file} — skipping (use --overwrite to replace)")
-            return
+            raise KeyError(f"{key!r} already exists in {json_file}")
         logger.info("add_field_def: overwriting existing entry %r", key)
     defs[key] = {"description": description, "symbol": symbol, "unit": unit}
     save_defs(json_file, defs)
@@ -277,7 +276,7 @@ def add_alias(
 
     Aliases express housing-independent name correspondences between formats.
     Do NOT use aliases for housing-dependent mappings (e.g. GR1=IH vs IB);
-    those belong in ``site_config.py``.
+    those belong in ``housing_config.py``.
 
     Parameters
     ----------
@@ -297,14 +296,20 @@ def add_alias(
     entry = defs[key]
     aliases: dict = entry.get("aliases", {})
     if format_name in aliases:
-        logger.warning("add_alias: %r already has alias %r = %r in %s — skipping", key, format_name, aliases[format_name], json_file)
-        print(f"Warning: {key!r} already has alias [{format_name!r}] = {aliases[format_name]!r} — skipping")
+        logger.warning(
+            f"add_alias: {key!r} already has alias {format_name!r} = {aliases[format_name]!r} in {json_file!r} — skipping"
+        )
+        print(
+            f"Warning: {key!r} already has alias [{format_name!r}] = {aliases[format_name]!r} — skipping"
+        )
         return
     aliases[format_name] = target_field
     entry["aliases"] = aliases
     defs[key] = entry
     save_defs(json_file, defs)
-    logger.info("add_alias: %r[%r] = %r in %s", key, format_name, target_field, json_file)
+    logger.info(
+        "add_alias: %r[%r] = %r in %s", key, format_name, target_field, json_file
+    )
 
 
 def remove_alias(
@@ -334,7 +339,9 @@ def remove_alias(
     del aliases[format_name]
     defs[key]["aliases"] = aliases
     save_defs(json_file, defs)
-    logger.info("remove_alias: removed %r alias from %r in %s", format_name, key, json_file)
+    logger.info(
+        "remove_alias: removed %r alias from %r in %s", format_name, key, json_file
+    )
 
 
 def get_aliases(json_file: str | Path, key: str) -> dict[str, str]:
@@ -428,14 +435,20 @@ def main() -> None:
     p_add = sub.add_parser("add", help="Add a new field entry")
     p_add.add_argument("key", help="Column/channel name")
     p_add.add_argument("symbol", help="Physical symbol (e.g. I, T, B)")
-    p_add.add_argument("unit", help='Pint-parseable unit string, or "null" for dimensionless')
+    p_add.add_argument(
+        "unit", help='Pint-parseable unit string, or "null" for dimensionless'
+    )
     p_add.add_argument("--description", default="", help="Human-readable description")
     p_add.add_argument(
-        "--overwrite", action="store_true", help="Replace the entry if it already exists"
+        "--overwrite",
+        action="store_true",
+        help="Replace the entry if it already exists",
     )
 
     # update
-    p_upd = sub.add_parser("update", help="Change symbol, unit, or description of a field")
+    p_upd = sub.add_parser(
+        "update", help="Change symbol, unit, or description of a field"
+    )
     p_upd.add_argument("key", help="Field name to update (must already exist)")
     p_upd.add_argument("--symbol", default=None, help="New symbol")
     p_upd.add_argument(

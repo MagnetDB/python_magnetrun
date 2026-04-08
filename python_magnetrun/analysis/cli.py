@@ -104,7 +104,7 @@ def main(args: list[str] | None = None) -> int:
     logger.debug(f"input_file: {parsed_args.input_file}")  # noqa: F823
 
     try:
-        from .config import get_site_config
+        from .config import get_housing_config
         from .metrics import (
             calc_correlation,
             calc_euclidean,
@@ -155,7 +155,7 @@ def main(args: list[str] | None = None) -> int:
                         continue
 
                     # Get site config for channel mappings
-                    site_config = get_site_config(record.site)
+                    site_config = get_housing_config(record.site)
 
                     # Build channel dictionaries for plotting
                     channels_dict = {

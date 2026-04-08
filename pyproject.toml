@@ -84,7 +84,7 @@ magnetrun-alimconfig = "python_magnetrun.configAlims.convertxml:main"
 magnetrun-pigbrother-logparser = "python_magnetrun.tdms.log_parser:main"
 magnetrun-processing = "python_magnetrun.processing.cli:main"
 magnetrun-field-defs = "python_magnetrun.field_defs:main"
-magnetrun-site-config = "python_magnetrun.site_config:main"
+magnetrun-housing-config = "python_magnetrun.housing_config:main"
 
 [tool.setuptools.packages.find]
 include = ["python_magnetrun*"]

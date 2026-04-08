@@ -45,11 +45,11 @@ import pandas as pd
 from .config import (
     DEFAULT_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
+    HOUSING_CONFIGS,
     SAMPLING_RATE_ARCHIVE,
     SAMPLING_RATE_INCIDENTS,
     SAMPLING_RATE_OVERVIEW,
-    SITE_CONFIGS,
-    SiteConfig,
+    HousingConfig,
 )
 from .loaders import (
     FileDiscovery,
@@ -324,7 +324,7 @@ def load_overview_data(
     ----------
     record : OverviewRecord
         Record to load data into
-    site_config : SiteConfig
+    site_config : HousingConfig
         Site configuration
     group : str
         TDMS group name
@@ -361,7 +361,7 @@ def load_overview_data(
 
 def load_archive_data(
     record: OverviewRecord,
-    site_config: SiteConfig,
+    site_config: HousingConfig,
     group: str,
     keys: list[str],
 ) -> pd.DataFrame:
@@ -372,7 +372,7 @@ def load_archive_data(
     ----------
     record : OverviewRecord
         Record to load data into
-    site_config : SiteConfig
+    site_config : HousingConfig
         Site configuration
     group : str
         TDMS group name
@@ -409,7 +409,7 @@ def load_archive_data(
 
 def load_pupitre_data(
     record: OverviewRecord,
-    site_config: SiteConfig,
+    site_config: HousingConfig,
     group: str,
     keys: list[str],
     extra_keys: list[str] | None = None,
@@ -421,7 +421,7 @@ def load_pupitre_data(
     ----------
     record : OverviewRecord
         Record to load data into
-    site_config : SiteConfig
+    site_config : HousingConfig
         Site configuration
     group : str
         TDMS group name
@@ -484,7 +484,7 @@ def load_pupitre_data(
 
 def load_incidents_data(
     record: OverviewRecord,
-    site_config: SiteConfig,
+    site_config: HousingConfig,
     group: str,
     keys: list[str],
     reference_t0: datetime,
@@ -496,7 +496,7 @@ def load_incidents_data(
     ----------
     record : OverviewRecord
         Record to load data into
-    site_config : SiteConfig
+    site_config : HousingConfig
         Site configuration
     group : str
         TDMS group name
@@ -547,7 +547,7 @@ def load_incidents_data(
 def process_overview_file(
     overview_file: str,
     config: ProcessingConfig,
-    site_config: SiteConfig | None = None,
+    site_config: HousingConfig | None = None,
 ) -> OverviewRecord:
     """
     Process a single overview file with all associated data.
@@ -562,7 +562,7 @@ def process_overview_file(
         Path to overview TDMS file
     config : ProcessingConfig
         Processing configuration
-    site_config : SiteConfig, optional
+    site_config : HousingConfig, optional
         Site-specific configuration (auto-detected if not provided)
 
     Returns
@@ -592,11 +592,11 @@ def process_overview_file(
 
     # Get site configuration
     if site_config is None:
-        if site not in SITE_CONFIGS:
+        if site not in HOUSING_CONFIGS:
             raise ValueError(
-                f"Unknown site: {site}. Available: {list(SITE_CONFIGS.keys())}"
+                f"Unknown site: {site}. Available: {list(HOUSING_CONFIGS.keys())}"
             )
-        site_config = SITE_CONFIGS[site]
+        site_config = HOUSING_CONFIGS[site]
 
     # Create record
     record = OverviewRecord(
@@ -781,7 +781,7 @@ def process_experiment(
 # =============================================================================
 
 
-def _get_pupitre_channel(site_config: SiteConfig, key: str) -> str | None:
+def _get_pupitre_channel(site_config: HousingConfig, key: str) -> str | None:
     """Get pupitre channel name for a key."""
     if key == "Courant_GR1":
         return site_config.reference_gr1_current
@@ -790,7 +790,7 @@ def _get_pupitre_channel(site_config: SiteConfig, key: str) -> str | None:
     return None
 
 
-def _get_pupitre_group(site_config: SiteConfig, group: str) -> list[str] | None:
+def _get_pupitre_group(site_config: HousingConfig, group: str) -> list[str] | None:
     """Get pupitre list of keys for a group."""
     keys = []
     if group == "Courants_Alimentations":
@@ -805,7 +805,7 @@ def _get_pupitre_group(site_config: SiteConfig, group: str) -> list[str] | None:
     return keys if keys else None
 
 
-def _get_pupitre_flow(site_config: SiteConfig) -> list[str] | None:
+def _get_pupitre_flow(site_config: HousingConfig) -> list[str] | None:
     """Get pupitre keys for flow."""
     keys = []
     if site_config.reference_gr1_flow:
@@ -847,7 +847,7 @@ def _synchronize_pupitre(record: OverviewRecord, config: ProcessingConfig) -> No
 
 def _extract_signatures(
     record: OverviewRecord,
-    site_config: SiteConfig,
+    site_config: HousingConfig,
     keys: list[str],
     config: ProcessingConfig,
 ) -> None:
@@ -875,7 +875,7 @@ def _extract_signatures(
 
 def _compute_lag_correlation(
     record: OverviewRecord,
-    site_config: SiteConfig,
+    site_config: HousingConfig,
     keys: list[str],
     config: ProcessingConfig,
 ) -> None:

@@ -138,18 +138,18 @@ print(f"GR2 current channel: {config.reference_gr2_current}")  # "IB"
 print(f"Supports hybrid: {config.supports_format('hybrid')}")  # False
 
 # Load from a custom per-housing JSON file
-config = get_site_config("M9", json_file="M9-site-config.json")
+config = get_housing_config("M9", json_file="M9-housing-config.json")
 
 # Runtime override (e.g. GR1/GR2 swapped for an atypical run)
-config = get_site_config("M9", overrides={"gr1_current": "IB", "gr2_current": "IH"})
+config = get_housing_config("M9", overrides={"gr1_current": "IB", "gr2_current": "IH"})
 
 # Create full analysis configuration
-analysis = AnalysisConfig.for_site("M9")
+analysis = AnalysisConfig.for_housing("M9")
 ```
 
 **Key Classes:**
-- `SiteConfig` - Housing-dependent sensor role assignments (defined in `site_config.py`)
-- `AnalysisConfig` - Full analysis configuration (site + thresholds + channels + colours)
+- `HousingConfig` - Housing-dependent sensor role assignments (defined in `housing_config.py`)
+- `AnalysisConfig` - Full analysis configuration (housing + thresholds + channels + colours)
 - `ColorConfig` - Plot color configuration
 - `ThresholdConfig` - Regime detection thresholds
 

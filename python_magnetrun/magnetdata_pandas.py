@@ -104,26 +104,21 @@ class PandasMagnetData(MagnetDataBase):
 
         ureg = _make_ureg()
 
-        # shall get units from fields_defs.json
-        # if not present in fields_def print a warnig
-        # try to infer unit from pattern matching as fallback (legacy)
+        # For keys not populated from JSON fall back to legacy pattern matching.
+        # Keys that match no pattern (e.g. 'Date', 'Time') are silently skipped.
         for key in self.Keys:
             if key in self.units:
                 continue  # already populated from JSON
             else:
-                logger.error(
-                    f"Units: no unit defined for key '{key}' in JSON file, trying to infer from pattern"
-                )
-                raise RuntimeError(
-                    f"Units: no unit defined for key '{key}' in JSON file, cannot infer from pattern"
+                logger.warning(
+                    f"Units: no JSON definition for key '{key}', applying legacy pattern matching"
                 )
 
-            """
-            Legacy pattern matching (fallback) - kept for backward compatibility,
-            but not recommended for new code.
-            """
-
-            if key == "timestamp":
+            # Legacy pattern matching fallback (kept for backward compatibility)
+            # TO be switched off
+            if key in ("Date", "Time"):
+                pass  # non-physical metadata columns — no unit needed
+            elif key == "timestamp":
                 self.units[key] = ("time", None)
             elif key == "t":
                 self.units[key] = ("t", ureg.second)
@@ -149,6 +144,8 @@ class PandasMagnetData(MagnetDataBase):
                 self.units[key] = ("Power", ureg.megawatt)
             elif key == "Q":
                 self.units[key] = ("Preac", ureg.megavar)
+            else:
+                logger.warning(f"Units: no unit defined for key '{key}' — skipping")
 
         if debug:
             logger.debug(f"Units: {self.Keys}")

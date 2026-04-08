@@ -1,4 +1,4 @@
-"""site_config — Housing-dependent sensor role assignments.
+"""housing_config — Housing-dependent sensor role assignments.
 
 Each housing (M8, M9, M10, …) wires the same physical sensors differently.
 This module captures those default role assignments and provides tools to
@@ -20,8 +20,8 @@ differs from the default (e.g. GR1 current = IB instead of IH for M9).
 - Analysis constants, sampling rates, thresholds, colours (those live in
   ``analysis/config.py``).
 
-**Per-housing JSON files** (``<Housing>-site-config.json``) are the
-canonical editable source.  The in-module ``SITE_CONFIGS`` dict is built
+**Per-housing JSON files** (``<Housing>-housing-config.json``) are the
+canonical editable source.  The in-module ``HOUSING_CONFIGS`` dict is built
 from those files at import time and used as a fast in-memory cache.
 
 Example
@@ -29,21 +29,21 @@ Example
 ::
 
     # Load directly from a JSON file
-    from python_magnetrun.site_config import load_site_config
-    cfg = load_site_config("M9-site-config.json")
+    from python_magnetrun.housing_config import load_housing_config
+    cfg = load_housing_config("M9-housing-config.json")
 
     # Get the built-in default (no file needed)
-    from python_magnetrun.site_config import get_site_config
-    cfg = get_site_config("M9")
+    from python_magnetrun.housing_config import get_housing_config
+    cfg = get_housing_config("M9")
     cfg.reference_gr1_current   # "IH"
 
     # Runtime override for an atypical M9 run (GR1/GR2 supplies swapped)
-    cfg_swapped = get_site_config("M9", overrides={"gr1_current": "IB",
-                                                    "gr2_current": "IH"})
+    cfg_swapped = get_housing_config("M9", overrides={"gr1_current": "IB",
+                                                      "gr2_current": "IH"})
 
     # Persist a modified config back to its JSON file
-    from python_magnetrun.site_config import update_site_config
-    update_site_config("M9-site-config.json", {"gr1_current": "IB"})
+    from python_magnetrun.housing_config import update_housing_config
+    update_housing_config("M9-housing-config.json", {"gr1_current": "IB"})
 """
 
 from __future__ import annotations
@@ -60,33 +60,34 @@ logger = logging.getLogger(__name__)
 _USER_CONFIG_DIR = Path.home() / ".config" / "magnetrun"
 
 
-def get_bundled_site_config_path(housing: str) -> Path:
-    """Return the path to the bundled ``<Housing>-site-config.json`` template.
+def get_bundled_housing_config_path(housing: str) -> Path:
+    """Return the path to the bundled ``<Housing>-housing-config.json`` template.
 
     Uses :mod:`importlib.resources` so it works correctly after installation.
-    The bundled file is read-only — use :func:`get_user_site_config_path` to
+    The bundled file is read-only — use :func:`get_user_housing_config_path` to
     obtain a writable user-local copy.
     """
-    filename = f"{housing}-site-config.json"
+    filename = f"{housing}-housing-config.json"
     ref = importlib.resources.files("python_magnetrun") / filename
     return Path(str(ref))
 
 
-def get_user_site_config_path(housing: str) -> Path:
-    """Return ``~/.config/magnetrun/<Housing>-site-config.json``.
+def get_user_housing_config_path(housing: str) -> Path:
+    """Return ``~/.config/magnetrun/<Housing>-housing-config.json``.
 
     The directory is created if it does not yet exist.  This is the
     recommended location for persistent per-housing customisations.
     """
     _USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    return _USER_CONFIG_DIR / f"{housing}-site-config.json"
+    return _USER_CONFIG_DIR / f"{housing}-housing-config.json"
+
 
 # ---------------------------------------------------------------------------
-# Role → SiteConfig field-name mapping
+# Role → HousingConfig field-name mapping
 # ---------------------------------------------------------------------------
 
 #: Maps semantic role names (used in ``overrides`` dicts) to the corresponding
-#: ``SiteConfig`` dataclass field names.
+#: ``HousingConfig`` dataclass field names.
 ROLE_TO_FIELD: dict[str, str] = {
     "gr1_current":          "reference_gr1_current",
     "gr2_current":          "reference_gr2_current",
@@ -105,19 +106,19 @@ _TUPLE_FIELDS = {"formats", "voltage_channels_gr1", "voltage_channels_gr2"}
 
 
 # ---------------------------------------------------------------------------
-# SiteConfig dataclass
+# HousingConfig dataclass
 # ---------------------------------------------------------------------------
 
 @dataclass(frozen=True)
-class SiteConfig:
+class HousingConfig:
     """Housing-specific sensor role assignment.
 
-    Captures the default wiring for one housing.  Use :func:`get_site_config`
+    Captures the default wiring for one housing.  Use :func:`get_housing_config`
     with ``overrides`` to obtain a modified copy for atypical runs.
 
-    The canonical source for each housing is a ``<Housing>-site-config.json``
-    file.  Use :func:`load_site_config` / :func:`save_site_config` to read
-    and write those files, and :func:`update_site_config` to modify individual
+    The canonical source for each housing is a ``<Housing>-housing-config.json``
+    file.  Use :func:`load_housing_config` / :func:`save_housing_config` to read
+    and write those files, and :func:`update_housing_config` to modify individual
     fields in place.
 
     Attributes
@@ -182,8 +183,8 @@ class SiteConfig:
         return d
 
     @classmethod
-    def from_dict(cls, d: dict) -> SiteConfig:
-        """Construct a :class:`SiteConfig` from a plain dict (lists → tuples).
+    def from_dict(cls, d: dict) -> HousingConfig:
+        """Construct a :class:`HousingConfig` from a plain dict (lists → tuples).
 
         Comment keys (starting with ``"_"``) are silently ignored.
         """
@@ -258,27 +259,27 @@ class SiteConfig:
 # JSON file I/O
 # ---------------------------------------------------------------------------
 
-def load_site_config(json_file: str | Path) -> SiteConfig:
-    """Load a :class:`SiteConfig` from a ``<Housing>-site-config.json`` file.
+def load_housing_config(json_file: str | Path) -> HousingConfig:
+    """Load a :class:`HousingConfig` from a ``<Housing>-housing-config.json`` file.
 
     Parameters
     ----------
     json_file:
-        Path to the JSON file (e.g. ``"M9-site-config.json"``).
+        Path to the JSON file (e.g. ``"M9-housing-config.json"``).
 
     Returns
     -------
-    SiteConfig
+    HousingConfig
         The loaded configuration.
     """
     with open(json_file) as fh:
         d = json.load(fh)
-    cfg = SiteConfig.from_dict(d)
-    logger.debug("load_site_config: loaded %r from %s", cfg.name, json_file)
+    cfg = HousingConfig.from_dict(d)
+    logger.debug("load_housing_config: loaded %r from %s", cfg.name, json_file)
     return cfg
 
 
-def save_site_config(json_file: str | Path, config: SiteConfig) -> None:
+def save_housing_config(json_file: str | Path, config: HousingConfig) -> None:
     """Write *config* to *json_file* (pretty-printed, trailing newline).
 
     Parameters
@@ -286,23 +287,23 @@ def save_site_config(json_file: str | Path, config: SiteConfig) -> None:
     json_file:
         Destination path.
     config:
-        The :class:`SiteConfig` to persist.
+        The :class:`HousingConfig` to persist.
     """
     with open(json_file, "w") as fh:
         json.dump(config.to_dict(), fh, indent=2)
         fh.write("\n")
-    logger.info("save_site_config: wrote %r to %s", config.name, json_file)
+    logger.info("save_housing_config: wrote %r to %s", config.name, json_file)
 
 
-def update_site_config(
+def update_housing_config(
     json_file: str | Path,
     overrides: dict,
-) -> SiteConfig:
+) -> HousingConfig:
     """Apply *overrides* to the config stored in *json_file* and save it.
 
     *overrides* is keyed by **role names** (see :data:`ROLE_TO_FIELD`), not
     by raw dataclass field names.  The file is updated in place and the new
-    :class:`SiteConfig` is returned.
+    :class:`HousingConfig` is returned.
 
     Parameters
     ----------
@@ -314,7 +315,7 @@ def update_site_config(
 
     Returns
     -------
-    SiteConfig
+    HousingConfig
         The updated configuration.
 
     Raises
@@ -325,22 +326,22 @@ def update_site_config(
     invalid = set(overrides) - set(ROLE_TO_FIELD)
     if invalid:
         raise ValueError(
-            f"update_site_config: unknown role(s) {sorted(invalid)}. "
+            f"update_housing_config: unknown role(s) {sorted(invalid)}. "
             f"Valid: {sorted(ROLE_TO_FIELD)}"
         )
-    base = load_site_config(json_file)
+    base = load_housing_config(json_file)
     field_overrides = {ROLE_TO_FIELD[role]: val for role, val in overrides.items()}
     # Convert lists → tuples for tuple fields
     for fname in _TUPLE_FIELDS:
         if fname in field_overrides and isinstance(field_overrides[fname], list):
             field_overrides[fname] = tuple(field_overrides[fname])
     new_cfg = dataclasses.replace(base, **field_overrides)
-    save_site_config(json_file, new_cfg)
-    logger.info("update_site_config: updated %r in %s", new_cfg.name, json_file)
+    save_housing_config(json_file, new_cfg)
+    logger.info("update_housing_config: updated %r in %s", new_cfg.name, json_file)
     return new_cfg
 
 
-def show_site_config(config: SiteConfig) -> None:
+def show_housing_config(config: HousingConfig) -> None:
     """Print a formatted summary of *config* to stdout."""
     print(f"Housing : {config.name}")
     print(f"Formats : {', '.join(config.formats)}")
@@ -360,8 +361,8 @@ def show_site_config(config: SiteConfig) -> None:
 # Pre-defined housing configurations (built-in defaults)
 # ---------------------------------------------------------------------------
 
-SITE_CONFIGS: dict[str, SiteConfig] = {
-    "M9": SiteConfig(
+HOUSING_CONFIGS: dict[str, HousingConfig] = {
+    "M9": HousingConfig(
         name="M9",
         formats=("pupitre", "pigbrother"),
         reference_gr1_current="IH",
@@ -380,7 +381,7 @@ SITE_CONFIGS: dict[str, SiteConfig] = {
         ),
         voltage_channels_gr2=("UB", "Ucoil15", "Ucoil16"),
     ),
-    "M8": SiteConfig(
+    "M8": HousingConfig(
         name="M8",
         formats=("pupitre", "pigbrother", "hybrid"),
         reference_gr1_current="IB",
@@ -399,7 +400,7 @@ SITE_CONFIGS: dict[str, SiteConfig] = {
             "Ucoil11", "Ucoil12", "Ucoil13", "Ucoil14",
         ),
     ),
-    "M10": SiteConfig(
+    "M10": HousingConfig(
         name="M10",
         formats=("pupitre", "pigbrother"),
         reference_gr1_current="IB",
@@ -426,18 +427,18 @@ SITE_CONFIGS: dict[str, SiteConfig] = {
 # Public factory
 # ---------------------------------------------------------------------------
 
-def get_site_config(
+def get_housing_config(
     housing: str,
     json_file: str | Path | None = None,
     overrides: dict | None = None,
-) -> SiteConfig:
-    """Return the :class:`SiteConfig` for *housing*.
+) -> HousingConfig:
+    """Return the :class:`HousingConfig` for *housing*.
 
     Resolution order:
 
     1. If *json_file* is given, load the base config from that file.
-    2. If ``~/.config/magnetrun/<Housing>-site-config.json`` exists, load it.
-    3. Otherwise use the built-in default from :data:`SITE_CONFIGS`.
+    2. If ``~/.config/magnetrun/<Housing>-housing-config.json`` exists, load it.
+    3. Otherwise use the built-in default from :data:`HOUSING_CONFIGS`.
     4. Apply *overrides* on top (if any).
 
     Parameters
@@ -446,7 +447,7 @@ def get_site_config(
         Housing identifier, e.g. ``"M8"``, ``"M9"``, ``"M10"``.
         Used only for validation when *json_file* is not given.
     json_file:
-        Optional path to a ``<Housing>-site-config.json`` file.
+        Optional path to a ``<Housing>-housing-config.json`` file.
         When provided, *housing* is verified against the ``"name"`` field
         in the file.
     overrides:
@@ -455,7 +456,7 @@ def get_site_config(
 
     Returns
     -------
-    SiteConfig
+    HousingConfig
         Immutable config, possibly loaded from file and/or overridden.
 
     Raises
@@ -469,34 +470,34 @@ def get_site_config(
     ::
 
         # Built-in default
-        cfg = get_site_config("M9")
+        cfg = get_housing_config("M9")
 
         # From a custom file
-        cfg = get_site_config("M9", json_file="my-M9-config.json")
+        cfg = get_housing_config("M9", json_file="my-M9-config.json")
 
         # Atypical run: GR1/GR2 swapped
-        cfg = get_site_config("M9", overrides={"gr1_current": "IB",
-                                                "gr2_current": "IH"})
+        cfg = get_housing_config("M9", overrides={"gr1_current": "IB",
+                                                   "gr2_current": "IH"})
     """
     if json_file is not None:
-        base = load_site_config(json_file)
+        base = load_housing_config(json_file)
         if base.name != housing:
             raise ValueError(
-                f"get_site_config: file {json_file!r} has name={base.name!r}, "
+                f"get_housing_config: file {json_file!r} has name={base.name!r}, "
                 f"expected {housing!r}"
             )
     else:
         # Check user config dir before falling back to hardcoded defaults.
-        user_file = _USER_CONFIG_DIR / f"{housing}-site-config.json"
+        user_file = _USER_CONFIG_DIR / f"{housing}-housing-config.json"
         if user_file.exists():
-            logger.debug("get_site_config: loading user config %s", user_file)
-            base = load_site_config(user_file)
-        elif housing not in SITE_CONFIGS:
+            logger.debug("get_housing_config: loading user config %s", user_file)
+            base = load_housing_config(user_file)
+        elif housing not in HOUSING_CONFIGS:
             raise ValueError(
-                f"Unknown housing: {housing!r}. Available: {sorted(SITE_CONFIGS)}"
+                f"Unknown housing: {housing!r}. Available: {sorted(HOUSING_CONFIGS)}"
             )
         else:
-            base = SITE_CONFIGS[housing]
+            base = HOUSING_CONFIGS[housing]
 
     if not overrides:
         return base
@@ -504,7 +505,7 @@ def get_site_config(
     invalid = set(overrides) - set(ROLE_TO_FIELD)
     if invalid:
         raise ValueError(
-            f"get_site_config: unknown override role(s): {sorted(invalid)}. "
+            f"get_housing_config: unknown override role(s): {sorted(invalid)}. "
             f"Valid roles: {sorted(ROLE_TO_FIELD)}"
         )
     field_overrides = {ROLE_TO_FIELD[role]: val for role, val in overrides.items()}
@@ -512,7 +513,7 @@ def get_site_config(
         if fname in field_overrides and isinstance(field_overrides[fname], list):
             field_overrides[fname] = tuple(field_overrides[fname])
     logger.info(
-        "get_site_config: %r with overrides %s", housing, overrides
+        "get_housing_config: %r with overrides %s", housing, overrides
     )
     return dataclasses.replace(base, **field_overrides)
 
@@ -522,16 +523,16 @@ def get_site_config(
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    """Entry point for the ``magnetrun-site-config`` command."""
+    """Entry point for the ``magnetrun-housing-config`` command."""
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="magnetrun-site-config",
-        description="Manage <Housing>-site-config.json housing configuration files.",
+        prog="magnetrun-housing-config",
+        description="Manage <Housing>-housing-config.json housing configuration files.",
     )
     parser.add_argument(
         "json_file",
-        help="Path to the <Housing>-site-config.json file",
+        help="Path to the <Housing>-housing-config.json file",
     )
 
     sub = parser.add_subparsers(dest="command", required=True)
@@ -563,27 +564,27 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "show":
-        cfg = load_site_config(args.json_file)
-        show_site_config(cfg)
+        cfg = load_housing_config(args.json_file)
+        show_housing_config(cfg)
 
     elif args.command == "create":
         if args.from_builtin:
-            if args.from_builtin not in SITE_CONFIGS:
+            if args.from_builtin not in HOUSING_CONFIGS:
                 parser.error(
                     f"Unknown built-in housing: {args.from_builtin!r}. "
-                    f"Available: {sorted(SITE_CONFIGS)}"
+                    f"Available: {sorted(HOUSING_CONFIGS)}"
                 )
-            base = SITE_CONFIGS[args.from_builtin]
+            base = HOUSING_CONFIGS[args.from_builtin]
             cfg = dataclasses.replace(base, name=args.housing)
         else:
-            cfg = SiteConfig(name=args.housing)
+            cfg = HousingConfig(name=args.housing)
         dest = Path(args.json_file)
-        save_site_config(dest, cfg)
+        save_housing_config(dest, cfg)
         print(f"Created {dest}")
-        user_path = get_user_site_config_path(args.housing)
+        user_path = get_user_housing_config_path(args.housing)
         if not user_path.exists() and dest != user_path:
             print(
-                f"Tip: copy to {user_path} so 'get_site_config({args.housing!r})' "
+                f"Tip: copy to {user_path} so 'get_housing_config({args.housing!r})' "
                 "picks it up automatically without specifying a path."
             )
 
@@ -595,9 +596,9 @@ def main() -> None:
         }
         if not role_overrides:
             parser.error("No fields to update — specify at least one --<role> option")
-        cfg = update_site_config(args.json_file, role_overrides)
+        cfg = update_housing_config(args.json_file, role_overrides)
         print(f"Updated {args.json_file}")
-        show_site_config(cfg)
+        show_housing_config(cfg)
 
 
 if __name__ == "__main__":
