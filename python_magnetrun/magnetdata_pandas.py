@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from datetime import datetime
 from typing import Any
@@ -573,6 +574,50 @@ class PandasMagnetData(MagnetDataBase):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(Type={self.Type!r}, Groups={self.Groups!r}, Keys={self.Keys!r}, Data={self.Data!r})"
 
+    # ------------------------------------------------------------------
+    # Factory classmethods
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def fromtxt(cls, name: str, defs_file: str | None = "pupitre-defs.json") -> PandasMagnetData:
+        """Create from a pupitre .txt file."""
+        from .utils.validation import validate_txt_format
+        validate_txt_format(name)
+        with open(name) as f:
+            if os.path.splitext(name)[-1] != ".txt":
+                raise RuntimeError(f"fromtxt: expect a txt filename - got {name}")
+            Data = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=1)
+            Keys = Data.columns.values.tolist()
+        return cls(name, {}, Keys, Data, defs_file=defs_file)
+
+    @classmethod
+    def fromcsv(cls, name: str, defs_file: str | None = None) -> PandasMagnetData:
+        """Create from a CSV file."""
+        from .utils.validation import validate_csv_format
+        validate_csv_format(name)
+        with open(name) as f:
+            Data = pd.read_csv(f, sep=",", engine="python", skiprows=0)
+            Keys = Data.columns.values.tolist()
+        return cls(name, {}, Keys, Data, defs_file=defs_file)
+
+    @classmethod
+    def fromStringIO(  # noqa: N802
+        cls, name: str, sep: str = r"\s+", skiprows: int = 1, defs_file: str | None = None
+    ) -> PandasMagnetData:
+        """Create from a StringIO / in-memory string."""
+        from io import StringIO
+
+        Data = pd.DataFrame()
+        Keys: list[str] = []
+        try:
+            Data = pd.read_csv(StringIO(name), sep=sep, engine="python", skiprows=skiprows)
+            Keys = Data.columns.values.tolist()
+        except (pd.errors.ParserError, ValueError, OSError):
+            logger.error("fromStringIO: trouble loading data")
+            with open("wrongdata.txt", "w", newline="\n") as fo:
+                fo.write(name)
+        return cls("stringIO", {}, Keys, Data, defs_file=defs_file)
+
 
 # ---------------------------------------------------------------------------
 # Thin subclasses — differ only in Type and/or loading logic
@@ -589,14 +634,44 @@ class EnsightMagnetData(PandasMagnetData):
 
     _TYPE: DataType = DataType.ENSIGHT
 
+    @classmethod
+    def fromensight(cls, name: str, defs_file: str | None = None) -> EnsightMagnetData:
+        """Create from a CSV ensight file."""
+        from .utils.validation import validate_file_exists
+        validate_file_exists(name)
+        with open(name) as f:
+            Data = pd.read_csv(f, sep=",", engine="python", skiprows=2)
+            Keys = Data.columns.values.tolist()
+        return cls(name, {}, Keys, Data, defs_file=defs_file)
+
 
 class BProfileMagnetData(PandasMagnetData):
     """B-profile CSV data (Index, Position, Profile columns, Type=0)."""
 
     _TYPE: DataType = DataType.PUPITRE
 
+    @classmethod
+    def frombprofile(cls, name: str, defs_file: str | None = None) -> BProfileMagnetData:
+        """Create from a bprofile CSV file (Index, Position, Profile columns)."""
+        from .utils.validation import validate_csv_format
+        validate_csv_format(name)
+        with open(name) as f:
+            Data = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=0)
+            Keys = Data.columns.values.tolist()
+        return cls(name, {}, Keys, Data, defs_file=defs_file)
+
 
 class FeelppMagnetData(PandasMagnetData):
     """feelpp simulation CSV data (Type=0)."""
 
     _TYPE: DataType = DataType.PUPITRE
+
+    @classmethod
+    def fromfeelpp(cls, name: str, skiprows: int = 0, defs_file: str | None = None) -> FeelppMagnetData:
+        """Create from a feelpp simulation CSV file."""
+        from .utils.validation import validate_csv_format
+        validate_csv_format(name)
+        with open(name) as f:
+            Data = pd.read_csv(f, sep=",", engine="python", skiprows=skiprows)
+            Keys = Data.columns.values.tolist()
+        return cls(name, {}, Keys, Data, defs_file=defs_file)

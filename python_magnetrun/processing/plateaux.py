@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..magnetdata import MagnetData
+from ..magnetdata import load_magnetdata
+from ..magnetdata_base import MagnetDataBase
 from ..utils.sequence import list_duplicates_of, list_sequence
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ def tuple_type(strings: str) -> tuple:
 
 
 def nplateaus(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     xField: tuple,
     yField: tuple,
     threshold: float = 2.0e-2,
@@ -185,7 +186,7 @@ def nplateaus(
 
 
 def plateaus(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     yField: tuple = ("Field", "B", "T"),
     twindows=6,
     threshold=1.0e-4,
@@ -407,7 +408,7 @@ def main():
     num_points_threshold = args.min_num_points
 
     for name in args.input_files:
-        Data = MagnetData.fromtxt(name)
+        Data = load_magnetdata(name)
         nplateaus(Data, xField, yField, threshold, num_points_threshold, show, save)
 
 

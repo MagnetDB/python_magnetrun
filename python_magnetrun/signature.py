@@ -4,7 +4,7 @@ from datetime import datetime
 import pandas as pd
 import pint
 
-from python_magnetrun.magnetdata import MagnetData
+from python_magnetrun.magnetdata_base import MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ class Signature:
     @classmethod
     def from_mdata(
         cls,
-        mdata: MagnetData,
+        mdata: MagnetDataBase,
         key: str,
         tkey: str,
         threshold: float,

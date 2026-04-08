@@ -117,19 +117,19 @@ def parse_date_from_filename(filename: str | Path) -> datetime:
 
 def find_pupitre_files(
     date: datetime,
-    site: str,
+    housing: str,
     pupitre_datadir: str | Path,
     hours: range | list[int] | None = None,
 ) -> list[str]:
     """
-    Find pupitre files for a given date and site.
+    Find pupitre files for a given date and housing.
 
     Parameters
     ----------
     date : datetime
         Date to search for
-    site : str
-        Site name (M9, M10, etc.)
+    housing : str
+        Housing name (M9, M10, etc.)
     pupitre_datadir : Path
         Base directory for pupitre data
     hours : range, list of int, or None
@@ -142,11 +142,11 @@ def find_pupitre_files(
         List of matching pupitre file paths
     """
     pupitre_datadir = Path(pupitre_datadir)
-    site_dir = pupitre_datadir / site
+    housing_dir = pupitre_datadir / housing
 
     # Format: 2025.01.27 - 15:39:29.txt
     date_pattern = f"{date.year}.{date.month:02d}.{date.day:02d}*.txt"
-    pattern = str(site_dir / date_pattern)
+    pattern = str(housing_dir / date_pattern)
 
     files = sorted(glob.glob(pattern))
     if hours is None:
@@ -163,19 +163,19 @@ def find_pupitre_files(
 
 def find_tdms_overview_files(
     date: datetime,
-    site: str,
+    housing: str,
     pigbrother_datadir: str | Path,
     hours: range | list[int] | None = None,
 ) -> list[str]:
     """
-    Find Overview TDMS files for a given date and site.
+    Find Overview TDMS files for a given date and housing.
 
     Parameters
     ----------
     date : datetime
         Date to search for
-    site : str
-        Site name (M9, M10, etc.)
+    housing : str
+        Housing name (M9, M10, etc.)
     pigbrother_datadir : Path
         Base directory for pigbrother data
     hours : range, list of int, or None
@@ -188,11 +188,13 @@ def find_tdms_overview_files(
         List of matching Overview TDMS file paths
     """
     pigbrother_datadir = Path(pigbrother_datadir)
-    overview_dir = pigbrother_datadir / site / "Overview"
+    overview_dir = pigbrother_datadir / housing / "Overview"
 
     # Format: M9_Overview_250127-*.tdms (YY = year - 2000)
     year_yy = date.year % 100
-    date_pattern = f"{site}_Overview_{year_yy:02d}{date.month:02d}{date.day:02d}-*.tdms"
+    date_pattern = (
+        f"{housing}_Overview_{year_yy:02d}{date.month:02d}{date.day:02d}-*.tdms"
+    )
     pattern = str(overview_dir / date_pattern)
 
     files = sorted(glob.glob(pattern))
@@ -239,7 +241,7 @@ def t0_from_tdms_filename(filename: str) -> float:
     """
     Extract start time as seconds from midnight from a TDMS overview filename.
 
-    Expected stem format: '<site>_Overview_YYMMDD-HHMM'
+    Expected stem format: '<housing>_Overview_YYMMDD-HHMM'
     Example: 'M8_Overview_251105-0949.tdms'
 
     Returns
@@ -266,7 +268,7 @@ def t0_from_tdms_filename(filename: str) -> float:
 
 
 def load_pupitre_data(
-    pupitre_file: str | Path, site: str, insert: str = "Unknown"
+    pupitre_file: str | Path, housing: str, insert: str = "Unknown"
 ) -> MagnetRun:
     """
     Load pupitre data from a text file.
@@ -275,8 +277,8 @@ def load_pupitre_data(
     ----------
     pupitre_file : str or Path
         Path to pupitre txt file
-    site : str
-        Site name (M9, M10, etc.)
+    housing : str
+        Housing name (M9, M10, etc.)
     insert : str
         Insert name
 
@@ -286,11 +288,11 @@ def load_pupitre_data(
         MagnetRun object containing the pupitre data
     """
     logger.info(f"Loading pupitre data from: {pupitre_file}")
-    return MagnetRun.fromtxt(site, insert, str(pupitre_file))
+    return MagnetRun.fromtxt(housing, insert, str(pupitre_file))
 
 
 def load_tdms_data(
-    tdms_file: str | Path, site: str, insert: str = "Unknown"
+    tdms_file: str | Path, housing: str, insert: str = "Unknown"
 ) -> MagnetRun:
     """
     Load TDMS data from a pigbrother Overview file.
@@ -299,8 +301,8 @@ def load_tdms_data(
     ----------
     tdms_file : str or Path
         Path to TDMS overview file
-    site : str
-        Site name (M9, M10, etc.)
+    housing : str
+        Housing name (M9, M10, etc.)
     insert : str
         Insert name
 
@@ -310,7 +312,7 @@ def load_tdms_data(
         MagnetRun object containing the TDMS data
     """
     logger.info(f"Loading TDMS data from: {tdms_file}")
-    return MagnetRun.fromtdms(site, insert, str(tdms_file))
+    return MagnetRun.fromtdms(housing, insert, str(tdms_file))
 
 
 def plot_comparison(
@@ -318,7 +320,7 @@ def plot_comparison(
     pupitre_data: list[MagnetRun],
     tdms_data: list[MagnetRun],
     hybrid_key: str,
-    site: str,
+    housing: str,
     hours: range | list[int] | None = None,
     normalize: bool = False,
 ) -> tuple[Figure, Axes]:
@@ -335,8 +337,8 @@ def plot_comparison(
         TDMS data list (can be empty).
     hybrid_key : str
         Key for hybrid data (e.g., 'kHz/FEPC-AUX-LNCMI/ALIM1_J1').
-    site : str
-        Site name for field mapping.
+    housing : str
+        Housing name for field mapping (e.g., 'M9', 'M10').
     hours : range, list of int, or None, optional
         Hours to restrict the plot to.
     normalize : bool, optional
@@ -535,7 +537,7 @@ def plot_comparison(
 
     ax.set_xlabel("Time (seconds)")
     ax.set_ylabel("Normalized value (a.u.)" if normalize else "Value")
-    ax.set_title(f"Comparison: {hybrid_key} - Site {site}")
+    ax.set_title(f"Comparison: {hybrid_key}")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
@@ -558,19 +560,19 @@ def main() -> int:
         epilog="""
 Examples:
   # Plot FEPC-AUX-LNCMI data for a specific date
-  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --site Hybrid
+  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing Hybrid
 
   # Specify custom data directories
-  python %(prog)s -d 2025-01-27 -s FEPC-LNCMI -k I_H1 --site Hybrid \\
+  python %(prog)s -d 2025-01-27 -s FEPC-LNCMI -k I_H1 --housing Hybrid \\
       --hybrid-dir /path/to/hybrid/data \\
       --pupitre_datadir /path/to/pupitre \\
       --pigbrother_datadir /path/to/pigbrother
 
   # Plot only specific hours (comma-separated list)
-  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --site Hybrid --hours 10,11,12
+  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing Hybrid --hours 10,11,12
 
   # Plot a range of hours (colon notation: start:stop, stop excluded)
-  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --site Hybrid --hours 10:13
+  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing Hybrid --hours 10:13
         """,
     )
 
@@ -594,10 +596,6 @@ Examples:
         "--key",
         required=True,
         help="Variable name to plot (e.g., ALIM1_J1, I_H1)",
-    )
-
-    parser.add_argument(
-        "--site", required=True, type=str, help="site -- aka assembly magnet name"
     )
 
     parser.add_argument(
@@ -700,7 +698,7 @@ Examples:
         print(f"Found {len(pupitre_files)} pupitre file(s)")
         for pupitre_file in pupitre_files:
             try:
-                pdata = load_pupitre_data(pupitre_file, args.site, args.insert)
+                pdata = load_pupitre_data(pupitre_file, housing, args.insert)
                 logger.debug(f"Pupitre keys: {pdata.getMData().getKeys()[:10]}...")
                 pupitre_data.append(pdata)
             except (OSError, ValueError, RuntimeError) as e:
@@ -723,7 +721,7 @@ Examples:
         print(f"Found {len(tdms_files)} TDMS Overview file(s)")
         for tdms_file in tdms_files:
             try:
-                tdata = load_tdms_data(tdms_file, args.site, args.insert)
+                tdata = load_tdms_data(tdms_file, housing, args.insert)
                 logger.debug(f"TDMS keys: {tdata.getMData().getKeys()[:10]}...")
                 tdms_data.append(tdata)
             except (OSError, ValueError, RuntimeError) as e:
@@ -744,7 +742,7 @@ Examples:
         pupitre_data,
         tdms_data,
         hybrid_key,
-        args.site,
+        args.housing,
         hours=hours,
         normalize=args.normalize,
     )

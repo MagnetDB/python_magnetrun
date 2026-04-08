@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from python_magnetrun.magnetdata import MagnetData
+from python_magnetrun.magnetdata import load_magnetdata
 from python_magnetrun.utils.validation import (
     FileFormatError,
     validate_csv_format,
@@ -223,16 +223,16 @@ class TestValidateFEPCBinaryFormat:
 class TestMagnetDataFromtxtValidation:
     def test_missing_file_raises_file_not_found(self, tmp_path):
         with pytest.raises(FileNotFoundError):
-            MagnetData.fromtxt(str(tmp_path / "no_such.txt"))
+            load_magnetdata(str(tmp_path / "no_such.txt"))
 
     def test_wrong_headers_raises_file_format_error(self, tmp_path):
         f = tmp_path / "bad.txt"
         f.write_text("metadata\nField\tIcoil1\n1.0\t2.0\n")
         with pytest.raises(FileFormatError, match="missing required header columns"):
-            MagnetData.fromtxt(str(f))
+            load_magnetdata(str(f))
 
     def test_valid_file_loads(self):
-        md = MagnetData.fromtxt(str(SAMPLE_TXT))
+        md = load_magnetdata(str(SAMPLE_TXT))
         assert "Date" in md.getKeys()
         assert "Time" in md.getKeys()
 
@@ -242,20 +242,20 @@ class TestMagnetDataFromtdmsValidation:
         f = tmp_path / "fake.tdms"
         f.write_bytes(b"\x89PNG" + b"\x00" * 100)
         with pytest.raises(FileFormatError, match="expected TDMS magic"):
-            MagnetData.fromtdms(str(f))
+            load_magnetdata(str(f))
 
     def test_missing_file_raises_file_not_found(self, tmp_path):
         with pytest.raises(FileNotFoundError):
-            MagnetData.fromtdms(str(tmp_path / "no_such.tdms"))
+            load_magnetdata(str(tmp_path / "no_such.tdms"))
 
 
 class TestMagnetDataFromcsvValidation:
     def test_missing_file_raises_file_not_found(self, tmp_path):
         with pytest.raises(FileNotFoundError):
-            MagnetData.fromcsv(str(tmp_path / "no_such.csv"))
+            load_magnetdata(str(tmp_path / "no_such.csv"))
 
     def test_empty_file_raises_file_format_error(self, tmp_path):
         f = tmp_path / "empty.csv"
         f.write_bytes(b"")
         with pytest.raises(FileFormatError, match="empty"):
-            MagnetData.fromcsv(str(f))
+            load_magnetdata(str(f))

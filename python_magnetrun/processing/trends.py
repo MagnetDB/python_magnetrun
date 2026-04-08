@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from python_magnetrun.magnetdata import MagnetData
+from python_magnetrun.magnetdata_base import MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +136,7 @@ def trends_df(
 
 
 def trends(
-    mdata: MagnetData,
+    mdata: MagnetDataBase,
     tkey: str,
     key: str,
     window: int = 1,

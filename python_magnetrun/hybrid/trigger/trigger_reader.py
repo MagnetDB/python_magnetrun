@@ -24,6 +24,11 @@ from ..kHz.fepc_reader import CalibrationInfo, FEPCConfig, parse_cfg_file
 # Setup logger
 logger = logging.getLogger(__name__)
 
+# Trigger format constants
+TRIGGER_SAMPLING_FREQUENCY = (
+    10000.0  # Sampling frequency in Hz for trigger files (10 kHz)
+)
+
 
 @dataclass
 class TriggerInfo:
@@ -35,8 +40,8 @@ class TriggerInfo:
     rtblock_id: int
     rtblock_phase: int
     trigger_approx_timestamp: datetime | None = None
-    pre_samples: int = 200000  # 20s * 10kHz
-    post_samples: int = 500000  # 50s * 10kHz
+    pre_samples: int = 200000  # 20s * TRIGGER_SAMPLING_FREQUENCY
+    post_samples: int = 500000  # 50s * TRIGGER_SAMPLING_FREQUENCY
     total_samples: int = 700000
 
     @property
@@ -449,7 +454,9 @@ def read_trigger_data(
     return data, timestamp, config
 
 
-def create_time_array(num_samples: int, sampling_freq: float = 10000.0) -> np.ndarray:
+def create_time_array(
+    num_samples: int, sampling_freq: float = TRIGGER_SAMPLING_FREQUENCY
+) -> np.ndarray:
     """
     Create time array for trigger data
 

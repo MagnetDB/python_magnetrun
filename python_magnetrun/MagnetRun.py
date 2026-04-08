@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-from .magnetdata import MagnetData, load_magnetdata
+from .magnetdata import load_magnetdata
 from .magnetdata_base import MagnetDataBase
 from .magnetdata_pandas import PandasMagnetData
 from .runetl import prepareData
@@ -113,7 +113,7 @@ class MagnetRun:
                 insert = headers[1]
             if not site.startswith(insert):
                 logger.debug(f"MagnetRun:fromStringIO: site={site}, insert={insert}")
-            data = MagnetData.fromStringIO(name)
+            data = PandasMagnetData.fromStringIO(name)
             # print(f'data keys({len(data.getKeys())}): {data.getKeys()}')
             prepareData(data, housing)
 

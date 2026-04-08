@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..magnetdata import MagnetData
+from ..magnetdata_base import MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ def compute_lag(
 
 
 def pearson(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     fields: list[str],
     save: bool = False,
     show: bool = False,
@@ -280,7 +280,7 @@ def crosscorr(datax: pd.Series, datay: pd.Series, lag: int = 0, wrap: bool = Fal
 
 
 def tlcc(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     xfield: str,
     yfield: str,
     save: bool = False,
@@ -317,7 +317,7 @@ def tlcc(
 
 
 def wtlcc(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     xfield: str,
     yfield: str,
     save: bool = False,
@@ -359,7 +359,7 @@ def wtlcc(
 
 
 def rwtlcc(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     xfield: str,
     yfield: str,
     save: bool = False,

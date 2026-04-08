@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from ..log_utils import SIMPLE_FORMAT, setup_logging
-from ..magnetdata import MagnetData
+from ..magnetdata_base import MagnetDataBase
 from ..MagnetRun import MagnetRun
 
 ##from IPython.display import Image
@@ -26,7 +26,7 @@ from .smoothers import kernel_function, lowess_ag, lowess_bell_shape_kern, lowes
 logger = logging.getLogger(__name__)
 
 
-def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:
+def addtime(mdata: MagnetDataBase, group: str, channel: str) -> pd.DataFrame:
     logger.debug("addtime")
 
     df = pd.DataFrame(mdata.Data[group][channel])

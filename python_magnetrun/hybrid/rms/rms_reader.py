@@ -161,7 +161,7 @@ class RMSFileReader:
 
     def _parse_frequency(self, line: str) -> None:
         """Parse the sampling frequency line."""
-        # Format: # frequency = 10.000 Hz
+        # Format: # frequency = 0.1 Hz
         match = re.search(r"# frequency\s*=\s*([\d.]+)\s*Hz", line)
         if match:
             self.metadata["frequency"] = float(match.group(1))
@@ -314,33 +314,30 @@ class RMSFileReader:
         if not self.metadata:
             self.parse_header()
 
-        logger.info(f"RMS File: {self.filepath.name}")
-        logger.info("=" * 60)
-        logger.info(f"Format: {self.metadata.get('format', 'Unknown')}")
-        logger.info(
-            f"Sampling Frequency: {self.metadata.get('frequency', 'Unknown')} Hz"
-        )
-        logger.info(f"Start Time: {self.metadata.get('start_time', 'Unknown')}")
-        logger.info(f"End Time: {self.metadata.get('end_time', 'Unknown')}")
-        logger.info(f"Data Offset: 0x{self.metadata.get('data_offset', 0):x}")
-        logger.info(
-            f"Sample Width: {self.metadata.get('sample_width', 'Unknown')} bytes"
-        )
-        logger.info(
+        print(f"RMS File: {self.filepath.name}")
+        print("=" * 60)
+        print(f"Format: {self.metadata.get('format', 'Unknown')}")
+        print(f"Sampling Frequency: {self.metadata.get('frequency', 'Unknown')} Hz")
+        print(f"Start Time: {self.metadata.get('start_time', 'Unknown')}")
+        print(f"End Time: {self.metadata.get('end_time', 'Unknown')}")
+        print(f"Data Offset: 0x{self.metadata.get('data_offset', 0):x}")
+        print(f"Sample Width: {self.metadata.get('sample_width', 'Unknown')} bytes")
+        print(
             f"Timestamp Size: {self.metadata.get('timestamp_bytes', 'Unknown')} bytes"
         )
-        logger.info(f"Number of Variables: {len(self.variables)}")
+        print(f"Number of Variables: {len(self.variables)}")
 
         # Count analog vs digital
         analog_count = sum(1 for v in self.variables if v.is_analog)
         digital_count = len(self.variables) - analog_count
-        logger.info(f"  - Analog: {analog_count}")
-        logger.info(f"  - Digital: {digital_count}")
+        print(f"  - Analog: {analog_count}")
+        print(f"  - Digital: {digital_count}")
 
         if self.data is not None:
-            logger.info(f"Number of Samples: {len(self.data)}")
+            print(f"Number of Samples: {len(self.data)}")
             duration = (self.data.index[-1] - self.data.index[0]).total_seconds()
-            logger.info(f"Duration: {duration:.2f} seconds")
+            print(f"Duration: {duration:.2f} seconds")
+        print(flush=True)
 
 
 # Convenience functions
