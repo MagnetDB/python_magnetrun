@@ -15,7 +15,6 @@ ERRORS=()
 # Change to repo root
 cd "$(dirname "$0")" || exit 1
 
-NSRVDATA="nsrvdata"
 TESTS="tests"
 EXAMPLES="examples"
 PKGDIR="python_magnetrun"
@@ -54,7 +53,7 @@ echo "--- Basic Usage ---"
 
 # 1: List available fields
 run_cmd 1 python3 -m python_magnetrun.cli \
-    --housing M9 "2019.02.14 - 23:00:38.txt" info --list
+    --housing M9 '"2019.02.14 - 23:00:38.txt"' info --list
 
 # 2: Select records by criteria
 run_cmd 2 python3 "$EXAMPLES/get-record.py" --housing M8 '2025.*.txt' \
@@ -71,8 +70,8 @@ run_cmd 4 python3 -m python_magnetrun.cli \
          --key_vs_key "timestamp-Courants_Alimentations/Référence_GR1"
 
 # 5: Hybrid plot — requires external files not in repo
-skip_cmd 5 "requires external hybrid/tdms data" \
-    "python3 -m python_magnetrun.cli --housing M9 M9_Overview_240509-1634.tdms '"2024.05.09 - 16:34:03.txt"' --hybrid_datadir /mnt/LNCMIG-Data/records/CEA ..."
+skip_cmd 5 "requires external hybrid data" \
+    "python3 -m python_magnetrun.cli --housing M8 M8_Overview_250522-0802.tdms '"2025.05.22 - 08:02:56.txt"' --hybrid_datadir /mnt/LNCMIG-Data/records/CEA ..."
 
 echo ""
 echo "--- Statistics and plateau detection ---"
@@ -81,7 +80,7 @@ echo "--- Statistics and plateau detection ---"
 run_cmd 6 python3 -m python_magnetrun.cli "data/*.txt" stats
 
 # 7: Stats with plateau
-run_cmd 7 python3 -m python_magnetrun.cli --housing M8 '"2025."*.txt' stats --plateau
+run_cmd 7 python3 -m python_magnetrun.cli --housing M8 '2025.*.txt' stats --plateau
 
 # 8: Aggregate
 run_cmd 8 python3 "$EXAMPLES/get-record.py" --housing M9 '2025.*.txt' \
@@ -97,7 +96,7 @@ run_cmd 9 python3 -m python_magnetrun.cli \
 
 # 10: pigbrother add formula (pigbrother TDMS resolved via env)
 run_cmd 10 python3 -m python_magnetrun.cli \
-    M10_Overview_201003-0956.tdms \
+    --housing M10 M10_Overview_201003-0956.tdms \
     add --formula '"Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6"' --plot --save
 
 echo ""
@@ -112,7 +111,7 @@ run_cmd 13 magnetrun-field-defs "$PKGDIR/pupitre-defs.json" \
     delete NewSensor
 
 run_cmd 14 magnetrun-field-defs "$PKGDIR/pupitre-defs.json" \
-    update Field --symbol Bz --description '"Axial field"'
+    update Field --symbol Bz --description '"Resistive Magnets Axial field"'
 
 run_cmd 15 magnetrun-field-defs "$PKGDIR/pupitre-defs.json" \
     alias-add Idcct1 hybrid "FEPC-AUX-LNCMI/ALIM1_J1"
@@ -151,17 +150,12 @@ echo ""
 echo "--- Advanced Usage: Breakpoint detection ---"
 
 run_cmd 24 python3 "$TESTS/test-signature.py" \
-    --housing M9 "2025.01.27 - 15:39:29.txt" --window=10 --threshold 1.e-2
+    --housing M9 '"2025.01.27 - 15:39:29.txt"' --window=10 --threshold 1.e-2
 
 # 25: pigbrother analysis (TDMS resolved via env)
-if [[ -n "${PIGBROTHER_DATADIR:-}" ]]; then
-    run_cmd 25 python3 -m python_magnetrun.analysis \
-        M10_Overview_250211-*.tdms \
-        --key Référence_GR1 --show --synchronize
-else
-    skip_cmd 25 "PIGBROTHER_DATADIR not set" \
-        "python3 -m python_magnetrun.analysis M10_Overview_250211-*.tdms --key Référence_GR1 ..."
-fi
+run_cmd 25 python3 -m python_magnetrun.analysis \
+    --housing M10 M10_Overview_250211-*.tdms \
+    --key Référence_GR1 --show --synchronize
 
 echo ""
 echo "--- Advanced Usage: Anomaly detection ---"
@@ -178,19 +172,18 @@ echo ""
 echo "--- Advanced Usage: Piecewise linear regression ---"
 
 run_cmd 29 python3 "$EXAMPLES/corr_Ih_Ib.py" \
-    "$NSRVDATA/M9_2024.11.06---16:43:44.txt" \
+    --housing M9 '"2024.11.06 - 16:43:44.txt"' \
     --xkey IH --ykey IB --algo piecewise_regression --breakpoints 2
 
 run_cmd 30 python3 "$EXAMPLES/corr_Ih_Ib.py" \
-    "$NSRVDATA/M9_2024.11.06---16:43:44.txt" \
+    --housing M9 '"2024.11.06 - 16:43:44.txt"' \
     --xkey t --ykey Field --algo pwlf --breakpoints 11
 
 echo ""
 echo "--- Advanced Usage: Field factor identification ---"
 
 # 31: requires file from home directory
-skip_cmd 31 "requires ~/M9_2024.05.13---16_30_51.txt" \
-    "python3 $TESTS/test-fieldfactor.py ~/M9_2024.05.13---16_30_51.txt"
+run_cmd 31 python3 $TESTS/test-fieldfactor.py --housing M9 '"2024.05.13---16_30_51.txt"'
 
 # Clean up generated files
 rm -f M11-site-config.json analysis.json analysis.log

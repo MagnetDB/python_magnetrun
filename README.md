@@ -374,7 +374,14 @@ cfg = update_housing_config("M9-housing-config.json", {"gr1_current": "IB"})
 
 ```bash
 python3 -m python_magnetrun.cli \
-    srvdata/M9_2019.02.14---23:00:38.txt info --list
+    data/M9_2019.02.14-23_00_38.txt info --list
+```
+
+or use data from predefined directories:
+
+```bash
+python3 -m python_magnetrun.cli \
+    --housing M9 "2019.02.14 - 23:00:38.txt" info --list
 ```
 
 ### Select records by criteria
@@ -384,6 +391,13 @@ List records lasting at least 60 s with a magnetic field above 18 T:
 ```bash
 python3 examples/get-record.py \
     srvdata/M8*.txt select --duration 60 --field 18.
+```
+
+or use data from predefined directories:
+
+```bash
+python3 examples/get-record.py \
+    --housing M8 "2025.*.txt" select --duration 60 --field 18.
 ```
 
 ### Plotting
