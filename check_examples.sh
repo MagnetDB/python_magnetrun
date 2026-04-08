@@ -65,7 +65,7 @@ run_cmd 3 python3 -m python_magnetrun.cli \
 
 # 4: Plot with pigbrother (pigbrother TDMS resolved via env, only txt passed)
 run_cmd 4 python3 -m python_magnetrun.cli \
-    --housing M10 '"2025.01.27---"*.txt' M10_Overview_250127-1605.tdms \
+    --housing M10 '"2025.01.27 - "*.txt' M10_Overview_250127-1605.tdms \
     plot --key_vs_key timestamp-IH \
          --key_vs_key "timestamp-Courants_Alimentations/Référence_GR1"
 
@@ -97,7 +97,7 @@ run_cmd 9 python3 -m python_magnetrun.cli \
 # 10: pigbrother add formula (pigbrother TDMS resolved via env)
 run_cmd 10 python3 -m python_magnetrun.cli \
     --housing M10 M10_Overview_201003-0956.tdms \
-    add --formula '"Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6"' --plot --save
+    add --formula '"Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6"' --plot
 
 echo ""
 echo "--- Field Definitions CLI (magnetrun-field-defs) ---"
@@ -125,13 +125,13 @@ run_cmd 17 magnetrun-field-defs "$PKGDIR/pupitre-defs.json" crossref \
     --format "hybrid=$PKGDIR/hybrid-defs.json"
 
 echo ""
-echo "--- Site Config CLI (magnetrun-site-config) ---"
+echo "--- Housing Config CLI (magnetrun-housing-config) ---"
 
-run_cmd 18 magnetrun-site-config "$PKGDIR/M9-site-config.json" show
+run_cmd 18 magnetrun-housing-config "$PKGDIR/M9-housing-config.json" show
 
-run_cmd 19 magnetrun-site-config M11-site-config.json create M11 --from-builtin M9
+run_cmd 19 magnetrun-housing-config M11-housing-config.json create M11 --from-builtin M9
 
-run_cmd 20 magnetrun-site-config M11-site-config.json update \
+run_cmd 20 magnetrun-housing-config M11-housing-config.json update \
     --gr1-current IB --gr2-current IH
 
 echo ""
@@ -183,7 +183,7 @@ echo ""
 echo "--- Advanced Usage: Field factor identification ---"
 
 # 31: requires file from home directory
-run_cmd 31 python3 $TESTS/test-fieldfactor.py --housing M9 '"2024.05.13---16_30_51.txt"'
+run_cmd 31 python3 $TESTS/test-fieldfactor.py --housing M9 '"2024.05.13 - 16:30:51.txt"'
 
 # Clean up generated files
 rm -f M11-site-config.json analysis.json analysis.log

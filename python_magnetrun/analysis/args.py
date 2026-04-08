@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ..cli_args import create_datadir_parser
+from ..cli_args import create_base_parser
 from .config import (
     DEFAULT_BINS,
     DEFAULT_LEVELS,
@@ -22,11 +22,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
     argparse.ArgumentParser
         Configured argument parser
     """
-    datadir_parser = create_datadir_parser()
+    base_parser = create_base_parser([".tdms"])
     parser = argparse.ArgumentParser(
         description="Analyze magnetrun data from TDMS and pupitre files",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        parents=[datadir_parser],
+        parents=[base_parser],
         epilog="""
 Examples:
   %(prog)s M9_Overview_*.tdms --show
@@ -38,14 +38,6 @@ Examples:
   %(prog)s input.tdms --synchronize --lag --downsample 10
       Synchronize data, compute lag, plot 10%% of points
         """,
-    )
-
-    # Required arguments
-    parser.add_argument(
-        "input_file",
-        nargs="+",
-        type=str,
-        help="Input TDMS overview files to process (glob patterns allowed)",
     )
 
     # Data directories
@@ -149,12 +141,6 @@ Examples:
         "-q",
         action="store_true",
         help="Only show warnings and errors",
-    )
-    log_group.add_argument(
-        "--log-file",
-        type=Path,
-        metavar="FILE",
-        help="Write logs to file",
     )
     log_group.add_argument(
         "--json-log",

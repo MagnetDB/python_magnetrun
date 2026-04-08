@@ -21,7 +21,7 @@
     "unit": "second"
   },
   "Field": {
-    "description": "Axial field",
+    "description": "Resistive Magnets Axial field",
     "symbol": "Bz",
     "unit": "tesla",
     "aliases": {

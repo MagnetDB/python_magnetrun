@@ -209,7 +209,6 @@ class TestHousingConfig:
         """M9 voltage channels should be correct."""
         m9 = HOUSING_CONFIGS["M9"]
         assert m9.voltage_channels_gr1 == (
-            "UH",
             "Ucoil1",
             "Ucoil2",
             "Ucoil3",
@@ -225,14 +224,13 @@ class TestHousingConfig:
             "Ucoil13",
             "Ucoil14",
         )
-        assert m9.voltage_channels_gr2 == ("UB", "Ucoil15", "Ucoil16")
+        assert m9.voltage_channels_gr2 == ("Ucoil15", "Ucoil16")
 
     def test_voltage_channels_m8_m10(self):
         """M8/M10 voltage channels should be swapped vs M9."""
         m8 = HOUSING_CONFIGS["M8"]
-        assert m8.voltage_channels_gr1 == ("UB", "Ucoil15", "Ucoil16")
+        assert m8.voltage_channels_gr1 == ("Ucoil15", "Ucoil16")
         assert m8.voltage_channels_gr2 == (
-            "UH",
             "Ucoil1",
             "Ucoil2",
             "Ucoil3",

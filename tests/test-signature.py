@@ -1,8 +1,11 @@
 import argparse
+import logging
 import os
 
 import pandas as pd
 
+from python_magnetrun.cli_args import create_base_parser
+from python_magnetrun.log_utils import setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 
 _default_input = os.path.join(
@@ -12,14 +15,13 @@ _default_input = os.path.join(
     "M9_2019.02.14-23_00_38.txt",
 )
 
-parser = argparse.ArgumentParser()
+logger = logging.getLogger("python_magnetrun")
+command_line = None
+base_parser = create_base_parser()
+parser = argparse.ArgumentParser("Record signature", parents=[base_parser])
 parser.add_argument(
     "input_file", nargs="?", default=_default_input, help="enter input file"
 )
-parser.add_argument(
-    "--housing", help="specify a housing (ex. M8, M9,...)", default="M9"
-)
-parser.add_argument("--site", help="specify a site ", default="not defined")
 parser.add_argument("--key", help="set key to consider", type=str, default="Field")
 parser.add_argument("--window", help="set a window", type=int, default=10)
 parser.add_argument(
@@ -27,7 +29,8 @@ parser.add_argument(
 )
 parser.add_argument("--save", help="activate plot", action="store_true")
 args, _unknown = parser.parse_known_args()
-print(f"args: {args}", flush=True)
+setup_logging(level=args.log_level, log_file=args.log_file)
+logger.debug(f"args: {args}")
 
 supported_formats = [".txt", ".tdms"]
 
@@ -36,9 +39,13 @@ filename = os.path.basename(file)
 f_extension = os.path.splitext(file)[-1]
 print(f"filename: {filename}, extension: {f_extension}")
 
-index = filename.index("_")
-housing = filename[0:index] if args.housing is None else args.housing
-print(f"housing detected: {housing}")
+try:
+    index = filename.index("_")
+    housing = filename[0:index] if args.housing is None else args.housing
+    print(f"housing detected: {housing}")
+except ValueError:
+    housing = args.housing if args.housing is not None else "notdefined"
+    print(f"no housing detected - use args.housing {housing} argument instead")
 
 site = args.site
 insert = args.insert

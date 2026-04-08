@@ -3,6 +3,7 @@
 import argparse
 import os
 from collections.abc import Callable
+from pathlib import Path
 
 from .data_dirs import HYBRID_DATA_DIR, PIGBROTHER_DATA_DIR, PUPITRE_DATA_DIR
 
@@ -211,7 +212,7 @@ def create_base_parser(
     parser.add_argument(
         "--log-file",
         help="path to log file (if not specified, logs to console)",
-        type=str,
+        type=Path,
         default=None,
     )
     return parser
