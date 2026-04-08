@@ -86,23 +86,20 @@ def main():
         filename = os.path.basename(file)
         insert = args.insert if args.insert else "notdefined"
         housing = args.housing if args.housing else "notdefined"
-        site = args.site if args.site else "not defined"
-        if args.site:
-            site = args.site
-        else:
-            result = filename.startswith("M")
-            if result:
-                try:
-                    index = filename.index("_")
-                    housing = filename[0:index] if housing == "notdefined" else housing
-                    # print(f"site detected: {site}")
-                except ValueError:
-                    logger.warning(
-                        f"{file}: no site detected - use args.site argument instead"
-                    )
-                    continue
-                if args.log_level == "DEBUG":
-                    logger.debug(f"site={site}")
+        site = args.site if args.site else "notdefined"
+        result = filename.startswith("M")
+        if result:
+            try:
+                index = filename.index("_")
+                housing = filename[0:index] if housing == "notdefined" else housing
+                # print(f"site detected: {site}")
+            except ValueError:
+                logger.warning(
+                    f"{file}: no site detected - use args.site argument instead"
+                )
+                continue
+        if args.log_level == "DEBUG":
+            logger.debug(f"housing={housing}, site={site}")
 
         try:
             match f_extension:

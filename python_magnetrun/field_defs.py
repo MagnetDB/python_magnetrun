@@ -90,11 +90,11 @@ def resolve_defs_file(
     udir = user_dir or _USER_CONFIG_DIR
     candidate = udir / p.name
     if candidate.exists():
-        logger.debug("resolve_defs_file: using user override %s", candidate)
+        logger.debug(f"resolve_defs_file: using user override {candidate}")
         return candidate
     bundled = _bundled_defs_path(p.name)
     if bundled.exists():
-        logger.debug("resolve_defs_file: using bundled default %s", bundled)
+        logger.debug(f"resolve_defs_file: using bundled default {bundled}")
         return bundled
     raise FileNotFoundError(
         f"resolve_defs_file: {p.name!r} not found in {udir}, "
@@ -165,10 +165,10 @@ def add_field_def(
     if key in defs and not key.startswith("_"):
         if not overwrite:
             raise KeyError(f"{key!r} already exists in {json_file}")
-        logger.info("add_field_def: overwriting existing entry %r", key)
+        logger.info(f"add_field_def: overwriting existing entry {key!r}")
     defs[key] = {"description": description, "symbol": symbol, "unit": unit}
     save_defs(json_file, defs)
-    logger.info("add_field_def: added %r to %s", key, json_file)
+    logger.info(f"add_field_def: added {key!r} to {json_file}")
 
 
 def update_field_def(
@@ -208,7 +208,7 @@ def update_field_def(
         entry["description"] = description
     defs[key] = entry
     save_defs(json_file, defs)
-    logger.info("update_field_def: updated %r in %s", key, json_file)
+    logger.info(f"update_field_def: updated {key!r} in {json_file}")
 
 
 def delete_field_def(json_file: str | Path, key: str) -> None:
@@ -226,7 +226,7 @@ def delete_field_def(json_file: str | Path, key: str) -> None:
         raise KeyError(f"delete_field_def: {key!r} not found in {json_file!r}")
     del defs[key]
     save_defs(json_file, defs)
-    logger.info("delete_field_def: removed %r from %s", key, json_file)
+    logger.info(f"delete_field_def: removed {key!r} from {json_file}")
 
 
 def list_field_defs(json_file: str | Path) -> list[dict]:
@@ -307,9 +307,7 @@ def add_alias(
     entry["aliases"] = aliases
     defs[key] = entry
     save_defs(json_file, defs)
-    logger.info(
-        "add_alias: %r[%r] = %r in %s", key, format_name, target_field, json_file
-    )
+    logger.info(f"add_alias: {key!r}[{format_name!r}] = {target_field!r} in {json_file}")
 
 
 def remove_alias(
@@ -339,9 +337,7 @@ def remove_alias(
     del aliases[format_name]
     defs[key]["aliases"] = aliases
     save_defs(json_file, defs)
-    logger.info(
-        "remove_alias: removed %r alias from %r in %s", format_name, key, json_file
-    )
+    logger.info(f"remove_alias: removed {format_name!r} alias from {key!r} in {json_file}")
 
 
 def get_aliases(json_file: str | Path, key: str) -> dict[str, str]:

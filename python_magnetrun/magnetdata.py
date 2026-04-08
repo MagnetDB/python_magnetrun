@@ -168,26 +168,6 @@ class MagnetData(PandasMagnetData):
                 f"magnetdata/fromtdms: Courants_Alimentations group not found in {name}"
             )
 
-        # Add reference for GR1, GR2
-        if "Référence_A1" in Data["Courants_Alimentations"]:
-            Data["Courants_Alimentations"]["Référence_GR1"] = (
-                Data["Courants_Alimentations"]["Référence_A1"]
-                + Data["Courants_Alimentations"]["Référence_A2"]
-            )
-            Keys.append("Courants_Alimentations/Référence_GR1")
-            Groups["Courants_Alimentations"]["Référence_GR1"] = Groups[
-                "Courants_Alimentations"
-            ]["Référence_A1"]
-        if "Référence_A3" in Data["Courants_Alimentations"]:
-            Data["Courants_Alimentations"]["Référence_GR2"] = (
-                Data["Courants_Alimentations"]["Référence_A3"]
-                + Data["Courants_Alimentations"]["Référence_A4"]
-            )
-            Keys.append("Courants_Alimentations/Référence_GR2")
-            Groups["Courants_Alimentations"]["Référence_GR2"] = Groups[
-                "Courants_Alimentations"
-            ]["Référence_A3"]
-
         return TdmsMagnetData(name, Groups, Keys, Data, defs_file=defs_file)
 
     @classmethod

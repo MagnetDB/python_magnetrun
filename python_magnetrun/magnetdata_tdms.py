@@ -132,11 +132,8 @@ class TdmsMagnetData(MagnetDataBase):
                 defs_unit_str = field_defs[key].get("unit")
                 if defs_unit_str is not None and defs_unit_str != tdms_unit_str:
                     logger.warning(
-                        "Units: %s — TDMS embedded unit %r differs from "
-                        "defs_file unit %r; overriding with defs_file value",
-                        key,
-                        tdms_unit_str,
-                        defs_unit_str,
+                        f"Units: {key} — TDMS embedded unit {tdms_unit_str!r} differs from "
+                        f"defs_file unit {defs_unit_str!r}; overriding with defs_file value"
                     )
             self.load_units_from_json(resolved, debug=debug)
 
@@ -152,9 +149,7 @@ class TdmsMagnetData(MagnetDataBase):
                 self.units[key] = (key.split("/")[-1], pint_unit)
             except (ValueError, AttributeError, UndefinedUnitError):
                 logger.debug(
-                    "Units: cannot parse TDMS unit %r for %s, falling back to keyword match",
-                    unit_str,
-                    key,
+                    f"Units: cannot parse TDMS unit {unit_str!r} for {key}, falling back to keyword match"
                 )
 
         # Step 4 — PigBrotherUnits keyword matching for any remaining entries
@@ -194,7 +189,70 @@ class TdmsMagnetData(MagnetDataBase):
         return self.PigBrotherUnits(group)
 
     def renameData(self, columns: dict) -> None:  # noqa: N802
-        """TDMS data does not support renaming channels; this is a no-op."""
+        """TDMS data does not support renaming channels.
+
+        Emits a warning when *columns* is non-empty so callers are not silently
+        misled into thinking the rename was applied.
+        """
+        if columns:
+            logger.warning(
+                f"renameData: TDMS does not support channel renaming; columns={list(columns)} ignored"
+            )
+
+    def addTime(self) -> int:  # noqa: N802
+        """Implement the MagnetDataBase.addTime contract for TDMS data.
+
+        Delegates to :meth:`addTdmsTime` (processes all non-Infos groups).
+        """
+        return self.addTdmsTime()
+
+    def cleanupData(  # noqa: N802
+        self,
+        keys_to_remove: list[str] | None = None,
+        keys_to_rename: dict[str, str] | None = None,
+        keys_to_add: dict[str, str] | None = None,
+        debug: bool = False,
+    ) -> int:
+        """Apply ETL operations to TDMS data.
+
+        ``keys_to_add`` entries must use ``"Group/Channel"`` syntax consistent
+        with :meth:`addData`.  ``keys_to_rename`` is ignored (TDMS does not
+        support channel renaming).
+
+        :param keys_to_remove: list of ``"Group/Channel"`` keys to drop.
+        :param keys_to_rename: unused for TDMS; a warning is emitted if non-empty.
+        :param keys_to_add: ``{"Group/Channel": "formula"}`` pairs; each formula
+            is evaluated via :meth:`addData`.
+        :param debug: passed through to :meth:`addData`.
+        :return: 0 on success.
+        """
+        if keys_to_rename:
+            logger.warning(
+                f"cleanupData: TDMS does not support renaming channels; keys_to_rename={list(keys_to_rename)} ignored"
+            )
+
+        if keys_to_add:
+            for key, formula in keys_to_add.items():
+                if key not in self.Keys:
+                    self.addData(key, formula, debug=debug)
+                else:
+                    logger.debug(f"cleanupData: key {key!r} already exists, skipping")
+
+        if keys_to_remove:
+            assert isinstance(self.Data, dict)
+            for key in keys_to_remove:
+                if "/" not in key:
+                    logger.warning(f"cleanupData: skip non-TDMS key {key!r} (no '/' separator)")
+                    continue
+                group, channel = key.split("/", 1)
+                if group in self.Data and channel in self.Data[group].columns:
+                    self.Data[group].drop(columns=[channel], inplace=True)
+                    if key in self.Keys:
+                        self.Keys.remove(key)
+                else:
+                    logger.debug(f"cleanupData: key {key!r} not found, skipping removal")
+
+        return 0
 
     # --- compute / add -----------------------------------------------
 

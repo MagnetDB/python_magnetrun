@@ -122,10 +122,10 @@ def main(args: list[str] | None = None) -> int:
         # Expand glob patterns and search data directories for bare filenames.
         datadir = {".tdms": str(config.pigbrother_datadir)}
         input_files = natsorted(
-            expand_input_files(parsed_args.input_file, datadir)
+            expand_input_files(parsed_args.input_file, datadir, parsed_args.housing)
         )
         logger.debug(f"input_files: {input_files}")
-        logger.info("Processing %d input files", len(input_files))
+        logger.info(f"Processing {len(input_files)} input files")
 
         # Create output directory
         if parsed_args.save:
@@ -155,6 +155,7 @@ def main(args: list[str] | None = None) -> int:
                         continue
 
                     # Get site config for channel mappings
+                    # instead get_housing_config from input_file
                     site_config = get_housing_config(record.site)
 
                     # Build channel dictionaries for plotting
@@ -193,7 +194,7 @@ def main(args: list[str] | None = None) -> int:
                     # Process each key
                     for key in keys:
                         if key not in df_overview.columns:
-                            logger.warning("Key %s not found in overview data", key)
+                            logger.warning(f"Key {key} not found in overview data")
                             continue
 
                         pupitre_key = pupitre_dict[record.site].get(key)
@@ -207,10 +208,7 @@ def main(args: list[str] | None = None) -> int:
                                     downsample_pct = estimate_downsample_percent(
                                         len(df_overview), target_points=10000
                                     )
-                                    logger.info(
-                                        "Auto-downsampling to %.1f%% for plotting",
-                                        downsample_pct,
-                                    )
+                                    logger.info(f"Auto-downsampling to {downsample_pct:.1f}% for plotting")
 
                                 # Determine output path
                                 output_path = None
@@ -251,7 +249,7 @@ def main(args: list[str] | None = None) -> int:
                                 )
 
                                 if output_path:
-                                    logger.info("Saved plot to %s", output_path)
+                                    logger.info(f"Saved plot to {output_path}")
 
                         # === DISTANCE METRICS ===
                         if (
@@ -287,13 +285,8 @@ def main(args: list[str] | None = None) -> int:
                                     correlation = calc_correlation(series1, series2)
 
                                     logger.info(
-                                        "Metrics for %s vs %s: "
-                                        "Euclidean=%.4f, MAPE=%.2f%%, Correlation=%.4f",
-                                        key,
-                                        pupitre_key,
-                                        euclidean.value,
-                                        mape.value,
-                                        correlation.value,
+                                        f"Metrics for {key} vs {pupitre_key}: "
+                                        f"Euclidean={euclidean.value:.4f}, MAPE={mape.value:.2f}%, Correlation={correlation.value:.4f}"
                                     )
 
                                     # Store in record
@@ -312,28 +305,17 @@ def main(args: list[str] | None = None) -> int:
                                         # print(dtw_result.path)               # The warping path
                                         # print(dtw_result.normalized_distance) # Normalized by length
                                         # print(dtw_result.similarity_score)    # Distance per path step
-                                        logger.info(
-                                            "DTW distance for %s: %.4f",
-                                            key,
-                                            dtw_result.similarity_score,
-                                        )
+                                        logger.info(f"DTW distance for {key}: {dtw_result.similarity_score:.4f}")
                                         record.metrics[key][
                                             "dtw"
                                         ] = dtw_result.similarity_score
                                     else:
-                                        logger.info(
-                                            "Skipping DTW for %s (dataset too large: %d points)",
-                                            key,
-                                            len(series1),
-                                        )
+                                        logger.info(f"Skipping DTW for {key} (dataset too large: {len(series1)} points)")
                             else:
-                                logger.warning(
-                                    "Pupitre key %s not found for distance metrics",
-                                    pupitre_key,
-                                )
+                                logger.warning(f"Pupitre key {pupitre_key} not found for distance metrics")
 
                 except (OSError, ValueError, KeyError, RuntimeError) as e:
-                    logger.error("Failed to process %s: %s", input_file, e)
+                    logger.error(f"Failed to process {input_file}: {e}")
                     if parsed_args.debug:
                         logger.exception("Full traceback:")
 
@@ -345,22 +327,20 @@ def main(args: list[str] | None = None) -> int:
         successful = len(results)
         failed = len(input_files) - successful
 
-        logger.info("Analysis complete: %d successful, %d failed", successful, failed)
+        logger.info(f"Analysis complete: {successful} successful, {failed} failed")
 
         # Print metrics summary if computed
         if parsed_args.distance and results:
             logger.info("=== Metrics Summary ===")
             for record in results:
                 if record.metrics:
-                    logger.info("File: %s", record.filename)
+                    logger.info(f"File: {record.filename}")
                     for key, metrics in record.metrics.items():
                         logger.info(
-                            "  %s: Euclidean=%.4f, MAPE=%.2f%%, Corr=%.4f%s",
-                            key,
-                            metrics.get("euclidean", 0),
-                            metrics.get("mape", 0),
-                            metrics.get("correlation", 0),
-                            f", DTW={metrics['dtw']:.4f}" if "dtw" in metrics else "",
+                            f"  {key}: Euclidean={metrics.get('euclidean', 0):.4f}, "
+                            f"MAPE={metrics.get('mape', 0):.2f}%, "
+                            f"Corr={metrics.get('correlation', 0):.4f}"
+                            + (f", DTW={metrics['dtw']:.4f}" if "dtw" in metrics else "")
                         )
 
         return 0 if failed == 0 else 1
@@ -369,7 +349,7 @@ def main(args: list[str] | None = None) -> int:
         logger.info("Analysis interrupted by user")
         return 130
     except (ImportError, OSError, RuntimeError) as e:
-        logger.exception("Analysis failed: %s", e)
+        logger.exception(f"Analysis failed: {e}")
         return 1
 
 

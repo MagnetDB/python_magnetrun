@@ -7,7 +7,7 @@ import pandas as pd
 
 from ..log_utils import SIMPLE_FORMAT, setup_logging
 from ..magnetdata import MagnetData
-from ..runetl import prepareData_legacy
+from ..runetl import prepareData
 from ..thermal_pipeline import (
     CoolingCircuitColumns,
     compute_circuit_thermal,
@@ -74,7 +74,7 @@ def concat_files(
         Type=0,
         Data=raw_df,
     )
-    prepareData_legacy(data, housing)
+    prepareData(data, housing)
     return data.getData()
 
 

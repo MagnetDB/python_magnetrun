@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import sys
-import warnings
 from datetime import datetime
 from typing import Any
 
@@ -171,182 +170,6 @@ class PandasMagnetData(MagnetDataBase):
 
     # --- cleanup / reshape -------------------------------------------
 
-    def cleanupData_legacy(self) -> int:  # noqa: N802
-        """Remove empty/duplicate columns (legacy implementation)."""
-        warnings.warn(
-            "prepareData_legacy is deprecated and will be removed in a future version. "
-            "Use prepareData instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        logger.debug(
-            f"Clean up Data (legacy): filename={self.FileName}, keys={self.Keys}"
-        )
-        assert isinstance(self.Data, pd.DataFrame)
-        import re
-
-        init_Ikeys = natsorted(
-            [_key for _key in self.Keys if re.match(r"Icoil\d+", _key)]
-        )
-        logger.debug(f"init_Ikeys: {init_Ikeys}")
-        Fkeys = [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
-        Fkeys += [_key for _key in self.Keys if re.match(r"Rpm\w+", _key)]
-        Fkeys += [_key for _key in self.Keys if re.match(r"HP\w+", _key)]
-        Fkeys += [_key for _key in self.Keys if re.match(r"\w+_ref", _key)]
-        Fkeys += [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
-        Fkeys += [_key for _key in self.Keys if re.match(r"Ptot", _key)]
-        Fkeys += [
-            "teb",
-            "tsb",
-            "debitbrut",
-        ]
-
-        logger.debug(
-            f"zero columns: {natsorted(self.Data.columns[(self.Data == 0).all()].values.tolist())}",
-        )
-
-        empty_cols = [
-            col
-            for col in self.Data.columns[(self.Data == 0).all()].values.tolist()
-            if not col.startswith("Flow") and not col.startswith("Field")
-        ]
-        _empty_Ikeys = natsorted(
-            [_key for _key in empty_cols if re.match(r"Icoil\d+", _key)]
-        )
-        _df = self.Data
-        if empty_cols:
-            _df = self.Data.drop(empty_cols, axis=1)
-
-        dropped_columns = _get_duplicate_columns(_df)
-        really_dropped_columns = natsorted(
-            [col for col in dropped_columns if not col.startswith("Ucoil")]
-        )
-        _df.drop(really_dropped_columns, axis=1, inplace=True)
-
-        Ukeys = natsorted(
-            [
-                str(_key)
-                for _key in _df.columns.values.tolist()
-                if re.match(r"Ucoil\d+", _key)
-            ]
-        )
-
-        from itertools import groupby
-
-        Uindex = [int(ukey.replace("Ucoil", "")) for ukey in Ukeys]
-        gb = groupby(enumerate(Uindex), key=lambda x: x[0] - x[1])
-        all_groups = ([i[1] for i in g] for _, g in gb)
-        Uprobes = list(filter(lambda x: len(x) > 1, all_groups))
-        if not Uprobes:
-            raise RuntimeError(f"{self.FileName}: CleanUpData no Uprobes found")
-
-        UH = [f"Ucoil{i}" for i in Uprobes[0]]
-        _df["UH"] = _df[UH].sum(axis=1)
-        logger.debug(f"UH: {UH}")
-        if len(Uprobes) > 1:
-            UB = [f"Ucoil{i}" for i in Uprobes[1]]
-            _df["UB"] = _df[UB].sum(axis=1)
-            logger.debug(f"UB: {UB}")
-
-        Ikeys = natsorted(
-            [
-                _key
-                for _key in _df.columns.values.tolist()
-                if re.match(r"Icoil\d+", _key)
-            ]
-        )
-        logger.debug(f"IKeys = {Ikeys} ({len(Ikeys)})")
-        if Ikeys:
-            if len(Ikeys) == 1:
-                logger.debug(
-                    f"{self.FileName}: check if {init_Ikeys[-1]} or {init_Ikeys[-2]} in _df"
-                )
-                if init_Ikeys[-1] not in Ikeys and init_Ikeys[-2] not in Ikeys:
-                    _df = pd.concat([_df, self.Data[init_Ikeys[-2]]], axis=1)
-                else:
-                    _df = pd.concat([_df, self.Data[init_Ikeys[0]]], axis=1)
-
-                Ikeys = natsorted(
-                    [
-                        _key
-                        for _key in _df.columns.values.tolist()
-                        if re.match(r"Icoil\d+", _key)
-                    ]
-                )
-
-            elif len(Ikeys) == 2:
-                logger.debug("need to check consistancy")
-
-            else:
-                logger.debug(
-                    f"{self.FileName}:try to cure dataset - got {Ikeys} expect at most 2 values",
-                )
-                ikeys = self.Data[Ikeys]
-                remove_Ikeys = []
-                for i in range(len(Ikeys)):
-                    for j in range(i + 1, len(Ikeys)):
-                        diff = ikeys[Ikeys[i]] - ikeys[Ikeys[j]]
-                        error = diff.mean()
-                        stderror = diff.std()
-                        logger.debug(
-                            f"diff[{Ikeys[i]}_{Ikeys[j]}: mean={error}, std={stderror}"
-                        )
-                        if abs(error) <= 1.0e-2:
-                            remove_Ikeys.append(Ikeys[j])
-
-                logger.debug(f"remove_Ikeys: {remove_Ikeys}")
-                if remove_Ikeys:
-                    _df.drop(remove_Ikeys, axis=1, inplace=True)
-
-                Ikeys = natsorted(
-                    [
-                        _key
-                        for _key in _df.columns.values.tolist()
-                        if re.match(r"Icoil\d+", _key)
-                    ]
-                )
-
-                if len(Ikeys) == 1:
-                    logger.debug(
-                        f"{self.FileName}: check if {init_Ikeys[-1]} or {init_Ikeys[-2]} in _df"
-                    )
-                    if (
-                        init_Ikeys[-1] not in _df.columns.values.tolist()
-                        and init_Ikeys[-2] not in _df.columns.values.tolist()
-                    ):
-                        _df = pd.concat([_df, self.Data[init_Ikeys[-2]]], axis=1)
-                    else:
-                        _df = pd.concat([_df, self.Data[init_Ikeys[0]]], axis=1)
-
-                elif len(Ikeys) > 2:
-                    _df[Ikeys].to_csv(f"{self.FileName}.ikey")
-                    raise RuntimeError(
-                        f"{self.FileName}: strange number of Ikeys detected - got {Ikeys} expect at most 2 values"
-                    )
-
-        else:
-            Ukeys = natsorted(
-                [
-                    str(_key)
-                    for _key in _df.columns.values.tolist()
-                    if re.match(r"Ucoil\d+", _key)
-                ]
-            )
-            for i, key in enumerate(Ukeys):
-                Ukeys[i] = key.replace("U", "I")
-            Ikeys = [Ukeys[0], Ukeys[-1]]
-            _df = pd.concat([_df, self.Data[Ikeys[0]], self.Data[Ikeys[1]]], axis=1)
-
-        _df_keys = _df.columns.values.tolist()
-        for key in Fkeys:
-            if key not in _df_keys:
-                _df = pd.concat([_df, self.Data[key]], axis=1)
-
-        self.Data = _df
-        self.Keys = self.Data.columns.values.tolist()
-        logger.debug(f"cleanupData_legacy: final keys --> self.Keys = {self.Keys}")
-        return 0
-
     def cleanupData(  # noqa: N802
         self,
         keys_to_remove: list[str] | None = None,
@@ -394,6 +217,7 @@ class PandasMagnetData(MagnetDataBase):
 
         self.Keys = self.Data.columns.values.tolist()
 
+        # Add legacy stuff for backward compatibility - to be removed in a future version
         import re
 
         Fkeys = [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
@@ -449,6 +273,19 @@ class PandasMagnetData(MagnetDataBase):
         if len(existing_renames) < len(columns):
             missing = [old for old in columns if old not in self.Keys]
             logger.warning(f"renameData: keys {missing} not found, skipping")
+        # A target name that already exists (and is not itself being renamed away)
+        # would silently overwrite that column — raise instead.
+        source_keys = set(existing_renames.keys())
+        conflicts = {
+            old: new
+            for old, new in existing_renames.items()
+            if new in self.Keys and new not in source_keys
+        }
+        if conflicts:
+            raise ValueError(
+                f"renameData: target name(s) already exist in DataFrame and would "
+                f"be silently overwritten: {conflicts}"
+            )
         if existing_renames:
             self.Data.rename(columns=existing_renames, inplace=True)
         self.Keys = self.Data.columns.values.tolist()

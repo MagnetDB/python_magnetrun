@@ -89,25 +89,34 @@ def get_user_housing_config_path(housing: str) -> Path:
 #: Maps semantic role names (used in ``overrides`` dicts) to the corresponding
 #: ``HousingConfig`` dataclass field names.
 ROLE_TO_FIELD: dict[str, str] = {
-    "gr1_current":          "reference_gr1_current",
-    "gr2_current":          "reference_gr2_current",
-    "gr1_flow":             "reference_gr1_flow",
-    "gr2_flow":             "reference_gr2_flow",
-    "gr1_rpm":              "reference_gr1_rpm",
-    "gr2_rpm":              "reference_gr2_rpm",
-    "gr1_pin":              "reference_gr1_pin",
-    "gr2_pin":              "reference_gr2_pin",
+    "gr1_current": "reference_gr1_current",
+    "gr2_current": "reference_gr2_current",
+    "gr1_flow": "reference_gr1_flow",
+    "gr2_flow": "reference_gr2_flow",
+    "gr1_rpm": "reference_gr1_rpm",
+    "gr2_rpm": "reference_gr2_rpm",
+    "gr1_pin": "reference_gr1_pin",
+    "gr2_pin": "reference_gr2_pin",
     "voltage_channels_gr1": "voltage_channels_gr1",
     "voltage_channels_gr2": "voltage_channels_gr2",
+    "pupitre_formula_map": "pupitre_formula_map",
+    "pigbrother_formula_map": "pigbrother_formula_map",
+    "hybrid_formula_map": "hybrid_formula_map",
+    "reference_gr1_voltage": "reference_gr1_voltage",
+    "reference_gr2_voltage": "reference_gr2_voltage",
 }
 
 # Fields that are stored as lists in JSON but tuples in the dataclass
 _TUPLE_FIELDS = {"formats", "voltage_channels_gr1", "voltage_channels_gr2"}
 
+# Flow/Rpm/Tin/HP base names used to build the pupitre rename map
+_PUPITRE_FLOW_FIELDS = ("Flow", "Rpm", "Tin", "HP")
+
 
 # ---------------------------------------------------------------------------
 # HousingConfig dataclass
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class HousingConfig:
@@ -169,6 +178,17 @@ class HousingConfig:
     reference_gr2_pin: str = ""
     voltage_channels_gr1: tuple = field(default_factory=tuple)
     voltage_channels_gr2: tuple = field(default_factory=tuple)
+
+    # ETL formula maps — keys_to_add passed to cleanupData per format
+    pupitre_formula_map: dict = field(default_factory=dict)
+    pigbrother_formula_map: dict = field(default_factory=dict)
+
+    # Hybrid (M8-only) derived current formulas; empty string = not applicable
+    hybrid_formula_map: dict = field(default_factory=dict)
+
+    # Target aggregate voltage field names for GR1/GR2
+    reference_gr1_voltage: str = "UH"
+    reference_gr2_voltage: str = "UB"
 
     # ------------------------------------------------------------------
     # Serialization
@@ -238,16 +258,81 @@ class HousingConfig:
         return fmt in self.formats
 
     # ------------------------------------------------------------------
+    # Computed ETL helpers
+    # ------------------------------------------------------------------
+
+    def get_pupitre_rename_map(self) -> dict[str, str]:
+        """Derive the Flow/Rpm/Tin/HP index→role rename map from the GR1 flow role.
+
+        M9 has ``reference_gr1_flow = "FlowH"`` → GR1 index 1 → rename
+        ``Flow1→FlowH``, ``Flow2→FlowB``.  M8/M10 has
+        ``reference_gr1_flow = "FlowB"`` → rename ``Flow1→FlowB``,
+        ``Flow2→FlowH``.  Returns ``{}`` when ``reference_gr1_flow`` is unset.
+        """
+        if not self.reference_gr1_flow:
+            return {}
+        if self.reference_gr1_flow.endswith("H"):
+            h_idx, b_idx = "1", "2"
+        else:
+            h_idx, b_idx = "2", "1"
+        result: dict[str, str] = {}
+        for base in _PUPITRE_FLOW_FIELDS:
+            result[f"{base}{h_idx}"] = f"{base}H"
+            result[f"{base}{b_idx}"] = f"{base}B"
+        return result
+
+    def get_pupitre_voltage_formulas(
+        self, available_keys: list[str] | None = None
+    ) -> dict[str, str]:
+        """Return ``{reference_gr1_voltage: formula, reference_gr2_voltage: formula}``.
+
+        Only Ucoil channels present in *available_keys* are summed.  If
+        *available_keys* is ``None``, all channels in
+        ``voltage_channels_gr1``/``voltage_channels_gr2`` are used.
+        """
+
+        def _sum_formula(target: str, channels: tuple, keys: list[str] | None) -> str:
+            srcs = [c for c in channels if keys is None or c in keys]
+            return f"{target} = {' + '.join(srcs)}" if srcs else ""
+
+        result: dict[str, str] = {}
+        f1 = _sum_formula(
+            self.reference_gr1_voltage, self.voltage_channels_gr1, available_keys
+        )
+        f2 = _sum_formula(
+            self.reference_gr2_voltage, self.voltage_channels_gr2, available_keys
+        )
+        if f1:
+            result[self.reference_gr1_voltage] = f1
+        if f2:
+            result[self.reference_gr2_voltage] = f2
+        return result
+
+    def get_hybrid_voltage_formulas(
+        self, available_keys: list[str] | None = None
+    ) -> dict[str, str]:
+        """Return voltage sum formulas for hybrid (kHz) data (M8-only).
+
+        Returns ``{}`` for housings that do not support the ``"hybrid"`` format.
+        Currently delegates to :meth:`get_pupitre_voltage_formulas` since hybrid
+        voltage channels use the same Ucoil lists; callers can override by
+        passing their own ``available_keys``.
+        """
+        if not self.supports_format("hybrid"):
+            return {}
+        return self.get_pupitre_voltage_formulas(available_keys)
+
+    # ------------------------------------------------------------------
     # Backward-compatibility helper
     # ------------------------------------------------------------------
 
     def to_pupitre_dict(self) -> dict[str, str]:
         """Return the legacy ``pupitre_dict`` format used by the original code."""
         return {
-            "Référence_GR1":     self.reference_gr1_current,
-            "Référence_GR2":     self.reference_gr2_current,
-            "Référence_GR1_Q":   self.reference_gr1_flow,
-            "Référence_GR2_Q":   self.reference_gr2_flow,
+            "Référence_GR1": self.reference_gr1_current,
+            "Référence_GR2": self.reference_gr2_current,
+            "Référence_GR1_Q": self.reference_gr1_flow,
+            "Référence_GR2_Q": self.reference_gr2_flow,
             "Référence_GR1_Rpm": self.reference_gr1_rpm,
             "Référence_GR2_Rpm": self.reference_gr2_rpm,
             "Référence_GR1_Pin": self.reference_gr1_pin,
@@ -258,6 +343,7 @@ class HousingConfig:
 # ---------------------------------------------------------------------------
 # JSON file I/O
 # ---------------------------------------------------------------------------
+
 
 def load_housing_config(json_file: str | Path) -> HousingConfig:
     """Load a :class:`HousingConfig` from a ``<Housing>-housing-config.json`` file.
@@ -275,7 +361,7 @@ def load_housing_config(json_file: str | Path) -> HousingConfig:
     with open(json_file) as fh:
         d = json.load(fh)
     cfg = HousingConfig.from_dict(d)
-    logger.debug("load_housing_config: loaded %r from %s", cfg.name, json_file)
+    logger.debug(f"load_housing_config: loaded {cfg.name!r} from {json_file}")
     return cfg
 
 
@@ -292,7 +378,7 @@ def save_housing_config(json_file: str | Path, config: HousingConfig) -> None:
     with open(json_file, "w") as fh:
         json.dump(config.to_dict(), fh, indent=2)
         fh.write("\n")
-    logger.info("save_housing_config: wrote %r to %s", config.name, json_file)
+    logger.info(f"save_housing_config: wrote {config.name!r} to {json_file}")
 
 
 def update_housing_config(
@@ -337,7 +423,7 @@ def update_housing_config(
             field_overrides[fname] = tuple(field_overrides[fname])
     new_cfg = dataclasses.replace(base, **field_overrides)
     save_housing_config(json_file, new_cfg)
-    logger.info("update_housing_config: updated %r in %s", new_cfg.name, json_file)
+    logger.info(f"update_housing_config: updated {new_cfg.name!r} in {json_file}")
     return new_cfg
 
 
@@ -355,11 +441,32 @@ def show_housing_config(config: HousingConfig) -> None:
     print(f"  GR2 pin     : {config.reference_gr2_pin}")
     print(f"  GR1 voltages: {', '.join(config.voltage_channels_gr1)}")
     print(f"  GR2 voltages: {', '.join(config.voltage_channels_gr2)}")
+    print(f"  GR1 voltage target : {config.reference_gr1_voltage}")
+    print(f"  GR2 voltage target : {config.reference_gr2_voltage}")
+    if config.pupitre_formula_map:
+        print(f"  Pupitre formulas   : {list(config.pupitre_formula_map)}")
+    if config.pigbrother_formula_map:
+        print(f"  Pigbrother formulas: {list(config.pigbrother_formula_map)}")
+    if config.hybrid_formula_map:
+        print(f"  Hybrid formulas: {list(config.hybrid_formula_map)}")
 
 
 # ---------------------------------------------------------------------------
 # Pre-defined housing configurations (built-in defaults)
 # ---------------------------------------------------------------------------
+
+_PIGBROTHER_FORMULA_MAP = {
+    "Courants_Alimentations/Référence_GR1": (
+        "Courants_Alimentations/Référence_GR1 = Référence_A1 + Référence_A2"
+    ),
+    "Courants_Alimentations/Référence_GR2": (
+        "Courants_Alimentations/Référence_GR2 = Référence_A3 + Référence_A4"
+    ),
+}
+_HYBRID_FORMULA_MAP = {
+    "FEPC-AUX-LNCMI/ALIM1": ("FEPC-AUX-LNCMI/ALIM1_J1 + FEPC-AUX-LNCMI/ALIM1_J2"),
+    "FEPC-AUX-LNCMI/ALIM2": ("FEPC-AUX-LNCMI/ALIM2_J1 + FEPC-AUX-LNCMI/ALIM2_J2"),
+}
 
 HOUSING_CONFIGS: dict[str, HousingConfig] = {
     "M9": HousingConfig(
@@ -374,12 +481,29 @@ HOUSING_CONFIGS: dict[str, HousingConfig] = {
         reference_gr1_pin="HPH",
         reference_gr2_pin="HPB",
         voltage_channels_gr1=(
-            "UH",
-            "Ucoil1", "Ucoil2", "Ucoil3", "Ucoil4", "Ucoil5",
-            "Ucoil6", "Ucoil7", "Ucoil8", "Ucoil9", "Ucoil10",
-            "Ucoil11", "Ucoil12", "Ucoil13", "Ucoil14",
+            "Ucoil1",
+            "Ucoil2",
+            "Ucoil3",
+            "Ucoil4",
+            "Ucoil5",
+            "Ucoil6",
+            "Ucoil7",
+            "Ucoil8",
+            "Ucoil9",
+            "Ucoil10",
+            "Ucoil11",
+            "Ucoil12",
+            "Ucoil13",
+            "Ucoil14",
         ),
-        voltage_channels_gr2=("UB", "Ucoil15", "Ucoil16"),
+        voltage_channels_gr2=("Ucoil15", "Ucoil16"),
+        reference_gr1_voltage="UH",
+        reference_gr2_voltage="UB",
+        pupitre_formula_map={
+            "IH_ref": "IH_ref = Idcct1 + Idcct2",
+            "IB_ref": "IB_ref = Idcct3 + Idcct4",
+        },
+        pigbrother_formula_map=_PIGBROTHER_FORMULA_MAP,
     ),
     "M8": HousingConfig(
         name="M8",
@@ -392,13 +516,31 @@ HOUSING_CONFIGS: dict[str, HousingConfig] = {
         reference_gr2_rpm="RpmH",
         reference_gr1_pin="HPB",
         reference_gr2_pin="HPH",
-        voltage_channels_gr1=("UB", "Ucoil15", "Ucoil16"),
+        voltage_channels_gr1=("Ucoil15", "Ucoil16"),
         voltage_channels_gr2=(
-            "UH",
-            "Ucoil1", "Ucoil2", "Ucoil3", "Ucoil4", "Ucoil5",
-            "Ucoil6", "Ucoil7", "Ucoil8", "Ucoil9", "Ucoil10",
-            "Ucoil11", "Ucoil12", "Ucoil13", "Ucoil14",
+            "Ucoil1",
+            "Ucoil2",
+            "Ucoil3",
+            "Ucoil4",
+            "Ucoil5",
+            "Ucoil6",
+            "Ucoil7",
+            "Ucoil8",
+            "Ucoil9",
+            "Ucoil10",
+            "Ucoil11",
+            "Ucoil12",
+            "Ucoil13",
+            "Ucoil14",
         ),
+        reference_gr1_voltage="UB",
+        reference_gr2_voltage="UH",
+        pupitre_formula_map={
+            "IH_ref": "IH_ref = Idcct3 + Idcct4",
+            "IB_ref": "IB_ref = Idcct1 + Idcct2",
+        },
+        pigbrother_formula_map=_PIGBROTHER_FORMULA_MAP,
+        hybrid_formula_map=_HYBRID_FORMULA_MAP,
     ),
     "M10": HousingConfig(
         name="M10",
@@ -411,13 +553,30 @@ HOUSING_CONFIGS: dict[str, HousingConfig] = {
         reference_gr2_rpm="RpmH",
         reference_gr1_pin="HPB",
         reference_gr2_pin="HPH",
-        voltage_channels_gr1=("UB", "Ucoil15", "Ucoil16"),
+        voltage_channels_gr1=("Ucoil15", "Ucoil16"),
         voltage_channels_gr2=(
-            "UH",
-            "Ucoil1", "Ucoil2", "Ucoil3", "Ucoil4", "Ucoil5",
-            "Ucoil6", "Ucoil7", "Ucoil8", "Ucoil9", "Ucoil10",
-            "Ucoil11", "Ucoil12", "Ucoil13", "Ucoil14",
+            "Ucoil1",
+            "Ucoil2",
+            "Ucoil3",
+            "Ucoil4",
+            "Ucoil5",
+            "Ucoil6",
+            "Ucoil7",
+            "Ucoil8",
+            "Ucoil9",
+            "Ucoil10",
+            "Ucoil11",
+            "Ucoil12",
+            "Ucoil13",
+            "Ucoil14",
         ),
+        reference_gr1_voltage="UB",
+        reference_gr2_voltage="UH",
+        pupitre_formula_map={
+            "IH_ref": "IH_ref = Idcct3 + Idcct4",
+            "IB_ref": "IB_ref = Idcct1 + Idcct2",
+        },
+        pigbrother_formula_map=_PIGBROTHER_FORMULA_MAP,
     ),
 }
 """Built-in default sensor role assignments per housing."""
@@ -426,6 +585,7 @@ HOUSING_CONFIGS: dict[str, HousingConfig] = {
 # ---------------------------------------------------------------------------
 # Public factory
 # ---------------------------------------------------------------------------
+
 
 def get_housing_config(
     housing: str,
@@ -490,7 +650,7 @@ def get_housing_config(
         # Check user config dir before falling back to hardcoded defaults.
         user_file = _USER_CONFIG_DIR / f"{housing}-housing-config.json"
         if user_file.exists():
-            logger.debug("get_housing_config: loading user config %s", user_file)
+            logger.debug(f"get_housing_config: loading user config {user_file}")
             base = load_housing_config(user_file)
         elif housing not in HOUSING_CONFIGS:
             raise ValueError(
@@ -512,15 +672,14 @@ def get_housing_config(
     for fname in _TUPLE_FIELDS:
         if fname in field_overrides and isinstance(field_overrides[fname], list):
             field_overrides[fname] = tuple(field_overrides[fname])
-    logger.info(
-        "get_housing_config: %r with overrides %s", housing, overrides
-    )
+    logger.info(f"get_housing_config: {housing!r} with overrides {overrides}")
     return dataclasses.replace(base, **field_overrides)
 
 
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     """Entry point for the ``magnetrun-housing-config`` command."""

@@ -181,13 +181,7 @@ def downsample_for_plot(
     n_keep = max(1, int(n * percent / 100.0))
     step = max(1, n // n_keep)
 
-    logger.debug(
-        "Downsampling: %d -> %d points (%.1f%%, step=%d)",
-        n,
-        len(x[::step]),
-        percent,
-        step,
-    )
+    logger.debug(f"Downsampling: {n} -> {len(x[::step])} points ({percent:.1f}%, step={step})")
 
     return x[::step], y[::step]
 
@@ -537,7 +531,7 @@ def plot_data(
             label, igroup = key.split("_") if "_" in key else (key, "")
             output_path = f"{title.replace('_Overview', '')}-{igroup}.png"
         plt.savefig(output_path, dpi=style.dpi)
-        logger.info("Saved plot to %s", output_path)
+        logger.info(f"Saved plot to {output_path}")
 
     if show:
         plt.show()
@@ -935,4 +929,4 @@ def save_figure(
         Additional arguments to savefig
     """
     fig.savefig(output_path, dpi=dpi, bbox_inches=bbox_inches, **kwargs)
-    logger.info("Saved figure to %s", output_path)
+    logger.info(f"Saved figure to {output_path}")

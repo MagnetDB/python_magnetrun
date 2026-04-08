@@ -407,10 +407,8 @@ class VProcessFileReader:
 
         if self.variables:
             logger.info(f"\nVariables: {len(self.variables)}")
-            logger.info("  Analog: %d", sum(1 for v in self.variables if v.is_analog))
-            logger.info(
-                "  Digital: %d", sum(1 for v in self.variables if not v.is_analog)
-            )
+            logger.info(f"  Analog: {sum(1 for v in self.variables if v.is_analog)}")
+            logger.info(f"  Digital: {sum(1 for v in self.variables if not v.is_analog)}")
 
             logger.info("\nFirst 10 variables:")
             for i, var in enumerate(self.variables[:10]):

@@ -21,12 +21,17 @@
     "unit": "second"
   },
   "Field": {
-    "description": "",
-    "symbol": "B",
+    "description": "Axial field",
+    "symbol": "Bz",
     "unit": "tesla",
     "aliases": {
       "pigbrother": "Courants_Alimentations/Champ_magn"
     }
+  },
+  "SupraField": {
+    "description": "Superconducting Magnet Field",
+    "symbol": "B",
+    "unit": "tesla"
   },
   "Tin1": {
     "description": "",

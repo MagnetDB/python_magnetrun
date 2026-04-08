@@ -948,6 +948,6 @@ def compare_series(
         except ImportError:
             logger.warning("DTW not available (dtaidistance not installed)")
         except (ValueError, RuntimeError) as e:
-            logger.warning("DTW computation failed: %s", e)
+            logger.warning(f"DTW computation failed: {e}")
 
     return results

@@ -2,76 +2,55 @@
 
 import logging
 import re
-import warnings
 
 from natsort import natsorted
 
 from .magnetdata import MagnetData
+from .magnetdata_base import DataType
 
 logger = logging.getLogger(__name__)
 
 
-def prepareData_legacy(data: MagnetData, housing: str) -> None:
-    """Prepare magnet run data by adding computed fields and renaming columns
-    (LEGACY VERSION).
+def _cleanup_pupitre_icoil(data: MagnetData) -> None:
+    """Remove zero/duplicate Icoil columns and rename Icoil→IH/IB."""
+    import pandas as pd
 
-    Adds IH_ref/IB_ref computed currents and renames Flow/Rpm/Tin/HP columns
-    with H/B suffixes appropriate for the given housing configuration.
+    assert isinstance(data.Data, pd.DataFrame)
 
-    :param data: MagnetData object to prepare in-place
-    :type data: MagnetData
-    :param housing: Housing name (e.g. "M8", "M9", "M10")
-    :type housing: str
-    """
-    warnings.warn(
-        "prepareData_legacy is deprecated and will be removed in a future version. "
-        "Use prepareData instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    # get start/end
-    (start_date, start_time, end_date, end_time) = data.getStartDate()
-    logger.debug(
-        f"prepareData_legacy: start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}"  # noqa: E501
-    )
+    # Drop all-zero columns (skip Flow* and Field*)
+    zero_cols = [
+        col for col in data.Data.columns
+        if (data.Data[col] == 0).all()
+        and not col.startswith("Flow")
+        and not col.startswith("Field")
+    ]
+    if zero_cols:
+        data.Data.drop(columns=zero_cols, inplace=True)
+        for col in zero_cols:
+            if col in data.Keys:
+                data.Keys.remove(col)
 
-    # add timestamp
-    data.addTime()
+    # Resolve duplicate Icoil columns
+    Ikeys = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
+    if len(Ikeys) > 2:
+        ikeys_df = data.Data[Ikeys]
+        remove = []
+        for i in range(len(Ikeys)):
+            for j in range(i + 1, len(Ikeys)):
+                diff = ikeys_df[Ikeys[i]] - ikeys_df[Ikeys[j]]
+                if abs(diff.mean()) <= 1e-2:
+                    remove.append(Ikeys[j])
+        if remove:
+            data.Data.drop(columns=remove, inplace=True)
+            for k in remove:
+                if k in data.Keys:
+                    data.Keys.remove(k)
+        Ikeys = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
 
-    # get duration
-    _duration = data.getDuration()
-
-    # TODO use a dict struct to simplify this?
-    # shall check if key exist beforehand
-    if housing == "M9":
-        data.addData("IH_ref", "IH_ref = Idcct1 + Idcct2")
-        data.addData("IB_ref", "IB_ref = Idcct3 + Idcct4")
-
-        # FlowH = Flow1, FlowB = Flow2
-        for field in ["Flow", "Rpm", "Tin", "HP"]:
-            data.renameData(
-                columns={f"{field}1": f"{field}H", f"{field}2": f"{field}B"}
-            )
-
-    elif housing in ["M8", "M10"]:
-        data.addData("IH_ref", "IH_ref = Idcct3 + Idcct4")
-        data.addData("IB_ref", "IB_ref = Idcct1 + Idcct2")
-
-        # FlowH = Flow2, FlowB = Flow1
-        for field in ["Flow", "Rpm", "Tin", "HP"]:
-            data.renameData(
-                columns={f"{field}1": f"{field}B", f"{field}2": f"{field}H"}
-            )
-    # what about M1, M5 and M7???
-
-    data.cleanupData_legacy()
-    Ikey = natsorted([_key for _key in data.getKeys() if re.match(r"Icoil\d+", _key)])
-    logger.debug(f"MagnetRun/prepareData_legacy: housing={housing}, Ikey={Ikey}")
-
-    data.renameData(columns={f"{Ikey[0]}": "IH"})
-    data.renameData(columns={f"{Ikey[-1]}": "IB"})
-
-    logger.debug(f"MagnetRun.prepareData_legacy: data.keys={data.getKeys()}")
+    # Rename Icoil[0]→IH, Icoil[-1]→IB
+    if Ikeys:
+        data.renameData(columns={Ikeys[0]: "IH"})
+        data.renameData(columns={Ikeys[-1]: "IB"})
 
 
 def prepareData(
@@ -84,47 +63,55 @@ def prepareData(
 ) -> None:
     """Prepare magnet run data by adding computed fields and renaming columns.
 
-    This method adds timestamp and performs cleanup with flexible configuration.
-    Housing-specific operations (IH_ref/IB_ref, Flow/Rpm/Tin/HP renaming, Icoil→IH/IB)
-    should now be specified via the keys_to_add and keys_to_rename parameters.
+    When *keys_to_add* and *keys_to_rename* are both ``None`` the ETL maps are
+    derived automatically from the :class:`~python_magnetrun.housing_config.HousingConfig`
+    for the given *housing*:
 
-    All custom operations are handled by the cleanupData() method.
+    - **PUPITRE**: adds ``pupitre_formula_map`` entries plus the UH/UB voltage
+      sum formulas (filtered to columns actually present), and renames
+      Flow/Rpm/Tin/HP index columns to role-based names.
+    - **TDMS** (pigbrother): adds ``pigbrother_formula_map`` entries.
+    - **HYBRID**: adds hybrid voltage sum formulas.
 
     :param data: MagnetData object to prepare in-place
-    :type data: MagnetData
-    :param housing: Housing name (e.g. "M8", "M9", "M10") - for reference/logging
-    :type housing: str
+    :param housing: Housing name (e.g. "M8", "M9", "M10")
     :param keys_to_remove: list of column names to remove, defaults to None
-    :type keys_to_remove: list[str] | None, optional
     :param keys_to_rename: dict mapping old column names to new names, defaults to None
-    :type keys_to_rename: dict[str, str] | None, optional
-    :param keys_to_add: dict mapping new column names to their formulas,
-        defaults to None
-    :type keys_to_add: dict[str, str] | None, optional
+    :param keys_to_add: dict mapping new column names to their formulas, defaults to None
     :param debug: Enable debug output, defaults to False
-    :type debug: bool, optional
     """
-    # get start/end
-    (start_date, start_time, end_date, end_time) = data.getStartDate()
-    logger.debug(
-        f"prepareData: start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}"  # noqa: E501
-    )
+    from .housing_config import get_housing_config
 
-    # add timestamp
+    cfg = get_housing_config(housing)
+
+    # Auto-build ETL maps from HousingConfig when caller passes None
+    if keys_to_add is None and keys_to_rename is None:
+        if data.Type == DataType.PUPITRE:
+            available = data.getKeys()
+            keys_to_add = {
+                **cfg.pupitre_formula_map,
+                **cfg.get_pupitre_voltage_formulas(available),
+            }
+            keys_to_rename = cfg.get_pupitre_rename_map()
+        elif data.Type == DataType.TDMS:
+            keys_to_add = cfg.pigbrother_formula_map
+        elif data.Type == DataType.HYBRID:
+            keys_to_add = {
+                **cfg.hybrid_formula_map,
+                **cfg.get_hybrid_voltage_formulas(data.getKeys()),
+            }
+
     data.addTime()
-
-    # get duration
     _duration = data.getDuration()
 
-    # NOTE: All custom operations (keys_to_add, keys_to_rename, keys_to_remove)
-    # are now handled by cleanupData() method
-
-    # Perform cleanup with flexible parameters
     data.cleanupData(
         keys_to_remove=keys_to_remove,
         keys_to_rename=keys_to_rename,
         keys_to_add=keys_to_add,
         debug=debug,
     )
+
+    if data.Type == DataType.PUPITRE:
+        _cleanup_pupitre_icoil(data)
 
     logger.debug(f"MagnetRun.prepareData: data.keys={data.getKeys()}")

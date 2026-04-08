@@ -113,12 +113,7 @@ def extract_hydraulic_data(
             f"{current_col} >= {current_threshold}. Need at least 3."
         )
 
-    logger.info(
-        "Extracted %d points from %d total (threshold=%.0f A)",
-        len(filtered),
-        len(df),
-        current_threshold,
-    )
+    logger.info(f"Extracted {len(filtered)} points from {len(df)} total (threshold={current_threshold:.0f} A)")
 
     return HydraulicData(
         current=filtered[current_col].to_numpy(),
@@ -223,7 +218,7 @@ def detect_imax_from_plateaus(
     )
 
     if not confirmed.any():
-        logger.info("No plateau detected in pump speed curve for '%s'.", data.name)
+        logger.info(f"No plateau detected in pump speed curve for '{data.name}'.")
         return None
 
     # The onset of the plateau is min_plateau_samples before the first
@@ -232,12 +227,7 @@ def detect_imax_from_plateaus(
     onset_idx = max(0, confirmed_idx - min_plateau_samples)
     imax = float(current.iloc[onset_idx])
 
-    logger.info(
-        "Plateau detected for '%s': onset at I=%.0f A (confirmed at sample %d).",
-        data.name,
-        imax,
-        confirmed_idx,
-    )
+    logger.info(f"Plateau detected for '{data.name}': onset at I={imax:.0f} A (confirmed at sample {confirmed_idx}).")
     return imax
 
 
@@ -299,12 +289,8 @@ def compute_waterflow(
     )
 
     logger.info(
-        "Fitted '%s': Imax=%.0f A, Vpmax=%.1f rpm, Fmax=%.1f l/s, Pmax=%.1f bar",
-        data.name,
-        pump_fit.imax,
-        pump_fit.vpmax,
-        flow_pressure_fit.fmax,
-        flow_pressure_fit.pmax,
+        f"Fitted '{data.name}': Imax={pump_fit.imax:.0f} A, Vpmax={pump_fit.vpmax:.1f} rpm, "
+        f"Fmax={flow_pressure_fit.fmax:.1f} l/s, Pmax={flow_pressure_fit.pmax:.1f} bar"
     )
 
     return build_waterflow(pump_fit, flow_pressure_fit)
@@ -389,7 +375,7 @@ def compute_waterflow_from_run(
                 "speed curve. Provide imax explicitly or use method='piecewise'."
             )
         data.imax = detected
-        logger.info("Auto-detected Imax=%.0f A for '%s'.", detected, name)
+        logger.info(f"Auto-detected Imax={detected:.0f} A for '{name}'.")
 
     return compute_waterflow(data, method=method)
 
@@ -453,7 +439,7 @@ def main() -> None:
     result = wf.to_dict() if hasattr(wf, "to_dict") else str(wf)
     with open(args.output, "w") as f:
         json.dump(result, f, indent=2)
-    logger.info("Waterflow parameters written to %s", args.output)
+    logger.info(f"Waterflow parameters written to {args.output}")
 
 
 if __name__ == "__main__":

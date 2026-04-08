@@ -23,11 +23,8 @@ import pwlf
 from sympy import Symbol
 from tabulate import tabulate
 
-# Import the factory module
 from python_magnetcooling.waterflow import WaterFlow
 from python_magnetcooling.waterflow_factory import from_flow_params
-
-# Import python_magnetrun methods
 from python_magnetrun.processing.fit import find_eqn, fit
 
 

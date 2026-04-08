@@ -255,7 +255,7 @@ def setup_logging(
             logging.Formatter(fmt=config.file_format, datefmt=DEFAULT_DATE_FORMAT)
         )
         logger.addHandler(file_handler)
-        logger.debug("Logging to file: %s", config.log_file)
+        logger.debug(f"Logging to file: {config.log_file}")
 
     if config.json_file:
         config.json_file.parent.mkdir(parents=True, exist_ok=True)
@@ -263,7 +263,7 @@ def setup_logging(
         json_handler.setLevel(logging.DEBUG)
         json_handler.setFormatter(JSONFormatter())
         logger.addHandler(json_handler)
-        logger.debug("JSON logging to file: %s", config.json_file)
+        logger.debug(f"JSON logging to file: {config.json_file}")
 
     return logger
 
@@ -438,23 +438,13 @@ class ProgressTracker:
         self.current += n
         if self.current % self.log_interval == 0 or self.current == self.total:
             self._logger.info(
-                "%s: %d/%d (%.1f%%) - %.1f/s - ETA: %.1fs",
-                self.description,
-                self.current,
-                self.total,
-                self.percent,
-                self.rate,
-                self.eta,
+                f"{self.description}: {self.current}/{self.total} ({self.percent:.1f}%) - {self.rate:.1f}/s - ETA: {self.eta:.1f}s"
             )
 
     def finish(self) -> None:
         """Mark progress as complete and log summary."""
         self._logger.info(
-            "%s: Complete - %d items in %.2fs (%.1f/s)",
-            self.description,
-            self.total,
-            self.elapsed,
-            self.rate,
+            f"{self.description}: Complete - {self.total} items in {self.elapsed:.2f}s ({self.rate:.1f}/s)"
         )
 
 
@@ -482,7 +472,7 @@ def timed_operation(
     """
     log = logger or get_logger()
     if log_start:
-        log.info("%s...", description)
+        log.info(f"{description}...")
     result = {}
     start_time = time.time()
     try:
@@ -490,7 +480,7 @@ def timed_operation(
     finally:
         elapsed = time.time() - start_time
         result["elapsed"] = elapsed
-        log.info("%s completed in %.2fs", description, elapsed)
+        log.info(f"{description} completed in {elapsed:.2f}s")
 
 
 class LogContext:

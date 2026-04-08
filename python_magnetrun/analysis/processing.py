@@ -339,7 +339,7 @@ def load_overview_data(
     if record.sources is None:
         raise ValueError("No sources defined for record")
 
-    logger.info("Loading overview data: %d files", len(record.sources.overview))
+    logger.info(f"Loading overview data: {len(record.sources.overview)} files")
 
     df_list = load_data(
         record.sources.overview,
@@ -387,7 +387,7 @@ def load_archive_data(
     if record.sources is None or not record.sources.archive:
         raise ValueError("No archive sources defined for record")
 
-    logger.info("Loading archive data: %d files", len(record.sources.archive))
+    logger.info(f"Loading archive data: {len(record.sources.archive)} files")
     print("record.sources.archive:", record.sources.archive)
     df_list = load_data(
         record.sources.archive,
@@ -465,7 +465,7 @@ def load_pupitre_data(
     standard_keys = ["BP", "teb", "tsb", "debitbrut", "Pmagnet", "Ptot"]
     pupitre_keys.extend([k for k in standard_keys if k not in pupitre_keys])
 
-    logger.info("Loading pupitre data: %d files", len(record.sources.pupitre))
+    logger.info(f"Loading pupitre data: {len(record.sources.pupitre)} files")
 
     df_list = load_data(
         record.sources.pupitre,
@@ -523,7 +523,7 @@ def load_incidents_data(
             incidents[incident_type] = []
             continue
 
-        logger.info("Loading %s data: %d files", incident_type, len(files))
+        logger.info(f"Loading {incident_type} data: {len(files)} files")
 
         df_list = load_data(files, record.site, "", group, keys)
 
@@ -616,12 +616,9 @@ def process_overview_file(
     record.sources = discovery.discover(overview_file, site=site)
 
     logger.info(
-        "Discovered files - archive: %d, pupitre: %d, incidents: %d",
-        len(record.sources.archive),
-        len(record.sources.pupitre),
-        len(record.sources.default)
-        + len(record.sources.trigger)
-        + len(record.sources.spike),
+        f"Discovered files - archive: {len(record.sources.archive)}, "
+        f"pupitre: {len(record.sources.pupitre)}, "
+        f"incidents: {len(record.sources.default) + len(record.sources.trigger) + len(record.sources.spike)}"
     )
 
     if config.dry_run:
@@ -714,7 +711,7 @@ def process_overview_file(
     if config.compute_lag and record.has_data("pupitre"):
         _compute_lag_correlation(record, site_config, keys, config)
 
-    logger.info("Processing complete for %s", filename)
+    logger.info(f"Processing complete for {filename}")
 
     return record
 
@@ -842,7 +839,7 @@ def _synchronize_pupitre(record: OverviewRecord, config: ProcessingConfig) -> No
     record.sync_info["timeshift"] = timeshift
     record.sync_info["timeshift_seconds"] = timeshift.total_seconds()
 
-    logger.info("Applied timeshift: %.3f s", timeshift.total_seconds())
+    logger.info(f"Applied timeshift: {timeshift.total_seconds():.3f} s")
 
 
 def _extract_signatures(
@@ -866,10 +863,7 @@ def _extract_signatures(
             }
 
             logger.debug(
-                "Signature for %s: min=%.2f, max=%.2f",
-                key,
-                record.signatures[key]["min"],
-                record.signatures[key]["max"],
+                f"Signature for {key}: min={record.signatures[key]['min']:.2f}, max={record.signatures[key]['max']:.2f}"
             )
 
 
@@ -896,7 +890,7 @@ def _compute_lag_correlation(
         if pupitre_key not in df_pupitre.columns:
             continue
 
-        logger.info("Computing lag for %s vs %s", overview_key, pupitre_key)
+        logger.info(f"Computing lag for {overview_key} vs {pupitre_key}")
 
         try:
             # Prepare data for lag computation
@@ -923,10 +917,10 @@ def _compute_lag_correlation(
             record.sync_info[f"lag_{key}"] = lag
             record.sync_info[f"lag_{key}_seconds"] = lag.total_seconds()
 
-            logger.info("Lag for %s: %.3f s", key, lag.total_seconds())
+            logger.info(f"Lag for {key}: {lag.total_seconds():.3f} s")
 
         except (ValueError, RuntimeError) as e:
-            logger.warning("Failed to compute lag for %s: %s", key, e)
+            logger.warning(f"Failed to compute lag for {key}: {e}")
 
 
 # =============================================================================

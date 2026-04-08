@@ -133,7 +133,7 @@ def getMaterial(
         refs = html.xpath('//input[@name="REF"]/@value')
         nuances = html.xpath('//input[@name="NUANCE"]/@value')
         if len(Mats.keys()) != len(refs) - 1:
-            logger.debug("Materials in main list:", len(refs) - 1)
+            logger.debug(f"Materials in main list: {len(refs) - 1}")
 
         for i, ref in enumerate(refs):
             # ref is lxml.etree._ElementUnicodeResult

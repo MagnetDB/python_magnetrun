@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 
 from .magnetdata import MagnetData
-from .runetl import prepareData_legacy
+from .runetl import prepareData
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,7 @@ class MagnetRun:
             f"MagnetRun:fromtdms: housing={housing}, site={site}, filename={filename}"
         )
         data = MagnetData.fromtdms(filename)
+        prepareData(data, housing)
         data.Units()
 
         group = list(data.Groups.keys())[0]
@@ -75,13 +76,10 @@ class MagnetRun:
         logger.debug(f"MagnetRun/from_txt: data={data}")
         res = data.getStartDate()
         logger.debug(f"MagnetRun.from_txt: getStartDate={res}")
-        prepareData_legacy(data, housing)
+        prepareData(data, housing)
         logger.debug(
-            f"MagnetRun/from_txt: after prepareData_legacy - data keys={data.getKeys()}"
+            f"MagnetRun/from_txt: after prepareData - data keys={data.getKeys()}"
         )
-        # TODO: switch to prepareData once legacy is removed:
-        # prepareData(data, housing, keys_to_remove=keys_to_remove,
-        #             keys_to_rename=keys_to_rename, keys_to_add=keys_to_add)
         data.Units()
         (start_date, start_time, end_date, end_time) = res
 
@@ -115,8 +113,7 @@ class MagnetRun:
                 logger.debug(f"MagnetRun:fromStringIO: site={site}, insert={insert}")
             data = MagnetData.fromStringIO(name)
             # print(f'data keys({len(data.getKeys())}): {data.getKeys()}')
-            prepareData_legacy(data, housing)
-            # print(f'prepareData: data keys({len(data.getKeys())}): {data.getKeys()}')
+            prepareData(data, housing)
 
         except (ValueError, KeyError, AttributeError, IndexError) as e:
             logger.error(
