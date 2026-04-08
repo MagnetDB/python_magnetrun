@@ -33,18 +33,33 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-# HousingConfig and housing defaults live in housing_config; re-exported here
-# so all existing callers (analysis/__init__.py, processing.py, cli.py, …)
-# continue to work without any import changes.
-from python_magnetrun.data_dirs import (  # noqa: F401
+from python_magnetrun.data_dirs import (
     HYBRID_DATA_DIR as DEFAULT_HYBRID_DATA_DIR,
 )
-from python_magnetrun.housing_config import (  # noqa: F401
+from python_magnetrun.data_dirs import (
+    PIGBROTHER_DATA_DIR as DEFAULT_PIGBROTHER_DATA_DIR,
+)
+from python_magnetrun.data_dirs import (
+    PUPITRE_DATA_DIR as DEFAULT_DATA_DIR,
+)
+from python_magnetrun.housing_config import (
     HOUSING_CONFIGS,
     ROLE_TO_FIELD,
     HousingConfig,
     get_housing_config,
 )
+
+# Re-exported names (used by analysis sub-modules and external callers).
+# Listed in __all__ so that linters (ruff F401) do not remove them.
+__all__ = [
+    "DEFAULT_DATA_DIR",
+    "DEFAULT_HYBRID_DATA_DIR",
+    "DEFAULT_PIGBROTHER_DATA_DIR",
+    "HOUSING_CONFIGS",
+    "ROLE_TO_FIELD",
+    "HousingConfig",
+    "get_housing_config",
+]
 
 # Module logger
 logger = logging.getLogger("magnetrun.analysis.config")
