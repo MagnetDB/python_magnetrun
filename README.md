@@ -818,6 +818,10 @@ pytest --on-demand tests/test-tin.py
 **Fix**
 - [ ] Fix time data in Hybrid kHz files
 
+**Finish**
+- [ ] hybrid data loading and unified interface
+- [ ] hybrid data validation and comparison with Pupitre/PigBrother
+
 **Refactor:**
 - [X] Split argparse options into separate Python files
 - [x] Add an example / a test for each subcommand in `python_magnetrun`
