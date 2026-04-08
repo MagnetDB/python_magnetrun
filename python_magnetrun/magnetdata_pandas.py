@@ -537,10 +537,38 @@ class PandasMagnetData(MagnetDataBase):
         return None
 
     def info(self) -> None:
+        from tabulate import tabulate
+
         print(f"magnetdata: {self.FileName}, Type={self.Type.name}")
-        print("keys:")
+
+        # Optionally load descriptions from the defs file
+        field_defs: dict = {}
+        if self.defs_file is not None:
+            try:
+                from .field_defs import load_defs
+
+                field_defs = load_defs(self.defs_file)
+            except (FileNotFoundError, ValueError) as exc:
+                logger.warning(
+                    f"info: cannot load field definitions from {self.defs_file!r}: {exc}"
+                )
+
+        rows = []
         for key in self.Keys:
-            print(f"\t{key}")
+            description = field_defs.get(key, {}).get("description", "")
+            if key in self.units:
+                symbol, unit = self.units[key]
+                unit_str = f"{unit:~P}" if unit is not None else ""
+            else:
+                symbol = ""
+                unit_str = ""
+            rows.append([key, description, symbol, unit_str])
+
+        print(
+            tabulate(
+                rows, headers=["Key", "Description", "Symbol", "Unit"], tablefmt="psql"
+            )
+        )
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(Type={self.Type!r}, Groups={self.Groups!r}, Keys={self.Keys!r}, Data={self.Data!r})"
