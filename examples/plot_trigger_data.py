@@ -5,7 +5,6 @@ This script reads and plots specific variables from trigger binary files.
 """
 
 import argparse
-import logging
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -17,10 +16,9 @@ from python_magnetrun.hybrid.trigger.trigger_reader import (
     parse_trigger_directory,
     read_trigger_data,
 )
-from python_magnetrun.log_utils import SIMPLE_FORMAT, setup_logging
+from python_magnetrun.log_utils import SIMPLE_FORMAT, get_logger, setup_logging
 
-logger = logging.getLogger(__name__)
-
+logger = get_logger()
 
 
 def plot_trigger_variable(

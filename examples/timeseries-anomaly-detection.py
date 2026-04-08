@@ -1,5 +1,4 @@
 import argparse
-import logging
 
 import numpy as np
 import pandas as pd
@@ -7,10 +6,10 @@ from scipy import stats
 from sklearn.ensemble import IsolationForest
 
 from python_magnetrun.cli_args import create_base_parser
-from python_magnetrun.log_utils import setup_logging
+from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 class TimeSeriesAnomalyDetector:
@@ -44,7 +43,9 @@ class TimeSeriesAnomalyDetector:
         anomalies = z_scores > threshold
         return np.where(anomalies)[0], z_scores
 
-    def iqr_detection(self, iqr_multiplier: float = 1.5) -> tuple[np.ndarray, np.ndarray]:
+    def iqr_detection(
+        self, iqr_multiplier: float = 1.5
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Detect anomalies using the Interquartile Range (IQR) method.
 
@@ -61,7 +62,9 @@ class TimeSeriesAnomalyDetector:
         lower_bound = Q1 - iqr_multiplier * IQR
         upper_bound = Q3 + iqr_multiplier * IQR
 
-        scores = np.maximum((self.series - upper_bound) / IQR, (lower_bound - self.series) / IQR)
+        scores = np.maximum(
+            (self.series - upper_bound) / IQR, (lower_bound - self.series) / IQR
+        )
         anomalies = (self.series < lower_bound) | (self.series > upper_bound)
         return np.where(anomalies)[0], scores
 
@@ -189,7 +192,9 @@ def plot_anomalies(
     fig.suptitle(title)
 
     ax1.plot(series, label="Original Data")
-    ax1.scatter(anomaly_indices, series[anomaly_indices], color="red", label="Anomalies")
+    ax1.scatter(
+        anomaly_indices, series[anomaly_indices], color="red", label="Anomalies"
+    )
     ax1.grid()
     ax1.legend()
 
@@ -241,7 +246,9 @@ if __name__ == "__main__":
     for file in input_files:
         f_extension = os.path.splitext(file)[-1]
         if f_extension not in supported_formats:
-            raise RuntimeError(f"so far file with extension in {supported_formats} are implemented")
+            raise RuntimeError(
+                f"so far file with extension in {supported_formats} are implemented"
+            )
 
         filename = os.path.basename(file)
         result = filename.startswith("M")

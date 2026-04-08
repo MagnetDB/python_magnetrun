@@ -12,7 +12,6 @@ Usage:
 """
 
 import argparse
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -22,11 +21,14 @@ import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
-from python_magnetrun.hybrid.vprocess.vprocess_reader import VProcessFileReader, read_vprocess_file
-from python_magnetrun.log_utils import setup_logging
+from python_magnetrun.hybrid.vprocess.vprocess_reader import (
+    VProcessFileReader,
+    read_vprocess_file,
+)
+from python_magnetrun.log_utils import get_logger, setup_logging
 
 # Setup logger
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def plot_variables(

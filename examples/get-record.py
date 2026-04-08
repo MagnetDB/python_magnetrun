@@ -1,7 +1,6 @@
 """Console script."""
 
 import argparse
-import logging
 import os
 import sys
 from datetime import datetime
@@ -11,14 +10,14 @@ import pandas as pd
 from tabulate import tabulate
 
 from python_magnetrun.cli_args import create_base_parser, get_datadir_mapping
-from python_magnetrun.log_utils import setup_logging
+from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.magnetdata_base import MagnetDataBase
 from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.correlations import pearson
 from python_magnetrun.processing.stats import stats
 from python_magnetrun.utils.files import expand_input_files
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 
 def load_record(file: str, args, show: bool = False) -> MagnetDataBase:

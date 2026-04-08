@@ -1,5 +1,4 @@
 import argparse
-import logging
 import os
 import re
 import sys
@@ -8,12 +7,12 @@ import matplotlib
 from natsort import natsorted
 
 from python_magnetrun.cli_args import create_base_parser
-from python_magnetrun.log_utils import setup_logging
+from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.correlations import lag_correlation
 from python_magnetrun.processing.trends import trends
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 matplotlib.rcParams["text.usetex"] = True
 
 if __name__ == "__main__":
@@ -24,7 +23,9 @@ if __name__ == "__main__":
     base_parser = create_base_parser()
     parser = argparse.ArgumentParser(parents=[base_parser])
     parser.add_argument("--save", help="save graphs (png format)", action="store_true")
-    parser.add_argument("--show", help="display graphs (X11 required)", action="store_true")
+    parser.add_argument(
+        "--show", help="display graphs (X11 required)", action="store_true"
+    )
     parser.add_argument("--window", help="rolling window size", type=int, default=10)
     args = parser.parse_args()
     setup_logging(level=args.log_level, log_file=args.log_file)
@@ -131,7 +132,9 @@ if __name__ == "__main__":
         # start_index: ochanges[0][0] + (ochanges[0][1] - ochanges[0][0])/2
         # end:_index ochanges[0][1] + (ochanges[0][2] - ochanges[0][1])/2
         ts_overview = mdata.getData(["timestamp", "TAlimout"])
-        ts_overview["TAlimout"] = ts_overview["TAlimout"] / ts_overview["TAlimout"].max()
+        ts_overview["TAlimout"] = (
+            ts_overview["TAlimout"] / ts_overview["TAlimout"].max()
+        )
         ts_overview.set_index("timestamp", inplace=True)
         ts_overview_data = {
             "field": "TAlimout",

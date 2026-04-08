@@ -13,7 +13,6 @@ The script uses the data directories as defined in python_magnetrun analysis con
 
 import argparse
 import glob
-import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -31,10 +30,10 @@ from python_magnetrun.hybrid.utils import (
     log_exception,
     normalize_signal,
 )
-from python_magnetrun.log_utils import setup_logging
+from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 # =============================================================================
 # Field name mapping dictionaries
@@ -312,7 +311,6 @@ def load_tdms_data(
     """
     logger.info(f"Loading TDMS data from: {tdms_file}")
     return MagnetRun.fromtdms(site, insert, str(tdms_file))
-
 
 
 def plot_comparison(

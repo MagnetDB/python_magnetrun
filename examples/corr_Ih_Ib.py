@@ -1,7 +1,6 @@
 """Main module."""
 
 import argparse
-import logging
 import os
 
 import matplotlib
@@ -10,10 +9,10 @@ import numpy as np
 from natsort import natsorted
 
 from python_magnetrun.cli_args import create_base_parser
-from python_magnetrun.log_utils import setup_logging
+from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True
@@ -56,7 +55,9 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     setup_logging(level=args.log_level, log_file=args.log_file)
-    logger.debug("args: %s", args)
+    logger.debug(f"args: {args}")
+
+    debug = args.log_level == "DEBUG"
 
     # load df pandas from input_file
     # check extension
@@ -66,6 +67,7 @@ if __name__ == "__main__":
     ykey = args.ykey
 
     input_files = natsorted(args.input_file)
+    logger.debug(f"input_files: {input_files}")
 
     for file in input_files:
         f_extension = os.path.splitext(file)[-1]
@@ -76,20 +78,25 @@ if __name__ == "__main__":
 
         filename = os.path.basename(file)
         result = filename.startswith("M")
-        insert = args.insert if args.insert else None
-        site = args.site if args.site else None
-        housing = args.housing if args.housing else None
-        if result:
-            try:
-                index = filename.index("_")
-                housing = filename[0:index] if housing is None else housing
-                # print(f"site detected: {site}")
-            except ValueError:
-                print("no site detected - use args.site argument instead")
-                pass
+        insert = args.insert if args.insert is not None else "tutu"
+        site = args.site if args.site is not None else "Mtutu"
+        housing = args.housing if args.housing is not None else "notdefined"
+        print(
+            f"file={file}, filename={filename}, site={site}, insert={insert}, housing={housing}, f_extension={f_extension}",
+            flush=True,
+        )
+        try:
+            index = filename.index("_")
+            housing = filename[0:index] if housing == "notdefined" else housing
+            # print(f"site detected: {site}")
+        except ValueError:
+            print(f"no housing detected - use args.housing {housing} argument instead")
+            pass
 
         match f_extension:
             case ".txt":
+                if not os.path.exists(file):
+                    file = os.path.join(args.pupitre_datadir, housing, filename)
                 mrun = MagnetRun.fromtxt(housing, site, file)
             case ".tdms":
                 mrun = MagnetRun.fromtdms(housing, site, file)
@@ -135,7 +142,7 @@ if __name__ == "__main__":
                     xlabel = f"{xmax} [{xunit:~P}]"
 
         # y as f(x)
-        if args.debug:
+        if debug:
             plt.figure()
             plt.plot(x, y, "o")
             plt.xlabel(xlabel)

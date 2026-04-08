@@ -12,9 +12,9 @@ This script demonstrates the full workflow using python_magnetrun methods:
 This is a standalone version of the compute() method from flow_params_magnetrun.py
 """
 
+import argparse
 import json
 import os
-import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,7 +25,10 @@ from tabulate import tabulate
 
 from python_magnetcooling.waterflow import WaterFlow
 from python_magnetcooling.waterflow_factory import from_flow_params
+from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.processing.fit import find_eqn, fit
+
+logger = get_logger()
 
 
 def generate_synthetic_data(
@@ -587,6 +590,35 @@ def main():
     """
     Main pipeline execution using python_magnetrun methods.
     """
+    parser = argparse.ArgumentParser(
+        description="Flow Parameter Extraction Pipeline (using python_magnetrun)"
+    )
+    parser.add_argument(
+        "--show-plots",
+        help="display plots (requires X11 server active)",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--debug",
+        help="enable debug output",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--log-level",
+        help="set logging level",
+        type=str,
+        default="WARNING",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+    )
+    parser.add_argument(
+        "--log-file",
+        help="path to log file (if not specified, logs to console)",
+        type=str,
+        default=None,
+    )
+    args = parser.parse_args()
+    setup_logging(level=args.log_level, log_file=args.log_file)
+
     print("\n")
     print("*" * 70)
     print("FLOW PARAMETER EXTRACTION PIPELINE (python_magnetrun)")
@@ -595,8 +627,8 @@ def main():
     print("\n")
 
     # Configuration
-    show_plots = "--show-plots" in sys.argv
-    debug = "--debug" in sys.argv
+    show_plots = args.show_plots
+    debug = args.debug
 
     # Step 1: Generate experimental data as DataFrame
     df = generate_synthetic_data(n_points=500, noise_level=0.02, include_plateau=True)

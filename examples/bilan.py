@@ -1,5 +1,4 @@
 import argparse  # noqa: I001
-import logging
 import os
 
 import matplotlib.pyplot as plt
@@ -7,11 +6,11 @@ from pint import UnitRegistry  # noqa: I001
 
 from python_magnetcooling.water_properties import get_cp, get_rho
 from python_magnetrun.cli_args import create_base_parser
-from python_magnetrun.log_utils import setup_logging
+from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.utils.files import expand_input_files
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 command_line = None
 base_parser = create_base_parser()
 parser = argparse.ArgumentParser("Energy Balance", parents=[base_parser])
@@ -24,9 +23,7 @@ args = parser.parse_args(command_line)
 setup_logging(level=args.log_level, log_file=args.log_file)
 
 # Load pigbrother file — expand glob / search in pigbrother_datadir
-tdms_files = expand_input_files(
-    args.input_file, {".tdms": args.pigbrother_datadir}
-)
+tdms_files = expand_input_files(args.input_file, {".tdms": args.pigbrother_datadir})
 tdms_file_path = tdms_files[0]
 
 filename = os.path.basename(tdms_file_path)
@@ -48,9 +45,7 @@ print(f"time={time}")
 pupitre_pattern = f"{site}_20{time[0][0:2]}.{time[0][2:4]}.{time[0][4:]}---{time[1][0:2]}:{time[1][2:]}:*.txt"
 print(f'pupitre_pattern="{pupitre_pattern}"')
 
-pupitre_files = expand_input_files(
-    [pupitre_pattern], {".txt": args.pupitre_datadir}
-)
+pupitre_files = expand_input_files([pupitre_pattern], {".txt": args.pupitre_datadir})
 # just get the first one for the moment, eg. "srvdata/M10_2024.10.14---09:51:32.txt"
 pupitre_file_path = pupitre_files[0]
 pupitre_data = MagnetRun.fromtxt(site, insert, pupitre_file_path).getMData()

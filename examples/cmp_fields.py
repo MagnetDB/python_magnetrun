@@ -1,7 +1,6 @@
 """Compare 2 timeseries."""
 
 import argparse
-import logging
 import os
 
 import matplotlib
@@ -12,11 +11,11 @@ from scipy import stats
 from tabulate import tabulate
 
 from python_magnetrun.cli_args import create_base_parser
-from python_magnetrun.log_utils import setup_logging
+from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.smoothers import lowess_bell_shape_kern
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True
