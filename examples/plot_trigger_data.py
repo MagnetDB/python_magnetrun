@@ -5,18 +5,22 @@ This script reads and plots specific variables from trigger binary files.
 """
 
 import argparse
+import logging
+import re
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+from python_magnetrun.cli_args import create_hybrid_parser
 from python_magnetrun.hybrid.trigger.trigger_reader import (
     apply_calibration,
     create_time_array,
     find_trigger_directories,
+    load_trigger_config,
     parse_trigger_directory,
     read_trigger_data,
 )
-from python_magnetrun.log_utils import SIMPLE_FORMAT, get_logger, setup_logging
+from python_magnetrun.log_utils import get_logger, setup_logging
 
 logger = get_logger()
 
@@ -294,61 +298,153 @@ def plot_multiple_triggers(
     return fig, axes
 
 
+def resolve_trigger_dirs(
+    input_dir: str | None,
+    hybrid_datadir: str | None,
+    hybrid_date: str | None,
+    all_for_date: bool = False,
+) -> list[Path]:
+    """Resolve trigger directories from a direct path or hybrid directory.
+
+    Resolution order:
+    1. If *input_dir* is given and exists on disk — use it directly
+       (or all dirs for that date if *all_for_date* is True).
+    2. If *input_dir* is given but not found — infer date from the directory
+       name (``TRIGGER__YYYY-MM-DD__HH-MM``), then search
+       ``hybrid_datadir/trigger/`` (all dirs if *all_for_date* is True).
+    3. If no *input_dir* — list all trigger directories for *hybrid_date* in
+       ``hybrid_datadir/trigger/``.
+
+    Parameters
+    ----------
+    input_dir:
+        Optional path (or bare name) of a trigger directory.
+    hybrid_datadir:
+        Base directory for hybrid data (``find_trigger_directories`` appends
+        ``/trigger`` internally).
+    hybrid_date:
+        Date string ``YYYY-MM-DD`` used when searching the hybrid tree.
+    all_for_date:
+        When True and *input_dir* is given, return all trigger directories for
+        the inferred date instead of just the matched one.
+
+    Returns
+    -------
+    list[Path]
+        Resolved trigger directory paths, never empty.
+
+    Raises
+    ------
+    FileNotFoundError
+        When the directory cannot be found or the search yields no matches.
+    ValueError
+        When insufficient information is provided to locate the directories.
+    """
+    if input_dir:
+        candidate = Path(input_dir)
+        if candidate.exists() and candidate.is_dir() and not all_for_date:
+            return [candidate]
+        # If all_for_date, fall through to resolve all dirs for the inferred date
+
+        if not hybrid_datadir:
+            raise FileNotFoundError(f"Trigger directory not found: {input_dir}")
+
+        # Infer date from directory name TRIGGER__YYYY-MM-DD__HH-MM
+        inferred_date: str | None = None
+        m = re.match(r"TRIGGER_+(\d{4}-\d{2}-\d{2})_+\d{2}-\d{2}", candidate.name)
+        if m:
+            inferred_date = m.group(1)
+
+        resolved_date = hybrid_date or inferred_date
+        logger.info(f"Inferred from directory name: date='{resolved_date}'")
+
+        if not resolved_date:
+            raise ValueError(
+                f"'{input_dir}' not found; could not infer date from directory name. "
+                "Provide --hybrid_date."
+            )
+
+        matches = find_trigger_directories(Path(hybrid_datadir), resolved_date)
+        if all_for_date:
+            result = matches
+        else:
+            # Try exact name match first, fall back to all dirs for that date
+            exact = [d for d in matches if d.name == candidate.name]
+            result = exact or matches
+        if not result:
+            raise FileNotFoundError(
+                f"'{input_dir}' not found and no trigger dirs for "
+                f"{resolved_date} in {hybrid_datadir}/trigger"
+            )
+        if all_for_date:
+            logger.info(f"Resolved '{input_dir}' → {len(result)} dir(s) for {resolved_date}")
+            return result
+        logger.info(f"Resolved '{input_dir}' → {result[0]}")
+        return result[:1]
+
+    # No input_dir — collect all trigger dirs from the hybrid tree
+    if not hybrid_date:
+        raise ValueError("Provide either input_dir or --hybrid_date")
+    if not hybrid_datadir:
+        raise ValueError("--hybrid_datadir is required when no input_dir is given")
+
+    trigger_dirs = find_trigger_directories(Path(hybrid_datadir), hybrid_date)
+    if not trigger_dirs:
+        raise FileNotFoundError(
+            f"No trigger directories found for {hybrid_date} in {hybrid_datadir}/trigger"
+        )
+    logger.info(f"Found {len(trigger_dirs)} trigger dir(s) for {hybrid_date}")
+    return trigger_dirs
+
+
 def main():
     """Command-line interface"""
+    hybrid_parser = create_hybrid_parser()
     parser = argparse.ArgumentParser(
         description="Plot FEPC trigger data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        parents=[hybrid_parser],
         epilog="""
 Examples:
-  # Plot single trigger
-  python -m python_magnetrun.hybrid.trigger.plot_trigger_data --trigger-dir /data/hybrid/trigger/TRIGGER_2025-11-05_08-16 \\
-                               --system FEPC-LNCMI --variable I_H1
+  # Plot single trigger by directory name
+  python plot_trigger_data.py TRIGGER__2025-11-05__08-16 --variable I_H1
+  python plot_trigger_data.py TRIGGER__2025-11-05__08-16 --variable I_H1 I_BOB
+
+  # Plot single trigger resolved from hybrid dir
+  python plot_trigger_data.py TRIGGER__2025-11-05__08-16 --hybrid_datadir /data/hybrid --variable I_H1
 
   # Plot all triggers for a date
-  python -m python_magnetrun.hybrid.trigger.plot_trigger_data --base-dir /data/hybrid --date 2025-11-05 \\
-                               --system FEPC-LNCMI --variable I_H1 --all
+  python plot_trigger_data.py --hybrid_date 2025-11-05 --variable I_H1 --all
 
-  # Save plot
-  python -m python_magnetrun.hybrid.trigger.plot_trigger_data --trigger-dir /data/hybrid/trigger/TRIGGER_2025-11-05_08-16 \\
-                               --system FEPC-LNCMI --variable I_H1 --save trigger_plot.png
+  # Save plot without displaying
+  python plot_trigger_data.py TRIGGER__2025-11-05__08-16 --variable I_H1 --save trigger_plot.png
 
   # Skip calibration
-  python -m python_magnetrun.hybrid.trigger.plot_trigger_data --trigger-dir /data/hybrid/trigger/TRIGGER_2025-11-05_08-16 \\
-                               --system FEPC-LNCMI --variable I_H1 --no-calib
+  python plot_trigger_data.py TRIGGER__2025-11-05__08-16 --variable I_H1 --no-calib
         """,
     )
 
     parser.add_argument(
-        "--base-dir",
-        type=Path,
-        help="Base directory containing trigger subdirectory (for --all mode)",
+        "input_dir",
+        nargs="?",
+        help="Trigger directory to process (optional if --hybrid_date is given)",
     )
-
     parser.add_argument(
-        "--trigger-dir", type=Path, help="Path to specific trigger directory"
-    )
-
-    parser.add_argument(
-        "--date", type=str, help="Date in YYYY-MM-DD format (for --all mode)"
-    )
-
-    parser.add_argument(
-        "--system",
+        "--variable",
         type=str,
-        choices=["FEPC-LNCMI", "FEPC-AUX-LNCMI"],
-        default="FEPC-LNCMI",
-        help="FEPC system name",
+        nargs="+",
+        default=None,
+        metavar="VARIABLE",
+        help="Variable name(s) to plot (one figure per variable)",
     )
-
     parser.add_argument(
-        "--variable", type=str, required=True, help="Variable name to plot"
+        "--list-variables",
+        action="store_true",
+        help="List all variables available in the trigger config and exit",
     )
-
     parser.add_argument(
-        "--all", action="store_true", help="Plot all triggers for specified date"
+        "--all", action="store_true", help="Plot all triggers for the resolved date"
     )
-
     parser.add_argument(
         "--endian",
         type=str,
@@ -356,28 +452,39 @@ Examples:
         default="big",
         help="Endianness of binary data",
     )
-
     parser.add_argument("--save", type=Path, help="Save plot to file")
-
     parser.add_argument(
         "--no-show", action="store_true", help="Do not show interactive plot"
     )
-
     parser.add_argument("--no-calib", action="store_true", help="Skip calibration")
-
     parser.add_argument(
         "--cnv-dir", type=Path, help="Directory containing CNV calibration files"
     )
-
     parser.add_argument(
         "--fig-size",
         type=str,
         default="12,6",
         help="Figure size as width,height (default: 12,6)",
     )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="set logging level",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        default=None,
+        help="path to log file (if not specified, logs to console)",
+    )
 
     args = parser.parse_args()
-    setup_logging(fmt=SIMPLE_FORMAT)
+
+    log_level = getattr(logging, args.log_level.upper())
+    setup_logging(level=log_level, log_file=args.log_file)
+    logger.debug(f"Parsed arguments: {args}")
 
     # Parse figure size
     try:
@@ -387,42 +494,56 @@ Examples:
         fig_size = (12, 6)
 
     try:
-        if args.all:
-            # Plot all triggers for date
-            if not args.base_dir or not args.date:
-                logger.error("Error: --base-dir and --date required for --all mode")
-                return
+        trigger_dirs = resolve_trigger_dirs(
+            args.input_dir, args.hybrid_datadir, args.hybrid_date, all_for_date=args.all
+        )
+    except (FileNotFoundError, ValueError) as e:
+        parser.error(str(e))
 
-            plot_multiple_triggers(
-                args.base_dir,
-                args.date,
-                args.system,
-                args.variable,
-                args.endian,
-                not args.no_show,
-                args.save,
-                not args.no_calib,
-                args.cnv_dir,
-                fig_size,
-            )
+    if args.list_variables:
+        config = load_trigger_config(trigger_dirs[0], args.fepc_system)
+        if config is None:
+            parser.error(f"Could not load config from {trigger_dirs[0]}")
+        for card in config.cards:
+            print(f"Card {card.slot} ({card.card_type}): {', '.join(card.variable_names)}")
+        return
 
-        else:
-            # Plot single trigger
-            if not args.trigger_dir:
-                logger.error("Error: --trigger-dir required")
-                return
+    if not args.variable:
+        parser.error("--variable is required — check available variables with --list-variables")
 
-            plot_trigger_variable(
-                args.trigger_dir,
-                args.system,
-                args.variable,
-                args.endian,
-                not args.no_show,
-                args.save,
-                not args.no_calib,
-                args.cnv_dir,
-                fig_size,
-            )
+    try:
+        for var in args.variable:
+            # Derive a per-variable save path when multiple variables are requested
+            if args.save and len(args.variable) > 1:
+                save_path = args.save.with_stem(f"{args.save.stem}_{var}")
+            else:
+                save_path = args.save
+
+            if args.all and len(trigger_dirs) > 1:
+                plot_multiple_triggers(
+                    trigger_dirs[0].parent.parent,  # hybrid_datadir
+                    trigger_dirs[0].parent.name,    # YYYY-MM-DD from trigger dir parent
+                    args.fepc_system,
+                    var,
+                    args.endian,
+                    not args.no_show,
+                    save_path,
+                    not args.no_calib,
+                    args.cnv_dir,
+                    fig_size,
+                )
+            else:
+                plot_trigger_variable(
+                    trigger_dirs[0],
+                    args.fepc_system,
+                    var,
+                    args.endian,
+                    not args.no_show,
+                    save_path,
+                    not args.no_calib,
+                    args.cnv_dir,
+                    fig_size,
+                )
 
     except (OSError, ValueError, RuntimeError) as e:
         logger.error(f"Error: {e}")

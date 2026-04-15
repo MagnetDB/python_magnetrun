@@ -674,12 +674,7 @@ def process_overview_file(
         print(f"keys: {keys}")
         df_pupitre = load_pupitre_data(record, site_config, config.group, keys)
         if not df_pupitre.empty:
-            pt0 = df_pupitre["timestamp"].iloc[0]
-            df_pupitre["t"] = df_pupitre.apply(
-                lambda row: (row["timestamp"] - pt0).total_seconds(),
-                axis=1,
-            )
-
+            # t is already computed by addTime(); timestamp was rebuilt in load_df
             # Extract pupitre parameters
             if "teb" in df_pupitre.columns:
                 record.teb = float(df_pupitre["teb"].mean())

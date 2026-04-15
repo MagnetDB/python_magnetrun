@@ -1,5 +1,7 @@
 # Plan: Add File-Format Validation Before Parsing
 
+**Status: COMPLETE** — all steps implemented and tested.
+
 ## Summary
 
 A new `validation.py` module provides a `FileFormatError` (subclass of `ValueError`) and
@@ -8,65 +10,65 @@ before any file I/O beyond reading a few bytes.
 
 ---
 
-## Current State
+## Final State
 
 | Format | Existence check | Extension check | Magic/structural check |
 |---|---|---|---|
-| `.txt` (pupitre) | **missing** | yes | none |
-| `.tdms` | yes | yes | none |
-| `.csv` (generic/ensight/bprofile/feelpp) | **missing** | **missing** | none |
-| RMS binary | **missing** | **missing** | none |
-| VProcess binary | **missing** | **missing** | none |
-| FEPC kHz binary | partial (alignment, but bare `raise`) | **missing** | — |
+| `.txt` (pupitre) | `validate_txt_format` in `magnetdata_pandas.py:657` | yes | `Date`/`Time` header check |
+| `.tdms` | `validate_tdms_format` in `magnetdata.py:97` | yes | `TDSm` magic bytes |
+| `.csv` (generic/ensight/bprofile/feelpp) | `validate_csv_format` / `validate_file_exists` in `magnetdata_pandas.py` | — | non-empty + readable |
+| RMS binary | `validate_rms_format` in `rms_reader.py:71` | — | `#` first byte |
+| VProcess binary | `validate_vprocess_format` in `vprocess_reader.py:153` | — | `#` first byte |
+| FEPC kHz binary | `FileFormatError` raised in `fepc_reader.py:652` | — | block-size alignment |
 
 ---
 
 ## Steps
 
-### Step 1 — Create `python_magnetrun/utils/validation.py`
+### Step 1 — Create `python_magnetrun/utils/validation.py` ✓
 
-Define `FileFormatError(ValueError)` and these validators:
+Defined `FileFormatError(ValueError)` and these validators:
 
-- `validate_file_exists(path)` — raises `FileNotFoundError` if missing
+- `validate_file_exists(path)`
 - `validate_txt_format(path)` — checks non-empty + `Date`/`Time` in header line
 - `validate_tdms_format(path)` — checks magic bytes `b"TDSm"` at offset 0
 - `validate_csv_format(path, required_columns=None)` — non-empty, parseable first line, optional column names
 - `validate_rms_format(path)` — first byte is `b"#"`
 - `validate_vprocess_format(path)` — first byte is `b"#"`
-- `validate_fepc_binary_format(path, card_type)` — file size is a multiple of block size
+- `validate_fepc_binary_format(path, card_type)` — file size is a multiple of block size (defined; `fepc_reader.py` duplicates inline)
 
-### Step 2 — Export from `python_magnetrun/utils/__init__.py`
+### Step 2 — Export from `python_magnetrun/utils/__init__.py` ✓
 
-Add `from .validation import FileFormatError`.
+`FileFormatError` and all validators exported.
 
-### Step 3 — Patch `python_magnetrun/magnetdata.py` (highest leverage)
+### Step 3 — Patch `magnetdata_pandas.py` and `magnetdata.py` ✓
 
-At the top of each `from*` classmethod, call the matching validator before any `open()` call:
+| Method | Validator | Location |
+|---|---|---|
+| `fromtxt` | `validate_txt_format` | `magnetdata_pandas.py:657` |
+| `fromtdms` | `validate_tdms_format` | `magnetdata.py:97` |
+| `fromcsv` | `validate_csv_format` | `magnetdata_pandas.py:670` |
+| `fromensight` | `validate_file_exists` | `magnetdata_pandas.py:721` |
+| `frombprofile` | `validate_csv_format` | `magnetdata_pandas.py:740` |
+| `fromfeelpp` | `validate_csv_format` | `magnetdata_pandas.py:759` |
 
-| Method | Validator |
-|---|---|
-| `fromtxt` | `validate_txt_format` |
-| `fromtdms` | `validate_tdms_format` (after existing existence/extension checks) |
-| `fromcsv` | `validate_file_exists` + `validate_csv_format` |
-| `fromensight` | `validate_file_exists` |
-| `frombprofile` | `validate_file_exists` + `validate_csv_format` |
-| `fromfeelpp` | `validate_file_exists` + `validate_csv_format` |
+### Step 4 — Write `tests/test_file_validation.py` ✓
 
-### Step 4 — Write `tests/test_file_validation.py`
+Unit tests per validator (exists/missing/bad content) + integration tests for
+`MagnetData` factory methods (`fromtxt`, `fromtdms`, `fromcsv`).
+Integration tests depend on `tests/data/sample_pupitre.txt`.
 
-Tests for each validator (`pytest`, `tmp_path`, `pytest.raises`) + integration tests on
-`MagnetData.fromtxt` / `fromtdms` with bad files.
+### Step 5 — Patch `rms_reader.py` and `vprocess_reader.py` ✓
 
-### Step 5 — Patch `rms_reader.py` and `vprocess_reader.py`
+- `rms_reader.py:71` — calls `validate_rms_format`
+- `vprocess_reader.py:153` — calls `validate_vprocess_format`
 
-Call `validate_rms_format` / `validate_vprocess_format` at the start of `parse_header`.
+### Step 6 — Fix `fepc_reader.py` and `trigger_reader.py` ✓
 
-### Step 6 — Fix `fepc_reader.py` and `trigger_reader.py`
-
-- Replace bare `raise` at line 614 of `fepc_reader.py` with
-  `raise FileFormatError(f"{filepath}: file size {file_size} is not a multiple of block size {block_size}")`.
-- Upgrade the silent `logger.warning` in `trigger_reader.py` (`read_trigger_file`, line 231-234)
-  to also raise a `FileFormatError` so corrupted reads are caught early.
+- `fepc_reader.py:652` — bare `raise` replaced with
+  `raise FileFormatError(f"{filepath}: file size {file_size} is not a multiple of block size {block_size}")`
+- `trigger_reader.py:238` — silent `logger.warning` upgraded to also
+  `raise FileFormatError(...)` so corrupted reads are caught early
 
 ---
 
@@ -84,13 +86,14 @@ without change.
 
 ---
 
-## Critical Files
+## Files Changed / Created
 
-- `python_magnetrun/magnetdata.py`
-- `python_magnetrun/utils/validation.py` *(to create)*
+- `python_magnetrun/utils/validation.py` *(created)*
 - `python_magnetrun/utils/__init__.py`
+- `python_magnetrun/magnetdata.py`
+- `python_magnetrun/magnetdata_pandas.py`
 - `python_magnetrun/hybrid/kHz/fepc_reader.py`
 - `python_magnetrun/hybrid/trigger/trigger_reader.py`
 - `python_magnetrun/hybrid/rms/rms_reader.py`
 - `python_magnetrun/hybrid/vprocess/vprocess_reader.py`
-- `tests/test_file_validation.py` *(to create)*
+- `tests/test_file_validation.py` *(created)*

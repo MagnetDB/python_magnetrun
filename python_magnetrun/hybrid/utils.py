@@ -222,7 +222,9 @@ def remove_outliers(
         # Interpolate NaN values
         valid_idx = ~np.isnan(data)
         if np.sum(valid_idx) > 2:
-            data = np.interp(np.arange(len(data)), np.arange(len(data))[valid_idx], data[valid_idx])
+            data = np.interp(
+                np.arange(len(data)), np.arange(len(data))[valid_idx], data[valid_idx]
+            )
 
     return data, time, n_outliers
 
@@ -265,7 +267,9 @@ def _global_outlier_mask(data: np.ndarray, method: str, threshold: float) -> np.
         mask = (data < lower_bound) | (data > upper_bound)
 
     else:
-        raise ValueError(f"Unknown method: {method}. Use 'iqr', 'zscore', 'mad', or 'percentile'")
+        raise ValueError(
+            f"Unknown method: {method}. Use 'iqr', 'zscore', 'mad', or 'percentile'"
+        )
 
     return mask
 
@@ -333,21 +337,108 @@ def normalize_signal(data: np.ndarray) -> np.ndarray:
     return data / max_abs
 
 
-def binarize_signal(data: np.ndarray, tolerance: float = 0.5) -> np.ndarray:
+def _otsu_threshold(abs_data: np.ndarray, n_bins: int = 256) -> float:
+    """Compute Otsu's optimal threshold on absolute-value data.
+
+    Uses log-scale binning so the narrow near-zero off-state population
+    gets adequate resolution when the signal dynamic range is large.
     """
-    Return a binary array: 0 where |data| <= tolerance, 1 otherwise.
+    eps = 1e-9
+    positive = abs_data[abs_data > eps]
+    if positive.size == 0:
+        return 0.0
+
+    log_data = np.log10(positive)
+    counts, bin_edges = np.histogram(log_data, bins=n_bins)
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2.0
+    total = counts.sum()
+    if total == 0:
+        return 0.0
+
+    weights = counts / total
+    cum_w = np.cumsum(weights)
+    cum_mean = np.cumsum(weights * bin_centers)
+    global_mean = cum_mean[-1]
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        between_var = np.where(
+            (cum_w > 0) & (cum_w < 1),
+            (global_mean * cum_w - cum_mean) ** 2 / (cum_w * (1.0 - cum_w)),
+            0.0,
+        )
+
+    log_threshold = float(bin_centers[np.argmax(between_var)])
+    return float(10**log_threshold)
+
+
+def binarize_signal(
+    data: np.ndarray,
+    tolerance: float = 0.005,
+    method: str = "otsu",
+    n_bins: int = 256,
+    normalize: bool = True,
+    noise_percentile: float = 40.0,
+) -> np.ndarray:
+    """
+    Return a binary array: 0 (signal off) or 1 (signal on).
 
     Parameters
     ----------
     data : array-like
-        Input signal data.
+        Input signal data (any scale).
     tolerance : float, optional
-        Values with absolute value <= tolerance are considered zero (default: 0.5).
+        Threshold value used only when method='fixed' (default: 0.005).
+    method : str, optional
+        'fixed'  — use the tolerance value directly.
+        'otsu'   — compute the threshold automatically via Otsu's method
+                   on the absolute values using log-scale bins (default).
+        'noise'  — estimate the noise floor from the bottom
+                   `noise_percentile` % of absolute values and use
+                   3*sigma of that population as threshold.
+    n_bins : int, optional
+        Number of histogram bins for Otsu's method (default: 256).
+    normalize : bool, optional
+        If True (default), normalize the signal by its maximum absolute value
+        before applying the threshold, so tolerance is scale-independent.
+    noise_percentile : float, optional
+        Percentile (0–100) defining the noise population when
+        method='noise' (default: 40.0).
 
     Returns
     -------
     np.ndarray
         Integer array of 0s and 1s.
     """
-    data = np.asarray(data)
-    return np.where(np.abs(data) <= tolerance, 0, 1)
+    data = np.asarray(data, dtype=float)
+    if normalize:
+        data = normalize_signal(data)
+        print(
+            f"data stats: min={data.min():.4g}, max={data.max():.4g}, "
+            f"mean={data.mean():.4g}, std={data.std():.4g}",
+            flush=True,
+        )
+    abs_data = np.abs(data)
+
+    if method == "fixed":
+        threshold = tolerance
+    elif method == "otsu":
+        threshold = _otsu_threshold(abs_data, n_bins)
+    elif method == "noise":
+        noise_ceil = float(np.percentile(abs_data, noise_percentile))
+        quiet = abs_data[abs_data <= noise_ceil]
+        sigma = float(quiet.std())
+        print(
+            f"Noise floor (p{noise_percentile}={noise_ceil:.4g}), "
+            f"3*sigma={3.0 * sigma:.4g} as threshold.",
+            flush=True,
+        )
+        threshold = 3.0 * sigma
+    else:
+        raise ValueError(
+            f"Unknown method {method!r}. Choose 'fixed', 'otsu', or 'noise'."
+        )
+    print(
+        f"Using threshold: {threshold:.4g} (method={method})",
+        flush=True,
+    )
+    return np.where(abs_data <= threshold, 0, 1)

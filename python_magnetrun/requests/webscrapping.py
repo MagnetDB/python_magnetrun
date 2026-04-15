@@ -7,13 +7,14 @@ For each MagnetID list of attached record
 Check record consistency
 """
 
-import datetime
 import logging
 import re
 import sys
 from typing import Any
 
 import lxml.html as lh
+
+from ..utils.timestamps import parse_filename_timestamp
 
 # import jsonpickle
 from .connect import download
@@ -600,8 +601,7 @@ def getSiteRecord(
             # print(f"link={link}, site={site}, housing={housing}")
             logger.debug(f"data={data}, link={link}, site={site}, housing={housing}")
 
-            tformat = "%Y.%m.%d - %H:%M:%S"
-            timestamp = datetime.datetime.strptime(data[1].replace(".txt", ""), tformat)
+            timestamp = parse_filename_timestamp(data[1])
             # print(f'timestamp: {timestamp}, {type(timestamp)}')
 
             # # Download a specific file

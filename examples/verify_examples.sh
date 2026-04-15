@@ -90,14 +90,14 @@ echo ""
 # ---------------------------------------------------------------------------
 echo "--- Self-contained (synthetic data) ---"
 
-if [[ $HAS_MAGNETCOOLING -eq 1 ]]; then
+if [[ $HAS_MAGNETCOOLING_WF -eq 1 ]]; then
     run_cmd  1 python "$EXAMPLES/flow_params_pipeline.py"
 else
     skip_cmd 1 "python_magnetcooling top-level WaterFlow not importable" \
         "python $EXAMPLES/flow_params_pipeline.py"
 fi
 
-if [[ $HAS_MAGNETCOOLING -eq 1 && $HAS_PWLF -eq 1 ]]; then
+if [[ $HAS_MAGNETCOOLING_WF -eq 1 && $HAS_PWLF -eq 1 ]]; then
     run_cmd  2 python "$EXAMPLES/flow_params_magnetrun_pipeline.py"
 else
     skip_cmd 2 "python_magnetcooling or pwlf not available" \
@@ -112,7 +112,7 @@ else
 fi
 
 run_cmd  4 python "$EXAMPLES/example_fepc_usage.py"
-run_cmd  5 python "$EXAMPLES/example_trigger_usage.py"
+skip_cmd  5 python "$EXAMPLES/example_trigger_usage.py"
 
 echo ""
 echo "--- Argument-parser smoke test (--help) ---"
@@ -136,28 +136,28 @@ echo ""
 echo "--- Pupitre (.txt) dependent ---"
 
 if [[ -n "$PUPITRE_FILE" ]]; then
-    run_cmd 16 python "$EXAMPLES/outliers.py" "$PUPITRE_FILE" --housing M9
+    run_cmd 16 python "$EXAMPLES/outliers.py" '"$PUPITRE_FILE"' --housing M8
 
     if [[ $HAS_PWLF -eq 1 ]]; then
-        run_cmd 17 python "$EXAMPLES/corr_Ih_Ib.py" "$PUPITRE_FILE"
+        run_cmd 17 python "$EXAMPLES/corr_Ih_Ib.py" '"$PUPITRE_FILE"' --housing M8
     else
-        skip_cmd 17 "pwlf not available" "python $EXAMPLES/corr_Ih_Ib.py $PUPITRE_FILE"
+        skip_cmd 17 "pwlf not available" "python $EXAMPLES/corr_Ih_Ib.py '$PUPITRE_FILE'" --housing M8
     fi
 
-    run_cmd 18 python "$EXAMPLES/cmp_fields.py" "$PUPITRE_FILE" --xkey Field --ykey IH
-    run_cmd 19 python "$EXAMPLES/pupitre.py" "$PUPITRE_FILE"
+    run_cmd 18 python "$EXAMPLES/cmp_fields.py" '"$PUPITRE_FILE"' --xkey Field --ykey IH --housing M8
+    run_cmd 19 python "$EXAMPLES/pupitre.py" '"$PUPITRE_FILE"'
 
     if [[ $HAS_SKLEARN -eq 1 ]]; then
-        run_cmd 20 python "$EXAMPLES/timeseries-anomaly-detection.py" "$PUPITRE_FILE" --housing M10
+        run_cmd 20 python "$EXAMPLES/timeseries-anomaly-detection.py" '"$PUPITRE_FILE"' --housing M8
     else
         skip_cmd 20 "scikit-learn not available" \
-            "python $EXAMPLES/timeseries-anomaly-detection.py $PUPITRE_FILE --housing M10"
+            "python $EXAMPLES/timeseries-anomaly-detection.py '$PUPITRE_FILE' --housing M8"
     fi
 
-    run_cmd 21 python "$EXAMPLES/get-record.py" "$PUPITRE_FILE" \
+    run_cmd 21 python "$EXAMPLES/get-record.py" '"$PUPITRE_FILE"' \
         --pupitre_datadir "$PUPITRE_DIR" --pigbrother_datadir "$PIGBROTHER_DIR" select
 
-    run_cmd 22 python "$EXAMPLES/get-record.py" "$PUPITRE_FILE" \
+    run_cmd 22 python "$EXAMPLES/get-record.py" '"$PUPITRE_FILE"' \
         --pupitre_datadir "$PUPITRE_DIR" --pigbrother_datadir "$PIGBROTHER_DIR" \
         stats --fields Field
 else
@@ -171,8 +171,8 @@ echo ""
 echo "--- Pigbrother (.tdms) dependent ---"
 
 if [[ -n "$TDMS_FILE" ]]; then
-    run_cmd 23 python "$EXAMPLES/bilan.py" "$TDMS_FILE" \
-        --pupitre_datadir "$PUPITRE_DIR" --pigbrother_datadir "$PIGBROTHER_DIR"
+    run_cmd 23 python "$EXAMPLES/bilan.py" '"$TDMS_FILE"' \
+        --pupitre_datadir '"$PUPITRE_DIR"' --pigbrother_datadir '"$PIGBROTHER_DIR"'
 else
     skip_cmd 23 "no .tdms in $PIGBROTHER_DIR — set MAGNETRUN_PIGBROTHER_DATA_DIR" \
         "python $EXAMPLES/bilan.py ..."

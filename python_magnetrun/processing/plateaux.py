@@ -1,7 +1,6 @@
 #! /usr/bin/python3
 
 import logging
-from datetime import timedelta
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -302,8 +301,12 @@ def plateaus(
     actual_plateaux = []
     for p in plateaux:
         if Data.Type == 0:
-            t0 = Data.Data["timestamp"].iloc[p[0]]
-            t1 = Data.Data["timestamp"].iloc[p[1]]
+            from datetime import timedelta
+
+            t0_s = float(Data.Data["t"].iloc[p[0]])
+            t1_s = float(Data.Data["t"].iloc[p[1]])
+            t0 = Data.start_timestamp + timedelta(seconds=t0_s)
+            t1 = Data.start_timestamp + timedelta(seconds=t1_s)
         else:
             t0 = df.index[0]
             t1 = df.index[-1]

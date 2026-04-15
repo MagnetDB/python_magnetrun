@@ -6,25 +6,36 @@ This is a simplified version demonstrating the core concepts.
 For a full-featured version, see plot_hybrid_with_pupitre_tdms.py
 """
 
-import glob
-from datetime import datetime
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Import file-finder helpers from the full example
+from plot_hybrid_with_pupitre_tdms import find_pupitre_files, find_tdms_overview_files
+
 # Import from python_magnetrun
-from python_magnetrun.data_dirs import HYBRID_DATA_DIR, PIGBROTHER_DATA_DIR, PUPITRE_DATA_DIR
+from python_magnetrun.data_dirs import (
+    HYBRID_DATA_DIR,
+    PIGBROTHER_DATA_DIR,
+    PUPITRE_DATA_DIR,
+)
 
 # Import from hybrid module
 from python_magnetrun.hybrid.hybrid_run import HybridRun
-from python_magnetrun.hybrid.utils import log_exception
+from python_magnetrun.hybrid.utils import binarize_signal, log_exception
+from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
+
+TZ_FRANCE = ZoneInfo("Europe/Paris")
+logger = get_logger()
 
 # =============================================================================
 # Configuration — override via MAGNETRUN_* env vars or edit here
 # =============================================================================
 
-HYBRID_BASE_DIR = HYBRID_DATA_DIR   # Base dir containing kHz/, rms/, trigger/
+HYBRID_BASE_DIR = HYBRID_DATA_DIR  # Base dir containing kHz/, rms/, trigger/
 PUPITRE_DATADIR = PUPITRE_DATA_DIR
 PIGBROTHER_DATADIR = PIGBROTHER_DATA_DIR
 
@@ -32,30 +43,50 @@ PIGBROTHER_DATADIR = PIGBROTHER_DATA_DIR
 # Customize based on your channel configuration
 FIELD_MAPPING = {
     # Format: hybrid_key -> (pupitre_field, tdms_field)
-    "kHz/FEPC-AUX-LNCMI/ALIM1_J1": ("IH", "Référence_GR1"),
-    "kHz/FEPC-AUX-LNCMI/ALIM1_J2": ("IB", "Référence_GR2"),
-    "kHz/FEPC-LNCMI/I_H1": ("IH", "Référence_GR1"),
-    "kHz/FEPC-LNCMI/I_B1": ("IB", "Référence_GR2"),
+    "kHz/FEPC-AUX-LNCMI/ALIM1_J1": ("Idcct1", "Courants_Alimentations/Courant_A1"),
+    "kHz/FEPC-AUX-LNCMI/ALIM1_J2": ("Idcct2", "Courants_Alimentations/Courant_A2"),
 }
 
-
+VOLTAGE_MAPPING = {
+    "kHz/FEPC-AUX-LNCMI/ALIM1_J1": "kHz/FEPC-AUX-LNCMI/BITTER_V2",
+}
 # =============================================================================
 # Example usage
 # =============================================================================
 
 
 def main():
+    setup_logging()  # logging.DEBUG)
+
     # =========================================================================
     # 1. Load hybrid kHz data
     # =========================================================================
-    date_str = "2025-01-27"
+    date_str = "2025-11-05"
     fepc_system = "FEPC-AUX-LNCMI"  # or "FEPC-LNCMI"
-    site = "M10"
+    housing = "M8"
+    save = False
+    hours = [13, 14, 15, 16, 17]  # Hours to load (optional)
 
-    print(f"Loading hybrid data for {date_str}, {fepc_system}, site {site}")
+    if hours is None:
+        t0 = (
+            datetime.strptime(date_str, "%Y-%m-%d")  # .replace(tzinfo=TZ_FRANCE)
+            # .astimezone(timezone.utc)
+        )
+    else:
+        t0 = (
+            datetime.strptime(
+                f"{date_str} {hours[0]:02d}:00", "%Y-%m-%d %H:%M"
+            )  # .replace(tzinfo=TZ_FRANCE)
+            # .astimezone(timezone.utc)
+        )
+
+    print(f"Loading hybrid data for {date_str}, {fepc_system}, housing {housing}")
 
     hrun = HybridRun.fromdir(
-        base_dir=HYBRID_BASE_DIR, date_str=date_str, fepc_system=fepc_system, site=site
+        base_dir=HYBRID_BASE_DIR,
+        date_str=date_str,
+        fepc_system=fepc_system,
+        housing=housing,
     )
 
     # Get available keys
@@ -66,34 +97,31 @@ def main():
     # =========================================================================
     date = datetime.strptime(date_str, "%Y-%m-%d")
 
-    # Search pattern for pupitre files: M10/2025.01.27---*.txt
-    pupitre_pattern = f"{PUPITRE_DATADIR}/{site}/{date.year}.{date.month:02d}.{date.day:02d}*.txt"
-    pupitre_files = glob.glob(pupitre_pattern)
+    pupitre_files = find_pupitre_files(date, housing, PUPITRE_DATADIR, hours=hours)
+    print(f"Found {len(pupitre_files)} pupitre file(s): {pupitre_files}")
 
     pupitre_data = None
     if pupitre_files:
-        print(f"Found pupitre file: {pupitre_files[0]}")
-        pupitre_data = MagnetRun.fromtxt(site, "Unknown", pupitre_files[0])
+        pupitre_data = MagnetRun.fromtxt(housing, "Unknown", pupitre_files[0])
         print(f"Pupitre keys: {pupitre_data.getMData().getKeys()[:10]}")
     else:
-        print(f"No pupitre files found matching: {pupitre_pattern}")
+        print("No pupitre files found")
 
     # =========================================================================
     # 3. Find and load TDMS data for the same date
     # =========================================================================
 
-    # Search pattern for TDMS: M10/Overview/M10_Overview_250127-*.tdms
-    year_yy = date.year % 100
-    tdms_pattern = f"{PIGBROTHER_DATADIR}/{site}/Overview/{site}_Overview_{year_yy:02d}{date.month:02d}{date.day:02d}-*.tdms"
-    tdms_files = glob.glob(tdms_pattern)
+    tdms_files = find_tdms_overview_files(
+        date, housing, PIGBROTHER_DATADIR, hours=hours
+    )
+    print(f"Found {len(tdms_files)} TDMS Overview file(s): {tdms_files}")
 
     tdms_data = None
     if tdms_files:
-        print(f"Found TDMS file: {tdms_files[0]}")
-        tdms_data = MagnetRun.fromtdms(site, "Unknown", tdms_files[0])
+        tdms_data = MagnetRun.fromtdms(housing, "Unknown", tdms_files[0])
         print(f"TDMS keys: {tdms_data.getMData().getKeys()[:10]}")
     else:
-        print(f"No TDMS files found matching: {tdms_pattern}")
+        print("No TDMS Overview files found")
 
     # =========================================================================
     # 4. Plot data from all three sources using field mapping
@@ -112,40 +140,98 @@ def main():
     print("\nPlotting comparison:")
     print(f"  Hybrid: {hybrid_key}")
     print(f"  Pupitre: {pupitre_field}")
-    print(f"  TDMS: {tdms_field}")
+    print(f"  TDMS: {tdms_field}", flush=True)
 
     # Create plot
     fig, ax = plt.subplots(figsize=(14, 6))
 
+    from python_magnetrun.hybrid.utils import normalize_signal
+
     # Plot hybrid data (high frequency, downsampled for visualization)
     try:
-        data, time = hrun.getData(hybrid_key, downsample=10000, hours=[10, 11, 12])
-        # Convert to seconds if needed
-        if len(time) > 0 and hasattr(time[0], "timestamp"):
-            time_sec = np.array([(t - time[0]).total_seconds() for t in time])
-        else:
-            time_sec = time
-        ax.plot(
-            time_sec,
-            data,
+        data, time = hrun.getData(hybrid_key, downsample=100000, hours=hours)
+        if hybrid_key in VOLTAGE_MAPPING:
+            voltage_key = VOLTAGE_MAPPING[hybrid_key]
+            print(f"Loading voltage data for {voltage_key} to create mask")
+            voltage_data, _ = hrun.getData(voltage_key, downsample=100000, hours=hours)
+            plt.plot(
+                time,
+                normalize_signal(voltage_data),
+                "c-",
+                alpha=0.5,
+                linewidth=0.5,
+                label=f"Hybrid voltage mask ({voltage_key})",
+            )
+
+            # Apply mask to hybrid signal
+            voltage_binary_mask = binarize_signal(voltage_data, method="fixed")
+            plt.plot(
+                time,
+                voltage_binary_mask,
+                "c-",
+                alpha=0.5,
+                linewidth=0.5,
+                label=f"Hybrid voltage mask ({voltage_key}) -- fixed threshold",
+            )
+            data = data * voltage_binary_mask
+
+            # Test other mask to hybrid signal
+            voltage_binary_mask_otsu = binarize_signal(
+                voltage_data, method="otsu", n_bins=2048
+            )
+            plt.plot(
+                time,
+                voltage_binary_mask_otsu,
+                "y-",
+                alpha=0.5,
+                linewidth=0.5,
+                label=f"Hybrid voltage mask ({voltage_key}) -- otsu",
+            )
+
+            voltage_binary_mask_noise = binarize_signal(voltage_data, method="noise")
+            plt.plot(
+                time,
+                voltage_binary_mask_noise,
+                "g-",
+                alpha=0.5,
+                linewidth=0.5,
+                label=f"Hybrid voltage mask ({voltage_key}) -- noise",
+            )
+
+        plt.plot(
+            time,
+            normalize_signal(data),
             "b-",
             alpha=0.7,
             linewidth=0.5,
             label=f"Hybrid kHz ({hybrid_key})",
         )
     except (OSError, ValueError, RuntimeError, KeyError) as e:
-        log_exception("Could not plot hybrid data", e, use_print=True, include_traceback=True)
+        log_exception(
+            "Could not plot hybrid data", e, use_print=True, include_traceback=True
+        )
 
     # Plot pupitre data
     if pupitre_data and pupitre_field:
         try:
             mdata = pupitre_data.getMData()
+            time_p = mdata.getStartDate()
+            t0_p = mdata.start_timestamp  # is local not UTC
+            t0_utc = t0.astimezone(UTC).replace(tzinfo=None)
+            print(
+                f"Pupitre start time: {time_p}, t0_p={t0_p} ({type(t0_p)}), t0={t0} ({type(t0)})",
+                end="",
+            )
+            dt = (t0_utc - t0_p).total_seconds()
+            print(f", dt={dt} seconds")
+
             if pupitre_field in mdata.getKeys():
                 values = mdata.getData(pupitre_field)
+                mdata.shiftTime(-dt)  # Shift to relative time in seconds
                 time_p = mdata.getData("t")  # Time in seconds
                 ax.plot(
                     time_p,
-                    values,
+                    normalize_signal(np.asarray(values)),
                     "r-",
                     alpha=0.8,
                     linewidth=1.5,
@@ -154,18 +240,30 @@ def main():
             else:
                 print(f"Pupitre field '{pupitre_field}' not found")
         except (OSError, ValueError, RuntimeError, KeyError) as e:
-            log_exception("Could not plot pupitre data", e, use_print=True, include_traceback=True)
+            log_exception(
+                "Could not plot pupitre data", e, use_print=True, include_traceback=True
+            )
 
     # Plot TDMS data
     if tdms_data and tdms_field:
         try:
             mdata = tdms_data.getMData()
+            time_p = mdata.getStartDate()
+            t0_p = mdata.start_timestamp  # is UTC not local
+            t0_utc = t0.astimezone(UTC).replace(tzinfo=None)
+            dt = (t0_utc - t0_p).total_seconds()
+            print(f"Pigbrother start time: {time_p}, t0_p={t0_p}, dt={dt} seconds")
             if tdms_field in mdata.getKeys():
                 values = mdata.getData(tdms_field)
-                time_t = mdata.getData("t") if "t" in mdata.getKeys() else np.arange(len(values))
+                group = tdms_field.split("/")[0]  # Extract group from field path
+                time_t = mdata.getData(f"{group}/t")  # Time in seconds
+                time_t = (
+                    time_t - dt
+                )  # Shift to relative time --shall be done using shiftTime that must be implemented in MagnetDataTDMS, but for simplicity we do it here
+
                 ax.plot(
                     time_t,
-                    values,
+                    normalize_signal(np.asarray(values)),
                     "g-",
                     alpha=0.8,
                     linewidth=1.5,
@@ -174,20 +272,24 @@ def main():
             else:
                 print(f"TDMS field '{tdms_field}' not found")
         except (OSError, ValueError, RuntimeError, KeyError) as e:
-            log_exception("Could not plot TDMS data", e, use_print=True, include_traceback=True)
+            log_exception(
+                "Could not plot TDMS data", e, use_print=True, include_traceback=True
+            )
 
     ax.set_xlabel("Time (seconds)")
-    ax.set_ylabel("Value")
-    ax.set_title(f"Comparison: {hybrid_key} vs Pupitre vs TDMS - Site {site}")
+    ax.set_ylabel("Normalized value (a.u.)")
+    ax.set_title(f"Comparison: {hybrid_key} vs Pupitre vs TDMS")
     ax.legend()
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig("hybrid_comparison_minimal.png", dpi=150)
-    print("\nPlot saved to: hybrid_comparison_minimal.png")
+    if save:
+        plt.savefig("hybrid_comparison_minimal.png", dpi=150)
+        print("\nPlot saved to: hybrid_comparison_minimal.png")
+    else:
+        plt.show()
 
-    # Uncomment to show interactively:
-    # plt.show()
+    plt.close()
 
 
 if __name__ == "__main__":

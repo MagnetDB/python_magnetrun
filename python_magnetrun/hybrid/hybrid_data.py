@@ -45,6 +45,7 @@ try:
     from .kHz.fepc_reader import (
         FEPCConfig,
         calibrate_channel,
+        compute_hour_t0,
         parse_cfg_file,
         read_hour_file,
     )
@@ -54,6 +55,7 @@ except ImportError as e:
     parse_cfg_file = None  # type: ignore[assignment]
     read_hour_file = None  # type: ignore[assignment]
     calibrate_channel = None  # type: ignore[assignment]
+    compute_hour_t0 = None  # type: ignore[assignment]
 
 try:
     from .rms.rms_reader import RMSFileReader
@@ -445,7 +447,11 @@ class HybridData:
         logger.debug(
             f"read_kHz_variable: system={system}, variable={variable}, slot={slot}, hours={hours}, apply_calib={apply_calib}, cnv_dir={cnv_dir}"
         )
-        if read_hour_file is None or calibrate_channel is None:
+        if (
+            read_hour_file is None
+            or calibrate_channel is None
+            or compute_hour_t0 is None
+        ):
             raise ImportError("fepc_reader module not available")
 
         config = self.load_khz_config(system)
@@ -495,27 +501,39 @@ class HybridData:
         # Get card type (var_card is guaranteed to be non-None here)
         card_type = var_card.card_type
 
-        # Read data from all files
+        # Global t0 = HH:00:00 local time of the first file.
+        # Each file is read with its own file-local t0 (returning timestamps in 0..3600s),
+        # then shifted by (file_t0 - global_t0) so all timestamps share the same origin.
+        global_t0 = compute_hour_t0(str(bin_files[0]), self.date_str)
+
         all_data = []
+        all_timestamps = []
         debug = logger.isEnabledFor(logging.DEBUG)
         for bin_file in bin_files:
             logger.debug(f"Reading {bin_file.name}...")
-            hour_data = read_hour_file(
-                str(bin_file), card_type, endian=self.endian, debug=debug
+            file_t0 = compute_hour_t0(str(bin_file), self.date_str)
+            print(
+                f"  file_t0: {file_t0}, global_t0: {global_t0}, offset: {(file_t0 - global_t0)} seconds"
+            )
+            hour_data, hour_timestamps = read_hour_file(
+                str(bin_file), card_type, endian=self.endian, t0=file_t0, debug=debug
+            )
+            # Shift file-local timestamps to be relative to global_t0
+            offset = file_t0 - global_t0
+            hour_timestamps = np.where(
+                np.isnan(hour_timestamps), np.nan, hour_timestamps + offset
             )
             all_data.append(hour_data[:, var_channel])
+            all_timestamps.append(hour_timestamps)
 
         data = np.concatenate(all_data)
+        time = np.concatenate(all_timestamps)  # elapsed seconds from global_t0
 
         # Apply calibration
         if apply_calib and card_type == "ANA":
             if cnv_dir is None:
                 cnv_dir = str(khz_dir)
             data = calibrate_channel(data, var_card, var_channel, cnv_dir)
-
-        # Create time array (1 kHz sampling)
-        sampling_freq = 1000  # 1 kHz
-        time = np.arange(len(data)) / sampling_freq
 
         return data, time
 

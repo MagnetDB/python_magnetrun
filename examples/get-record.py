@@ -16,6 +16,7 @@ from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.correlations import pearson
 from python_magnetrun.processing.stats import stats
 from python_magnetrun.utils.files import expand_input_files
+from python_magnetrun.utils.timestamps import parse_filename_timestamp
 
 logger = get_logger()
 
@@ -65,52 +66,12 @@ def select_data(data, args) -> dict | None:
     return None
 
 
-def getTimestamp(file: str, debug: bool = False) -> datetime:
-    """
-    Extract timestamp from a pupitre (.txt) or pigbrother (.tdms) filename.
-    """
-    basename = os.path.basename(file)
-    extension = os.path.splitext(basename)[-1]
-    stem = basename[: -len(extension)]
-    logger.debug(f"getTimestamp({file}):")
-
-    try:
-        if extension == ".txt":
-            # pupitre formats (newest first):
-            #   new standard:  site_YYYY.MM.DD - HH:MM:SS
-            #   alternative:   site_YYYY-MM-DD_HH-MM-SS
-            #   legacy:        site_YYYY.MM.DD---HH:MM:SS
-            res = stem.split("_")
-            for fmt in (
-                "%Y.%m.%d - %H:%M:%S",
-                "%Y-%m-%d_%H-%M-%S",
-                "%Y.%m.%d---%H:%M:%S",
-            ):
-                try:
-                    date_string = res[-1]
-                    timestamp = datetime.strptime(date_string, fmt)
-                    break
-                except ValueError:
-                    continue
-            else:
-                raise ValueError(f"unrecognised pupitre date format: {date_string!r}")
-        elif extension == ".tdms":
-            # pigbrother format: site_mode_YYMMDD-HHMM[SS]
-            timestamp_part = res[2].split("-")
-            date_str, time_str = timestamp_part[0], timestamp_part[1]
-            if len(time_str) == 6:  # HHMMSS
-                timestamp = datetime.strptime(date_str + time_str, "%y%m%d%H%M%S")
-            else:  # HHMM
-                timestamp = datetime.strptime(date_str + time_str[:4], "%y%m%d%H%M")
-        else:
-            raise ValueError(f"unsupported extension: {extension}")
-        logger.debug(f"getTimestamp({file})={timestamp}")
-    except (ValueError, IndexError) as e:
-        raise RuntimeError(
-            f"getTimestamp: {file} failed - getting timestamp from {res} ({e})"
-        ) from None
-
-    return timestamp
+def _sort_key(file: str) -> datetime:
+    """Return the start timestamp for *file*, raising RuntimeError if unparseable."""
+    ts = parse_filename_timestamp(file)
+    if ts is None:
+        raise RuntimeError(f"cannot parse timestamp from filename: {file!r}")
+    return ts
 
 
 def main():
@@ -199,7 +160,7 @@ def main():
     print(f"files: {files}, datadir={datadir}")
 
     # need to be sorted by time??
-    files = sorted(files, key=getTimestamp, reverse=False)
+    files = sorted(files, key=_sort_key, reverse=False)
     logger.debug(f"sort by time: {files}")
 
     selected_keys = []

@@ -16,31 +16,18 @@ from ..magnetdata import MagnetData
 from ..MagnetRun import MagnetRun
 from ..processing.plateaux import nplateaus
 from ..processing.stats import stats
+from ..utils.timestamps import parse_filename_timestamp
 
 # hack to avoid pandas warning
 pd.options.mode.copy_on_write = True
 
 
 def getTimestamp(file: str, debug: bool = False):
-    """
-    extract timestamp from file
-    """
-    # print(f"getTime({file}):", flush=True)
-    from datetime import datetime
-
-    filename = ""
-    if "/" in file:
-        filename = file.split("/")
-    res = filename[-1].split("_")
-    print(f"getTime({file})={res}", flush=True)
-
-    (site, date_string) = res
-    date_string = date_string.replace(".txt", "")
-    tformat = "%Y.%m.%d---%H:%M:%S"
-    timestamp = datetime.strptime(date_string, tformat)
-    if debug:
-        print(f"{site}: timestamp={timestamp}")
-    return timestamp
+    """Extract timestamp from a magnet data filename."""
+    ts = parse_filename_timestamp(file)
+    if ts is None:
+        raise RuntimeError(f"cannot parse timestamp from filename: {file!r}")
+    return ts
 
 
 def load_record(file: str) -> MagnetData:

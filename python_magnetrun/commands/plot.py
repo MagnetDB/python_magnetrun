@@ -296,7 +296,13 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
                 raise RuntimeError(f"invalid pair of keys:{pair}")
             key1 = items[0]
             key2 = items[1]
-            mdata.plotData(x=key1, y=key2, ax=my_ax)
+            print(f"plotting {key1} vs {key2} from {file}", flush=True)
+            try:
+                mdata.plotData(x=key1, y=key2, ax=my_ax)
+            except RuntimeError as e:
+                logger.error(f"pair {pair!r}: key not found in {file}: {e}")
+                logger.info(f"available keys: {mdata.getKeys()}")
+                continue
 
     if len(legends) > 1:
         plt.legend(labels=legends)

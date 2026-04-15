@@ -167,6 +167,7 @@ def create_common_smoothing_parser() -> argparse.ArgumentParser:
 
 def create_base_parser(
     allowed_extensions: list[str] | None = None,
+    add_input_file: bool = True,
 ) -> argparse.ArgumentParser:
     """Create base parser with common arguments.
 
@@ -174,6 +175,9 @@ def create_base_parser(
 
     :param allowed_extensions: Optional list of allowed file extensions (e.g., ['.tdms', '.txt'])  # noqa: E501
     :type allowed_extensions: list or None
+    :param add_input_file: Whether to add the positional ``input_file`` argument (default: True).
+        Pass ``False`` when the script does not take input files.
+    :type add_input_file: bool
     :return: ArgumentParser with base arguments
     :rtype: argparse.ArgumentParser
     """
@@ -181,15 +185,16 @@ def create_base_parser(
     parser = argparse.ArgumentParser(add_help=False, parents=[datadir_parser])
 
     # Add input_file with optional extension validation
-    if allowed_extensions:
-        parser.add_argument(
-            "input_file",
-            nargs="+",
-            type=validate_file_extension(allowed_extensions),
-            help=f"enter input file (allowed: {', '.join(allowed_extensions)})",
-        )
-    else:
-        parser.add_argument("input_file", nargs="+", help="enter input file")
+    if add_input_file:
+        if allowed_extensions:
+            parser.add_argument(
+                "input_file",
+                nargs="+",
+                type=validate_file_extension(allowed_extensions),
+                help=f"enter input file (allowed: {', '.join(allowed_extensions)})",
+            )
+        else:
+            parser.add_argument("input_file", nargs="+", help="enter input file")
 
     parser.add_argument(
         "--site",
@@ -225,10 +230,12 @@ def create_managed_plots_parser() -> argparse.ArgumentParser:
     :rtype: argparse.ArgumentParser
     """
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--save", help="save graphs (png format)", action="store_true")
-    parser.add_argument(
-        "--show", help="display graphs (require X11)", action="store_true"
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--save", help="save graphs (png format)", action="store_true")
+    group.add_argument(
+        "--show", help="display graphs (require X11; default)", action="store_true"
     )
+    parser.set_defaults(show=True)
     return parser
 
 

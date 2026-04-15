@@ -27,6 +27,7 @@ from natsort import natsorted
 
 from ..log_utils import setup_logging
 from ..utils.list import flatten
+from ..utils.timestamps import parse_filename_timestamp
 from .connect import createSession
 from .HMagnet import HMagnet
 from .MRecord import MRecord
@@ -780,15 +781,8 @@ def main():
                     logger.debug(f"{orphan} ({type(orphan)})")
                     site = "unknown"
                     link = orphan
-                    ts_str = (
-                        link.split("/")[-1]
-                        .replace("%20", " ")
-                        .replace(".txt", "")
-                        .strip()
-                    )
-                    timestamp = datetime.datetime.strptime(
-                        ts_str, "%Y.%m.%d - %H:%M:%S"
-                    )
+                    fname = link.split("/")[-1].replace("%20", " ").strip()
+                    timestamp = parse_filename_timestamp(fname)
                     logger.info(f"orphan record: {orphan}, timestamp={timestamp}")
                     orecord = MRecord(timestamp, housing, site, link)
                     logger.debug(f"{orecord}")

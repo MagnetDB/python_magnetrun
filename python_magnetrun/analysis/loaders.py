@@ -577,12 +577,15 @@ def load_df(
             mrun = MagnetRun.fromtxt(site, insert, file)
             mdata = mrun.getMData()
             logger.debug(f"load_df --pupitre -- {file}: mdata keys={mdata.getKeys()}")
-            t0 = mdata.Data["timestamp"].iloc[0]
-            selected_keys = ["t", "timestamp"]
+            t0 = mdata.start_timestamp
+            selected_keys = ["t"]
             if keys is not None:
                 selected_keys += keys
             logger.debug(f"load_df: selected_keys={selected_keys}")
             df = pd.DataFrame(mdata.getData(selected_keys))
+            # Rebuild absolute timestamp from start_timestamp + t (needed for synchronization)
+            if t0 is not None:
+                df["timestamp"] = pd.Timestamp(t0) + pd.to_timedelta(df["t"], unit="s")
 
         elif extension == ".tdms":
             mrun = MagnetRun.fromtdms(site, insert, file)

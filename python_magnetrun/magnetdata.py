@@ -140,4 +140,5 @@ def _fromtdms(name: str, defs_file: str | None = "pigbrother-defs.json") -> Tdms
             f"_fromtdms: Courants_Alimentations group not found in {name}"
         )
 
-    return TdmsMagnetData(name, Groups, Keys, Data, defs_file=defs_file)
+    mdata = TdmsMagnetData(name, Groups, Keys, Data, defs_file=defs_file)
+    return mdata

@@ -11,7 +11,7 @@
     "unit": null
   },
   "timestamp": {
-    "description": "",
+    "description": "date in local time zone, with time of day (YYYY-MM-DD HH:MM:SS)",
     "symbol": "time",
     "unit": null
   },
@@ -34,72 +34,72 @@
     "unit": "tesla"
   },
   "Tin1": {
-    "description": "",
+    "description": "Input Temperature in primary cooling loop GR1",
     "symbol": "T",
     "unit": "degC"
   },
   "Tin2": {
-    "description": "",
+    "description": "Input Temperature in primary cooling loop GR2",
     "symbol": "T",
     "unit": "degC"
   },
   "Tout": {
-    "description": "",
+    "description": "Output Temperature in primary cooling loop",
     "symbol": "T",
     "unit": "degC"
   },
   "teb": {
-    "description": "",
+    "description": "Input Temperature in secondary cooling loop",
     "symbol": "T",
     "unit": "degC"
   },
   "tsb": {
-    "description": "",
+    "description": "Output Temperature in secondary cooling loop",
     "symbol": "T",
     "unit": "degC"
   },
   "HP1": {
-    "description": "",
+    "description": "High pressure in primary cooling loop GR1",
     "symbol": "P",
     "unit": "bar"
   },
   "HP2": {
-    "description": "",
+    "description": "High pressure in primary cooling loop GR2",
     "symbol": "P",
     "unit": "bar"
   },
   "BP": {
-    "description": "",
+    "description": "Low pressure in primary cooling loop",
     "symbol": "P",
     "unit": "bar"
   },
   "Flow1": {
-    "description": "",
+    "description": "primary cooling loop Waterflow for GR1",
     "symbol": "Q",
     "unit": "liter / second"
   },
   "Flow2": {
-    "description": "",
+    "description": "primary cooling loop Waterflow for GR2",
     "symbol": "Q",
     "unit": "liter / second"
   },
   "debitbrut": {
-    "description": "",
+    "description": "secondary cooling loop Waterflow ",
     "symbol": "Q",
     "unit": "meter ** 3 / hour"
   },
   "Rpm1": {
-    "description": "",
+    "description": "Rotational speed of primary cooling loop GR1",
     "symbol": "Rpm",
     "unit": "rpm"
   },
   "Rpm2": {
-    "description": "",
+    "description": "Rotational speed of primary cooling loop GR2",
     "symbol": "Rpm",
     "unit": "rpm"
   },
   "Idcct1": {
-    "description": "",
+    "description": "Current in A1 supply",
     "symbol": "I",
     "unit": "ampere",
     "aliases": {
@@ -108,7 +108,7 @@
     }
   },
   "Idcct2": {
-    "description": "",
+    "description": "Current in A2 supply",
     "symbol": "I",
     "unit": "ampere",
     "aliases": {
@@ -117,7 +117,7 @@
     }
   },
   "Idcct3": {
-    "description": "",
+    "description": "Current in A3 supply",
     "symbol": "I",
     "unit": "ampere",
     "aliases": {
@@ -126,7 +126,7 @@
     }
   },
   "Idcct4": {
-    "description": "",
+    "description": "Current in A4 supply",
     "symbol": "I",
     "unit": "ampere",
     "aliases": {
@@ -135,87 +135,87 @@
     }
   },
   "Icoil1": {
-    "description": "",
+    "description": "Current in H1 or H1/H2",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil2": {
-    "description": "",
+    "description": "Current in H2 or H3/H4",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil3": {
-    "description": "",
+    "description": "Current in H3 or H5/H6",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil4": {
-    "description": "",
+    "description": "Current in H4 or H7/H8",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil5": {
-    "description": "",
+    "description": "Current in H5 or H9/H10",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil6": {
-    "description": "",
+    "description": "Current in H6 or H11/H12",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil7": {
-    "description": "",
+    "description": "Current in H7 or H13/H14",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil8": {
-    "description": "",
+    "description": "Current in H8",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil9": {
-    "description": "",
+    "description": "Current in H9",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil10": {
-    "description": "",
+    "description": "Current in H10",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil11": {
-    "description": "",
+    "description": "Current in H11",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil12": {
-    "description": "",
+    "description": "Current in H12",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil13": {
-    "description": "",
+    "description": "Current in H13",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil14": {
-    "description": "",
+    "description": "Current in H14",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil15": {
-    "description": "",
+    "description": "Current in Inner Bitter",
     "symbol": "I",
     "unit": "ampere"
   },
   "Icoil16": {
-    "description": "",
+    "description": "Current in Outer Bitter",
     "symbol": "I",
     "unit": "ampere"
   },
   "Ucoil1": {
-    "description": "",
+    "description": "Voltage tap on H1 or H1/H2",
     "symbol": "U",
     "unit": "volt",
     "aliases": {
@@ -224,7 +224,7 @@
     }
   },
   "Ucoil2": {
-    "description": "",
+    "description": "Voltage tap on H2 or H3/H4",
     "symbol": "U",
     "unit": "volt",
     "aliases": {
@@ -233,7 +233,7 @@
     }
   },
   "Ucoil3": {
-    "description": "",
+    "description": "Voltage tap on H3 or H5/H6",
     "symbol": "U",
     "unit": "volt",
     "aliases": {
@@ -242,7 +242,7 @@
     }
   },
   "Ucoil4": {
-    "description": "",
+    "description": "Voltage tap on H4 or H7/H8",
     "symbol": "U",
     "unit": "volt",
     "aliases": {
@@ -251,7 +251,7 @@
     }
   },
   "Ucoil5": {
-    "description": "",
+    "description": "Voltage tap on H5 or H9/H10",
     "symbol": "U",
     "unit": "volt",
     "aliases": {
@@ -260,7 +260,7 @@
     }
   },
   "Ucoil6": {
-    "description": "",
+    "description": "Voltage tap on H6 or H11/H12",
     "symbol": "U",
     "unit": "volt",
     "aliases": {
@@ -269,7 +269,7 @@
     }
   },
   "Ucoil7": {
-    "description": "",
+    "description": "Voltage tap on H7 or H13/H14",
     "symbol": "U",
     "unit": "volt",
     "aliases": {
@@ -278,42 +278,42 @@
     }
   },
   "Ucoil8": {
-    "description": "",
+    "description": "Voltage tap on H8",
     "symbol": "U",
     "unit": "volt"
   },
   "Ucoil9": {
-    "description": "",
+    "description": "Voltage tap on H9",
     "symbol": "U",
     "unit": "volt"
   },
   "Ucoil10": {
-    "description": "",
+    "description": "Voltage tap on H10",
     "symbol": "U",
     "unit": "volt"
   },
   "Ucoil11": {
-    "description": "",
+    "description": "Voltage tap on H11",
     "symbol": "U",
     "unit": "volt"
   },
   "Ucoil12": {
-    "description": "",
+    "description": "Voltage tap on H12",
     "symbol": "U",
     "unit": "volt"
   },
   "Ucoil13": {
-    "description": "",
+    "description": "Voltage tap on H13",
     "symbol": "U",
     "unit": "volt"
   },
   "Ucoil14": {
-    "description": "",
+    "description": "Voltage tap on H14",
     "symbol": "U",
     "unit": "volt"
   },
   "Ucoil15": {
-    "description": "",
+    "description": "Voltage tap on Inner Bitter",
     "symbol": "U",
     "unit": "volt",
     "aliases": {
@@ -322,7 +322,7 @@
     }
   },
   "Ucoil16": {
-    "description": "",
+    "description": "Voltage tap on Outer Bitter",
     "symbol": "U",
     "unit": "volt",
     "aliases": {
@@ -331,7 +331,7 @@
     }
   },
   "DRcoil1": {
-    "description": "",
+    "description": "Deviation in percent of Icoil1 resistance from its reference value (calibrated from Tin1/Tin2 and Ucoil1/Icoil1)",
     "symbol": "%",
     "unit": "percent"
   },
@@ -411,7 +411,7 @@
     "unit": "percent"
   },
   "Tcal1": {
-    "description": "",
+    "description": "Estimated mean coil temperature in H1/H2 (calibrated from Tin1/Tin2 and Ucoil1/Icoil1)",
     "symbol": "T",
     "unit": "degC"
   },
@@ -491,12 +491,12 @@
     "unit": "degC"
   },
   "Pmagnet": {
-    "description": "",
+    "description": "Total power dissipated in the magnet coils (calibrated from Icoil1-16 and Ucoil1-16)",
     "symbol": "Power",
     "unit": "megawatt"
   },
   "Ptot": {
-    "description": "",
+    "description": "Total power dissipated in the system: Pmagnet + pump power + other loads)",
     "symbol": "Power",
     "unit": "megawatt"
   },
@@ -506,77 +506,78 @@
     "unit": "megavar"
   },
   "IH": {
-    "description": "",
+    "description": "Current in PolyHelices insert",
     "symbol": "I",
     "unit": "ampere"
   },
   "IB": {
-    "description": "",
+    "description": "Current in Bitter insert",
     "symbol": "I",
     "unit": "ampere"
   },
   "UH": {
-    "description": "",
+    "description": "Voltage in PolyHelices insert",
     "symbol": "U",
     "unit": "volt"
   },
   "UB": {
-    "description": "",
+    "description": "Voltage in Bitter insert",
     "symbol": "U",
     "unit": "volt"
   },
   "FlowH": {
-    "description": "",
+    "description": "Waterflow in PolyHelices cooling loop",
     "symbol": "Q",
     "unit": "liter / second"
   },
   "FlowB": {
-    "description": "",
+    "description": "Waterflow in Bitter cooling loop",
     "symbol": "Q",
     "unit": "liter / second"
   },
   "RpmH": {
-    "description": "",
+    "description": "Rotational speed of PolyHelices cooling loop",
     "symbol": "Rpm",
     "unit": "rpm"
   },
   "RpmB": {
-    "description": "",
+    "description": "Rotational speed of Bitter cooling loop",
     "symbol": "Rpm",
     "unit": "rpm"
   },
   "TinH": {
-    "description": "",
+    "description": "Input Temperature in primary cooling loop for PolyHelices insert",
     "symbol": "T",
     "unit": "degC"
   },
   "TinB": {
-    "description": "",
+    "description": "Input Temperature in primary cooling loop for Bitter insert",
     "symbol": "T",
     "unit": "degC"
   },
   "HPH": {
-    "description": "",
+    "description": "High pressure in primary cooling loop for PolyHelices insert",
     "symbol": "P",
     "unit": "bar"
   },
   "HPB": {
-    "description": "",
+    "description": "High pressure in primary cooling loop for Bitter insert",
     "symbol": "P",
     "unit": "bar"
   },
   "Power": {
-    "description": "",
+    "description": "Total power dissipated in the system",
+
     "symbol": "Power",
     "unit": "megawatt"
   },
   "PeH": {
-    "description": "",
+    "description": "Power dissipated in PolyHelices insert",
     "symbol": "Power",
     "unit": "megawatt"
   },
   "PeB": {
-    "description": "",
+    "description": "Power dissipated in Bitter insert",
     "symbol": "Power",
     "unit": "megawatt"
   }

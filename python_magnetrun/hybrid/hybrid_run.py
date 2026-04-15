@@ -76,9 +76,9 @@ class LoadOptions:
     lazy: bool = True  # Use lazy loading (memory mapping)
     cache: bool = True  # Cache loaded data
 
-    # Downsampling options
+    # Downsampling options !!! TODO make option dependant on method !!!
     downsample: int | None = None  # Target number of points (None = no downsampling)
-    downsample_method: str = "minmax_lttb"  # 'minmax_lttb', 'lttb', 'stride'
+    downsample_method: str = "stride"  # 'minmax_lttb', 'lttb', 'stride'
 
     # Time range selection
     start_time: datetime | None = None
@@ -221,7 +221,7 @@ class LazyKHzLoader(LazyArrayLoader):
         logger.debug(f"Loading kHz data from {self.filepath}")
 
         # Use existing reader for full data
-        full_data = read_hour_file(
+        full_data, _timestamps = read_hour_file(
             str(self.filepath),
             self.card_type,
             num_blocks=self.num_blocks,
@@ -335,7 +335,7 @@ def downsample_data(
     data: np.ndarray,
     time: np.ndarray,
     target_points: int,
-    method: str = "minmax_lttb",
+    method: str = "stride",
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Downsample time series data for visualization.
@@ -356,10 +356,25 @@ def downsample_data(
     tuple
         (downsampled_data, downsampled_time)
     """
+    # Strip NaN entries from both arrays before any downsampling algorithm sees them.
+    # Missing blocks produce NaN timestamps; those entries are non-plottable and cause
+    # most downsampling libraries to fail. Gaps remain visible as jumps on the time axis.
+    valid = ~np.isnan(time) & ~np.isnan(data)
+    if not np.all(valid):
+        n_nan = int(np.sum(~valid))
+        logger.debug(
+            f"downsample_data: stripping {n_nan} NaN entries before downsampling"
+        )
+        data = data[valid]
+        time = time[valid]
+
+    if len(data) == 0:
+        return data, time
+
     if len(data) <= target_points:
         return data, time
 
-    logger.debug(f"Downsampling {len(data)} points to {target_points} using {method}")
+    logger.info(f"Downsampling {len(data)} points to {target_points} using {method}")
 
     if method == "minmax_lttb" and HAS_TSDOWNSAMPLE:
         # Use tsdownsample MinMaxLTTB (best for visualization)

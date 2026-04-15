@@ -21,7 +21,7 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from python_magnetrun.cli_args import create_datadir_parser
+from python_magnetrun.cli_args import create_base_parser
 from python_magnetrun.data_dirs import HYBRID_DATA_DIR
 from python_magnetrun.hybrid.hybrid_run import HybridRun
 from python_magnetrun.hybrid.utils import (
@@ -32,6 +32,11 @@ from python_magnetrun.hybrid.utils import (
 )
 from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
+from python_magnetrun.utils.timestamps import (
+    parse_tdms_filename,
+    parse_txt_filename,
+    seconds_since_midnight,
+)
 
 logger = get_logger()
 
@@ -211,60 +216,23 @@ def find_tdms_overview_files(
 
 
 def t0_from_filename(filename: str) -> float:
-    """
-    Extract start time as seconds from midnight from a pupitre filename.
-
-    Expected stem format: 'YYYY.MM.DD - HH:MM:SS'
-    Example: '2025.11.05 - 05:53:00.txt'
-
-    Returns
-    -------
-    float
-        Seconds elapsed since midnight of the recording day.
-    """
-    stem = Path(filename).stem
-    logger.debug("Parsing t0 from filename: %s, stem: %s", filename, stem)
-    try:
-        dt = datetime.strptime(stem, "%Y.%m.%d - %H:%M:%S")
-        logger.debug(
-            "hours: %d, minutes: %d, seconds: %d", dt.hour, dt.minute, dt.second
-        )
-        return dt.hour * 3600 + dt.minute * 60 + dt.second
-    except ValueError:
-        logger.warning(
-            "t0_from_filename: could not parse t0 from filename '%s', using 0", stem
-        )
+    """Return seconds-since-midnight for a pupitre .txt filename."""
+    dt = parse_txt_filename(filename)
+    if dt is None:
+        logger.warning("t0_from_filename: could not parse t0 from '%s', using 0", filename)
         return 0.0
+    return seconds_since_midnight(dt)
 
 
 def t0_from_tdms_filename(filename: str) -> float:
-    """
-    Extract start time as seconds from midnight from a TDMS overview filename.
-
-    Expected stem format: '<housing>_Overview_YYMMDD-HHMM'
-    Example: 'M8_Overview_251105-0949.tdms'
-
-    Returns
-    -------
-    float
-        Seconds elapsed since midnight of the recording day.
-    """
-    stem = Path(filename).stem
-    logger.debug(
-        "t0_from_tdms_filename: Parsing t0 from TDMS filename: %s, stem: %s",
-        filename,
-        stem,
-    )
-    try:
-        date_part = stem.rsplit("_", 1)[-1]  # '251105-0949'
-        dt = datetime.strptime(date_part, "%y%m%d-%H%M")
-        return dt.hour * 3600 + dt.minute * 60
-    except ValueError:
+    """Return seconds-since-midnight for a pigbrother .tdms filename."""
+    dt = parse_tdms_filename(filename)
+    if dt is None:
         logger.warning(
-            "t0_from_tdms_filename: could not parse t0 from TDMS filename '%s', using 0",
-            stem,
+            "t0_from_tdms_filename: could not parse t0 from '%s', using 0", filename
         )
         return 0.0
+    return seconds_since_midnight(dt)
 
 
 def load_pupitre_data(
@@ -381,7 +349,8 @@ def plot_comparison(
         # )
         data, time = hybrid_data.getData(hybrid_key, downsample=10000, hours=hours)
         logger.debug(
-            f"Hybrid data loaded: {len(data)} points, time range: {time[0]} to {time[-1]} seconds"
+            f"Hybrid data loaded: {len(data)} points, "
+            f"time range: {time[0] if len(time) > 0 else 'N/A'} to {time[-1] if len(time) > 0 else 'N/A'} seconds"
         )
         # Convert time to relative seconds if it's datetime
         if len(time) > 0:
@@ -392,7 +361,7 @@ def plot_comparison(
         else:
             time_seconds = time
 
-        max_abs = np.max(np.abs(data))
+        max_abs = np.nanmax(np.abs(data))
         label = f"Hybrid kHz ({hybrid_key})"
         if normalize:
             label += f" [max={max_abs:.4g}]"
@@ -406,7 +375,7 @@ def plot_comparison(
         )
 
         # Add V for Bitters (BITTER_V1, BITTER_V2), V for Helices (from PH_V8 to PH_V14) if available
-        if "Alim" in hybrid_key:
+        if "ALIM" in hybrid_key:
             for vkey in ["BITTER_V2", "PH_V8"]:
                 data, time = hybrid_data.getData(
                     f"kHz/FEPC-AUX-LNCMI/{vkey}", downsample=10000, hours=hours
@@ -414,32 +383,32 @@ def plot_comparison(
                 logger.debug(
                     "Hybrid data loaded: %d points, time range: %s to %s seconds",
                     len(data),
-                    time[0],
-                    time[-1],
+                    time[0] if len(time) > 0 else "N/A",
+                    time[-1] if len(time) > 0 else "N/A",
                 )
-            # Convert time to relative seconds if it's datetime
-            if len(time) > 0:
-                if hasattr(time[0], "timestamp"):
-                    time_seconds = np.array(
-                        [(t - time[0]).total_seconds() for t in time]
-                    )
+                # Convert time to relative seconds if it's datetime
+                if len(time) > 0:
+                    if hasattr(time[0], "timestamp"):
+                        time_seconds = np.array(
+                            [(t - time[0]).total_seconds() for t in time]
+                        )
+                    else:
+                        time_seconds = time
                 else:
                     time_seconds = time
-            else:
-                time_seconds = time
 
-            max_abs = np.max(np.abs(data))
-            label = f"Hybrid kHz (kHz/FEPC-AUX-LNCMI/{vkey})"
-            if normalize:
-                label += f" [max={max_abs:.4g}]"
-            ax.plot(
-                time_seconds,
-                binarize_signal(data) if normalize else data,
-                "y-",
-                alpha=0.7,
-                linewidth=0.5,
-                label=label,
-            )
+                max_abs = np.nanmax(np.abs(data)) if len(data) > 0 else 0.0
+                label = f"Hybrid kHz (kHz/FEPC-AUX-LNCMI/{vkey})"
+                if normalize:
+                    label += f" [max={max_abs:.4g}]"
+                ax.plot(
+                    time_seconds,
+                    binarize_signal(data) if normalize else data,
+                    "y-",
+                    alpha=0.7,
+                    linewidth=0.5,
+                    label=label,
+                )
 
     except (OSError, ValueError, RuntimeError, KeyError) as e:
         log_exception(
@@ -552,11 +521,11 @@ def plot_comparison(
 
 def main() -> int:
     """Entry point: parse arguments, load data, and generate the comparison plot."""
-    datadir_parser = create_datadir_parser()
+    base_parser = create_base_parser(add_input_file=False)
     parser = argparse.ArgumentParser(
         description="Plot hybrid kHz data with corresponding pupitre and TDMS data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        parents=[datadir_parser],
+        parents=[base_parser],
         epilog="""
 Examples:
   # Plot FEPC-AUX-LNCMI data for a specific date
@@ -615,27 +584,20 @@ Examples:
     )
 
     parser.add_argument(
-        "--insert", default="Unknown", help="Insert name (default: Unknown)"
-    )
-
-    parser.add_argument(
         "--normalize",
         action="store_true",
         help="Normalize each signal by its maximum absolute value before plotting",
     )
 
-    parser.add_argument("--show", action="store_true", help="Show plot interactively")
-
-    parser.add_argument("--save", type=Path, help="Save plot to file")
-
-    parser.add_argument(
-        "--log-level",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help="Set the logging level (default: INFO)",
+    output_group = parser.add_mutually_exclusive_group()
+    output_group.add_argument(
+        "--save", type=Path, help="Save plot to file (disables interactive display)"
     )
-    parser.add_argument("--log-file", type=Path, help="Write logs to file")
+    output_group.add_argument(
+        "--show", action="store_true", help="Show plot interactively (default)"
+    )
 
+    parser.set_defaults(housing="M8")
     args = parser.parse_args()
 
     setup_logging(
@@ -643,14 +605,13 @@ Examples:
         log_file=args.log_file if args.log_file else None,
     )
 
-    logger.debug("args: %s", args)
-    housing = "M8"
+    logger.debug(f"args: {args}")
+    housing = args.housing
 
     # Parse date
     date = datetime.strptime(args.date, "%Y-%m-%d")
     print(f"Date: {date.strftime('%Y-%m-%d')}")
     print(f"Housing: {housing}")
-    print(f"Site: {args.site}")
     print(f"FEPC System: {args.fepc_system}")
 
     # Parse hours if provided (supports '10,11,12' or '10:13' range notation)
@@ -747,19 +708,13 @@ Examples:
         normalize=args.normalize,
     )
 
-    # Save or show plot
+    # Save or show plot (show is the default when --save is not given)
     if args.save:
         logger.info("Saving plot to: %s", args.save)
         fig.savefig(args.save, dpi=150, bbox_inches="tight")
-
-    if args.show:
+    else:
         logger.debug("Displaying plot...")
         plt.show()
-
-    if not args.save and not args.show:
-        logger.warning(
-            "No output specified. Use --show to display or --save to save the plot."
-        )
 
     logger.info("Done!")
     return 0

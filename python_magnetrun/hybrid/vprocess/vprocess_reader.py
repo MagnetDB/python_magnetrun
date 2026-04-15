@@ -130,7 +130,7 @@ class VProcessVariable:
 class VProcessFileReader:
     """Reader for VProcess binary files with ASCII headers."""
 
-    def __init__(self, filepath: str, endian: str = "little"):
+    def __init__(self, filepath: str, endian: str = "big"):
         """
         Initialize VProcess file reader.
 
@@ -139,7 +139,7 @@ class VProcessFileReader:
         filepath : str
             Path to the vprocess file
         endian : str
-            Endianness: 'big' or 'little' (default: 'little' for vprocess)
+            Endianness: 'big' or 'little' (default: 'big')
         """
         self.filepath = Path(filepath)
         self.header_lines: list[str] = []
@@ -358,6 +358,9 @@ class VProcessFileReader:
         """
         self.parse_header()
         self.data = self.read_binary_data()
+        logger.info(
+            f"Successfully read VProcess file: {self.filepath.name}: keys={list(self.data.columns)}"
+        )
         return self.data
 
     def get_variable_info(self) -> pd.DataFrame:
@@ -408,7 +411,9 @@ class VProcessFileReader:
         if self.variables:
             logger.info(f"\nVariables: {len(self.variables)}")
             logger.info(f"  Analog: {sum(1 for v in self.variables if v.is_analog)}")
-            logger.info(f"  Digital: {sum(1 for v in self.variables if not v.is_analog)}")
+            logger.info(
+                f"  Digital: {sum(1 for v in self.variables if not v.is_analog)}"
+            )
 
             logger.info("\nFirst 10 variables:")
             for i, var in enumerate(self.variables[:10]):
@@ -426,7 +431,7 @@ class VProcessFileReader:
 
 
 # Convenience functions
-def read_vprocess_file(filepath: str, endian: str = "little") -> pd.DataFrame:
+def read_vprocess_file(filepath: str, endian: str = "big") -> pd.DataFrame:
     """
     Read a VProcess file into a pandas DataFrame.
 
@@ -435,7 +440,7 @@ def read_vprocess_file(filepath: str, endian: str = "little") -> pd.DataFrame:
     filepath : str
         Path to the VProcess file
     endian : str, optional
-        Endianness: 'big' or 'little' (default: 'little')
+        Endianness: 'big' or 'little' (default: 'big')
 
     Returns
     -------
@@ -447,7 +452,7 @@ def read_vprocess_file(filepath: str, endian: str = "little") -> pd.DataFrame:
 
 
 def get_vprocess_info(
-    filepath: str, endian: str = "little"
+    filepath: str, endian: str = "big"
 ) -> tuple[dict[str, Any], pd.DataFrame]:
     """
     Get metadata and variable information from a VProcess file.
@@ -457,7 +462,7 @@ def get_vprocess_info(
     filepath : str
         Path to the VProcess file
     endian : str, optional
-        Endianness: 'big' or 'little' (default: 'little')
+        Endianness: 'big' or 'little' (default: 'big')
 
     Returns
     -------

@@ -199,7 +199,7 @@ class Signature:
         (symbol, unit) = mdata.getUnitKey(key)
         match mdata.Data:
             case pd.DataFrame():
-                t0 = mdata.Data.iloc[0]["timestamp"]
+                t0 = mdata.start_timestamp
                 # print('txt', type(t0), flush=True)
             case dict():
                 (group, channel) = key.split("/")

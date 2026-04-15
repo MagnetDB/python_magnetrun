@@ -8,11 +8,11 @@ import sys
 from datetime import datetime
 from typing import Any
 
-import numpy as np
 import pandas as pd
 from natsort import natsorted
 
 from .magnetdata_base import DataType, MagnetDataBase
+from .utils.timestamps import parse_filename_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,25 @@ class PandasMagnetData(MagnetDataBase):
         Keys: list[str],
         Data: pd.DataFrame | None = None,
         defs_file: str | None = None,
+        time_zone: str = "Europe/Paris",
     ) -> None:
         super().__init__(filename, Groups, Keys, Data, defs_file)
+        dt = parse_filename_timestamp(filename)  # in local time
+        self.start_timestamp = pd.Timestamp(dt) if dt is not None else None
+        self._validate_start_timestamp()
+        # Convert to UTC — use self.start_timestamp (may have been overridden by
+        # _validate_start_timestamp with a value from the Date/Time data columns).
+        if self.start_timestamp is not None:
+            import pytz
+
+            tz = pytz.timezone(time_zone)
+            self.start_timestamp = (
+                pd.Timestamp(self.start_timestamp)
+                .tz_localize(tz)
+                .tz_convert(pytz.utc)
+                .to_pydatetime()
+                .replace(tzinfo=None)
+            )
 
     # --- abstract property -------------------------------------------
 
@@ -169,6 +186,49 @@ class PandasMagnetData(MagnetDataBase):
                 )
         return self.units[key]
 
+    # --- timestamp validation ----------------------------------------
+
+    def _validate_start_timestamp(self) -> None:
+        """Cross-check ``start_timestamp`` against the first ``Date``/``Time`` data row.
+
+        Called automatically at the end of ``__init__``, before any cleanup.
+
+        * If ``Date`` and ``Time`` columns are present, parse the first row into a
+          :class:`~pandas.Timestamp`.
+        * When ``start_timestamp`` was not derived from the filename (``None``), set it
+          from the data.
+        * When the filename-derived value disagrees with the data, emit a warning and
+          overwrite with the authoritative data value.
+        """
+        if "Date" not in self.Keys or "Time" not in self.Keys:
+            return
+        assert isinstance(self.Data, pd.DataFrame)
+        if self.Data.empty:
+            return
+        try:
+            date_str = str(self.Data["Date"].iloc[0])
+            time_str = str(self.Data["Time"].iloc[0])
+            data_ts = pd.Timestamp(
+                datetime.strptime(f"{date_str} {time_str}", "%Y.%m.%d %H:%M:%S")
+            )
+        except (ValueError, TypeError):
+            logger.warning(
+                f"_validate_start_timestamp: cannot parse Date/Time from first row of {self.FileName!r}"
+            )
+            return
+
+        if self.start_timestamp is None:
+            logger.debug(
+                f"_validate_start_timestamp: {self.FileName!r} — start_timestamp set from data: {data_ts}"
+            )
+            self.start_timestamp = data_ts
+        elif self.start_timestamp != data_ts:
+            logger.warning(
+                f"_validate_start_timestamp: {self.FileName!r} — filename timestamp {self.start_timestamp} "
+                f"differs from data timestamp {data_ts}; using data value -- aka {data_ts}"
+            )
+            self.start_timestamp = data_ts
+
     # --- cleanup / reshape -------------------------------------------
 
     def cleanupData(  # noqa: N802
@@ -217,6 +277,12 @@ class PandasMagnetData(MagnetDataBase):
             self.removeData(keys_to_remove)
 
         self.Keys = self.Data.columns.values.tolist()
+
+        if "t" in self.Keys:
+            from .utils.duplicates import find_duplicates
+
+            self.Data = find_duplicates(self.Data, self.FileName, "t")
+            self.Keys = self.Data.columns.values.tolist()
 
         # Add legacy stuff for backward compatibility - to be removed in a future version
         import re
@@ -268,18 +334,15 @@ class PandasMagnetData(MagnetDataBase):
 
     def renameData(self, columns: dict) -> None:  # noqa: N802
         assert isinstance(self.Data, pd.DataFrame)
-        existing_renames = {
-            old: new for old, new in columns.items() if old in self.Keys
-        }
-        if len(existing_renames) < len(columns):
-            missing = [old for old in columns if old not in self.Keys]
-            logger.warning(f"renameData: keys {missing} not found, skipping")
+        missing = [old for old in columns if old not in self.Keys]
+        if missing:
+            raise KeyError(f"renameData: keys {missing} not found in DataFrame")
         # A target name that already exists (and is not itself being renamed away)
         # would silently overwrite that column — raise instead.
-        source_keys = set(existing_renames.keys())
+        source_keys = set(columns.keys())
         conflicts = {
             old: new
-            for old, new in existing_renames.items()
+            for old, new in columns.items()
             if new in self.Keys and new not in source_keys
         }
         if conflicts:
@@ -287,8 +350,7 @@ class PandasMagnetData(MagnetDataBase):
                 f"renameData: target name(s) already exist in DataFrame and would "
                 f"be silently overwritten: {conflicts}"
             )
-        if existing_renames:
-            self.Data.rename(columns=existing_renames, inplace=True)
+        self.Data.rename(columns=columns, inplace=True)
         self.Keys = self.Data.columns.values.tolist()
 
     # --- compute / add -----------------------------------------------
@@ -347,16 +409,12 @@ class PandasMagnetData(MagnetDataBase):
         return res
 
     def getDuration(self, group: str | None = None) -> float:  # noqa: N802
-        duration = 0.0
-        if "timestamp" in self.Keys:
-            start_time = self.Data["timestamp"].iloc[0]  # type: ignore[index]
-            end_time = self.Data["timestamp"].iloc[-1]  # type: ignore[index]
-            dt = end_time - start_time
-            duration = float(dt.seconds)
-        else:
-            logger.warning("magnetdata.getDuration: no timestamp key")
-            logger.warning(f"available keys are: {self.Keys}")
-        return duration
+        if "t" in self.Keys:
+            assert isinstance(self.Data, pd.DataFrame)
+            return float(self.Data["t"].iloc[-1] - self.Data["t"].iloc[0])  # type: ignore[index]
+        logger.warning("magnetdata.getDuration: no t key")
+        logger.warning(f"available keys are: {self.Keys}")
+        return 0.0
 
     def addTime(self) -> int:  # noqa: N802
         assert isinstance(self.Data, pd.DataFrame)
@@ -382,27 +440,22 @@ class PandasMagnetData(MagnetDataBase):
             ) from None
 
         try:
-            self.Data["timestamp"] = self.Data.Date + self.Data.Time
+            _timestamp = self.Data.Date + self.Data.Time
         except (ValueError, TypeError):
             raise RuntimeError(
                 f"MagnetData/AddTime {self.FileName}: failed to create timestamp column"
             ) from None
-        else:
-            t0 = self.Data.iloc[0]["timestamp"]
 
+        self.Data["_timestamp"] = _timestamp
         from .utils.duplicates import find_duplicates
 
-        self.Data = find_duplicates(self.Data, self.FileName, "timestamp")
+        self.Data = find_duplicates(self.Data, self.FileName, "_timestamp")
 
-        self.Data["t"] = self.Data.apply(
-            lambda row: (row.timestamp - t0).total_seconds(),
-            axis=1,
-        )
-
-        times = self.Data["t"].to_numpy()
-        _dt = np.diff(times)
+        t0 = self.Data["_timestamp"].iloc[0]
+        self.Data["t"] = (self.Data["_timestamp"] - t0).dt.total_seconds()
 
         self.Data.drop(["Date", "Time"], axis=1, inplace=True)
+        self.Data.rename(columns={"_timestamp": "timestamp"}, inplace=True)
         self.Keys = self.Data.columns.values.tolist()
         return 0
 
@@ -416,7 +469,20 @@ class PandasMagnetData(MagnetDataBase):
         return 0
 
     def get_time_range(self) -> tuple:
-        """Return ``(start_datetime, end_datetime)`` parsed from Date+Time columns."""
+        """Return ``(start_timestamp, end_timestamp)`` for the dataset.
+
+        ``start_timestamp`` comes from the filename (set at construction time).
+        ``end_timestamp`` is derived as ``start_timestamp + getDuration()``.
+
+        Falls back to parsing the first/last Date+Time data rows when
+        ``start_timestamp`` could not be extracted from the filename.
+        """
+        if self.start_timestamp is not None:
+            duration = self.getDuration()
+            self.end_timestamp = self.start_timestamp + pd.Timedelta(seconds=duration)
+            return (self.start_timestamp, self.end_timestamp)
+
+        # Fallback: derive both timestamps from the Date/Time data columns
         if "Date" not in self.Keys or "Time" not in self.Keys:
             raise RuntimeError(
                 f"{self.__class__.__name__}.get_time_range: no Date/Time columns in {self.FileName}"
@@ -425,9 +491,9 @@ class PandasMagnetData(MagnetDataBase):
         tformat = "%Y.%m.%d %H:%M:%S"
         start_str = f"{self.Data['Date'].iloc[0]} {self.Data['Time'].iloc[0]}"
         end_str = f"{self.Data['Date'].iloc[-1]} {self.Data['Time'].iloc[-1]}"
-        start_dt = datetime.strptime(start_str, tformat)
-        end_dt = datetime.strptime(end_str, tformat)
-        return (start_dt, end_dt)
+        self.start_timestamp = pd.Timestamp(datetime.strptime(start_str, tformat))
+        self.end_timestamp = pd.Timestamp(datetime.strptime(end_str, tformat))
+        return (self.start_timestamp, self.end_timestamp)
 
     # --- extract -----------------------------------------------------
 
@@ -481,15 +547,20 @@ class PandasMagnetData(MagnetDataBase):
         import matplotlib
         import matplotlib.pyplot as plt
 
+        logger.info(f"plotData: plotting {y} vs {x} from {self.FileName!r}")
+        logger.warning(
+            "plotData: using matplotlib with usetex=True - ensure that LaTeX is installed and configured correctly for best results"
+        )
+        print(self.Keys, flush=True)
         matplotlib.rcParams["text.usetex"] = True
 
-        if x != "t" and x != "timestamp" and x not in self.Keys:
+        if x not in self.Keys + ["t", "timestamps"]:
             raise RuntimeError(
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no x={x} key (valid keys= {self.Keys})"
             )
 
         if y not in self.Keys:
-            raise Exception(
+            raise RuntimeError(
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {y} key (valid keys: {self.Keys})"
             )
 
@@ -554,8 +625,10 @@ class PandasMagnetData(MagnetDataBase):
                     f"info: cannot load field definitions from {self.defs_file!r}: {exc}"
                 )
 
+        from natsort import natsorted
+
         rows = []
-        for key in self.Keys:
+        for key in natsorted(self.Keys):
             description = field_defs.get(key, {}).get("description", "")
             if key in self.units:
                 symbol, unit = self.units[key]
@@ -579,9 +652,12 @@ class PandasMagnetData(MagnetDataBase):
     # ------------------------------------------------------------------
 
     @classmethod
-    def fromtxt(cls, name: str, defs_file: str | None = "pupitre-defs.json") -> PandasMagnetData:
+    def fromtxt(
+        cls, name: str, defs_file: str | None = "pupitre-defs.json"
+    ) -> PandasMagnetData:
         """Create from a pupitre .txt file."""
         from .utils.validation import validate_txt_format
+
         validate_txt_format(name)
         with open(name) as f:
             if os.path.splitext(name)[-1] != ".txt":
@@ -594,6 +670,7 @@ class PandasMagnetData(MagnetDataBase):
     def fromcsv(cls, name: str, defs_file: str | None = None) -> PandasMagnetData:
         """Create from a CSV file."""
         from .utils.validation import validate_csv_format
+
         validate_csv_format(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=",", engine="python", skiprows=0)
@@ -602,7 +679,11 @@ class PandasMagnetData(MagnetDataBase):
 
     @classmethod
     def fromStringIO(  # noqa: N802
-        cls, name: str, sep: str = r"\s+", skiprows: int = 1, defs_file: str | None = None
+        cls,
+        name: str,
+        sep: str = r"\s+",
+        skiprows: int = 1,
+        defs_file: str | None = None,
     ) -> PandasMagnetData:
         """Create from a StringIO / in-memory string."""
         from io import StringIO
@@ -610,7 +691,9 @@ class PandasMagnetData(MagnetDataBase):
         Data = pd.DataFrame()
         Keys: list[str] = []
         try:
-            Data = pd.read_csv(StringIO(name), sep=sep, engine="python", skiprows=skiprows)
+            Data = pd.read_csv(
+                StringIO(name), sep=sep, engine="python", skiprows=skiprows
+            )
             Keys = Data.columns.values.tolist()
         except (pd.errors.ParserError, ValueError, OSError):
             logger.error("fromStringIO: trouble loading data")
@@ -638,6 +721,7 @@ class EnsightMagnetData(PandasMagnetData):
     def fromensight(cls, name: str, defs_file: str | None = None) -> EnsightMagnetData:
         """Create from a CSV ensight file."""
         from .utils.validation import validate_file_exists
+
         validate_file_exists(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=",", engine="python", skiprows=2)
@@ -651,9 +735,12 @@ class BProfileMagnetData(PandasMagnetData):
     _TYPE: DataType = DataType.PUPITRE
 
     @classmethod
-    def frombprofile(cls, name: str, defs_file: str | None = None) -> BProfileMagnetData:
+    def frombprofile(
+        cls, name: str, defs_file: str | None = None
+    ) -> BProfileMagnetData:
         """Create from a bprofile CSV file (Index, Position, Profile columns)."""
         from .utils.validation import validate_csv_format
+
         validate_csv_format(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=0)
@@ -667,9 +754,12 @@ class FeelppMagnetData(PandasMagnetData):
     _TYPE: DataType = DataType.PUPITRE
 
     @classmethod
-    def fromfeelpp(cls, name: str, skiprows: int = 0, defs_file: str | None = None) -> FeelppMagnetData:
+    def fromfeelpp(
+        cls, name: str, skiprows: int = 0, defs_file: str | None = None
+    ) -> FeelppMagnetData:
         """Create from a feelpp simulation CSV file."""
         from .utils.validation import validate_csv_format
+
         validate_csv_format(name)
         with open(name) as f:
             Data = pd.read_csv(f, sep=",", engine="python", skiprows=skiprows)

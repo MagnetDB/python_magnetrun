@@ -31,7 +31,7 @@ def example_list_triggers():
     print("EXAMPLE 1: Listing Trigger Directories")
     print("=" * 70)
 
-    base_dir = Path("/data/hybrid")  # Adjust path as needed
+    base_dir = Path("/mnt/LNCMIG-Data/records/CEA")  # Adjust path as needed
     date = "2025-11-05"  # Adjust date as needed
 
     # Find all triggers for specific date
@@ -50,7 +50,9 @@ def example_trigger_info():
     print("EXAMPLE 2: Reading Trigger Metadata")
     print("=" * 70)
 
-    trigger_dir = Path("/data/hybrid/trigger/TRIGGER_2025-11-05_08-16")  # Adjust path
+    trigger_dir = Path(
+        "/mnt/LNCMIG-Data/records/CEA/trigger/TRIGGER__2025-11-05__08-16"
+    )  # Adjust path
 
     if not trigger_dir.exists():
         print(f"\nWarning: Trigger directory not found: {trigger_dir}")
@@ -89,7 +91,9 @@ def example_list_files():
     print("EXAMPLE 3: Listing Trigger Binary Files")
     print("=" * 70)
 
-    trigger_dir = Path("/data/hybrid/trigger/TRIGGER_2025-11-05_08-16")  # Adjust path
+    trigger_dir = Path(
+        "/mnt/LNCMIG-Data/records/CEA/trigger/TRIGGER__2025-11-05__08-16"
+    )  # Adjust path
 
     if not trigger_dir.exists():
         print(f"\nWarning: Trigger directory not found: {trigger_dir}")
@@ -115,7 +119,9 @@ def example_load_config():
     print("EXAMPLE 4: Loading Trigger Configuration")
     print("=" * 70)
 
-    trigger_dir = Path("/data/hybrid/trigger/TRIGGER_2025-11-05_08-16")  # Adjust path
+    trigger_dir = Path(
+        "/mnt/LNCMIG-Data/records/CEA/trigger/TRIGGER__2025-11-05__08-16"
+    )  # Adjust path
     system = "FEPC-LNCMI"
 
     if not trigger_dir.exists():
@@ -152,7 +158,9 @@ def example_read_variable():
     print("EXAMPLE 5: Reading Specific Variable")
     print("=" * 70)
 
-    trigger_dir = Path("/data/hybrid/trigger/TRIGGER_2025-11-05_08-16")  # Adjust path
+    trigger_dir = Path(
+        "/mnt/LNCMIG-Data/records/CEA/trigger/TRIGGER__2025-11-05__08-16"
+    )  # Adjust path
     system = "FEPC-LNCMI"
     variable = "I_H1"  # Adjust variable name
 
@@ -196,7 +204,9 @@ def example_read_slot():
     print("EXAMPLE 6: Reading Entire Slot")
     print("=" * 70)
 
-    trigger_dir = Path("/data/hybrid/trigger/TRIGGER_2025-11-05_08-16")  # Adjust path
+    trigger_dir = Path(
+        "/mnt/LNCMIG-Data/records/CEA/trigger/TRIGGER__2025-11-05__08-16"
+    )  # Adjust path
     system = "FEPC-LNCMI"
     slot = 0  # Adjust slot number
 
@@ -248,7 +258,9 @@ def example_analyze_windows():
     print("EXAMPLE 7: Analyzing PRE and POST Windows")
     print("=" * 70)
 
-    trigger_dir = Path("/data/hybrid/trigger/TRIGGER_2025-11-05_08-16")  # Adjust path
+    trigger_dir = Path(
+        "/mnt/LNCMIG-Data/records/CEA/trigger/TRIGGER__2025-11-05__08-16"
+    )  # Adjust path
     system = "FEPC-LNCMI"
     variable = "I_H1"
 
@@ -305,7 +317,9 @@ def example_plot_trigger():
     print("EXAMPLE 8: Plotting Trigger Data")
     print("=" * 70)
 
-    trigger_dir = Path("/data/hybrid/trigger/TRIGGER_2025-11-05_08-16")  # Adjust path
+    trigger_dir = Path(
+        "/mnt/LNCMIG-Data/records/CEA/trigger/TRIGGER__2025-11-05__08-16"
+    )  # Adjust path
     system = "FEPC-LNCMI"
     variable = "I_H1"
 
@@ -335,7 +349,9 @@ def example_custom_analysis():
     print("EXAMPLE 9: Custom Time Window Analysis")
     print("=" * 70)
 
-    trigger_dir = Path("/data/hybrid/trigger/TRIGGER_2025-11-05_08-16")  # Adjust path
+    trigger_dir = Path(
+        "/mnt/LNCMIG-Data/records/CEA/trigger/TRIGGER__2025-11-05__08-16"
+    )  # Adjust path
     system = "FEPC-LNCMI"
     variable = "I_H1"
 

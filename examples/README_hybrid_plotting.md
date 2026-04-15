@@ -279,6 +279,222 @@ cd /path/to/python_magnetrun
 python examples/plot_hybrid_with_pupitre_tdms.py ...
 ```
 
+---
+
+## Additional Plotting Scripts for Hybrid data
+
+### RMS Data Plotting (`plot_rms.py`)
+
+Plot variables from RMS (root-mean-square) files.
+
+#### Plot one or more variables (separate subplots)
+
+```bash
+python plot_rms.py path/to/file.rms I_H1 U_H1
+```
+
+#### Overlay all variables on the same axes (multiple y-axes)
+
+```bash
+python plot_rms.py path/to/file.rms I_H1 U_H1 --same-plot
+```
+
+### Save plot to file
+
+```bash
+python plot_rms.py path/to/file.rms I_H1 -o rms_plot.png
+```
+
+#### Command-Line Arguments
+
+| Argument        | Required | Description                                               |
+| --------------- | -------- | --------------------------------------------------------- |
+| `file`          | Yes      | Path to the RMS file                                      |
+| `variables`     | Yes      | One or more variable names to plot                        |
+| `-o, --output`  | No       | Save plot to file (e.g., `output.png`)                    |
+| `--same-plot`   | No       | Overlay all variables with independent y-axes             |
+
+---
+
+### kHz FEPC Data Plotting (`plot_fepc_data.py`)
+
+Plot a variable from FEPC binary files using a CFG configuration file.
+
+#### Basic usage
+
+```bash
+python plot_fepc_data.py -c /path/to/HOST_1_DATA.CFG -v ALIM1_J1
+```
+
+### Specify slot explicitly
+
+```bash
+python plot_fepc_data.py -c HOST_1_DATA.CFG -v I_H1 -s 4
+```
+
+#### Filter by date range
+
+```bash
+python plot_fepc_data.py -c HOST_1_DATA.CFG -v I_H1 -d 2025-11-05 2025-11-06
+```
+
+#### Remove outliers and compare before/after
+
+```bash
+python plot_fepc_data.py -c HOST_1_DATA.CFG -v I_H1 --remove-outliers iqr
+```
+
+#### Save plot to file
+
+```bash
+python plot_fepc_data.py -c HOST_1_DATA.CFG -v I_H1 -o fepc_plot.png
+```
+
+### Command-Line Arguments
+
+| Argument               | Required | Description                                                      |
+| ---------------------- | -------- | ---------------------------------------------------------------- |
+| `-c, --cfg`            | Yes      | Path to `HOST_X_DATA.CFG` configuration file                     |
+| `-v, --variable`       | Yes      | Variable name to plot (e.g., `ALIM1_J1`, `I_H1`)                |
+| `-s, --slot`           | No       | Card slot number (searches all slots if omitted)                 |
+| `-o, --output`         | No       | Save plot to file (PNG, PDF, …)                                  |
+| `-d, --date`           | No       | Date range for files: `YYYY-MM-DD start end`                     |
+| `-e, --endian`         | No       | `big` (default) or `little`                                      |
+| `--cnv-dir`            | No       | Directory containing CNV calibration files (default: CFG dir)   |
+| `--remove-outliers`    | No       | Outlier method: `iqr`, `zscore`, `mad`, or `percentile`         |
+| `--outlier-threshold`  | No       | Threshold for outlier detection (default: `1.5`)                 |
+| `--outlier-window`     | No       | Rolling window size for outlier detection                        |
+| `--debug`              | No       | Plot data incrementally as each file is loaded                   |
+
+---
+
+### VProcess Data Plotting (`plot_vprocess.py`)
+
+Plot variables from `.vprocess` slow-data files.
+
+#### Plot specific variables (separate subplots)
+
+```bash
+python plot_vprocess.py data.vprocess --vars TT115A TT508A
+```
+
+#### Overlay variables on the same axes
+
+```bash
+python plot_vprocess.py data.vprocess --vars TT115A TT508A --layout overlay
+```
+
+#### Overview of first N analog variables
+
+```bash
+python plot_vprocess.py data.vprocess --overview --max-vars 8
+```
+
+#### Compare two variables (time series + scatter + histograms)
+
+```bash
+python plot_vprocess.py data.vprocess --compare TT115A TT508A
+```
+
+#### Correlation heatmap
+
+```bash
+python plot_vprocess.py data.vprocess --heatmap
+python plot_vprocess.py data.vprocess --heatmap --vars TT115A TT508A TT600A
+```
+
+#### Resolve from hybrid data tree
+
+```bash
+python plot_vprocess.py --hybrid_datadir /mnt/LNCMIG-Data/records/CEA \
+    --hybrid_date 2025-11-05 --vars TT115A TT508A
+```
+
+#### Save without displaying
+
+```bash
+python plot_vprocess.py data.vprocess --vars TT115A --save vprocess_plot.png --no-show
+```
+
+#### Command-Line Arguments
+
+| Argument            | Required | Description                                                         |
+| ------------------- | -------- | ------------------------------------------------------------------- |
+| `input_file`        | No*      | Path to `.vprocess` file (required unless `--hybrid_date`)          |
+| `--vars`            | No**     | Variable name(s) to plot                                            |
+| `--overview`        | No**     | Plot overview of first N analog variables                           |
+| `--compare VAR1 VAR2` | No**  | Compare two variables (time series, scatter, histograms)            |
+| `--heatmap`         | No**     | Correlation heatmap for selected or first N variables               |
+| `--max-vars`        | No       | Maximum variables for `--overview`/`--heatmap` (default: `10`)      |
+| `--layout`          | No       | `subplots` (default) or `overlay` for `--vars`                      |
+| `--hybrid_datadir`  | No       | Base data directory (used to resolve bare filenames)                |
+| `--hybrid_date`     | No       | Date `YYYY-MM-DD` used when no `input_file` is given                |
+| `-s, --save`        | No       | Save figure to file                                                 |
+| `--no-show`         | No       | Do not open an interactive window                                   |
+
+*Provide either `input_file` or `--hybrid_date`+`--hybrid_datadir`.
+**At least one of `--vars`, `--overview`, `--compare`, or `--heatmap` is required.
+
+---
+
+## Trigger Data Plotting (`plot_trigger_data.py`)
+
+Plot waveforms from FEPC trigger binary files stored under `trigger/TRIGGER__YYYY-MM-DD__HH-MM/`.
+
+#### List available variables
+
+```bash
+python plot_trigger_data.py TRIGGER__2025-11-05__08-16 --list-variables
+```
+
+#### Plot a single variable
+
+```bash
+python plot_trigger_data.py TRIGGER__2025-11-05__08-16 --variable I_H1
+```
+
+#### Plot several variables (one figure per variable)
+
+```bash
+python plot_trigger_data.py TRIGGER__2025-11-05__08-16 --variable I_H1 I_BOB
+```
+
+#### Plot all triggers for a date
+
+```bash
+python plot_trigger_data.py TRIGGER__2025-11-05__08-16 --variable I_H1 --all
+```
+
+#### Save plots (per-variable suffix added automatically)
+
+```bash
+python plot_trigger_data.py TRIGGER__2025-11-05__08-16 \
+    --variable I_H1 I_BOB \
+    --save trigger_plot.png \
+    --no-show
+# Produces: trigger_plot_I_H1.png, trigger_plot_I_BOB.png
+```
+
+#### Command-Line Arguments
+
+| Argument              | Required | Description                                                         |
+| --------------------- | -------- | ------------------------------------------------------------------- |
+| `input_dir`           | No       | Trigger directory name or path (required unless `--hybrid_date`)    |
+| `--variable`          | No*      | Variable name(s) to plot; accepts multiple values                   |
+| `--list-variables`    | No       | Print all variables available in the config and exit                |
+| `--all`               | No       | Plot all trigger directories for the inferred date                  |
+| `--fepc_system`       | No       | `FEPC-LNCMI` (default) or `FEPC-AUX-LNCMI`                         |
+| `--hybrid_datadir`    | No       | Base data directory (used to resolve bare trigger directory names)  |
+| `--hybrid_date`       | No       | Date `YYYY-MM-DD` used when no `input_dir` is given                 |
+| `--endian`            | No       | `big` (default) or `little`                                         |
+| `--no-calib`          | No       | Skip calibration (plot raw ADC values)                              |
+| `--cnv-dir`           | No       | Directory containing CNV piecewise-calibration files                |
+| `--save`              | No       | Save plot to file (per-variable suffix added when plotting several) |
+| `--no-show`           | No       | Do not open an interactive window                                   |
+| `--fig-size`          | No       | Figure size as `width,height` (default: `12,6`)                     |
+
+*`--variable` is required unless `--list-variables` is specified.
+
 ## Related Documentation
 
 - [Hybrid Module README](../python_magnetrun/hybrid/README.md)

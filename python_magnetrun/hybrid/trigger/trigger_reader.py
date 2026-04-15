@@ -97,15 +97,16 @@ def parse_trigger_directory(trigger_dir: Path) -> TriggerInfo:
     Parameters:
     -----------
     trigger_dir : Path
-        Path to trigger directory (e.g., TRIGGER_2025-11-05_08-16)
+        Path to trigger directory (e.g., TRIGGER__2025-11-05__08-16)
 
     Returns:
     --------
     TriggerInfo : Trigger metadata
     """
     # Parse directory name to get timestamp
+    # Directory name format: TRIGGER__YYYY-MM-DD__HH-MM
     dir_name = trigger_dir.name
-    parts = dir_name.split("_")
+    parts = dir_name.split("__")
 
     if len(parts) != 3 or parts[0] != "TRIGGER":
         raise ValueError(f"Invalid trigger directory name: {dir_name}")
@@ -418,7 +419,11 @@ def read_trigger_data(
                 break
 
         if not found:
-            raise ValueError(f"Variable '{variable_name}' not found in config")
+            available = [v for card in config.cards for v in card.variable_names]
+            raise ValueError(
+                f"Variable '{variable_name}' not found in config. "
+                f"Available variables: {available}"
+            )
 
         logger.info(f"Found {variable_name} in slot {slot}, channel {channel}")
 
@@ -497,7 +502,7 @@ def find_trigger_directories(base_dir: Path, date: str | None = None) -> list[Pa
         return []
 
     # Find all TRIGGER_* directories
-    pattern = f"TRIGGER_{date}_*" if date else "TRIGGER_*"
+    pattern = f"TRIGGER__{date}__*" if date else "TRIGGER__*"
 
     triggers = sorted(trigger_dir.glob(pattern))
 
@@ -722,7 +727,7 @@ def apply_calibration(
         if cnv_path.exists():
             logger.info(f"Applying piecewise calibration from {calib.cnv_file}")
             try:
-                cnv_data = np.loadtxt(cnv_path)
+                cnv_data = np.loadtxt(cnv_path, delimiter=";")
                 calibrated = np.interp(data, cnv_data[:, 0], cnv_data[:, 1])
                 return calibrated
             except (OSError, ValueError) as e:

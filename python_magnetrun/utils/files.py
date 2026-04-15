@@ -8,7 +8,7 @@ import pandas as pd
 from natsort import natsorted
 
 from ..MagnetRun import MagnetRun
-from .convert import convert_to_timestamp
+from .timestamps import parse_filename_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -138,42 +138,24 @@ def extract_data(
     """
     skip = False
     extension = os.path.splitext(file)[-1]
-    filename = os.path.basename(file).replace(extension, "")
 
     start_timestamp = 0.0
     start_ftimestamp = ""
     mrun = MagnetRun()
+    _ftformat = "%Y-%m-%d %H:%M:%S"
     match extension:
         case ".txt":
-            # (site, timestamp) = filename.split("_")
-            # date, time = timestamp.split("---")
-            date, time = filename.replace(".txt", "").split(" - ")
-            # convert ddate and dtime into a timestamp
-            (start_timestamp, start_ftimestamp) = convert_to_timestamp(
-                date, time, date_format="%Y.%m.%d", time_format="%H:%M:%S"
-            )
+            dt = parse_filename_timestamp(file)
+            if dt is not None:
+                start_timestamp = dt.timestamp()
+                start_ftimestamp = dt.strftime(_ftformat)
             if not dry_run:
                 mrun = MagnetRun.fromtxt(site, insert, file)
         case ".tdms":
-            site = ""
-            timestamp = ""
-            res = filename.split("_")
-
-            # regular case
-            if len(res) == 3:
-                (site, mode, timestamp) = res
-                date, time = timestamp.split("-")
-                # print(f"data={date}, time={time} (type={type(time)})")
-                (start_timestamp, start_ftimestamp) = convert_to_timestamp(date, time[0:4])
-            # special for default files
-            elif len(res) == 4:
-                (site, mode, timestamp, dmode) = res
-                # print(f"mode={mode}, dmode={dmode}")
-                date, time = timestamp.split("-")
-                (start_timestamp, start_ftimestamp) = convert_to_timestamp(
-                    date, time, "%y%m%d", "%H%M%S"
-                )
-
+            dt = parse_filename_timestamp(file)
+            if dt is not None:
+                start_timestamp = dt.timestamp()
+                start_ftimestamp = dt.strftime(_ftformat)
             if not dry_run:
                 try:
                     mrun = MagnetRun.fromtdms(site, insert, file)
@@ -263,38 +245,13 @@ def select_files(files: list, site: str, start: str, end: str):
     start_time = datetime.strptime(start, tformat)
     end_time = datetime.strptime(end, tformat)
     selected = []
+    _ftformat = "%Y-%m-%d %H:%M:%S"
     for file in files:
         extension = os.path.splitext(file)[-1]
-        filename = os.path.basename(file).replace(extension, "")
-        match extension:
-            case ".txt":
-                # (site, timestamp) = filename.split("_")
-                # date, time = timestamp.split("---")
-                date, time = filename.replace(".txt", "").split(" - ")
-                # convert ddate and dtime into a timestamp
-                (start_timestamp, start_ftimestamp) = convert_to_timestamp(
-                    date, time, date_format="%Y.%m.%d", time_format="%H:%M:%S"
-                )
-
-            case ".tdms":
-                site = ""
-                timestamp = ""
-                res = filename.split("_")
-
-                # regular case
-                if len(res) == 3:
-                    (site, mode, timestamp) = res
-                    date, time = timestamp.split("-")
-                    # print(f"data={date}, time={time} (type={type(time)})")
-                    (start_timestamp, start_ftimestamp) = convert_to_timestamp(date, time[0:4])
-                # special for default files
-                elif len(res) == 4:
-                    (site, mode, timestamp, dmode) = res
-                    # print(f"mode={mode}, dmode={dmode}")
-                    date, time = timestamp.split("-")
-                    (start_timestamp, start_ftimestamp) = convert_to_timestamp(
-                        date, time, "%y%m%d", "%H%M%S"
-                    )
+        start_ftimestamp = ""
+        dt = parse_filename_timestamp(file)
+        if dt is not None:
+            start_ftimestamp = dt.strftime(_ftformat)
 
         # extra treatment for pupitre in case pupitre ends before end_time but starts before start_time
         if extension == ".txt":
@@ -350,13 +307,16 @@ def load_df(file, site, insert, group, keys) -> tuple:
     extension = os.path.splitext(file)[-1]
 
     df = pd.DataFrame()
-    # t0 = datetime.now()
+    t0 = None
     match extension:
         case ".txt":
             mrun = MagnetRun.fromtxt(site, insert, file)
             mdata = mrun.getMData()
-            t0 = mdata.Data["timestamp"].iloc[0]
-            df = pd.DataFrame(mdata.getData(["t", "timestamp"] + keys))
+            t0 = mdata.start_timestamp
+            df = pd.DataFrame(mdata.getData(["t"] + keys))
+            # Rebuild absolute timestamp from start_timestamp + t
+            if t0 is not None:
+                df["timestamp"] = pd.Timestamp(t0) + pd.to_timedelta(df["t"], unit="s")
         case ".tdms":
             mrun = MagnetRun.fromtdms(site, insert, file)
             mdata = mrun.getMData()

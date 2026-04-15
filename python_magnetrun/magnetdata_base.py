@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from datetime import datetime
 from enum import IntEnum
 from typing import Any
 
@@ -58,6 +59,10 @@ class MagnetDataBase(ABC):
         Available channel/column names.
     units : dict
         Symbol/unit pairs populated by :meth:`Units`.
+    start_timestamp : datetime or None
+        UTC timestamp of the first record in the dataset (naive, no tzinfo).
+    end_timestamp : datetime or None
+        UTC timestamp of the last record in the dataset (naive, no tzinfo).
     """
 
     def __init__(
@@ -67,6 +72,8 @@ class MagnetDataBase(ABC):
         Keys: list[str],
         Data: pd.DataFrame | dict | None = None,
         defs_file: str | None = None,
+        start_timestamp: datetime | None = None,
+        end_timestamp: datetime | None = None,
     ) -> None:
         self.FileName = filename
         self.Groups = Groups
@@ -74,6 +81,8 @@ class MagnetDataBase(ABC):
         self.Data: pd.DataFrame | dict = Data if Data is not None else pd.DataFrame()
         self.units: dict = {}
         self.defs_file: str | None = defs_file
+        self.start_timestamp: datetime | None = start_timestamp
+        self.end_timestamp: datetime | None = end_timestamp
 
     # ------------------------------------------------------------------
     # Abstract interface — every subclass must implement these
@@ -144,7 +153,10 @@ class MagnetDataBase(ABC):
                 pint_unit = None
             else:
                 try:
-                    pint_unit = ureg.parse_expression(unit_str)
+                    parsed = ureg.parse_expression(unit_str)
+                    # parse_expression may return a Quantity (e.g. 1 T) or a Unit;
+                    # always store a Unit so formatting with ~P gives "T" not "1 T"
+                    pint_unit = parsed.units if hasattr(parsed, "units") else parsed
                 except Exception as exc:  # noqa: BLE001
                     raise ValueError(
                         f"load_units_from_json: cannot parse unit {unit_str!r} for field {key!r}"
@@ -234,11 +246,17 @@ class MagnetDataBase(ABC):
     # Phase 2B hook — concrete implementations added in subclasses
 
     def get_time_range(self) -> tuple:
-        """Return ``(start_datetime, end_datetime)`` for the dataset.
+        """Return ``(start_timestamp, end_timestamp)`` for the dataset.
 
-        Subclasses implementing time-aware formats should override this.
+        Returns the stored :attr:`start_timestamp` / :attr:`end_timestamp`
+        attributes when available.  Subclasses that derive timestamps from
+        their data should override this and set those attributes accordingly.
         """
-        raise NotImplementedError(f"{self.__class__.__name__}.get_time_range not implemented")
+        if self.start_timestamp is None and self.end_timestamp is None:
+            raise NotImplementedError(
+                f"{self.__class__.__name__}.get_time_range not implemented"
+            )
+        return (self.start_timestamp, self.end_timestamp)
 
     # Convenience
 

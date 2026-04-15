@@ -150,21 +150,21 @@ def display_slot_map(config: FEPCConfig) -> None:
     """
     Display a visual map of slots
     """
-    logger.info("\nSLOT MAP:")
-    logger.info("─" * 80)
+    print("\nSLOT MAP:")
+    print("─" * 80)
 
     # Create slot map visualization
-    logger.info("\n  Slot │ Type    │ Channels │ File Pattern")
-    logger.info("  ─────┼─────────┼──────────┼─────────────────────────")
+    print("\n  Slot │ Type    │ Channels │ File Pattern")
+    print("  ─────┼─────────┼──────────┼─────────────────────────")
 
     for card in config.cards:
         file_pattern = f"XXHOST_{config.host_number}_LIST_{card.slot}.bin"
-        logger.info(
+        print(
             f"   {card.slot:2d}  │ {card.card_type:7s} │    {card.num_channels:2d}    │ {file_pattern}"
         )
 
-    logger.info("─" * 80)
-    logger.info("  (XX = hour from 00 to 23)")
+    print("─" * 80)
+    print("  (XX = hour from 00 to 23)")
 
 
 def search_variable(config: FEPCConfig, var_name: str) -> None:

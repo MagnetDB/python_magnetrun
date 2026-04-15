@@ -205,7 +205,12 @@ def output_time(file, inputs, extensions, times):
 
     if mdata.Type == 0:
         data = mdata.Data
-        df = data[data["timestamp"].isin(times)]
+        df = data[data["t"].isin(times)]
+        if mdata.start_timestamp is not None:
+            import pandas as pd
+
+            df = df.copy()
+            df["timestamp"] = mdata.start_timestamp + pd.to_timedelta(df["t"], unit="s")
         file_name = file.replace(f_extension, "")
         file_name = file_name + select_args_str + ".csv"
         df.to_csv()

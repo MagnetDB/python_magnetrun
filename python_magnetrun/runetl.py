@@ -14,20 +14,24 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase) -> None:
     """Remove zero/duplicate Icoil columns and rename Icoil→IH/IB."""
     import pandas as pd
 
+    logger.info(f"{data.__class__.__name__}: {data.FileName}")
+
     assert isinstance(data.Data, pd.DataFrame)
 
     # Drop all-zero columns (skip Flow* and Field*)
     zero_cols = [
-        col for col in data.Data.columns
+        col
+        for col in data.Data.columns
         if (data.Data[col] == 0).all()
         and not col.startswith("Flow")
         and not col.startswith("Field")
     ]
     if zero_cols:
+        logger.warning(
+            f"{data.__class__.__name__}: dropping zero columns {zero_cols} from {data.FileName!r}"
+        )
         data.Data.drop(columns=zero_cols, inplace=True)
-        for col in zero_cols:
-            if col in data.Keys:
-                data.Keys.remove(col)
+        data.Keys = list(data.Data.columns)
 
     # Resolve duplicate Icoil columns
     Ikeys = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
@@ -40,16 +44,24 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase) -> None:
                 if abs(diff.mean()) <= 1e-2:
                     remove.append(Ikeys[j])
         if remove:
+            logger.warning(
+                f"{data.__class__.__name__}: dropping duplicate Icoil columns {remove} from {data.FileName!r}"
+            )
             data.Data.drop(columns=remove, inplace=True)
-            for k in remove:
-                if k in data.Keys:
-                    data.Keys.remove(k)
+            data.Keys = list(data.Data.columns)
         Ikeys = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
 
     # Rename Icoil[0]→IH, Icoil[-1]→IB
     if Ikeys:
+        logger.warning(
+            f"{data.__class__.__name__}: renaming Icoil columns {Ikeys[0]}→IH, {Ikeys[-1]}→IB in {data.FileName!r}"
+        )
         data.renameData(columns={Ikeys[0]: "IH"})
         data.renameData(columns={Ikeys[-1]: "IB"})
+
+    logger.warning(
+        f"{data.__class__.__name__}: after cleanup Icoil columns: {natsorted([k for k in data.getKeys()])}"
+    )
 
 
 def prepareData(

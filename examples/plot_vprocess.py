@@ -12,6 +12,7 @@ Usage:
 """
 
 import argparse
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -21,8 +22,10 @@ import numpy as np
 import pandas as pd
 from matplotlib.figure import Figure
 
+from python_magnetrun.cli_args import create_hybrid_parser, validate_file_extension
 from python_magnetrun.hybrid.vprocess.vprocess_reader import (
     VProcessFileReader,
+    parse_vprocess_filename,
     read_vprocess_file,
 )
 from python_magnetrun.log_utils import get_logger, setup_logging
@@ -376,31 +379,123 @@ def plot_heatmap(
     return fig, ax
 
 
+def resolve_vprocess_filepaths(
+    input_file: str | None,
+    hybrid_datadir: str | None,
+    hybrid_date: str | None,
+) -> list[str]:
+    """Resolve VProcess file paths from a direct path or hybrid directory.
+
+    Resolution order:
+    1. If *input_file* is given and exists on disk — use it directly.
+    2. If *input_file* is given but not found — infer date from the filename
+       using :func:`parse_vprocess_filename`, then search
+       ``hybrid_datadir/vprocess/<date>/``.
+    3. If no *input_file* — list all ``.vprocess`` files in
+       ``hybrid_datadir/vprocess/<hybrid_date>/``.
+
+    Parameters
+    ----------
+    input_file:
+        Optional path (or bare filename) of a VProcess file.
+    hybrid_datadir:
+        Base directory for hybrid data (contains ``vprocess/`` subtree).
+    hybrid_date:
+        Date string ``YYYY-MM-DD`` used when searching the hybrid tree.
+
+    Returns
+    -------
+    list[str]
+        Resolved absolute file paths, never empty.
+
+    Raises
+    ------
+    FileNotFoundError
+        When the file cannot be found or the directory yields no matches.
+    ValueError
+        When insufficient information is provided to locate the files.
+    """
+    if input_file:
+        candidate = Path(input_file)
+        if candidate.exists():
+            return [str(candidate)]
+
+        if not hybrid_datadir:
+            raise FileNotFoundError(f"File not found: {input_file}")
+
+        # Infer date from filename using the existing parser
+        inferred_date: str | None = None
+        time_range = parse_vprocess_filename(candidate.name)
+        if time_range:
+            inferred_date = time_range[0].strftime("%Y-%m-%d")
+
+        resolved_date = hybrid_date or inferred_date
+        logger.info(f"Inferred from filename: date='{resolved_date}'")
+
+        if not resolved_date:
+            raise ValueError(
+                f"'{input_file}' not found; could not infer date from filename. "
+                "Provide --hybrid_date."
+            )
+
+        vprocess_dir = Path(hybrid_datadir) / "vprocess" / resolved_date
+        matches = sorted(vprocess_dir.glob(f"*{candidate.name}*"))
+        if not matches:
+            matches = sorted(vprocess_dir.glob("*.vprocess"))
+        if not matches:
+            raise FileNotFoundError(
+                f"'{input_file}' not found and no .vprocess files in {vprocess_dir}"
+            )
+        resolved = str(matches[0])
+        logger.info(f"Resolved '{input_file}' → {resolved}")
+        return [resolved]
+
+    # No input_file — collect all files from the hybrid tree
+    if not hybrid_date:
+        raise ValueError("Provide either input_file or --hybrid_date")
+    if not hybrid_datadir:
+        raise ValueError("--hybrid_datadir is required when no input_file is given")
+
+    vprocess_dir = Path(hybrid_datadir) / "vprocess" / hybrid_date
+    vprocess_files = sorted(vprocess_dir.glob("*.vprocess"))
+    if not vprocess_files:
+        raise FileNotFoundError(f"No .vprocess files found in {vprocess_dir}")
+    logger.info(f"Found {len(vprocess_files)} VProcess file(s) in {vprocess_dir}")
+    return [str(f) for f in vprocess_files]
+
+
 def main() -> None:
     """Main function for command-line usage."""
+    hybrid_parser = create_hybrid_parser()
     parser = argparse.ArgumentParser(
         description="Plot VProcess data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        parents=[hybrid_parser],
         epilog="""
 Examples:
   # Plot specific variables
   python plot_vprocess.py data.vprocess --vars TT115A TT508A
-  
+
   # Plot overview of first 10 variables
   python plot_vprocess.py data.vprocess --overview
-  
+
   # Compare two variables
   python plot_vprocess.py data.vprocess --compare TT115A TT508A
-  
+
   # Create correlation heatmap
   python plot_vprocess.py data.vprocess --heatmap
-  
+
   # Save plot without displaying
   python plot_vprocess.py data.vprocess --vars TT115A --save plot.png --no-show
         """,
     )
 
-    parser.add_argument("filepath", help="Path to VProcess file")
+    parser.add_argument(
+        "input_file",
+        nargs="?",
+        type=validate_file_extension([".vprocess"]),
+        help="VProcess file to process (optional if --hybrid_date is given)",
+    )
     parser.add_argument("--vars", nargs="+", help="Variable names to plot")
     parser.add_argument(
         "--overview", action="store_true", help="Plot overview of first N variables"
@@ -434,16 +529,40 @@ Examples:
         action="store_true",
         help="Do not display plot (useful with --save)",
     )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="set logging level",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        default=None,
+        help="path to log file (if not specified, logs to console)",
+    )
 
     args = parser.parse_args()
 
-    # Configure logging
-    setup_logging()
+    log_level = getattr(logging, args.log_level.upper())
+    setup_logging(level=log_level, log_file=args.log_file)
+    logger.debug(f"Parsed arguments: {args}")
+
+    try:
+        filepaths = resolve_vprocess_filepaths(
+            args.input_file, args.hybrid_datadir, args.hybrid_date
+        )
+    except (FileNotFoundError, ValueError) as e:
+        parser.error(str(e))
+
+    filepath = filepaths[0]
+    logger.info(f"Using file: {filepath}")
 
     # Choose plot type
     if args.heatmap:
         plot_heatmap(
-            args.filepath,
+            filepath,
             variables=args.vars,
             max_vars=args.max_vars,
             save_path=args.save,
@@ -452,7 +571,7 @@ Examples:
 
     elif args.compare:
         plot_comparison(
-            args.filepath,
+            filepath,
             args.compare[0],
             args.compare[1],
             save_path=args.save,
@@ -461,7 +580,7 @@ Examples:
 
     elif args.overview:
         plot_overview(
-            args.filepath,
+            filepath,
             max_vars=args.max_vars,
             save_path=args.save,
             show=not args.no_show,
@@ -469,7 +588,7 @@ Examples:
 
     elif args.vars:
         plot_variables(
-            args.filepath,
+            filepath,
             args.vars,
             save_path=args.save,
             show=not args.no_show,
