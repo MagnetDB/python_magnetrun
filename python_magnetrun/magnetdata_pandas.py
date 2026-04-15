@@ -336,7 +336,12 @@ class PandasMagnetData(MagnetDataBase):
         assert isinstance(self.Data, pd.DataFrame)
         missing = [old for old in columns if old not in self.Keys]
         if missing:
-            raise KeyError(f"renameData: keys {missing} not found in DataFrame")
+            logger.warning(
+                f"renameData: keys {missing} not found in DataFrame, skipping"
+            )
+            columns = {old: new for old, new in columns.items() if old not in missing}
+        if not columns:
+            return
         # A target name that already exists (and is not itself being renamed away)
         # would silently overwrite that column — raise instead.
         source_keys = set(columns.keys())
