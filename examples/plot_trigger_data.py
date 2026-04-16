@@ -160,6 +160,120 @@ def plot_trigger_variable(
     return fig, ax
 
 
+def plot_trigger_variables_subplots(
+    trigger_dir: Path,
+    system: str,
+    variables: list[str],
+    endian: str = "big",
+    show_plot: bool = True,
+    save_path: Path | None = None,
+    apply_calib: bool = True,
+    cnv_dir: Path | None = None,
+    fig_size: tuple = (12, 10),
+    title: str | None = None,
+):
+    """Plot multiple variables from a single trigger as subplots with shared x-axis.
+
+    Parameters:
+    -----------
+    trigger_dir : Path
+        Path to trigger directory
+    system : str
+        'FEPC-LNCMI' or 'FEPC-AUX-LNCMI'
+    variables : list[str]
+        Variable names to plot (one subplot each)
+    endian : str
+        'big' or 'little'
+    show_plot : bool
+        Show interactive plot
+    save_path : Path, optional
+        Save plot to file
+    apply_calib : bool
+        Apply calibration
+    cnv_dir : Path, optional
+        Directory containing CNV files
+    fig_size : tuple
+        Figure size (width, height)
+    title : str, optional
+        Overall figure title
+    """
+    trigger_info = parse_trigger_directory(trigger_dir)
+    n_vars = len(variables)
+
+    fig, axes = plt.subplots(n_vars, 1, figsize=fig_size, sharex=True)
+    if n_vars == 1:
+        axes = [axes]
+
+    pre_time = trigger_info.pre_samples / 10000.0
+
+    for ax, variable in zip(axes, variables, strict=False):
+        try:
+            data, _timestamp, config = read_trigger_data(
+                trigger_dir, system, variable_name=variable, endian=endian
+            )
+
+            card = None
+            channel = None
+            for c in config.cards:
+                if variable in c.variable_names:
+                    card = c
+                    channel = c.variable_names.index(variable)
+                    break
+
+            if apply_calib and card and card.calibrations and channel is not None and channel < len(card.calibrations):
+                calib = card.calibrations[channel]
+                _cnv_dir = cnv_dir if cnv_dir is not None else trigger_dir / system
+                data = apply_calibration(data, calib, _cnv_dir)
+                y_label = f"{variable} ({calib.unit})" if calib.unit else variable
+            else:
+                y_label = f"{variable} (raw ADC)"
+
+            time = create_time_array(len(data))
+            time_rel = time - pre_time
+
+            ax.plot(time_rel, data, linewidth=0.5, color="blue", alpha=0.7)
+            ax.axvline(0, color="red", linestyle="--", linewidth=1.5, alpha=0.7, label="Trigger")
+            ax.set_ylabel(y_label, fontsize=10)
+            ax.grid(True, alpha=0.3)
+            ax.legend(fontsize=8)
+
+        except (OSError, ValueError, RuntimeError) as e:
+            logger.error(f"Error reading {variable}: {e}")
+            ax.text(0.5, 0.5, f"Error: {e}", transform=ax.transAxes, ha="center", va="center")
+            ax.set_ylabel(variable, fontsize=10)
+
+    axes[-1].set_xlabel("Time relative to trigger (s)", fontsize=12)
+
+    if title is None:
+        title = f"{trigger_info.trigger_name}"
+    fig.suptitle(title, fontsize=14, fontweight="bold")
+
+    # Add trigger info text on first subplot
+    info_text = (
+        f"Trigger: {trigger_info.timestamp.strftime('%Y-%m-%d %H:%M')}\n"
+        f"PRE: {trigger_info.pre_samples / 10000:.1f}s, POST: {trigger_info.post_samples / 10000:.1f}s"
+    )
+    axes[0].text(
+        0.02, 0.98, info_text,
+        transform=axes[0].transAxes,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+        fontsize=9,
+        family="monospace",
+    )
+
+    plt.tight_layout()
+
+    if save_path:
+        logger.info(f"Saving plot to {save_path}")
+        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+
+    if show_plot:
+        plt.show()
+
+    return fig, axes
+
+
 def plot_multiple_triggers(
     base_dir: Path,
     date: str,
@@ -512,14 +626,13 @@ Examples:
         parser.error("--variable is required — check available variables with --list-variables")
 
     try:
-        for var in args.variable:
-            # Derive a per-variable save path when multiple variables are requested
-            if args.save and len(args.variable) > 1:
-                save_path = args.save.with_stem(f"{args.save.stem}_{var}")
-            else:
-                save_path = args.save
-
-            if args.all and len(trigger_dirs) > 1:
+        if args.all and len(trigger_dirs) > 1:
+            # Multiple triggers: one figure per variable, subplots per trigger
+            for var in args.variable:
+                if args.save and len(args.variable) > 1:
+                    save_path = args.save.with_stem(f"{args.save.stem}_{var}")
+                else:
+                    save_path = args.save
                 plot_multiple_triggers(
                     trigger_dirs[0].parent.parent,  # hybrid_datadir
                     trigger_dirs[0].parent.name,    # YYYY-MM-DD from trigger dir parent
@@ -532,18 +645,31 @@ Examples:
                     args.cnv_dir,
                     fig_size,
                 )
-            else:
-                plot_trigger_variable(
-                    trigger_dirs[0],
-                    args.fepc_system,
-                    var,
-                    args.endian,
-                    not args.no_show,
-                    save_path,
-                    not args.no_calib,
-                    args.cnv_dir,
-                    fig_size,
-                )
+        elif len(args.variable) > 1:
+            # Single trigger, multiple variables: one figure with subplots
+            plot_trigger_variables_subplots(
+                trigger_dirs[0],
+                args.fepc_system,
+                args.variable,
+                args.endian,
+                not args.no_show,
+                args.save,
+                not args.no_calib,
+                args.cnv_dir,
+                fig_size,
+            )
+        else:
+            plot_trigger_variable(
+                trigger_dirs[0],
+                args.fepc_system,
+                args.variable[0],
+                args.endian,
+                not args.no_show,
+                args.save,
+                not args.no_calib,
+                args.cnv_dir,
+                fig_size,
+            )
 
     except (OSError, ValueError, RuntimeError) as e:
         logger.error(f"Error: {e}")
