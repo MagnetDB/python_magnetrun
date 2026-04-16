@@ -173,11 +173,13 @@ Either add it to a `hybrid` extras group or document the soft requirement explic
 | `Data` attribute type divergence (`DataFrame` vs `dict`) | Needs fix |
 | CLI consolidation | Needs work |
 | `saveData` abstraction in `MagnetRun` | Needs fix (symptom of `Data` divergence) |
+| Timestamp convention (`timestamp` column UTC vs local) | Needs fix — plan ready |
 
 The core abstractions are well-conceived — the ABC, the defs system, and `HousingConfig` are solid
 foundations. The housing config consolidation and the `MagnetData` shim replacement are now complete.
 The remaining weaknesses are TDMS unit lookup inconsistency, Protocol duplication in the hybrid layer
-(scheduled as Phase A0 of the cross-domain comparison plan), and CLI fragmentation.
+(scheduled as Phase A0 of the cross-domain comparison plan), CLI fragmentation, and timestamp
+convention inconsistency between `PandasMagnetData` (local) and `TdmsMagnetData` (UTC).
 
 ---
 
@@ -219,21 +221,59 @@ private `_fromtdms()` helper. No `MagnetData` class remains; `isinstance` checks
 
 ### Remaining issues (priority order)
 
-1. **`Data` attribute type divergence** — `MagnetDataBase.Data` is typed `pd.DataFrame | dict`
-   ([magnetdata_base.py:74](python_magnetrun/magnetdata_base.py#L74)); callers branch on
-   `isinstance` instead of using `getData()`. Fix: make `Data` private in subclasses; route all
-   external access through `getData()`. Resolving this also unblocks item #2.
-2. **`TdmsMagnetData.getUnitKey`** — fix to return `self.units[key]` when populated, falling
-   back to `PigBrotherUnits` only as a last resort; currently bypasses `self.units` entirely
+Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several days.
+
+1. **Timestamp convention** *(effort: M)* — `PandasMagnetData.timestamp` stores naive **local** time;
+   `TdmsMagnetData.timestamp` stores naive **UTC** by default. Both `start_timestamp` /
+   `end_timestamp` are already naive UTC. Convention must be unified: all `timestamp` columns
+   store naive UTC; local-time conversion happens only at display/filter boundaries
+   (`plotData`, `extractTimeData`). `addTime()` must also become eager (computes `t` and
+   `timestamp` for all TDMS groups at once, removing scattered lazy guards). See full plan in
+   **[`prompts/timestamp-utc-refactoring.plan.md`](timestamp-utc-refactoring.plan.md)**.
+
+   *Breakdown*: `magnetdata_pandas.py` + `magnetdata_tdms.py` + `magnetdata_base.py` signatures
+   (~2 h); update `commands/select.py` caller (~30 min); rewrite `TestExtractTimeData` + add
+   TDMS timestamp tests (~1 h); smoke validation (~30 min).
+
+   **Must be done before item #2** (Data divergence) to minimise churn: the timestamp plan
+   adds new internal `self.Data[group]` accesses inside TDMS subclass methods; doing it first
+   means zero extra updates when `Data` is made private.
+
+   **Caller-side change in `commands/select.py`**: `extractTimeData` timerange format changes
+   from `"HH:MM:SS;HH:MM:SS"` to `"YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS"` (local
+   datetime strings). `select.py` line 176 must be updated in the same commit.
+
+   **`HybridData` not in scope** for this plan — needs its own follow-up (add
+   `start_timestamp`, `end_timestamp`, `addTime()`).
+
+2. **`Data` attribute type divergence** *(effort: L)* — `MagnetDataBase.Data` is typed
+   `pd.DataFrame | dict` ([magnetdata_base.py:74](python_magnetrun/magnetdata_base.py#L74));
+   callers branch on `isinstance` instead of using `getData()`. Fix: make `Data` private in
+   subclasses; route all external access through `getData()`. Resolving this also unblocks
+   item #3. *The grep for direct `.Data` access outside the two subclasses will determine the
+   actual scope — likely a dozen call sites across `MagnetRun.py`, `commands/`, `analysis/`,
+   and `examples/`.*
+
+3. **`TdmsMagnetData.getUnitKey`** *(effort: S)* — fix to return `self.units[key]` when
+   populated, falling back to `PigBrotherUnits` only as a last resort; currently bypasses
+   `self.units` entirely
    ([magnetdata_tdms.py:175-189](python_magnetrun/magnetdata_tdms.py#L175-L189)).
-3. **`MagnetRun.saveData`** — delegate to `self.MagnetData.saveData(...)` instead of the
-   inline `isinstance(self.MagnetData.Data, pd.DataFrame)` check
-   ([MagnetRun.py:202-209](python_magnetrun/MagnetRun.py#L202-L209)); easier once `Data`
-   divergence (item #1) is addressed.
-4. **Protocol duplication** — unify `DataProvider` (`hybrid/hybrid_run.py`) and `DataLoader`
-   (`hybrid/data_protocol.py`); annotate `MagnetRun` and `HybridRun` to declare the chosen one.
-   **Tracked as Phase A0 in `prompts/cross-domain-comparison.prompt.md`** — will be resolved
-   as part of the `DataLoader` protocol extension work.
-5. **Hardcoded default path** — replace `cli_args.py` line 249 with `None` or an env-var lookup.
-6. **`tsdownsample`** — add to `pyproject.toml` as a `hybrid` extras dependency.
-7. **Editor backup file** — remove `pigbrother-defs.json~` and add `*.json~` to `.gitignore`.
+
+4. **`MagnetRun.saveData`** *(effort: S, unblocked by #2)* — delegate to
+   `self.MagnetData.saveData(...)` instead of the inline
+   `isinstance(self.MagnetData.Data, pd.DataFrame)` check
+   ([MagnetRun.py:202-209](python_magnetrun/MagnetRun.py#L202-L209)).
+
+5. **Protocol duplication** *(effort: M)* — unify `DataProvider` (`hybrid/hybrid_run.py`) and
+   `DataLoader` (`hybrid/data_protocol.py`); annotate `MagnetRun` and `HybridRun` to declare
+   the chosen one. **Tracked as Phase A0 in
+   `prompts/cross-domain-comparison.prompt.md`** — will be resolved as part of the
+   `DataLoader` protocol extension work.
+
+6. **Hardcoded default path** *(effort: S)* — replace `cli_args.py` line 249 with `None` or
+   an env-var lookup.
+
+7. **`tsdownsample`** *(effort: S)* — add to `pyproject.toml` as a `hybrid` extras dependency.
+
+8. **Editor backup file** *(effort: S)* — remove `pigbrother-defs.json~` and add `*.json~` to
+   `.gitignore`.
