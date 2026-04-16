@@ -387,61 +387,62 @@ class TestPiecewiseLinearApproximation:
 # stats.py
 # ---------------------------------------------------------------------------
 
-from python_magnetrun.magnetdata import MagnetData  # noqa: E402
+from python_magnetrun.magnetdata import load_magnetdata  # noqa: E402
+from python_magnetrun.magnetdata_base import MagnetDataBase  # noqa: E402
 from python_magnetrun.processing.stats import stats  # noqa: E402
 
 
 @pytest.fixture(scope="module")
-def pupitre_magnetdata() -> MagnetData:
-    """MagnetData from the sample pupitre txt file — shared across stats tests."""
-    md = MagnetData.fromtxt(str(SAMPLE_TXT))
+def pupitre_magnetdata() -> MagnetDataBase:
+    """PandasMagnetData from the sample pupitre txt file — shared across stats tests."""
+    md = load_magnetdata(str(SAMPLE_TXT))
     md.Units()
     return md
 
 
 class TestStats:
-    def test_returns_tuple_of_two(self, pupitre_magnetdata: MagnetData) -> None:
+    def test_returns_tuple_of_two(self, pupitre_magnetdata: MagnetDataBase) -> None:
         result = stats(pupitre_magnetdata, fields=["Field"], display=False)
         assert isinstance(result, tuple)
         assert len(result) == 2
 
-    def test_tables_is_list(self, pupitre_magnetdata: MagnetData) -> None:
+    def test_tables_is_list(self, pupitre_magnetdata: MagnetDataBase) -> None:
         tables, _ = stats(pupitre_magnetdata, fields=["Field"], display=False)
         assert isinstance(tables, list)
 
-    def test_headers_contains_stat_names(self, pupitre_magnetdata: MagnetData) -> None:
+    def test_headers_contains_stat_names(self, pupitre_magnetdata: MagnetDataBase) -> None:
         _, headers = stats(pupitre_magnetdata, fields=["Field"], display=False)
         for expected in ("Mean", "Max", "Min", "Std", "Median"):
             assert expected in headers
 
-    def test_one_row_per_requested_field(self, pupitre_magnetdata: MagnetData) -> None:
+    def test_one_row_per_requested_field(self, pupitre_magnetdata: MagnetDataBase) -> None:
         tables, _ = stats(pupitre_magnetdata, fields=["Field", "Icoil1"], display=False)
         assert len(tables) == 2
 
-    def test_missing_field_gives_nan_row(self, pupitre_magnetdata: MagnetData) -> None:
+    def test_missing_field_gives_nan_row(self, pupitre_magnetdata: MagnetDataBase) -> None:
         tables, _ = stats(pupitre_magnetdata, fields=["NonExistentKey"], display=False)
         assert len(tables) == 1
         assert tables[0][0] == "NonExistentKey[N/A]"
 
-    def test_field_mean_value(self, pupitre_magnetdata: MagnetData) -> None:
+    def test_field_mean_value(self, pupitre_magnetdata: MagnetDataBase) -> None:
         """Field column in sample file is [0.5, 0.6, 0.7, 0.8]; mean=0.65."""
         tables, _ = stats(pupitre_magnetdata, fields=["Field"], display=False)
         row = tables[0]
         assert row[1] == pytest.approx(0.65)
 
-    def test_field_max_value(self, pupitre_magnetdata: MagnetData) -> None:
+    def test_field_max_value(self, pupitre_magnetdata: MagnetDataBase) -> None:
         tables, _ = stats(pupitre_magnetdata, fields=["Field"], display=False)
         assert tables[0][2] == pytest.approx(0.8)
 
-    def test_field_min_value(self, pupitre_magnetdata: MagnetData) -> None:
+    def test_field_min_value(self, pupitre_magnetdata: MagnetDataBase) -> None:
         tables, _ = stats(pupitre_magnetdata, fields=["Field"], display=False)
         assert tables[0][3] == pytest.approx(0.5)
 
-    def test_empty_fields_list(self, pupitre_magnetdata: MagnetData) -> None:
+    def test_empty_fields_list(self, pupitre_magnetdata: MagnetDataBase) -> None:
         tables, _ = stats(pupitre_magnetdata, fields=[], display=False)
         assert tables == []
 
-    def test_default_fields_when_none(self, pupitre_magnetdata: MagnetData) -> None:
+    def test_default_fields_when_none(self, pupitre_magnetdata: MagnetDataBase) -> None:
         tables, _ = stats(pupitre_magnetdata, fields=None, display=False)
         assert len(tables) > 0
 

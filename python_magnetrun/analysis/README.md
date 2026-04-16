@@ -119,7 +119,9 @@ The CLI performs the following operations based on flags:
 
 ### config.py - Configuration
 
-Site-specific configurations and analysis parameters.
+Analysis parameters and site configuration.  Housing-specific role
+assignments (`SiteConfig`) live in `python_magnetrun/site_config.py` and
+are re-exported from `config.py` for backward compatibility.
 
 ```python
 from python_magnetrun.analysis import (
@@ -129,18 +131,25 @@ from python_magnetrun.analysis import (
     get_site_config,
 )
 
-# Get configuration for a site
+# Get built-in default for a housing
 config = get_site_config("M9")
 print(f"GR1 current channel: {config.reference_gr1_current}")  # "IH"
 print(f"GR2 current channel: {config.reference_gr2_current}")  # "IB"
+print(f"Supports hybrid: {config.supports_format('hybrid')}")  # False
 
-# Create analysis configuration
-analysis = AnalysisConfig.for_site("M9")
+# Load from a custom per-housing JSON file
+config = get_housing_config("M9", json_file="M9-housing-config.json")
+
+# Runtime override (e.g. GR1/GR2 swapped for an atypical run)
+config = get_housing_config("M9", overrides={"gr1_current": "IB", "gr2_current": "IH"})
+
+# Create full analysis configuration
+analysis = AnalysisConfig.for_housing("M9")
 ```
 
 **Key Classes:**
-- `SiteConfig` - Site-specific channel mappings (M8, M9, M10)
-- `AnalysisConfig` - Analysis parameters (thresholds, windows, etc.)
+- `HousingConfig` - Housing-dependent sensor role assignments (defined in `housing_config.py`)
+- `AnalysisConfig` - Full analysis configuration (housing + thresholds + channels + colours)
 - `ColorConfig` - Plot color configuration
 - `ThresholdConfig` - Regime detection thresholds
 
@@ -484,32 +493,42 @@ Logging options:
 
 ## Site Configurations
 
-### M9 (Default)
+Housing configurations define which pupitre field plays each GR role.
+The canonical source is `python_magnetrun/<Housing>-site-config.json`;
+see `python_magnetrun/site_config.py` and the main README for management tools.
+
+### M9 (default: H supply = GR1, B supply = GR2)
 | Parameter | GR1 | GR2 |
 |-----------|-----|-----|
 | Current | IH | IB |
 | Flow | FlowH | FlowB |
 | RPM | RpmH | RpmB |
 | Pressure In | HPH | HPB |
-| Voltage | UH | UB, Ucoil15, Ucoil16 |
+| Voltages | UH, Ucoil1–14 | UB, Ucoil15, Ucoil16 |
+| Formats | pupitre, pigbrother | |
 
-### M8
+### M8 (default: B supply = GR1, H supply = GR2; also runs hybrid)
 | Parameter | GR1 | GR2 |
 |-----------|-----|-----|
-| Current | IH | IB |
-| Flow | FlowH | FlowB |
-| RPM | RpmH | RpmB |
-| Pressure In | HPH | HPB |
-| Voltage | UH | UB |
+| Current | IB | IH |
+| Flow | FlowB | FlowH |
+| RPM | RpmB | RpmH |
+| Pressure In | HPB | HPH |
+| Voltages | UB, Ucoil15, Ucoil16 | UH, Ucoil1–14 |
+| Formats | pupitre, pigbrother, hybrid | |
 
-### M10
+### M10 (same convention as M8)
 | Parameter | GR1 | GR2 |
 |-----------|-----|-----|
-| Current | Icoil1 | Icoil2 |
-| Flow | Flow1 | Flow2 |
-| RPM | Rpm1 | Rpm2 |
-| Pressure In | HP1 | HP2 |
-| Voltage | Ucoil1 | Ucoil2 |
+| Current | IB | IH |
+| Flow | FlowB | FlowH |
+| RPM | RpmB | RpmH |
+| Pressure In | HPB | HPH |
+| Voltages | UB, Ucoil15, Ucoil16 | UH, Ucoil1–14 |
+| Formats | pupitre, pigbrother | |
+
+> **Note:** The default GR1/GR2 assignment can be overridden at runtime for
+> atypical runs via `get_site_config("M9", overrides={"gr1_current": "IB", ...})`.
 
 ## Data Flow
 

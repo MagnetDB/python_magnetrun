@@ -110,7 +110,7 @@ def plot_changes(
     display changes
     """
 
-    print(f"plot_changes: method={method}, name={name}, show={show}", flush=True)
+    logger.info(f"plot_changes: method={method}, name={name}, show={show}")
 
     # Plot the time series
 
@@ -140,7 +140,7 @@ def plot_changes(
     if show:
         plt.show()
     else:
-        print(f"plot_changes: savefig to {name}-changes-matplotlib.png")
+        logger.info(f"plot_changes: savefig to {name}-changes-matplotlib.png")
         plt.savefig(f"{name}-changes-matplotlib.png", dpi=300)
     plt.close()
 
@@ -158,17 +158,14 @@ def breakingpoints(
     save: bool = False,
 ) -> None:
     # display algo
-    print(f"algo: {algo}")
-    print(f"model: {model}")
-    print(f"min_size: {min_size}")
-    print(f"jump: {jump}")
-    print(f"pen: {pen}", flush=True)
+    logger.info(f"algo: {algo}")
+    logger.info(f"model: {model}")
+    logger.info(f"min_size: {min_size}")
+    logger.info(f"jump: {jump}")
+    logger.info(f"pen: {pen}")
 
     # Detect abrupt changes
-    print(
-        f"Detect Changing point for {channel}: show={not save}",
-        flush=True,
-    )
+    logger.info(f"Detect Changing point for {channel}: show={not save}")
     changes = detect_changes(
         ts,
         algo,
@@ -178,10 +175,10 @@ def breakingpoints(
         pen,
         n_bkps,
     )
-    print(f"Changes detected: {len(changes)}", flush=True)
+    logger.info(f"Changes detected: {len(changes)}")
 
     method = f"{algo}-{model}-pen{pen}"
-    print(f"plot: Changing points: method={method}")
+    logger.info(f"plot: Changing points: method={method}")
     plot_changes(
         ts,
         changes,

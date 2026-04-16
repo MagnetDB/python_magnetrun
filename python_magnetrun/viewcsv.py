@@ -5,7 +5,7 @@ import os
 # import matplotlib
 import matplotlib.pyplot as plt
 
-from .magnetdata import MagnetData as mdata
+from .magnetdata import load_magnetdata
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ ykey = args.ykey
 my_ax = plt.gca()
 
 for file in args.input_file:
-    mdata = mdata.fromcsv(file)
+    mdata = load_magnetdata(file)
     if args.info:
         print(mdata.getKeys())
     mdata.Units()

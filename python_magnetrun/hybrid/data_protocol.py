@@ -8,7 +8,8 @@ This module defines a common interface (Protocol) that can be implemented by:
 This allows writing code that works with any data source without coupling
 to a specific implementation.
 
-Example:
+Example::
+
     from python_magnetrun.hybrid.data_protocol import DataLoader, load_and_compare
 
     # Both MagnetRun and HybridRun implement DataLoader protocol

@@ -1,6 +1,6 @@
 # Implementation Checklist — python_magnetrun
 
-*Last updated: 2026-03-30 — branch `separate-cooling` — commit `10ef4a4`*
+*Last updated: 2026-04-02 — branch `rework_analysis` — commit `1291a41`*
 
 Tracks progress against [ROADMAP.md](ROADMAP.md).
 
@@ -14,8 +14,8 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 |------|--------|-------|
 | Fix 5 bare `except:` clauses | ✅ Done | `6253de6` — no bare excepts remain in key files |
 | Add `ruff` pre-commit hook | ✅ Done | `64ea699` — `.pre-commit-config.yaml` in place |
-| Add file-format validation before parsing | ⬜ Pending | `analysis/loaders.py`, `magnetdata.py` |
-| Replace `print()` with `logger.*` | ⬜ Pending | 1477 `print()` calls remain; 706 logger usages already present |
+| Add file-format validation before parsing | 🔶 Done (uncommitted) | `utils/validation.py` (164 l) — `FileFormatError`, validators for txt/csv/tdms/rms/fepc/vprocess; `tests/test_file_validation.py` (261 l); not yet committed — see [FILE_FORMAT_VALIDATION.md](FILE_FORMAT_VALIDATION.md) |
+| Replace `print()` with `logger.*` | 🔶 In Progress | `1291a41` — `log_utils.py` (524 l) added: `setup_logging()`, structured `LogRecord`, context managers; args split out removes many prints; still calls remain |
 | Migrate file paths to `pathlib.Path` | ⬜ Partial | ~90 occurrences so far; most code still uses string concatenation |
 
 ### Phase 1B — Test infrastructure
@@ -37,6 +37,13 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 | Remove / formally deprecate `prepareData_legacy()` | ⬜ Partial | Marked deprecated with warning in `MagnetRun.py:32`, but still actively called in `utils/txt2csv.py` and `MagnetRun.py:229,268` |
 | Remove placeholder CLI code | ⬜ Pending | `requests/cli.py` |
 | Clean up WIP example scripts | ⬜ Pending | |
+
+### Phase 1D — Documentation
+
+| Task | Status | Notes |
+|------|--------|-------|
+| Format reference docs | ✅ Done | `d819026` — `docs/pupitre.md`, `docs/pigbrother.md`, `docs/Hybride.md`, `docs/bprofile.md`, `docs/feelpp_csv.md`, `docs/magnettools_csv.md` |
+| File-format validation design doc | ✅ Done | `76fb08b` — `prompts/FILE_FORMAT_VALIDATION.md` |
 
 ---
 
@@ -78,7 +85,7 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 
 | Task | Status | Notes |
 |------|--------|-------|
-| `CHANNEL_ALIASES` registry in `analysis/config.py` | ⬜ Pending | Not present |
+| `CHANNEL_ALIASES` registry in `analysis/config.py` | 🔶 Partial | Structured channel mapping via `ChannelMapping`, `VoltageChannelMapping`, `SiteConfig.get_voltage_channels()` — no flat alias dict; fuzzy fallback still missing |
 | Fuzzy fallback for unmapped channels | ⬜ Pending | |
 
 ---
@@ -90,7 +97,7 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 | File | Status | Notes |
 |------|--------|-------|
 | `magnetdata.py` (~1500 lines) | ✅ Done | `10ef4a4` — split into `magnetdata_base.py` (175 l), `magnetdata_pandas.py` (683 l), `magnetdata_tdms.py` (471 l); `magnetdata.py` is now a thin 235-line facade |
-| `python_magnetrun.py` (~1300 lines) | ⬜ Pending | Split into `cli.py`, `commands/plot.py`, etc. |
+| `python_magnetrun.py` (~1300 lines) | 🔶 In Progress | `1291a41` — renamed to `cli.py`; args extracted to `args.py`, `analysis/args.py`, `hybrid/args.py`, `hybrid/vprocess/args.py`; monolithic body still to split |
 
 ### Phase 3B — Type hints
 
@@ -106,8 +113,8 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 
 | Task | Status | Notes |
 |------|--------|-------|
-| Move magic numbers to `analysis/config.py` | ⬜ Partial | `AnalysisConfig`, `ChannelMapping`, `SiteConfig` classes exist but not all constants centralised |
-| `pydantic.BaseSettings` for site configs (M8, M9, M10) | ⬜ Pending | |
+| Move magic numbers to `analysis/config.py` | ✅ Done | Sampling rates, time offsets, thresholds, paths (env-overridable), TDMS group names, colors all centralised; `AnalysisConfig.for_site()` factory for M8/M9/M10 |
+| `pydantic.BaseSettings` for site configs (M8, M9, M10) | ✅ Done (differently) | Used `frozen dataclass` + `os.environ.get()` instead of pydantic — covers the same need without the dependency |
 
 ### Phase 3D — Tooling
 
@@ -137,11 +144,13 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 ## Quick Summary — What Remains
 
 ### Highest priority (do first)
-1. **CI pipeline** — add `.github/workflows/ci.yml` running `ruff` + `pytest`
-2. **Add assertions** to `tests/test_python_magnetrun.py` (currently 0)
-3. **Enable `mypy`** pre-commit hook
-4. **Finish `prepareData_legacy` removal** — update `utils/txt2csv.py` to not call it
-5. **`print()` → `logger.*`** migration (1477 occurrences)
+1. **Commit `validation.py` + `test_file_validation.py`** — file-format validation is done but untracked
+2. **Finish splitting `cli.py`** — args extracted (`1291a41`); body still monolithic; extract `commands/plot.py` etc.
+3. **CI pipeline** — add `.github/workflows/ci.yml` running `ruff` + `pytest`
+4. **Add assertions** to `tests/test_python_magnetrun.py` (currently 0)
+5. **Enable `mypy`** pre-commit hook
+6. **Finish `prepareData_legacy` removal** — update `utils/txt2csv.py` to not call it
+7. **`print()` → `logger.*`** — `log_utils.py` in place; sweep remaining calls
 
 ### Medium priority
 6. **`DataProvider` protocol enforcement** — verify `MagnetRun` and `HybridRun` satisfy it
@@ -150,7 +159,7 @@ Tracks progress against [ROADMAP.md](ROADMAP.md).
 9. **`CHANNEL_ALIASES` registry** in `analysis/config.py`
 
 ### Lower priority / ongoing
-10. ~~Break up `magnetdata.py`~~ **Done** (`10ef4a4`); break up `python_magnetrun.py` remains
+10. ~~Break up `magnetdata.py`~~ **Done** (`10ef4a4`); ~~rename to `cli.py`~~ **Done** (`1291a41`); finish splitting CLI body
 11. Backfill type hints on public APIs
 12. `pathlib.Path` migration (opportunistic, per-file-touched)
-13. `pydantic.BaseSettings` for site configs
+13. ~~`pydantic.BaseSettings`~~ **Done differently** — frozen dataclasses + env vars in `config.py`

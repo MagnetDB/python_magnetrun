@@ -198,6 +198,132 @@ python proposal.py proposals.csv --mdatadir srvdata --show
 
 ---
 
+## Run Analysis Examples
+
+### `bilan.py`
+
+Computes an energy balance for a magnet run from a pigbrother (TDMS) file. Combines electrical power from current/voltage measurements with cooling water thermal power (using `python_magnetcooling` fluid properties).
+
+**Usage:**
+```bash
+python bilan.py <input_tdms_file> [--show] [--pigbrother_datadir DIR] [--pupitre_datadir DIR] [--debug]
+```
+
+**Dependencies:** `python_magnetcooling`
+
+---
+
+### `outliers.py`
+
+Detects and visualises outliers in time-series data across multiple pupitre records using MAD (Median Absolute Deviation) and mean-MAD statistics.
+
+**Usage:**
+```bash
+python outliers.py <file1.txt> [file2.txt ...] --site M9 [--insert NAME] [--plot] [--save] [--debug]
+```
+
+---
+
+### `corr_Ih_Ib.py`
+
+Plots and fits the relationship between two current channels (by default `IH` vs `IB`) across one or more pupitre records using piecewise-linear regression (`pwlf`).
+
+**Usage:**
+```bash
+python corr_Ih_Ib.py <file1.txt> [file2.txt ...] [--xkey IH] [--ykey IB] [--breakpoints 1] [--show] [--save] [--debug]
+```
+
+**Dependencies:** `pwlf`
+
+---
+
+### `cmp_fields.py`
+
+Compares two time-series from pupitre records: computes Euclidean distance, MAPE and Pearson correlation, and optionally overlays a LOWESS smoothed fit.
+
+**Usage:**
+```bash
+python cmp_fields.py <file1.txt> [file2.txt ...] --key1 Field --key2 IH [--show] [--save] [--debug]
+```
+
+---
+
+### `pupitre.py`
+
+Demonstrates lag-correlation and trend analysis on pupitre records. Computes rolling statistics and trend lines for a set of physical quantities.
+
+**Usage:**
+```bash
+python pupitre.py <file1.txt> [file2.txt ...] [--window 10] [--show] [--save] [--debug]
+```
+
+---
+
+### `timeseries-anomaly-detection.py`
+
+Demonstrates multiple anomaly-detection algorithms (Z-score, IQR, rolling statistics, Isolation Forest) on a time series extracted from a pupitre record.
+
+**Usage:**
+```bash
+python timeseries-anomaly-detection.py <file.txt> --key Field [--show] [--debug]
+```
+
+**Dependencies:** `scikit-learn`
+
+---
+
+## Hybrid Sub-system Plot Scripts
+
+### `plot_fepc_data.py`
+
+Reads FEPC binary (`.bin`) kHz data files and plots a specific variable for one or more time slots. Supports calibration files (`.cnv`) and outlier removal.
+
+**Usage:**
+```bash
+python plot_fepc_data.py -c HOST_2_DATA.CFG -v ALIM1_J1 -s 4 [--date-range START END] [--no-calib] [--save FILE]
+```
+
+---
+
+### `plot_rms.py`
+
+Quickly plots one or more variables from an RMS data file.
+
+**Usage:**
+```bash
+python plot_rms.py <file.rms> VAR1 [VAR2 ...] [--output FILE] [--same-plot]
+```
+
+---
+
+### `plot_trigger_data.py`
+
+Plots trigger data from FEPC trigger binary files. Supports single-trigger and all-triggers-for-a-date modes, optional calibration, and figure export.
+
+**Usage:**
+```bash
+# Plot a single trigger directory
+python plot_trigger_data.py --trigger-dir /data/trigger/2025-01-06T10:00:00 --variable I_H1
+
+# Plot all triggers for a date
+python plot_trigger_data.py --base-dir /data --date 2025-01-06 --system FEPC-LNCMI --variable I_H1 --all
+```
+
+---
+
+### `plot_vprocess.py`
+
+Plots variables from VProcess (`.vprocess`) slow-data files. Supports individual variable plots, overview dashboards, and side-by-side comparisons.
+
+**Usage:**
+```bash
+python plot_vprocess.py data.vprocess --vars TT115A TT508A
+python plot_vprocess.py data.vprocess --overview
+python plot_vprocess.py data.vprocess --compare TT115A TT508A
+```
+
+---
+
 ## Cooling / Hydraulic Examples
 
 ### `flow_params_pipeline.py`

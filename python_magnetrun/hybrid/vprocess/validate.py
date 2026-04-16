@@ -19,6 +19,8 @@ from typing import Any
 import pandas as pd
 from vprocess_reader import VProcessFileReader
 
+from ...log_utils import setup_logging
+
 # Setup logger
 logger = logging.getLogger(__name__)
 
@@ -107,8 +109,12 @@ def validate_vprocess_file(
             results["valid"] = False
         else:
             results["info"]["num_variables"] = len(reader.variables)
-            results["info"]["num_analog"] = sum(1 for v in reader.variables if v.is_analog)
-            results["info"]["num_digital"] = sum(1 for v in reader.variables if not v.is_analog)
+            results["info"]["num_analog"] = sum(
+                1 for v in reader.variables if v.is_analog
+            )
+            results["info"]["num_digital"] = sum(
+                1 for v in reader.variables if not v.is_analog
+            )
 
             if verbose:
                 print("\nVariables:")
@@ -144,7 +150,9 @@ def validate_vprocess_file(
                 print("\nTime Window:")
                 print(f"  Start: {start}")
                 print(f"  End: {end}")
-                print(f"  Duration: {duration:.1f} seconds ({duration / 3600:.2f} hours)")
+                print(
+                    f"  Duration: {duration:.1f} seconds ({duration / 3600:.2f} hours)"
+                )
 
                 if metadata.get("frequency"):
                     expected_samples = int(duration * metadata["frequency"])
@@ -197,7 +205,9 @@ def validate_vprocess_file(
                     time_diffs = df.index.to_series().diff()
                     negative_diffs = (time_diffs < pd.Timedelta(0)).sum()
                     if negative_diffs > 0:
-                        warning = f"Non-monotonic timestamps: {negative_diffs} backward jumps"
+                        warning = (
+                            f"Non-monotonic timestamps: {negative_diffs} backward jumps"
+                        )
                         results["warnings"].append(warning)
                         if verbose:
                             print(f"\n⚠ {warning}")
@@ -289,13 +299,15 @@ Examples:
         action="store_true",
         help="Perform detailed data validation (slower)",
     )
-    parser.add_argument("--quiet", "-q", action="store_true", help="Suppress detailed output")
+    parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress detailed output"
+    )
 
     args = parser.parse_args()
 
     # Configure logging
     if not args.quiet:
-        logging.basicConfig(level=logging.INFO)
+        setup_logging()
 
     # Run validation
     results = validate_vprocess_file(

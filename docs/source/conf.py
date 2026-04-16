@@ -25,6 +25,7 @@ version = ".".join(release.split(".")[:2])
 
 extensions = [
     "myst_parser",
+    "sphinx_rtd_theme",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",

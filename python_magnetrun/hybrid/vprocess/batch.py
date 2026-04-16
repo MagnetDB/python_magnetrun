@@ -16,6 +16,8 @@ from pathlib import Path
 import pandas as pd
 from vprocess_reader import VProcessFileReader, read_vprocess_file
 
+from ...log_utils import BARE_FORMAT, setup_logging
+
 # Setup logger
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,9 @@ def find_vprocess_files(
     """
     dir_path = Path(directory)
 
-    files = sorted(dir_path.rglob(pattern)) if recursive else sorted(dir_path.glob(pattern))
+    files = (
+        sorted(dir_path.rglob(pattern)) if recursive else sorted(dir_path.glob(pattern))
+    )
 
     return files
 
@@ -130,7 +134,9 @@ def process_batch(
             if selected_vars:
                 available_vars = [v for v in selected_vars if v in df.columns]
                 if not available_vars:
-                    logger.warning(f"None of the selected variables found in {filepath.name}")
+                    logger.warning(
+                        f"None of the selected variables found in {filepath.name}"
+                    )
                     continue
                 df = df[available_vars]
 
@@ -193,7 +199,9 @@ def export_data(df: pd.DataFrame, output_path: str, format: str = "csv") -> None
         raise ValueError(f"Unsupported format: {format}")
 
 
-def analyze_batch(file_list: list[Path], output_file: str | None = None) -> pd.DataFrame:
+def analyze_batch(
+    file_list: list[Path], output_file: str | None = None
+) -> pd.DataFrame:
     """
     Analyze multiple VProcess files and create summary statistics.
 
@@ -267,13 +275,17 @@ Examples:
         """,
     )
 
-    parser.add_argument("--dir", required=True, help="Directory containing VProcess files")
+    parser.add_argument(
+        "--dir", required=True, help="Directory containing VProcess files"
+    )
     parser.add_argument(
         "--pattern",
         default="*.vprocess",
         help="File pattern to match (default: *.vprocess)",
     )
-    parser.add_argument("--recursive", "-r", action="store_true", help="Search recursively")
+    parser.add_argument(
+        "--recursive", "-r", action="store_true", help="Search recursively"
+    )
     parser.add_argument("--output", "-o", help="Output file path")
     parser.add_argument(
         "--format",
@@ -282,28 +294,36 @@ Examples:
         help="Output format (default: csv)",
     )
     parser.add_argument("--vars", nargs="+", help="List of variables to extract")
-    parser.add_argument("--merge", action="store_true", help="Merge all files into single output")
+    parser.add_argument(
+        "--merge", action="store_true", help="Merge all files into single output"
+    )
     parser.add_argument(
         "--list-common-vars",
         action="store_true",
         help="List variables common to all files",
     )
-    parser.add_argument("--analyze", action="store_true", help="Analyze files and create summary")
-    parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output")
+    parser.add_argument(
+        "--analyze", action="store_true", help="Analyze files and create summary"
+    )
+    parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress progress output"
+    )
 
     args = parser.parse_args()
 
     # Configure logging
-    logging.basicConfig(
+    setup_logging(
         level=logging.WARNING if args.quiet else logging.INFO,
-        format="%(message)s",
+        fmt=BARE_FORMAT,
     )
 
     # Find files
     file_list = find_vprocess_files(args.dir, args.pattern, args.recursive)
 
     if not file_list:
-        logger.error(f"No VProcess files found in {args.dir} matching pattern {args.pattern}")
+        logger.error(
+            f"No VProcess files found in {args.dir} matching pattern {args.pattern}"
+        )
         return
 
     logger.info(f"Found {len(file_list)} VProcess files")
@@ -311,34 +331,40 @@ Examples:
     # List common variables if requested
     if args.list_common_vars:
         common_vars = get_common_variables(file_list, verbose=not args.quiet)
-        print(f"\nCommon variables ({len(common_vars)}):")
+        logger.info(f"Common variables ({len(common_vars)}):")
         for var in common_vars:
-            print(f"  - {var}")
+            logger.info(f"  - {var}")
         return
 
     # Analyze files if requested
     if args.analyze:
         summary_df = analyze_batch(file_list, output_file=args.output)
-        print("\nFile Analysis Summary:")
-        print(summary_df.to_string(index=False))
+        logger.info("File Analysis Summary:")
+        logger.info(f"{summary_df.to_string(index=False)}")
         return
 
     # Process files
     if args.merge or args.output:
-        df = process_batch(file_list, selected_vars=args.vars, merge=True, verbose=not args.quiet)
+        df = process_batch(
+            file_list, selected_vars=args.vars, merge=True, verbose=not args.quiet
+        )
 
         logger.info(f"\nMerged data shape: {df.shape}")
         if len(df) > 0:
             logger.info(f"Time range: {df.index[0]} to {df.index[-1]}")
             duration = (df.index[-1] - df.index[0]).total_seconds()
-            logger.info(f"Duration: {duration:.1f} seconds ({duration / 3600:.2f} hours)")
+            logger.info(
+                f"Duration: {duration:.1f} seconds ({duration / 3600:.2f} hours)"
+            )
 
         # Export if output path specified
         if args.output:
             export_data(df, args.output, args.format)
     else:
-        print("\nNo action specified. Use --output, --merge, --analyze, or --list-common-vars")
-        print("Use --help for more information")
+        logger.warning(
+            "No action specified. Use --output, --merge, --analyze, or --list-common-vars"
+        )
+        logger.warning("Use --help for more information")
 
 
 if __name__ == "__main__":

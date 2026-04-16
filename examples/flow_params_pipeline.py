@@ -12,9 +12,6 @@ This is a simplified, standalone version of the compute() method from flow_param
 """
 
 import json
-import os
-
-# Import the factory module
 import sys
 from collections.abc import Callable
 
@@ -22,8 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy import optimize
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from python_magnetcooling import WaterFlow
+from python_magnetcooling.waterflow import WaterFlow
 from python_magnetcooling.waterflow_factory import from_flow_params
 
 
@@ -195,7 +191,9 @@ def fit_flow_rate(data: dict, vpmax: float, vp0: float) -> tuple[float, float]:
         vp = vpump_func(x, vpmax, vp0)
         return a + b * vp / (vpmax + vp0)
 
-    params, _ = perform_fit(data["current"], data["flow"], flow_func, ["F0", "Fmax"], "Flow Rate")
+    params, _ = perform_fit(
+        data["current"], data["flow"], flow_func, ["F0", "Fmax"], "Flow Rate"
+    )
 
     return params[0], params[1]  # F0, Fmax
 
@@ -308,7 +306,9 @@ def create_waterflow_object(flow_params: dict) -> WaterFlow:
 
     print("WaterFlow object created successfully!")
     print(f"  Type: {type(waterflow)}")
-    print(f"  Pump speed range: {waterflow.pump_speed_min} - {waterflow.pump_speed_max} rpm")
+    print(
+        f"  Pump speed range: {waterflow.pump_speed_min} - {waterflow.pump_speed_max} rpm"
+    )
     print(f"  Flow range: {waterflow.flow_min} - {waterflow.flow_max} l/s")
     print(f"  Pressure range: {waterflow.pressure_min} - {waterflow.pressure_max} bar")
     print(f"  Max current: {waterflow.current_max} A")
@@ -328,7 +328,9 @@ def demonstrate_calculations(waterflow: WaterFlow):
     test_currents = [10000, 15000, 20000, 25000, 28000]
     cross_section = 1e-4  # m²
 
-    print(f"{'Current':>10} {'Pump Speed':>12} {'Flow Rate':>12} {'Pressure':>10} {'Velocity':>10}")
+    print(
+        f"{'Current':>10} {'Pump Speed':>12} {'Flow Rate':>12} {'Pressure':>10} {'Velocity':>10}"
+    )
     print(f"{'[A]':>10} {'[rpm]':>12} {'[m³/s]':>12} {'[bar]':>10} {'[m/s]':>10}")
     print("-" * 70)
 
@@ -338,7 +340,9 @@ def demonstrate_calculations(waterflow: WaterFlow):
         pressure = waterflow.pressure(current)
         velocity = waterflow.velocity(current, cross_section)
 
-        print(f"{current:10d} {speed:12.2f} {flow:12.6f} {pressure:10.2f} {velocity:10.2f}")
+        print(
+            f"{current:10d} {speed:12.2f} {flow:12.6f} {pressure:10.2f} {velocity:10.2f}"
+        )
 
     print()
 
@@ -370,7 +374,9 @@ def plot_results(data: dict, waterflow: WaterFlow, save_plot: bool = True):
 
     # Plot 2: Flow Rate
     ax = axes[0, 1]
-    ax.scatter(data["current"], data["flow"], alpha=0.5, s=20, label="Experimental data")
+    ax.scatter(
+        data["current"], data["flow"], alpha=0.5, s=20, label="Experimental data"
+    )
     flow_fit = [waterflow.flow_rate(i) * 1000 for i in I_smooth]  # Convert m³/s to l/s
     ax.plot(I_smooth, flow_fit, "r-", linewidth=2, label="Fitted curve")
     ax.set_xlabel("Current [A]")
@@ -381,7 +387,9 @@ def plot_results(data: dict, waterflow: WaterFlow, save_plot: bool = True):
 
     # Plot 3: Pressure
     ax = axes[1, 0]
-    ax.scatter(data["current"], data["pressure"], alpha=0.5, s=20, label="Experimental data")
+    ax.scatter(
+        data["current"], data["pressure"], alpha=0.5, s=20, label="Experimental data"
+    )
     pressure_fit = [waterflow.pressure(i) for i in I_smooth]
     ax.plot(I_smooth, pressure_fit, "r-", linewidth=2, label="Fitted curve")
     ax.set_xlabel("Current [A]")
@@ -453,7 +461,14 @@ def main():
 
     # Step 6: Build flow_params dictionary
     flow_params = build_flow_params_dict(
-        vpmax=vpmax, vp0=vp0, fmax=fmax, f0=f0, pmax=pmax, pmin=pmin, bp=bp_mean, imax=data["Imax"]
+        vpmax=vpmax,
+        vp0=vp0,
+        fmax=fmax,
+        f0=f0,
+        pmax=pmax,
+        pmin=pmin,
+        bp=bp_mean,
+        imax=data["Imax"],
     )
 
     # Step 7: Create WaterFlow object using factory

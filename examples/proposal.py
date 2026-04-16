@@ -4,7 +4,7 @@ Demonstrator
 Get data from User DataBase
 Attached exp. Acronym to magnet records
 Perform some stats
-Try to classify records per PRoposalType and Research Area
+Try to classify records per ProposalType and Research Area
 """
 
 import os
@@ -16,31 +16,18 @@ from ..magnetdata import MagnetData
 from ..MagnetRun import MagnetRun
 from ..processing.plateaux import nplateaus
 from ..processing.stats import stats
+from ..utils.timestamps import parse_filename_timestamp
 
 # hack to avoid pandas warning
 pd.options.mode.copy_on_write = True
 
 
 def getTimestamp(file: str, debug: bool = False):
-    """
-    extract timestamp from file
-    """
-    # print(f"getTime({file}):", flush=True)
-    from datetime import datetime
-
-    filename = ""
-    if "/" in file:
-        filename = file.split("/")
-    res = filename[-1].split("_")
-    print(f"getTime({file})={res}", flush=True)
-
-    (site, date_string) = res
-    date_string = date_string.replace(".txt", "")
-    tformat = "%Y.%m.%d---%H:%M:%S"
-    timestamp = datetime.strptime(date_string, tformat)
-    if debug:
-        print(f"{site}: timestamp={timestamp}")
-    return timestamp
+    """Extract timestamp from a magnet data filename."""
+    ts = parse_filename_timestamp(file)
+    if ts is None:
+        raise RuntimeError(f"cannot parse timestamp from filename: {file!r}")
+    return ts
 
 
 def load_record(file: str) -> MagnetData:
@@ -63,7 +50,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("csvfile", help="specify csv file")
+    parser.add_argument("csvfile", help="specify csv file", default="proposals.csv")
     parser.add_argument(
         "--mdatadir",
         help="specify datadir for record files with txt extension",
@@ -94,7 +81,9 @@ def main():
         type=float,
         default=10,
     )
-    parser.add_argument("--window", help="stopping criteria for nlopt", type=int, default=10)
+    parser.add_argument(
+        "--window", help="stopping criteria for nlopt", type=int, default=10
+    )
     parser.add_argument("--debug", help="acticate debug", action="store_true")
     args = parser.parse_args()
 
@@ -188,7 +177,9 @@ def main():
     selected_df = selected_df[selected_df["Site"].notna()]
 
     # filter out
-    _df = selected_df.query('Start == "0000-00-00 00:00:00" or Stop == "0000-00-00 00:00:00"')
+    _df = selected_df.query(
+        'Start == "0000-00-00 00:00:00" or Stop == "0000-00-00 00:00:00"'
+    )
     if not _df.empty:
         print(f"drop: {_df}")
         selected_df.query(
@@ -199,8 +190,12 @@ def main():
     # see: https://pandas.pydata.org/docs/reference/api/pandas.to_datetime.html
     # pd.to_datetime('13000101', format='%Y%m%d', errors='coerce')
     try:
-        selected_df["Start"] = pd.to_datetime(selected_df.Start, format="%Y-%m-%d %H:%M:%S")
-        selected_df["Stop"] = pd.to_datetime(selected_df.Stop, format="%Y-%m-%d %H:%M:%S")
+        selected_df["Start"] = pd.to_datetime(
+            selected_df.Start, format="%Y-%m-%d %H:%M:%S"
+        )
+        selected_df["Stop"] = pd.to_datetime(
+            selected_df.Stop, format="%Y-%m-%d %H:%M:%S"
+        )
     except:  # noqa: E722
         print("failed to convert Start/Stop to real timestamp", flush=True)
         """
@@ -250,7 +245,9 @@ def main():
             # print(" - ignored")
             pass
 
-    files_data = sorted(files_data, key=lambda x: getTimestamp(x, args.debug), reverse=False)
+    files_data = sorted(
+        files_data, key=lambda x: getTimestamp(x, args.debug), reverse=False
+    )
     print(f"record files ({len(files_data)})")
 
     # create a dataframe holding: start, housing, recordfilename

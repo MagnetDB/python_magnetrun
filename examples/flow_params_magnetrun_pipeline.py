@@ -12,9 +12,9 @@ This script demonstrates the full workflow using python_magnetrun methods:
 This is a standalone version of the compute() method from flow_params_magnetrun.py
 """
 
+import argparse
 import json
 import os
-import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -23,13 +23,12 @@ import pwlf
 from sympy import Symbol
 from tabulate import tabulate
 
-# Import python_magnetrun methods
+from python_magnetcooling.waterflow import WaterFlow
+from python_magnetcooling.waterflow_factory import from_flow_params
+from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.processing.fit import find_eqn, fit
 
-# Import the factory module
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from python_magnetcooling import WaterFlow
-from python_magnetcooling.waterflow_factory import from_flow_params
+logger = get_logger()
 
 
 def generate_synthetic_data(
@@ -81,7 +80,9 @@ def generate_synthetic_data(
         return values * (1 + np.random.normal(0, level, len(values)))
 
     # Generate measurements with noise
-    rpm = np.where(current <= Imax, Vpmax * (current / Imax) ** 2 + Vp0, Vpmax + Vp0)  # Plateau
+    rpm = np.where(
+        current <= Imax, Vpmax * (current / Imax) ** 2 + Vp0, Vpmax + Vp0
+    )  # Plateau
     rpm = add_noise(rpm, noise_level)
 
     # Flow rate: F = F0 + Fmax·Vp/(Vpmax + Vp0)
@@ -113,7 +114,9 @@ def generate_synthetic_data(
     print(f"  Current range: {df['current'].min():.0f} - {df['current'].max():.0f} A")
     print(f"  Rpm range: {df['rpm'].min():.0f} - {df['rpm'].max():.0f} rpm")
     print(f"  Flow range: {df['flow'].min():.1f} - {df['flow'].max():.1f} l/s")
-    print(f"  Pressure range: {df['pressure'].min():.1f} - {df['pressure'].max():.1f} bar")
+    print(
+        f"  Pressure range: {df['pressure'].min():.1f} - {df['pressure'].max():.1f} bar"
+    )
     print()
 
     return df
@@ -268,7 +271,9 @@ def pwlf_fit_pump_speed(
 
         plt.figure(figsize=(10, 6))
         plt.plot(x, y, "o", alpha=0.5, label="Experimental data")
-        plt.plot(xHat, yHat, "r-", linewidth=2, label=f"pwlf fit ({best_segment} segment(s))")
+        plt.plot(
+            xHat, yHat, "r-", linewidth=2, label=f"pwlf fit ({best_segment} segment(s))"
+        )
 
         if debug:
             for i, eqn in enumerate(best_eqns):
@@ -522,7 +527,9 @@ def create_waterflow_object(flow_params: dict) -> WaterFlow:
 
     print("WaterFlow object created successfully!")
     print(f"  Type: {type(waterflow)}")
-    print(f"  Pump speed range: {waterflow.pump_speed_min} - {waterflow.pump_speed_max} rpm")
+    print(
+        f"  Pump speed range: {waterflow.pump_speed_min} - {waterflow.pump_speed_max} rpm"
+    )
     print(f"  Flow range: {waterflow.flow_min} - {waterflow.flow_max} l/s")
     print(f"  Pressure range: {waterflow.pressure_min} - {waterflow.pressure_max} bar")
     print(f"  Max current: {waterflow.current_max} A")
@@ -542,7 +549,9 @@ def demonstrate_calculations(waterflow: WaterFlow):
     test_currents = [10000, 15000, 20000, 25000, 28000]
     cross_section = 1e-4  # m²
 
-    print(f"{'Current':>10} {'Pump Speed':>12} {'Flow Rate':>12} {'Pressure':>10} {'Velocity':>10}")
+    print(
+        f"{'Current':>10} {'Pump Speed':>12} {'Flow Rate':>12} {'Pressure':>10} {'Velocity':>10}"
+    )
     print(f"{'[A]':>10} {'[rpm]':>12} {'[m³/s]':>12} {'[bar]':>10} {'[m/s]':>10}")
     print("-" * 70)
 
@@ -552,12 +561,16 @@ def demonstrate_calculations(waterflow: WaterFlow):
         pressure = waterflow.pressure(current)
         velocity = waterflow.velocity(current, cross_section)
 
-        print(f"{current:10d} {speed:12.2f} {flow:12.6f} {pressure:10.2f} {velocity:10.2f}")
+        print(
+            f"{current:10d} {speed:12.2f} {flow:12.6f} {pressure:10.2f} {velocity:10.2f}"
+        )
 
     print()
 
 
-def save_flow_params(flow_params: dict, filename: str = "flow_params_magnetrun_output.json"):
+def save_flow_params(
+    flow_params: dict, filename: str = "flow_params_magnetrun_output.json"
+):
     """
     Save flow_params to JSON file.
     """
@@ -577,6 +590,35 @@ def main():
     """
     Main pipeline execution using python_magnetrun methods.
     """
+    parser = argparse.ArgumentParser(
+        description="Flow Parameter Extraction Pipeline (using python_magnetrun)"
+    )
+    parser.add_argument(
+        "--show-plots",
+        help="display plots (requires X11 server active)",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--debug",
+        help="enable debug output",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--log-level",
+        help="set logging level",
+        type=str,
+        default="WARNING",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+    )
+    parser.add_argument(
+        "--log-file",
+        help="path to log file (if not specified, logs to console)",
+        type=str,
+        default=None,
+    )
+    args = parser.parse_args()
+    setup_logging(level=args.log_level, log_file=args.log_file)
+
     print("\n")
     print("*" * 70)
     print("FLOW PARAMETER EXTRACTION PIPELINE (python_magnetrun)")
@@ -585,15 +627,20 @@ def main():
     print("\n")
 
     # Configuration
-    show_plots = "--show-plots" in sys.argv
-    debug = "--debug" in sys.argv
+    show_plots = args.show_plots
+    debug = args.debug
 
     # Step 1: Generate experimental data as DataFrame
     df = generate_synthetic_data(n_points=500, noise_level=0.02, include_plateau=True)
 
     # Step 2: Fit pump speed using pwlf (with automatic Imax detection)
     pwlf_model, eqns, detected_imax = pwlf_fit_pump_speed(
-        df, current_col="current", rpm_col="rpm", max_segments=2, show=show_plots, debug=debug
+        df,
+        current_col="current",
+        rpm_col="rpm",
+        max_segments=2,
+        show=show_plots,
+        debug=debug,
     )
 
     # Extract Vp0 and Vpmax from pwlf equations
@@ -640,7 +687,14 @@ def main():
 
     # Step 6: Build flow_params dictionary
     flow_params = build_flow_params_dict(
-        vpmax=vpmax, vp0=vp0, fmax=fmax, f0=f0, pmax=pmax, pmin=pmin, bp=bp_mean, imax=detected_imax
+        vpmax=vpmax,
+        vp0=vp0,
+        fmax=fmax,
+        f0=f0,
+        pmax=pmax,
+        pmin=pmin,
+        bp=bp_mean,
+        imax=detected_imax,
     )
 
     # Step 7: Create WaterFlow object using factory

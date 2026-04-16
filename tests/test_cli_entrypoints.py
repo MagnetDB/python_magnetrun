@@ -10,7 +10,7 @@ import pytest
 
 # List of CLI entry points as installed scripts or module paths
 CLI_COMMANDS = [
-    [sys.executable, '-m', 'python_magnetrun.python_magnetrun'],
+    [sys.executable, '-m', 'python_magnetrun.cli'],
     [sys.executable, '-m', 'python_magnetrun.requests.cli'],
     [sys.executable, '-m', 'python_magnetrun.analysis.cli'],
     [sys.executable, '-m', 'python_magnetrun.hybrid.cli'],

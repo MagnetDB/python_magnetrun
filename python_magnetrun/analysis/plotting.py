@@ -181,9 +181,7 @@ def downsample_for_plot(
     n_keep = max(1, int(n * percent / 100.0))
     step = max(1, n // n_keep)
 
-    logger.debug(
-        "Downsampling: %d -> %d points (%.1f%%, step=%d)", n, len(x[::step]), percent, step
-    )
+    logger.debug(f"Downsampling: {n} -> {len(x[::step])} points ({percent:.1f}%, step={step})")
 
     return x[::step], y[::step]
 
@@ -385,6 +383,9 @@ def plot_data(
     ...     show=True,
     ... )
     """
+    logger.info(
+        f"Plotting data for key '{key}' vs tkey={tkey} with downsample_percent={downsample_percent:.1f}%"
+    )
 
     style = style or DEFAULT_STYLE
     colors = colors or DEFAULT_COLORS
@@ -405,7 +406,15 @@ def plot_data(
             x, y = downsample_for_plot(x, y, downsample_percent)
 
         if marker:
-            ax.plot(x, y, color=color, marker=marker, alpha=alpha, markersize=3, linestyle="-")
+            ax.plot(
+                x,
+                y,
+                color=color,
+                marker=marker,
+                alpha=alpha,
+                markersize=3,
+                linestyle="-",
+            )
         else:
             ax.plot(x, y, color=color, alpha=alpha)
         legends.append(label)
@@ -436,8 +445,14 @@ def plot_data(
 
     # Plot pupitre data
     if not df_pupitre.empty:
+        print(
+            f"site={site}, key={key}, pupitre_dict={pupitre_dict}, df.columns={df_pupitre.columns.tolist()}",
+            flush=True,
+        )
         pupitre_key = pupitre_dict[site][key]
-        plot_series(df_pupitre, tkey, pupitre_key, colors.pupitre, f"Pupitre: {pupitre_key}")
+        plot_series(
+            df_pupitre, tkey, pupitre_key, colors.pupitre, f"Pupitre: {pupitre_key}"
+        )
 
     # Store annotation metadata for interactivity
     annotation_dict = {}
@@ -499,7 +514,9 @@ def plot_data(
 
     # Finalize plot
     ax.legend(labels=legends, loc=style.legend_loc)
-    ax.set_title(f"{title.replace('_Overview', '')}: {key} {msg}", fontsize=style.title_fontsize)
+    ax.set_title(
+        f"{title.replace('_Overview', '')}: {key} {msg}", fontsize=style.title_fontsize
+    )
     ax.set_xlabel(tkey, fontsize=style.label_fontsize)
 
     if style.grid:
@@ -514,7 +531,7 @@ def plot_data(
             label, igroup = key.split("_") if "_" in key else (key, "")
             output_path = f"{title.replace('_Overview', '')}-{igroup}.png"
         plt.savefig(output_path, dpi=style.dpi)
-        logger.info("Saved plot to %s", output_path)
+        logger.info(f"Saved plot to {output_path}")
 
     if show:
         plt.show()
@@ -561,7 +578,9 @@ def _show_incident_detail(
         pupitre_slice = pupitre[mask]
         if not pupitre_slice.empty and pupitre_key in pupitre_slice.columns:
             x, y = pupitre_slice[tkey].values, pupitre_slice[pupitre_key].values
-            ax_sub.plot(x, y, color=colors.pupitre, alpha=0.7, label=f"Pupitre: {pupitre_key}")
+            ax_sub.plot(
+                x, y, color=colors.pupitre, alpha=0.7, label=f"Pupitre: {pupitre_key}"
+            )
 
     # Plot archive context
     if archive is not None and not archive.empty and archive_key:
@@ -570,7 +589,9 @@ def _show_incident_detail(
         archive_slice = archive[mask]
         if not archive_slice.empty and archive_key in archive_slice.columns:
             x, y = archive_slice[tkey].values, archive_slice[archive_key].values
-            ax_sub.plot(x, y, color=colors.archive, alpha=0.5, label=f"Archive: {archive_key}")
+            ax_sub.plot(
+                x, y, color=colors.archive, alpha=0.5, label=f"Archive: {archive_key}"
+            )
 
     ax_sub.set_xlabel(tkey)
     ax_sub.set_xlim(idf[tkey].iloc[0], idf[tkey].iloc[-1])
@@ -908,4 +929,4 @@ def save_figure(
         Additional arguments to savefig
     """
     fig.savefig(output_path, dpi=dpi, bbox_inches=bbox_inches, **kwargs)
-    logger.info("Saved figure to %s", output_path)
+    logger.info(f"Saved figure to {output_path}")

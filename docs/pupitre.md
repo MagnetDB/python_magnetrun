@@ -81,6 +81,48 @@ Total: `datetime` + `B` (magnetic field) + 87 other channels.
 
 ![installation](installation-synoptic.png)
 
+## Field Definitions
+
+The complete, machine-readable field list with physical symbols, units, and
+cross-format aliases is maintained in
+[`python_magnetrun/pupitre-defs.json`](../python_magnetrun/pupitre-defs.json).
+
+Each entry maps a column name to `{description, symbol, unit, aliases}`.
+The `"aliases"` dict contains housing-independent cross-references to the
+equivalent channel in other formats:
+
+```json
+"Idcct1": {
+  "description": "",
+  "symbol": "I",
+  "unit": "ampere",
+  "aliases": {
+    "pigbrother": "Courants_Alimentations/Courant_A1",
+    "hybrid":     "FEPC-AUX-LNCMI/ALIM1_J1"
+  }
+}
+```
+
+Fields whose meaning depends on housing (e.g. `IH`, `IB` — which one is
+GR1 vs GR2) have no alias here; those mappings live in the per-housing
+site-config files (`<Housing>-site-config.json`).
+
+Manage the file with the `magnetrun-field-defs` CLI:
+
+```bash
+# List all fields (symbols, units, aliases)
+magnetrun-field-defs python_magnetrun/pupitre-defs.json list
+
+# Add a new field
+magnetrun-field-defs python_magnetrun/pupitre-defs.json add NewSensor I ampere
+
+# Show cross-format aliases for one field
+magnetrun-field-defs python_magnetrun/pupitre-defs.json alias-show Idcct1
+```
+
+See the [main README](../README.md#field-definitions-and-site-configuration)
+for the full API and CLI reference.
+
 ## Python Interface
 
 Pupitre `.txt` files are loaded via `MagnetRun.fromtxt()` and exposed as a `MagnetData` object (Type 0).

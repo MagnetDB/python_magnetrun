@@ -3,8 +3,9 @@
 Log parser for LabVIEW/DAQmx acquisition system logs.
 
 Log file format:
-- Records start with: <day_fr> <date> <time>: <message>
-  Example: "jeu. 19-09-2019 16:14:33: Test de présence des boitiers ENET"
+
+- Records start with: ``<day_fr> <date> <time>: <message>``
+  e.g. ``"jeu. 19-09-2019 16:14:33: Test de présence des boitiers ENET"``
 - Day abbreviations are in French: lun., mar., mer., jeu., ven., sam., dim.
 - Messages are a mix of French and English
 - Multi-line records: Error and ENET messages include description lines
@@ -23,6 +24,7 @@ Output dictionaries:
 - files_with_errors: Maps Archive/Overview files to associated DAQ errors
 """
 
+import logging
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -32,6 +34,8 @@ from pathlib import Path
 from typing import Any
 
 from natsort import natsorted
+
+logger = logging.getLogger(__name__)
 
 # French day abbreviations mapping
 FRENCH_DAYS = {
@@ -1076,75 +1080,75 @@ jeu. 03-10-2019 09:02:49: Error -200279 occurred at GR1&2.lvlib:Acquisition.lvli
 
     # Print summary
     summary = parser.summary()
-    print("=" * 70)
-    print("LOG ANALYSIS SUMMARY")
-    print("=" * 70)
+    logger.info("=" * 70)
+    logger.info("LOG ANALYSIS SUMMARY")
+    logger.info("=" * 70)
 
     if summary["date_range"]:
         start, end = summary["date_range"]
-        print(f"\nDate range: {start} → {end}")
+        logger.info(f"\nDate range: {start} → {end}")
 
-    print(f"\nTotal entries: {summary['total_entries']}")
+    logger.info(f"\nTotal entries: {summary['total_entries']}")
 
-    print(f"\n--- ENET Tests ({summary['enet_tests']['count']}) ---")
+    logger.info(f"\n--- ENET Tests ({summary['enet_tests']['count']}) ---")
     if summary["enet_tests"]["consistently_failing"]:
-        print(
+        logger.info(
             f"Consistently failing devices: {', '.join(summary['enet_tests']['consistently_failing'])}"
         )
 
     for i, test in enumerate(parser.enet_tests, 1):
-        print(f"  Test {i} ({test.timestamp}): {test.ok_count} OK, {test.ko_count} KO")
+        logger.info(f"  Test {i} ({test.timestamp}): {test.ok_count} OK, {test.ko_count} KO")
         if test.failed_devices:
-            print(f"    Failed: {', '.join(test.failed_devices)}")
+            logger.info(f"    Failed: {', '.join(test.failed_devices)}")
 
-    print("\n--- Acquisitions ---")
-    print(
+    logger.info("\n--- Acquisitions ---")
+    logger.info(
         f"Started: {summary['acquisitions']['started']}, Stopped: {summary['acquisitions']['stopped']}"
     )
     if summary["acquisitions"]["magnets"]:
-        print(f"Magnets: {', '.join(summary['acquisitions']['magnets'])}")
+        logger.info(f"Magnets: {', '.join(summary['acquisitions']['magnets'])}")
 
-    print(f"\n--- Files Created ({summary['files_created']}) ---")
+    logger.info(f"\n--- Files Created ({summary['files_created']}) ---")
     for fc in parser.files_created[:5]:  # Show first 5
-        print(f"  {fc.timestamp}: {fc.file_type} for {fc.magnet}")
+        logger.info(f"  {fc.timestamp}: {fc.file_type} for {fc.magnet}")
     if len(parser.files_created) > 5:
-        print(f"  ... and {len(parser.files_created) - 5} more")
+        logger.info(f"  ... and {len(parser.files_created) - 5} more")
 
     # === FILES WITH ERRORS DICTIONARY ===
-    print(f"\n{'=' * 70}")
-    print(f"FILES WITH DAQ ERRORS ({summary['files_with_errors']} files)")
-    print("=" * 70)
+    logger.info(f"\n{'=' * 70}")
+    logger.info(f"FILES WITH DAQ ERRORS ({summary['files_with_errors']} files)")
+    logger.info("=" * 70)
 
     files_with_errors = parser.get_files_with_errors_dict()
 
     if files_with_errors:
         for filename, info in files_with_errors.items():
-            print(f"\n📁 {filename}")
-            print(f"   Type: {info['file_type']} | Magnet: {info['magnet']}")
-            print(f"   Created: {info['file_timestamp']}")
-            print(f"   Path: {info['filepath']}")
-            print(f"   Errors ({len(info['errors'])}):")
+            logger.info(f"\n{filename}")
+            logger.info(f"   Type: {info['file_type']} | Magnet: {info['magnet']}")
+            logger.info(f"   Created: {info['file_timestamp']}")
+            logger.info(f"   Path: {info['filepath']}")
+            logger.info(f"   Errors ({len(info['errors'])}):")
             for err in info["errors"]:
-                print(f"      ❌ [{err['error_code']}] {err['error_short']}")
-                print(f"         {err['error_description']}")
-                print(f"         Solutions: {err['error_solutions']}")
-                print(f"         Location: {err['error_location']}")
+                logger.info(f"      [{err['error_code']}] {err['error_short']}")
+                logger.info(f"         {err['error_description']}")
+                logger.info(f"         Solutions: {err['error_solutions']}")
+                logger.info(f"         Location: {err['error_location']}")
     else:
-        print("\nNo files with DAQ errors detected.")
+        logger.info("\nNo files with DAQ errors detected.")
 
     # === DEFAUT FILES DICTIONARY ===
-    print(f"\n{'=' * 70}")
-    print(f"DEFAUT FILES DICTIONARY ({summary['defauts']['files']} files)")
-    print("=" * 70)
+    logger.info(f"\n{'=' * 70}")
+    logger.info(f"DEFAUT FILES DICTIONARY ({summary['defauts']['files']} files)")
+    logger.info("=" * 70)
 
     defaut_files = parser.get_defaut_files_dict()
 
     if defaut_files:
         for filename, info in defaut_files.items():
-            print(f"\n📁 {filename}")
-            print(f"   Type: {info['type']}")
-            print(f"   Description: {info['description']}")
-            print(f"   Record timestamp: {info['timestamp']}")
+            logger.info(f"\n{filename}")
+            logger.info(f"   Type: {info['type']}")
+            logger.info(f"   Description: {info['description']}")
+            logger.info(f"   Record timestamp: {info['timestamp']}")
             if info["details"]:
                 # Format details nicely
                 details_str = []
@@ -1153,28 +1157,28 @@ jeu. 03-10-2019 09:02:49: Error -200279 occurred at GR1&2.lvlib:Acquisition.lvli
                         details_str.append(f"{key}: {value}")
                     else:
                         details_str.append(f"{key}: {value}")
-                print(f"   Details: {', '.join(details_str)}")
-            print(f"   Full path: {info['filepath']}")
+                logger.info(f"   Details: {', '.join(details_str)}")
+            logger.info(f"   Full path: {info['filepath']}")
     else:
-        print("\nNo defaut files detected in this log.")
+        logger.info("\nNo defaut files detected in this log.")
 
     # Summary by defaut type
     if summary["defauts"]["by_type"]:
-        print("\n--- Defauts by Type ---")
+        logger.info("\n--- Defauts by Type ---")
         for dtype, count in summary["defauts"]["by_type"].items():
-            print(f"  {dtype}: {count}")
+            logger.info(f"  {dtype}: {count}")
 
-    print(f"\n--- Errors ({summary['errors']['count']}) ---")
+    logger.info(f"\n--- Errors ({summary['errors']['count']}) ---")
     for code, count in summary["errors"]["by_code"].items():
-        print(f"  Error {code}: {count} occurrence(s)")
+        logger.info(f"  Error {code}: {count} occurrence(s)")
 
     # Export defaut_files as JSON for programmatic use
-    print(f"\n{'=' * 70}")
-    print("JSON EXPORTS")
-    print("=" * 70)
+    logger.info(f"\n{'=' * 70}")
+    logger.info("JSON EXPORTS")
+    logger.info("=" * 70)
 
     # Convert datetime to string for JSON serialization
-    print("\n--- Files with DAQ Errors ---")
+    logger.info("\n--- Files with DAQ Errors ---")
     export_files_errors = {}
     for filename in natsorted(files_with_errors.keys()):
         info = files_with_errors[filename]
@@ -1195,15 +1199,15 @@ jeu. 03-10-2019 09:02:49: Error -200279 occurred at GR1&2.lvlib:Acquisition.lvli
                 for err in info["errors"]
             ],
         }
-    print(json.dumps(export_files_errors, indent=2, ensure_ascii=False))
+    logger.info(json.dumps(export_files_errors, indent=2, ensure_ascii=False))
 
     # Save export_files_errors to file
     errors_output_file = "files_with_errors.json"
     with open(errors_output_file, "w", encoding="utf-8") as f:
         json.dump(export_files_errors, f, indent=2, ensure_ascii=False)
-    print(f"\n✓ Saved files with errors to: {errors_output_file}")
+    logger.info(f"\nSaved files with errors to: {errors_output_file}")
 
-    print("\n--- Defaut Files ---")
+    logger.info("\n--- Defaut Files ---")
     export_defaut = {}
     for filename in natsorted(defaut_files.keys()):
         info = defaut_files[filename]
@@ -1237,13 +1241,13 @@ jeu. 03-10-2019 09:02:49: Error -200279 occurred at GR1&2.lvlib:Acquisition.lvli
             "details": serialized_details,
             # "original_message": info["original_message"],
         }
-    print(json.dumps(export_defaut, indent=2, ensure_ascii=False))
+    logger.info(json.dumps(export_defaut, indent=2, ensure_ascii=False))
 
     # Save export_defaut to file
     defaut_output_file = "defaut_files.json"
     with open(defaut_output_file, "w", encoding="utf-8") as f:
         json.dump(export_defaut, f, indent=2, ensure_ascii=False)
-    print(f"\n✓ Saved defaut files to: {defaut_output_file}")
+    logger.info(f"\nSaved defaut files to: {defaut_output_file}")
 
 
 if __name__ == "__main__":

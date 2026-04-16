@@ -198,12 +198,7 @@ def synchronize_data(
         df.drop([time_col], axis=1, inplace=True)
     df[time_col] = df.apply(lambda row: (row[timestamp_col] - new_t0).total_seconds(), axis=1)
 
-    logger.debug(
-        "Synchronized data: shift=%.3f s, source_t0=%s, target_t0=%s",
-        timeshift.total_seconds(),
-        source_t0,
-        target_t0,
-    )
+    logger.debug(f"Synchronized data: shift={timeshift.total_seconds():.3f} s, source_t0={source_t0}, target_t0={target_t0}")
 
     return timeshift, df
 
@@ -309,7 +304,7 @@ def compute_lag(
     >>> lag = compute_lag("timestamp", df1_data, df2_data)
     """
 
-    logger.debug("compute_lag: %s - %s", df1_data["field"], df2_data["field"])
+    logger.debug(f"compute_lag: {df1_data['field']} - {df2_data['field']}")
 
     # Extract series 1
     ts1 = df1_data["df"].copy()
@@ -323,7 +318,7 @@ def compute_lag(
     otstart = ts1_index[istart1] if istart1 else ts1_index[0]
     otend = ts1_index[iend1] if iend1 is not None else ts1_index[-1]
 
-    logger.debug("ts1 range: [%s, %s] -> [%s, %s]", istart1, iend1, otstart, otend)
+    logger.debug(f"ts1 range: [{istart1}, {iend1}] -> [{otstart}, {otend}]")
 
     # Extract series 2
     ts2 = df2_data["df"].copy()
@@ -338,7 +333,7 @@ def compute_lag(
         ts2_resampled = ts2.resample("1s", origin=ts2_index[0]).asfreq()
         ts2_resampled = ts2_resampled.interpolate(method="linear")
     except Exception as e:
-        logger.error("Resample error: %s", e)
+        logger.error(f"Resample error: {e}")
         raise
 
     # Determine range for ts2
@@ -356,7 +351,7 @@ def compute_lag(
         ptstart = ts2_resampled.index[pstart[0]]
         ptend = ts2_resampled.index[pend[0]]
 
-    logger.debug("ts2 range: [%s, %s] -> [%s, %s]", istart2, iend2, ptstart, ptend)
+    logger.debug(f"ts2 range: [{istart2}, {iend2}] -> [{ptstart}, {ptend}]")
 
     # Call the core lag correlation function
     ts2_data = {
@@ -409,7 +404,7 @@ def lag_correlation(
     """
     from scipy.signal import correlate, correlation_lags
 
-    logger.debug("lag_correlation: %s - %s", data1["field"], data2["field"])
+    logger.debug(f"lag_correlation: {data1['field']} - {data2['field']}")
 
     series = data1["df"]
     name_series = data1["field"]
@@ -453,7 +448,7 @@ def lag_correlation(
     lag = lags[np.argmax(correlation)]
     time_shift = pd.to_timedelta(f"{lag}s")
 
-    logger.debug('lag_correlation: "%s" vs "%s", lag=%d s', name_series, name_trend, lag)
+    logger.debug(f'lag_correlation: "{name_series}" vs "{name_trend}", lag={lag} s')
 
     # Visualization
     if show or save:
@@ -691,12 +686,7 @@ def check_lag_reliability(
     is_reliable = start_ratio < threshold_ratio and end_ratio < threshold_ratio
 
     if not is_reliable:
-        logger.warning(
-            "Lag may be unreliable: start_ratio=%.2f, end_ratio=%.2f (threshold=%.2f)",
-            start_ratio,
-            end_ratio,
-            threshold_ratio,
-        )
+        logger.warning(f"Lag may be unreliable: start_ratio={start_ratio:.2f}, end_ratio={end_ratio:.2f} (threshold={threshold_ratio:.2f})")
 
     return is_reliable
 

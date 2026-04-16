@@ -14,14 +14,14 @@ This module provides:
 
 Example usage::
 
-    from python_magnetrun.analysis import AnalysisConfig, SiteConfig
+    from python_magnetrun.analysis import AnalysisConfig, HousingConfig
 
     # Get configuration for a specific site
-    config = AnalysisConfig.for_site("M9")
+    config = AnalysisConfig.for_housing("M9")
 
-    # Access site-specific channel mappings
-    print(config.site.reference_gr1_current)  # "IH"
-    print(config.site.reference_gr2_current)  # "IB"
+    # Access housing-specific channel mappings
+    print(config.housing.reference_gr1_current)  # "IH"
+    print(config.housing.reference_gr2_current)  # "IB"
 
     # Get threshold for a channel
     threshold = config.thresholds.get("Courant_GR1")
@@ -43,21 +43,21 @@ from .config import (
     DEFAULT_GROUP,
     DEFAULT_LEVELS,
     DEFAULT_WINDOW_SIZE,
+    # Pre-defined configurations
+    HOUSING_CONFIGS,
     LAG_THRESHOLD_RATIO,
     SAMPLING_RATE_ARCHIVE,
     SAMPLING_RATE_INCIDENTS,
     # Constants
     SAMPLING_RATE_OVERVIEW,
-    # Pre-defined configurations
-    SITE_CONFIGS,
     AnalysisConfig,
     # Dataclasses
     ChannelMapping,
-    SiteConfig,
+    HousingConfig,
     ThresholdConfig,
     VoltageChannelMapping,
     # Functions
-    get_site_config,
+    get_housing_config,
 )
 from .loaders import (
     # Constants
@@ -222,11 +222,11 @@ __all__ = [
     # Config dataclasses
     "ChannelMapping",
     "VoltageChannelMapping",
-    "SiteConfig",
+    "HousingConfig",
     "ThresholdConfig",
     "AnalysisConfig",
     # Pre-defined configurations
-    "SITE_CONFIGS",
+    "HOUSING_CONFIGS",
     # Loaders constants
     "TIMESTAMP_FORMAT",
     # Loaders functions
@@ -317,7 +317,7 @@ __all__ = [
     "compute_time_offset",
     "add_time_column_with_offset",
     "create_overview_dict",
-    "get_site_config",
+    "get_housing_config",
     "summarize_record",
     "print_record_summary",
     # Processing data loading

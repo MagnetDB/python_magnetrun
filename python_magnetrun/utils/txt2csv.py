@@ -5,8 +5,9 @@ import sys
 import matplotlib
 import pandas as pd
 
-from ..magnetdata import MagnetData
-from ..MagnetRun import prepareData_legacy
+from ..log_utils import SIMPLE_FORMAT, setup_logging
+from ..magnetdata_pandas import PandasMagnetData
+from ..runetl import prepareData
 from ..thermal_pipeline import (
     CoolingCircuitColumns,
     compute_circuit_thermal,
@@ -22,7 +23,6 @@ def concat_files(
     input_files: list,
     housing: str,
     keys: list = None,
-    debug: bool = False,
 ) -> pd.DataFrame:
     """Load, concatenate and prepare pupitre txt files.
 
@@ -33,10 +33,11 @@ def concat_files(
     :param input_files: list of input file paths
     :param housing: housing name for prepareData_legacy (e.g. "M9", "M8", "M10")
     :param keys: optional subset of columns to keep before concatenation
-    :param debug: activate debug logging
     :return: prepared DataFrame
     """
-    logger.debug(f"concat_files: input_files={input_files}, housing={housing}, keys={keys}")
+    logger.debug(
+        f"concat_files: input_files={input_files}, housing={housing}, keys={keys}"
+    )
 
     dfs: list[pd.DataFrame] = []
     for f in input_files:
@@ -61,19 +62,18 @@ def concat_files(
 
     raw_df = pd.concat(dfs, axis=0).dropna(axis=1, how="all").reset_index(drop=True)
 
-    # Wrap in MagnetData and apply prepareData_legacy:
+    # Wrap in PandasMagnetData and apply prepareData:
     #   - adds t and timestamp columns (via addTime)
     #   - renames Flow/Rpm/Tin/HP with H/B suffixes per housing
     #   - computes UH / UB from Ucoil groups (via cleanupData_legacy)
     #   - renames Icoil1 -> IH, Icoil[-1] -> IB
-    data = MagnetData(
+    data = PandasMagnetData(
         filename=input_files[0],
         Groups={},
         Keys=raw_df.columns.tolist(),
-        Type=0,
         Data=raw_df,
     )
-    prepareData_legacy(data, housing, debug=debug)
+    prepareData(data, housing)
     return data.getData()
 
 
@@ -92,12 +92,16 @@ def main():
         type=str,
         default="M9",
     )
-    parser.add_argument("--plot_vs_time", help='select key(s) to plot (ex. "Field[;Ucoil1]")')
+    parser.add_argument(
+        "--plot_vs_time", help='select key(s) to plot (ex. "Field[;Ucoil1]")'
+    )
     parser.add_argument(
         "--plot_key_vs_key", help='select pair(s) of keys to plot (ex. "Field-Icoil1")'
     )
     parser.add_argument("--output_time", help="output key(s) for time")
-    parser.add_argument("--output_timerange", help="set time range to extract (start;end)")
+    parser.add_argument(
+        "--output_timerange", help="set time range to extract (start;end)"
+    )
     parser.add_argument("--output_key", help="output key(s)")
     parser.add_argument("--extract_pairkeys", help="dump key(s) to file")
     parser.add_argument(
@@ -107,14 +111,18 @@ def main():
     )
     parser.add_argument("--list", help="list keys in csv", action="store_true")
     parser.add_argument("--convert", help="convert file to csv", action="store_true")
-    parser.add_argument("--debug", help="activate debug", action="store_true")
+    parser.add_argument("--debug", help="activate debug logging", action="store_true")
     args = parser.parse_args()
+    setup_logging(
+        level=logging.DEBUG if args.debug else logging.WARNING,
+        fmt=SIMPLE_FORMAT,
+    )
 
-    df = concat_files(args.input_files, args.housing, debug=args.debug)
+    df = concat_files(args.input_files, args.housing)
     keys = df.columns.values.tolist()
 
     if args.list:
-        print(f"keys={keys}")
+        logger.info(f"keys={keys}")
         sys.exit(0)
 
     # Helix cooling circuit thermal computations
@@ -149,7 +157,7 @@ def main():
     keys = df.columns.values.tolist()
 
     if args.plot_vs_time:
-        print("plot_vs_time=", args.plot_vs_time)
+        logger.info(f"plot_vs_time={args.plot_vs_time}")
         items = args.plot_vs_time.split(";")
         plot_vs_time(df, items, args.show)
 
@@ -159,21 +167,23 @@ def main():
 
     if args.output_time:
         times = args.output_time.split(";")
-        print(f"Select data at {times}")
+        logger.info(f"Select data at {times}")
         if args.output_key:
             cols = args.output_key.split(";")
-            print(df[df["Time"].isin(times)][cols])
+            logger.info(f"{df[df['Time'].isin(times)][cols]}")
         else:
-            print(df[df["Time"].isin(times)])
+            logger.info(f"{df[df['Time'].isin(times)]}")
 
     if args.output_timerange:
         timerange = args.output_timerange.split(";")
-        print(f"Select data from {timerange[0]} to {timerange[1]}")
+        logger.info(f"Select data from {timerange[0]} to {timerange[1]}")
         file_name = "timerange"
         file_name += "_from" + str(timerange[0].replace(":", "-"))
         file_name += "_to" + str(timerange[1].replace(":", "-")) + ".csv"
 
-        selected_df = df[df["Time"].between(timerange[0], timerange[1], inclusive="both")]
+        selected_df = df[
+            df["Time"].between(timerange[0], timerange[1], inclusive="both")
+        ]
         if args.output_key:
             cols = args.output_key.split(";")
             cols.insert(0, "Time")
@@ -186,7 +196,7 @@ def main():
         for pair in pairs:
             items = pair.split("-")
             if len(items) != 2:
-                print(f"invalid pair of keys: {pair}")
+                logger.error(f"invalid pair of keys: {pair}")
                 sys.exit(1)
             key1, key2 = items
             newdf = pd.concat([df[key1], df[key2]], axis=1)

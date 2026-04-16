@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from python_magnetrun.magnetdata import MagnetData
+from python_magnetrun.magnetdata_base import MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def trends_df(
     from statsmodels.tsa.seasonal import seasonal_decompose
     from tabulate import tabulate  # noqa: F401
 
-    print(f"trends_df: key={key}, window={window}, threshold={threshold}", flush=True)
+    logger.info(f"trends_df: key={key}, window={window}, threshold={threshold}")
     logger.debug(f"{key}: data({df[tkey].shape})")
     logger.debug(df.head())
     logger.debug(df.tail())
@@ -122,7 +122,7 @@ def trends_df(
                 if diff_slope >= 0.4:
                     # print(f"{i}: {diff_slope}, {df[tkey].iloc[i]} ****", flush=True)
                     changes.append(i)
-    print(f"trends_df[{key}]: changes={len(changes)}", flush=True)
+    logger.info(f"trends_df[{key}]: changes={len(changes)}")
 
     regimes = [signature[i][0] for i in changes]
     times = [float(df[tkey].iloc[i]) for i in changes]
@@ -136,7 +136,7 @@ def trends_df(
 
 
 def trends(
-    mdata: MagnetData,
+    mdata: MagnetDataBase,
     tkey: str,
     key: str,
     window: int = 1,
@@ -173,14 +173,14 @@ def trends(
             # print(f"trends {mdata.FileName}: t0={t0}, dt={dt}, type={type(dt)}")
             # rename df key
             if debug:
-                print("tdms data: ", df.head())
-                print(f"rename {channel} to {key}")
+                logger.debug(f"tdms data: {df.head()}")
+                logger.debug(f"rename {channel} to {key}")
             df.rename(columns={channel: key}, inplace=True)
 
     if debug:
-        print(f"{key}: data({df[tkey].shape})")
-        print(df.head())
-        print(df.tail())
+        logger.debug(f"{key}: data({df[tkey].shape})")
+        logger.debug(f"{df.head()}")
+        logger.debug(f"{df.tail()}")
 
     filename = mdata.FileName
     f_extension = os.path.splitext(filename)[-1]

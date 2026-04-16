@@ -84,8 +84,9 @@ celerybeat-schedule
 # SageMath parsed files
 *.sage.py
 
-# dotenv
+# dotenv / direnv
 .env
+.envrc.local
 
 # virtualenv
 .venv
@@ -132,9 +133,9 @@ pigbrotherdata
 
 M*.csv
 #M*.txt
-M*.json
-H*.json
-M*.conf
+#M*.json
+#H*.json
+#M*.conf
 
 *log
 !*.log.py
@@ -152,6 +153,7 @@ M*.conf
 
 # Archive tarballs
 *.zip
+*.tar
 *.tar.*
 *.tgz
 

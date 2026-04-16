@@ -76,14 +76,14 @@ class LoadOptions:
     lazy: bool = True  # Use lazy loading (memory mapping)
     cache: bool = True  # Cache loaded data
 
-    # Downsampling options
+    # Downsampling options !!! TODO make option dependant on method !!!
     downsample: int | None = None  # Target number of points (None = no downsampling)
-    downsample_method: str = "minmax_lttb"  # 'minmax_lttb', 'lttb', 'stride'
+    downsample_method: str = "stride"  # 'minmax_lttb', 'lttb', 'stride'
 
     # Time range selection
     start_time: datetime | None = None
     end_time: datetime | None = None
-    hours: list[int] | None = None
+    hours: range | list[int] | None = None
 
     # Calibration
     apply_calib: bool = True
@@ -221,7 +221,7 @@ class LazyKHzLoader(LazyArrayLoader):
         logger.debug(f"Loading kHz data from {self.filepath}")
 
         # Use existing reader for full data
-        full_data = read_hour_file(
+        full_data, _timestamps = read_hour_file(
             str(self.filepath),
             self.card_type,
             num_blocks=self.num_blocks,
@@ -288,7 +288,9 @@ class LazyKHzLoader(LazyArrayLoader):
 
                 # Copy relevant portion to output
                 block_start = i * self.SAMPLES_PER_BLOCK
-                block_end = min(block_start + self.SAMPLES_PER_BLOCK, num_samples + data_offset)
+                block_end = min(
+                    block_start + self.SAMPLES_PER_BLOCK, num_samples + data_offset
+                )
 
                 src_start = data_offset if i == 0 else 0
                 src_end = src_start + (block_end - block_start)
@@ -313,9 +315,9 @@ class LazyKHzLoader(LazyArrayLoader):
         """Read digital block data and unpack bits"""
         endian_char = ">" if self.endian == "big" else "<"
         dtype = np.dtype(np.uint16).newbyteorder(endian_char)
-        data_uint16 = np.frombuffer(f.read(self.SAMPLES_PER_BLOCK * 4), dtype=dtype).reshape(
-            self.SAMPLES_PER_BLOCK, 2
-        )
+        data_uint16 = np.frombuffer(
+            f.read(self.SAMPLES_PER_BLOCK * 4), dtype=dtype
+        ).reshape(self.SAMPLES_PER_BLOCK, 2)
 
         data = np.zeros((self.SAMPLES_PER_BLOCK, 32), dtype=bool)
         for sample_idx in range(self.SAMPLES_PER_BLOCK):
@@ -333,7 +335,7 @@ def downsample_data(
     data: np.ndarray,
     time: np.ndarray,
     target_points: int,
-    method: str = "minmax_lttb",
+    method: str = "stride",
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Downsample time series data for visualization.
@@ -354,10 +356,25 @@ def downsample_data(
     tuple
         (downsampled_data, downsampled_time)
     """
+    # Strip NaN entries from both arrays before any downsampling algorithm sees them.
+    # Missing blocks produce NaN timestamps; those entries are non-plottable and cause
+    # most downsampling libraries to fail. Gaps remain visible as jumps on the time axis.
+    valid = ~np.isnan(time) & ~np.isnan(data)
+    if not np.all(valid):
+        n_nan = int(np.sum(~valid))
+        logger.debug(
+            f"downsample_data: stripping {n_nan} NaN entries before downsampling"
+        )
+        data = data[valid]
+        time = time[valid]
+
+    if len(data) == 0:
+        return data, time
+
     if len(data) <= target_points:
         return data, time
 
-    logger.debug(f"Downsampling {len(data)} points to {target_points} using {method}")
+    logger.info(f"Downsampling {len(data)} points to {target_points} using {method}")
 
     if method == "minmax_lttb" and HAS_TSDOWNSAMPLE:
         # Use tsdownsample MinMaxLTTB (best for visualization)
@@ -481,6 +498,7 @@ class HybridRun:
         endian: str = "big",
         housing: str = "Hybrid",
         site: str = "",
+        defs_file: str | None = None,
     ) -> "HybridRun":
         """
         Create HybridRun from a directory for a given date.
@@ -507,7 +525,7 @@ class HybridRun:
         HybridRun
             HybridRun instance
         """
-        data = HybridData(base_dir, date_str, fepc_system, endian)
+        data = HybridData(base_dir, date_str, fepc_system, endian, defs_file=defs_file)
 
         # Determine start time from first available data
         start_time = None
@@ -570,6 +588,7 @@ class HybridRun:
     def getData(
         self,
         key: str | None = None,
+        hours: range | list[int] | None = None,
         downsample: int | None = None,
         options: LoadOptions | None = None,
     ) -> dict | tuple[np.ndarray, np.ndarray] | pd.DataFrame:
@@ -584,6 +603,8 @@ class HybridRun:
             - 'kHz/FEPC-LNCMI/I_H1' - specific kHz variable
             - 'rms/FEPC-LNCMI/I_H1' - specific RMS variable
             - 'kHz/FEPC-LNCMI' - list of available kHz variables
+        hours : range or list of int, optional
+            Specific hours to load
         downsample : int, optional
             Target number of points for downsampling (for plotting)
         options : LoadOptions, optional
@@ -596,10 +617,17 @@ class HybridRun:
             - For group keys: dict of available variables
             - For None: all loaded data
         """
+        logger.info(
+            f"HybridRun.getData: key={key}, hours={hours},downsample={downsample}, options={options}"
+        )
+
         if self.HybridData is None:
             raise RuntimeError("HybridRun.getData: no HybridData associated")
 
         opts = options or self.default_options
+        if hours is not None:
+            opts.hours = hours
+
         if downsample is not None:
             opts = LoadOptions(
                 lazy=opts.lazy,
@@ -612,9 +640,11 @@ class HybridRun:
                 apply_calib=opts.apply_calib,
                 cnv_dir=opts.cnv_dir,
             )
+            logger.debug(f"LoadOptions opts: {opts}")
+        logger.debug(f"opts: {opts}")
 
         if key is None:
-            return self.HybridData.Data
+            return self.HybridData  # .Data
 
         # Check cache first
         cache_key = f"{key}:{opts.downsample}:{opts.hours}"
@@ -625,12 +655,18 @@ class HybridRun:
 
         # Parse key
         parts = key.split("/")
+        # print("parts:", parts)
         if len(parts) < 2:
-            raise ValueError(f"Invalid key format: {key}. Expected 'type/system[/variable]'")
+            raise ValueError(
+                f"Invalid key format: {key}. Expected 'type/system[/variable]'"
+            )
 
         data_type = parts[0]
+        logger.debug(f"data_type: {data_type}")
         system = parts[1]
         variable = parts[2] if len(parts) >= 3 else None
+        logger.debug(f"system: {system}")
+        logger.debug(f"variable: {variable}")
 
         # Load data based on type
         if data_type == "kHz":
@@ -663,7 +699,9 @@ class HybridRun:
 
         # Apply downsampling if requested
         if opts.downsample and len(data) > opts.downsample:
-            data, time = downsample_data(data, time, opts.downsample, opts.downsample_method)
+            data, time = downsample_data(
+                data, time, opts.downsample, opts.downsample_method
+            )
 
         # Cache result
         if opts.cache:
@@ -674,8 +712,15 @@ class HybridRun:
     def getKeys(self) -> list[str]:
         """Return list of data keys (MagnetRun compatible)"""
         if self.HybridData is not None:
-            return self.HybridData.Keys
+            return self.HybridData.getKeys()
         raise RuntimeError("HybridRun.getKeys: no HybridData associated")
+
+    def Units(self, debug: bool = False, json_file: str | None = None) -> None:
+        """Populate units — delegates to :meth:`HybridData.Units`."""
+        if self.HybridData is not None:
+            self.HybridData.Units(debug=debug, json_file=json_file)
+        else:
+            raise RuntimeError("HybridRun.Units: no HybridData associated")
 
     def getUnit(self, key: str = "") -> tuple:
         """Return Unit for a key"""
@@ -750,7 +795,10 @@ class HybridRun:
         size_bytes = data.nbytes + time.nbytes
 
         # Evict old entries if needed
-        while self._cache_size_bytes + size_bytes > self._cache_max_size_bytes and self._cache:
+        while (
+            self._cache_size_bytes + size_bytes > self._cache_max_size_bytes
+            and self._cache
+        ):
             # Remove oldest entry
             oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].loaded_at)
             evicted = self._cache.pop(oldest_key)
@@ -827,7 +875,9 @@ class HybridRun:
         target_seconds = (target_time - day_start).total_seconds()
 
         # Find indices within window
-        mask = (time >= target_seconds - window_seconds) & (time <= target_seconds + window_seconds)
+        mask = (time >= target_seconds - window_seconds) & (
+            time <= target_seconds + window_seconds
+        )
 
         return data[mask], time[mask]
 

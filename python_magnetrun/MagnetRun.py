@@ -1,173 +1,17 @@
 """Main module."""
 
 import logging
-import re
-import warnings
 from datetime import datetime
 from typing import Any
 
 import pandas as pd
-from natsort import natsorted
+
+from .magnetdata import load_magnetdata
+from .magnetdata_base import MagnetDataBase
+from .magnetdata_pandas import PandasMagnetData
+from .runetl import prepareData
 
 logger = logging.getLogger(__name__)
-
-from .magnetdata import MagnetData  # noqa: E402
-
-
-def prepareData_legacy(data: MagnetData, housing: str, debug: bool = False) -> None:
-    """Prepare magnet run data by adding computed fields and renaming columns
-    (LEGACY VERSION).
-
-    Adds IH_ref/IB_ref computed currents and renames Flow/Rpm/Tin/HP columns
-    with H/B suffixes appropriate for the given housing configuration.
-
-    :param data: MagnetData object to prepare in-place
-    :type data: MagnetData
-    :param housing: Housing name (e.g. "M8", "M9", "M10")
-    :type housing: str
-    :param debug: Enable debug output, defaults to False
-    :type debug: bool, optional
-    """
-    warnings.warn(
-        "prepareData_legacy is deprecated and will be removed in a future version. "
-        "Use prepareData instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    # get start/end
-    (start_date, start_time, end_date, end_time) = data.getStartDate()
-    logger.debug(
-        f"prepareData_legacy: start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}"  # noqa: E501
-    )
-
-    # add timestamp
-    data.addTime()
-    # print(f'addTime done')
-
-    # get duration
-    _duration = data.getDuration()
-    # print(f'duration={_duration}')
-
-    # TODO use a dict struct to simplify this?
-    # shall check if key exist beforehand
-    if housing == "M9":
-        # print('M9 housing case')
-        data.addData("IH_ref", "IH_ref = Idcct1 + Idcct2")
-        data.addData("IB_ref", "IB_ref = Idcct3 + Idcct4")
-
-        # FlowH = Flow1, FlowB = Flow2
-        for field in ["Flow", "Rpm", "Tin", "HP"]:
-            data.renameData(columns={f"{field}1": f"{field}H", f"{field}2": f"{field}B"})
-
-    elif housing in ["M8", "M10"]:
-        # print('M8/M10 housing case')
-        data.addData("IH_ref", "IH_ref = Idcct3 + Idcct4")
-        data.addData("IB_ref", "IB_ref = Idcct1 + Idcct2")
-
-        # FlowH = Flow2, FlowB = Flow1
-        for field in ["Flow", "Rpm", "Tin", "HP"]:
-            data.renameData(columns={f"{field}1": f"{field}B", f"{field}2": f"{field}H"})
-    # what about M1, M5 and M7???
-
-    # data.removeData(["Idcct1", "Idcct2", "Idcct3", "Idcct4"])
-
-    data.cleanupData_legacy(debug=debug)
-    Ikey = natsorted([_key for _key in data.getKeys() if re.match(r"Icoil\d+", _key)])
-    logger.debug(f"MagnetRun/prepareData_legacy: housing={housing}, Ikey={Ikey}")
-
-    data.renameData(columns={f"{Ikey[0]}": "IH"})
-    data.renameData(columns={f"{Ikey[-1]}": "IB"})
-
-    logger.debug(f"MagnetRun.prepareData_legacy: data.keys={data.getKeys()}")
-
-
-def prepareData(
-    data: MagnetData,
-    housing: str,
-    keys_to_remove: list[str] | None = None,
-    keys_to_rename: dict[str, str] | None = None,
-    keys_to_add: dict[str, str] | None = None,
-    debug: bool = False,
-) -> None:
-    """Prepare magnet run data by adding computed fields and renaming columns.
-
-    This method adds timestamp and performs cleanup with flexible configuration.
-    Housing-specific operations (IH_ref/IB_ref, Flow/Rpm/Tin/HP renaming, Icoil→IH/IB)
-    should now be specified via the keys_to_add and keys_to_rename parameters.
-
-    All custom operations are handled by the cleanupData() method.
-
-    :param data: MagnetData object to prepare in-place
-    :type data: MagnetData
-    :param housing: Housing name (e.g. "M8", "M9", "M10") - for reference/logging
-    :type housing: str
-    :param keys_to_remove: list of column names to remove, defaults to None
-    :type keys_to_remove: list[str] | None, optional
-    :param keys_to_rename: dict mapping old column names to new names, defaults to None
-    :type keys_to_rename: dict[str, str] | None, optional
-    :param keys_to_add: dict mapping new column names to their formulas,
-        defaults to None
-    :type keys_to_add: dict[str, str] | None, optional
-    :param debug: Enable debug output, defaults to False
-    :type debug: bool, optional
-    """
-    # get start/end
-    (start_date, start_time, end_date, end_time) = data.getStartDate()
-    logger.debug(
-        f"prepareData: start_date={start_date}, start_time={start_time}, end_date={end_date}, end_time={end_time}"  # noqa: E501
-    )
-
-    # add timestamp
-    data.addTime()
-
-    # get duration
-    _duration = data.getDuration()
-
-    # NOTE: All custom operations (keys_to_add, keys_to_rename, keys_to_remove)
-    # are now handled by cleanupData() method
-
-    # Standard housing-specific operations
-    # NOTE: Housing-specific operations should now be handled via keys_to_add, keys_to_rename parameters  # noqa: E501
-    # TODO use a dict struct to simplify this?
-    # shall check if key exist beforehand
-    # if housing == "M9":
-    #     data.addData("IH_ref", "IH_ref = Idcct1 + Idcct2")
-    #     data.addData("IB_ref", "IB_ref = Idcct3 + Idcct4")
-    #
-    #     # FlowH = Flow1, FlowB = Flow2
-    #     for field in ["Flow", "Rpm", "Tin", "HP"]:
-    #         data.renameData(
-    #             columns={f"{field}1": f"{field}H", f"{field}2": f"{field}B"}
-    #         )
-    #
-    # elif housing in ["M8", "M10"]:
-    #     data.addData("IH_ref", "IH_ref = Idcct3 + Idcct4")
-    #     data.addData("IB_ref", "IB_ref = Idcct1 + Idcct2")
-    #
-    #     # FlowH = Flow2, FlowB = Flow1
-    #     for field in ["Flow", "Rpm", "Tin", "HP"]:
-    #         data.renameData(
-    #             columns={f"{field}1": f"{field}B", f"{field}2": f"{field}H"}
-    #         )
-    # what about M1, M5 and M7???
-
-    # Perform cleanup with flexible parameters
-    data.cleanupData(
-        keys_to_remove=keys_to_remove,
-        keys_to_rename=keys_to_rename,
-        keys_to_add=keys_to_add,
-        debug=debug,
-    )
-
-    # Rename Icoil columns to IH/IB
-    # NOTE: This should now be handled via keys_to_rename parameter
-    # Ikey = natsorted([_key for _key in data.getKeys() if re.match(r"Icoil\d+", _key)])
-    # logger.debug(f"MagnetRun/prepareData: housing={housing}, Ikey={Ikey}")
-    #
-    # data.renameData(columns={f"{Ikey[0]}": "IH"})
-    # data.renameData(columns={f"{Ikey[-1]}": "IB"})
-
-    logger.debug(f"MagnetRun.prepareData: data.keys={data.getKeys()}")
 
 
 class MagnetRun:
@@ -183,7 +27,7 @@ class MagnetRun:
         self,
         housing: str = "unknown",
         site: str = "",
-        data: MagnetData | None = None,
+        data: MagnetDataBase | None = None,
         start_time: datetime | None = None,
     ):
         """default constructor"""
@@ -193,11 +37,15 @@ class MagnetRun:
         self.StartTime = start_time
 
     @classmethod
-    def fromtdms(cls, site: str, insert: str, filename: str) -> "MagnetRun":
+    def fromtdms(cls, housing: str, site: str, filename: str) -> "MagnetRun":
         """create from a tdms file"""
         # print(f"MagnetRun:fromtdms: {filename}", flush=True)
         # with open(filename, "r") as f:
-        data = MagnetData.fromtdms(filename)
+        logger.debug(
+            f"MagnetRun:fromtdms: housing={housing}, site={site}, filename={filename}"
+        )
+        data = load_magnetdata(filename)
+        prepareData(data, housing)
         data.Units()
 
         group = list(data.Groups.keys())[0]
@@ -205,8 +53,10 @@ class MagnetRun:
         start_t = pd.Timestamp(data.Groups[group][channel]["wf_start_time"])
         offset_t = pd.Timedelta(data.Groups[group][channel]["wf_start_offset"])
         start_time = (start_t + offset_t).to_pydatetime()
-        logger.debug(f"magnetrun.fromtdms: start_time={start_time}, type={type(start_time)}")
-        return cls(site, insert, data, start_time=start_time)
+        logger.debug(
+            f"magnetrun.fromtdms: start_time={start_time}, type={type(start_time)}"
+        )
+        return cls(housing, site, data, start_time=start_time)
 
     @classmethod
     def fromtxt(
@@ -217,44 +67,44 @@ class MagnetRun:
         keys_to_remove: list[str] | None = None,
         keys_to_rename: dict[str, str] | None = None,
         keys_to_add: dict[str, str] | None = None,
-        debug: bool = False,
     ) -> "MagnetRun":
         """create from a txt file"""
-        logger.debug(f"MagnetRun/fromtxt: housing={housing}, site={site}, filename={filename}")
+        logger.debug(
+            f"MagnetRun/fromtxt: housing={housing}, site={site}, filename={filename}"
+        )
         # with open(filename, "r") as f:
         # insert = f.readline().split()[-1]
-        data = MagnetData.fromtxt(filename)
-        logger.debug(f"data: {data}")
+        data = load_magnetdata(filename)
+        logger.debug(f"MagnetRun/from_txt: data={data}")
         res = data.getStartDate()
-        prepareData_legacy(data, housing, debug=debug)
-        # TODO: switch to prepareData once legacy is removed:
-        # prepareData(data, housing, keys_to_remove=keys_to_remove,
-        #             keys_to_rename=keys_to_rename, keys_to_add=keys_to_add,
-        #             debug=debug)
-        logger.debug(f"res: {res}")
+        logger.debug(f"MagnetRun.from_txt: getStartDate={res}")
+        prepareData(data, housing)
+        logger.debug(
+            f"MagnetRun/from_txt: after prepareData - data keys={data.getKeys()}"
+        )
         data.Units()
         (start_date, start_time, end_date, end_time) = res
 
         # print("magnetrun.fromtxt: data=", data)
         # Combine start_date (YYYY.MM.DD) and start_time (HH:MM:SS) into datetime
         start_t = datetime.strptime(f"{start_date} {start_time}", "%Y.%m.%d %H:%M:%S")
-        logger.debug(f"magnetrun.fromtxt: start_t={start_t}, type={type(start_t)}")
+        logger.debug(f"MagnetRun/from_txt: start_t={start_t}, type={type(start_t)}")
         return cls(housing, site, data, start_time=start_t)
 
     @classmethod
-    def fromcsv(cls, housing: str, site: str, filename: str, debug: bool = False) -> "MagnetRun":
+    def fromcsv(cls, housing: str, site: str, filename: str) -> "MagnetRun":
         """create from a csv file"""
-        data = MagnetData.fromcsv(filename)
+        data = load_magnetdata(filename)
         return cls(housing, site, data)
 
     @classmethod
-    def fromStringIO(cls, housing: str, site: str, name: str, debug: bool = False) -> "MagnetRun":
+    def fromStringIO(cls, housing: str, site: str, name: str) -> "MagnetRun":
         """create from a stringIO"""
         # print(f'MagnetRun/fromStringIO: housing={housing}, site={site}')
         from io import StringIO
 
         insert = "Unknown"
-        data = MagnetData(filename="", Groups={}, Keys=[])
+        data = PandasMagnetData(filename="", Groups={}, Keys=[])
         try:
             ioname = StringIO(name)
             # TODO rework: get item 2 otherwise set to unknown
@@ -263,13 +113,14 @@ class MagnetRun:
                 insert = headers[1]
             if not site.startswith(insert):
                 logger.debug(f"MagnetRun:fromStringIO: site={site}, insert={insert}")
-            data = MagnetData.fromStringIO(name)
+            data = PandasMagnetData.fromStringIO(name)
             # print(f'data keys({len(data.getKeys())}): {data.getKeys()}')
-            prepareData_legacy(data, housing, debug=debug)
-            # print(f'prepareData: data keys({len(data.getKeys())}): {data.getKeys()}')
+            prepareData(data, housing)
 
         except (ValueError, KeyError, AttributeError, IndexError) as e:
-            logger.error(f"cannot load data for {housing}, {insert} insert, {site} site: {e}")
+            logger.error(
+                f"cannot load data for {housing}, {insert} insert, {site} site: {e}"
+            )
             raise RuntimeError(
                 f"cannot load data for {housing}, {insert} insert, {site} site"
             ) from e
@@ -312,7 +163,7 @@ class MagnetRun:
         else:
             raise RuntimeError("MagnetRun.getType: no MagnetData associated")
 
-    def getMData(self) -> MagnetData:
+    def getMData(self) -> MagnetDataBase:
         """return Magnet Data object"""
         if self.MagnetData is not None:
             return self.MagnetData
@@ -351,7 +202,9 @@ class MagnetRun:
         """save Data to file"""
         if self.MagnetData is not None:
             if isinstance(self.MagnetData.Data, pd.DataFrame):
-                self.MagnetData.Data.to_csv(filename, sep="\t", index=False, header=True)
+                self.MagnetData.Data.to_csv(
+                    filename, sep="\t", index=False, header=True
+                )
             else:
                 raise RuntimeError(
                     f"MagnetRun.save: unsupported type of Data ({type(self.MagnetData.Data)})"  # noqa: E501

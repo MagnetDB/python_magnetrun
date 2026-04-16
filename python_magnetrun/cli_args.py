@@ -3,6 +3,9 @@
 import argparse
 import os
 from collections.abc import Callable
+from pathlib import Path
+
+from .data_dirs import HYBRID_DATA_DIR, PIGBROTHER_DATA_DIR, PUPITRE_DATA_DIR
 
 
 def validate_file_extension(allowed_extensions: list[str]) -> Callable[[str], str]:
@@ -63,7 +66,38 @@ def create_common_plot_parser() -> argparse.ArgumentParser:
         nargs="+",
         action="append",
     )
-    parser.add_argument("--normalize", help="normalize data before plot", action="store_true")
+    parser.add_argument(
+        "--normalize", help="normalize data before plot", action="store_true"
+    )
+    return parser
+
+
+def create_datadir_parser() -> argparse.ArgumentParser:
+    """Create parser with data directory arguments (pupitre, pigbrother).
+
+    Env var resolution order:
+    - pupitre:    MAGNETRUN_PUPITRE_DATA_DIR > PUPITRE_DATADIR
+    - pigbrother: MAGNETRUN_PIGBROTHER_DATA_DIR > PIGBROTHER_DATADIR
+
+    :return: ArgumentParser with data directory arguments
+    :rtype: argparse.ArgumentParser
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--pupitre_datadir",
+        help=(
+            "root directory for pupitre .txt files "
+            "(overrides MAGNETRUN_PUPITRE_DATA_DIR / PUPITRE_DATADIR )"
+        ),
+        type=str,
+        default=PUPITRE_DATA_DIR,
+    )
+    parser.add_argument(
+        "--pigbrother_datadir",
+        help=("root directory for pigbrother .tdms files "),
+        type=str,
+        default=PIGBROTHER_DATA_DIR,
+    )
     return parser
 
 
@@ -76,9 +110,12 @@ def create_hybrid_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--hybrid_datadir",
-        help="base directory for hybrid (kHz/rms/trigger) data",
+        help=(
+            "base directory for hybrid (kHz/rms/trigger) data "
+            "(overrides MAGNETRUN_HYBRID_DATA_DIR / HYBRID_DATADIR)"
+        ),
         type=str,
-        default=None,
+        default=HYBRID_DATA_DIR or None,
     )
     parser.add_argument(
         "--hybrid_date",
@@ -116,49 +153,59 @@ def create_common_smoothing_parser() -> argparse.ArgumentParser:
         choices=["ag", "bell_kernel", "statsmodel_sm", "savgol"],
     )
     parser.add_argument("--window", help="size of rolling window", type=int, default=10)
-    parser.add_argument("--smoothing_f", help="set smoothing_f", type=float, default=0.7)
-    parser.add_argument("--smoothing_tau", help="set smoothing_tau", type=float, default=400)
-    parser.add_argument("--smoothing_iter", help="set smoothing_iter", type=int, default=3)
+    parser.add_argument(
+        "--smoothing_f", help="set smoothing_f", type=float, default=0.7
+    )
+    parser.add_argument(
+        "--smoothing_tau", help="set smoothing_tau", type=float, default=400
+    )
+    parser.add_argument(
+        "--smoothing_iter", help="set smoothing_iter", type=int, default=3
+    )
     return parser
 
 
 def create_base_parser(
     allowed_extensions: list[str] | None = None,
+    add_input_file: bool = True,
 ) -> argparse.ArgumentParser:
     """Create base parser with common arguments.
 
+    Includes data directory arguments via :func:`create_datadir_parser`.
+
     :param allowed_extensions: Optional list of allowed file extensions (e.g., ['.tdms', '.txt'])  # noqa: E501
     :type allowed_extensions: list or None
+    :param add_input_file: Whether to add the positional ``input_file`` argument (default: True).
+        Pass ``False`` when the script does not take input files.
+    :type add_input_file: bool
     :return: ArgumentParser with base arguments
     :rtype: argparse.ArgumentParser
     """
-    parser = argparse.ArgumentParser(add_help=False)
+    datadir_parser = create_datadir_parser()
+    parser = argparse.ArgumentParser(add_help=False, parents=[datadir_parser])
 
     # Add input_file with optional extension validation
-    if allowed_extensions:
-        parser.add_argument(
-            "input_file",
-            nargs="+",
-            type=validate_file_extension(allowed_extensions),
-            help=f"enter input file (allowed: {', '.join(allowed_extensions)})",
-        )
-    else:
-        parser.add_argument("input_file", nargs="+", help="enter input file")
+    if add_input_file:
+        if allowed_extensions:
+            parser.add_argument(
+                "input_file",
+                nargs="+",
+                type=validate_file_extension(allowed_extensions),
+                help=f"enter input file (allowed: {', '.join(allowed_extensions)})",
+            )
+        else:
+            parser.add_argument("input_file", nargs="+", help="enter input file")
 
-    parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9")
-    parser.add_argument("--insert", help="specify an insert", default="notdefined")
-    parser.add_argument("--housing", help="specify a housing", default="notdefined")
     parser.add_argument(
-        "--pupitre_datadir",
-        help="enter pupitre datadir (default srvdata)",
-        type=str,
-        default="/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install",
+        "--site",
+        help="specify a site (ex. M9_M25032101_0)",
+        default="notdefined",
     )
     parser.add_argument(
-        "--pigbrother_datadir",
-        help="enter pigbrother datadir (default pigbrotherdata)",
-        type=str,
-        default="/home/LNCMI-G/christophe.trophime/github/python_magnetrun/pigbrotherdata/Fichiers_Data",
+        "--insert", help="specify an insert (ex: M25032101_0)", default="notdefined"
+    )
+    parser.add_argument(
+        "--housing", help="specify a housing (ex. M8, M9,...)", default="notdefined"
     )
     parser.add_argument(
         "--log-level",
@@ -170,7 +217,7 @@ def create_base_parser(
     parser.add_argument(
         "--log-file",
         help="path to log file (if not specified, logs to console)",
-        type=str,
+        type=Path,
         default=None,
     )
     return parser
@@ -183,104 +230,12 @@ def create_managed_plots_parser() -> argparse.ArgumentParser:
     :rtype: argparse.ArgumentParser
     """
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--save", help="save graphs (png format)", action="store_true")
-    parser.add_argument("--show", help="display graphs (require X11)", action="store_true")
-    return parser
-
-
-def create_main_parser() -> argparse.ArgumentParser:
-    """Create the main argument parser for python_magnetrun.
-
-    :return: Configured ArgumentParser with all subcommands
-    :rtype: argparse.ArgumentParser
-    """
-    base_parser = create_base_parser()
-    plot_parser = create_common_plot_parser()
-    hybrid_parser = create_hybrid_parser()
-    smoothing_parser = create_common_smoothing_parser()
-    managed_plots_parser = create_managed_plots_parser()
-
-    parser = argparse.ArgumentParser(parents=[base_parser])
-
-    subparsers = parser.add_subparsers(title="commands", dest="command", help="sub-command help")
-
-    # Info subcommand
-    parser_info = subparsers.add_parser("info", help="info help")
-    parser_info.add_argument("--list", help="list key in csv", action="store_true")
-    parser_info.add_argument("--convert", help="save to csv", action="store_true")
-
-    # Add subcommand (with plot capabilities)
-    parser_add = subparsers.add_parser(
-        "add",
-        help="add help",
-        parents=[plot_parser, hybrid_parser, managed_plots_parser],
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--save", help="save graphs (png format)", action="store_true")
+    group.add_argument(
+        "--show", help="display graphs (require X11; default)", action="store_true"
     )
-    parser_add.add_argument(
-        "--formula", help="add new column with associated formula", type=str, default=""
-    )
-    parser_add.add_argument("--compute", help="compute", action="store_true")
-    parser_add.add_argument("--plot", help="plot", action="store_true")
-
-    # Plot subcommand
-    _parser_plot = subparsers.add_parser(
-        "plot",
-        help="plot help",
-        parents=[plot_parser, hybrid_parser, managed_plots_parser],
-    )
-
-    # Select subcommand
-    parser_select = subparsers.add_parser("select", help="select help", parents=[smoothing_parser])
-    parser_select.add_argument("--output_time", nargs="+", help="output key(s) for time")
-    parser_select.add_argument(
-        "--output_timerange",
-        help="set time range to extract (start;end)",
-        action="append",
-    )
-    parser_select.add_argument(
-        "--output_key",
-        nargs="+",
-        help="output key(s) for time",
-        action="append",
-    )
-    parser_select.add_argument(
-        "--extract_pairkeys",
-        nargs="+",
-        help="dump key(s) to file",
-        action="append",
-    )
-    parser_select.add_argument("--convert", help="convert file to csv", action="store_true")
-
-    # Stats subcommand
-    parser_stats = subparsers.add_parser("stats", help="stats help", parents=[managed_plots_parser])
-    parser_stats.add_argument("--detect_bkpts", help="find breaking points", action="store_true")
-    parser_stats.add_argument("--localmax", help="find local max", action="store_true")
-    parser_stats.add_argument("--plateau", help="find plateau", action="store_true")
-    parser_stats.add_argument(
-        "--keys",
-        help="select key(s) to perform selected stats",
-        nargs="+",
-    )
-    parser_stats.add_argument(
-        "--threshold",
-        help="specify threshold for regime detection",
-        type=float,
-        default=1.0e-3,
-    )
-    parser_stats.add_argument(
-        "--bthreshold",
-        help="specify b threshold for regime detection",
-        type=float,
-        default=1.0e-3,
-    )
-    parser_stats.add_argument(
-        "--dthreshold",
-        help="specify duration threshold for regime detection",
-        type=float,
-        default=10,
-    )
-    parser_stats.add_argument("--window", help="size of rolling window", type=int, default=10)
-    parser_stats.add_argument("--level", help="select level", type=int, default=90)
-
+    parser.set_defaults(show=True)
     return parser
 
 
@@ -324,9 +279,13 @@ def create_analysis_parser() -> argparse.ArgumentParser:
         help="compute lag between pupitre and pigbrother data",
         action="store_true",
     )
-    parser.add_argument("--distance", help="compute distance between series", action="store_true")
+    parser.add_argument(
+        "--distance", help="compute distance between series", action="store_true"
+    )
     parser.add_argument("--bins", help="set bins for histograms", type=int, default=10)
-    parser.add_argument("--window", help="set rolling window size", type=int, default=50)
+    parser.add_argument(
+        "--window", help="set rolling window size", type=int, default=50
+    )
     parser.add_argument("--levels", help="set levels", type=int, default=4)
     parser.add_argument(
         "--plot-percent",

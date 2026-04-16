@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from python_magnetrun.analysis.config import get_site_config
+from python_magnetrun.analysis.config import get_housing_config
 from python_magnetrun.analysis.loaders import FileSet
 from python_magnetrun.analysis.processing import (
     # Main dataclasses
@@ -232,12 +232,12 @@ class TestAddTimeColumnWithOffset:
         assert "t" in result.columns
 
 
-class TestGetSiteConfig:
-    """Test get_site_config function."""
+class TestGetHousingConfig:
+    """Test get_housing_config function."""
 
     def test_valid_site(self):
         """Test getting config for valid site."""
-        config = get_site_config("M9")
+        config = get_housing_config("M9")
 
         assert config is not None
         assert config.name == "M9"
@@ -245,9 +245,9 @@ class TestGetSiteConfig:
     def test_invalid_site(self):
         """Test error for invalid site."""
         with pytest.raises(ValueError) as exc_info:
-            get_site_config("INVALID")
+            get_housing_config("INVALID")
 
-        assert "Unknown site" in str(exc_info.value)
+        assert "Unknown housing" in str(exc_info.value)
 
 
 class TestSummarizeRecord:

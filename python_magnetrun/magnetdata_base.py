@@ -4,11 +4,43 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from datetime import datetime
+from enum import IntEnum
 from typing import Any
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+
+class DataType(IntEnum):
+    PUPITRE = 0
+    TDMS = 1
+    ENSIGHT = 2
+    HYBRID = 3
+
+
+def _make_ureg():  # type: ignore[return]
+    """Return a pint UnitRegistry with project-specific units pre-registered.
+
+    Registers ``percent`` (%),  ``ppm``, and ``var`` if they are not already
+    known to the registry.  Call this once per :meth:`Units` invocation so
+    that each caller gets a consistent registry without global state.
+    """
+    from pint import UnitRegistry
+    from pint.errors import UndefinedUnitError
+
+    ureg = UnitRegistry()
+    for defn, unit in [
+        ("percent = 1 / 100 = %", "percent"),
+        ("ppm = 1e-6 = ppm", "ppm"),
+        ("var = 1", "var"),
+    ]:
+        try:
+            ureg.parse_units(unit)
+        except UndefinedUnitError:
+            ureg.define(defn)
+    return ureg
 
 
 class MagnetDataBase(ABC):
@@ -27,6 +59,10 @@ class MagnetDataBase(ABC):
         Available channel/column names.
     units : dict
         Symbol/unit pairs populated by :meth:`Units`.
+    start_timestamp : datetime or None
+        UTC timestamp of the first record in the dataset (naive, no tzinfo).
+    end_timestamp : datetime or None
+        UTC timestamp of the last record in the dataset (naive, no tzinfo).
     """
 
     def __init__(
@@ -35,12 +71,18 @@ class MagnetDataBase(ABC):
         Groups: dict,
         Keys: list[str],
         Data: pd.DataFrame | dict | None = None,
+        defs_file: str | None = None,
+        start_timestamp: datetime | None = None,
+        end_timestamp: datetime | None = None,
     ) -> None:
         self.FileName = filename
         self.Groups = Groups
         self.Keys = Keys
         self.Data: pd.DataFrame | dict = Data if Data is not None else pd.DataFrame()
         self.units: dict = {}
+        self.defs_file: str | None = defs_file
+        self.start_timestamp: datetime | None = start_timestamp
+        self.end_timestamp: datetime | None = end_timestamp
 
     # ------------------------------------------------------------------
     # Abstract interface — every subclass must implement these
@@ -48,8 +90,8 @@ class MagnetDataBase(ABC):
 
     @property
     @abstractmethod
-    def Type(self) -> int:
-        """Integer data-type discriminator (0=Pandas, 1=TDMS, 2=Ensight)."""
+    def Type(self) -> DataType:
+        """Data-type discriminator."""
 
     @abstractmethod
     def getData(self, key: list[str] | str | None = None) -> pd.DataFrame:
@@ -60,7 +102,7 @@ class MagnetDataBase(ABC):
         """Return list of available channel/column names."""
 
     @abstractmethod
-    def Units(self, debug: bool = False) -> None:
+    def Units(self, debug: bool = False, json_file: str | None = None) -> None:
         """Populate ``self.units`` with symbol/unit pairs."""
 
     @abstractmethod
@@ -75,17 +117,65 @@ class MagnetDataBase(ABC):
     # Concrete default implementations
     # ------------------------------------------------------------------
 
-    def getType(self) -> int:
-        """Return the integer type discriminator."""
+    def load_units_from_json(self, json_file: str, debug: bool = False) -> None:
+        """Populate ``self.units`` from a JSON field-definition file.
+
+        Keys in the JSON that are not in ``self.Keys`` are silently ignored,
+        so a single file can cover a superset of any particular dataset.
+
+        JSON format — flat object, key = field name (or ``"Group/Channel"``
+        for TDMS), value = ``{"symbol": ..., "unit": ..., "description": ...}``::
+
+            {
+                "Field":  {"symbol": "B", "unit": "tesla"},
+                "Icoil1": {"symbol": "I", "unit": "ampere"},
+                "Courants_Alimentations/Courant_A1": {"symbol": "I", "unit": "ampere"}
+            }
+
+        ``"unit": null`` stores ``None`` (used for timestamp/dimensionless).
+        The ``"description"`` key is optional and only used for documentation.
+        """
+        from .field_defs import load_defs
+
+        ureg = _make_ureg()
+
+        field_defs: dict = load_defs(json_file)
+
+        for key, defn in field_defs.items():
+            if key.startswith("_"):  # skip comment keys
+                continue
+            if key not in self.Keys:
+                logger.debug(f"load_units_from_json: {key!r} not in Keys, skipping")
+                continue
+            symbol: str = defn["symbol"]
+            unit_str: str | None = defn.get("unit")
+            if unit_str is None:
+                pint_unit = None
+            else:
+                try:
+                    parsed = ureg.parse_expression(unit_str)
+                    # parse_expression may return a Quantity (e.g. 1 T) or a Unit;
+                    # always store a Unit so formatting with ~P gives "T" not "1 T"
+                    pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+                except Exception as exc:  # noqa: BLE001
+                    raise ValueError(
+                        f"load_units_from_json: cannot parse unit {unit_str!r} for field {key!r}"
+                    ) from exc
+            self.units[key] = (symbol, pint_unit)
+            if debug:
+                logger.debug(f"load_units_from_json: {key} → symbol={symbol}, unit={pint_unit}")
+
+    def getType(self) -> DataType:
+        """Return the data-type discriminator."""
         return self.Type
 
     def info(self) -> None:
         """Print a one-line summary."""
-        print(f"{self.__class__.__name__}: {self.FileName}")
+        logger.info(f"{self.__class__.__name__}: {self.FileName}")
 
     # Cleanup / reshape — no-op by default; pandas subclass overrides
 
-    def cleanupData_legacy(self, debug: bool = False) -> int:  # noqa: N802
+    def cleanupData_legacy(self) -> int:  # noqa: N802
         return 0
 
     def cleanupData(  # noqa: N802
@@ -156,11 +246,17 @@ class MagnetDataBase(ABC):
     # Phase 2B hook — concrete implementations added in subclasses
 
     def get_time_range(self) -> tuple:
-        """Return ``(start_datetime, end_datetime)`` for the dataset.
+        """Return ``(start_timestamp, end_timestamp)`` for the dataset.
 
-        Subclasses implementing time-aware formats should override this.
+        Returns the stored :attr:`start_timestamp` / :attr:`end_timestamp`
+        attributes when available.  Subclasses that derive timestamps from
+        their data should override this and set those attributes accordingly.
         """
-        raise NotImplementedError(f"{self.__class__.__name__}.get_time_range not implemented")
+        if self.start_timestamp is None and self.end_timestamp is None:
+            raise NotImplementedError(
+                f"{self.__class__.__name__}.get_time_range not implemented"
+            )
+        return (self.start_timestamp, self.end_timestamp)
 
     # Convenience
 

@@ -9,7 +9,8 @@ from typing import Any
 
 import pandas as pd
 
-from .magnetdata_base import MagnetDataBase
+from .magnetdata_base import DataType, MagnetDataBase
+from .utils.timestamps import parse_filename_timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -18,19 +19,143 @@ class TdmsMagnetData(MagnetDataBase):
     """TDMS-backed magnet data.
 
     ``self.Data`` is a ``dict[str, pd.DataFrame]`` keyed by group name.
-    ``self.Type`` is ``1``.
+    ``self.Type`` is :attr:`DataType.TDMS`.
+
+    ``start_timestamp`` is set in three phases:
+
+    1. At construction: parsed from the filename (local time, lightweight).
+    2. :meth:`_validate_start_timestamp` calls :meth:`_apply_wf_timestamps`,
+       which reads the accurate UTC ``wf_start_time`` from every group's channel
+       properties and overwrites ``start_timestamp`` (and sets ``end_timestamp``)
+       when all groups agree.
+    3. The settled timestamp is converted to a naive UTC :class:`~datetime.datetime`.
     """
 
+    def __init__(
+        self,
+        filename: str,
+        Groups: dict,
+        Keys: list[str],
+        Data: dict | None = None,
+        defs_file: str | None = None,
+        time_zone: str = "Europe/Paris",
+    ) -> None:
+        super().__init__(filename, Groups, Keys, Data, defs_file)
+        dt = parse_filename_timestamp(filename)
+        self.start_timestamp = pd.Timestamp(dt) if dt is not None else None
+        self._validate_start_timestamp()
+        # Convert to naive UTC datetime — wf_start_time is already UTC-aware;
+        # filename-derived timestamps are local and need tz_localize first.
+        if self.start_timestamp is not None or self.end_timestamp is not None:
+            import pytz
+
+            tz = pytz.timezone(time_zone)
+
+            def _to_utc_naive(ts_in: pd.Timestamp) -> datetime:
+                ts = pd.Timestamp(ts_in)
+                if ts.tzinfo is None:
+                    ts = ts.tz_localize(tz)
+                return ts.tz_convert(pytz.utc).to_pydatetime().replace(tzinfo=None)
+
+            if self.start_timestamp is not None:
+                self.start_timestamp = _to_utc_naive(self.start_timestamp)
+            if self.end_timestamp is not None:
+                self.end_timestamp = _to_utc_naive(self.end_timestamp)
+
+    def _validate_start_timestamp(self) -> None:
+        """Refine ``start_timestamp`` using TDMS ``wf_start_time`` channel properties.
+
+        Calls :meth:`_apply_wf_timestamps`.  When no ``wf_start_time`` is
+        available the filename-derived ``start_timestamp`` is preserved.
+        """
+        self._apply_wf_timestamps()
+
+    def _apply_wf_timestamps(self) -> None:
+        """Refine start/end timestamps from TDMS ``wf_start_time`` channel properties.
+
+        Iterates over all non-``Infos`` groups and collects ``wf_start_time``
+        from the first channel of each group.  If all groups report the same
+        value, ``self.start_timestamp`` is overwritten with that value and
+        ``self.end_timestamp`` is computed from the first group's duration
+        (``wf_increment × wf_samples``).
+
+        When groups disagree a warning is logged and neither timestamp is
+        changed, so the filename-derived ``start_timestamp`` is preserved.
+        """
+        group_starts: dict[str, datetime] = {}
+
+        for gname, channels in self.Groups.items():
+            if gname == "Infos":
+                continue
+            if not isinstance(channels, dict):
+                continue
+            first_channel = next(
+                (k for k, v in channels.items() if isinstance(v, dict)), None
+            )
+            if first_channel is None:
+                continue
+            props = channels[first_channel]
+            if "wf_start_time" not in props:
+                continue
+            try:
+                group_starts[gname] = props["wf_start_time"].astype(datetime)
+            except (TypeError, ValueError):
+                logger.warning(
+                    f"_apply_wf_timestamps: could not convert wf_start_time in group {gname!r} of {self.FileName!r}"
+                )
+
+        if not group_starts:
+            return
+
+        reference = next(iter(group_starts.values()))
+        inconsistent = [g for g, t in group_starts.items() if t != reference]
+
+        if inconsistent:
+            first_gname = next(iter(group_starts))
+            logger.warning(
+                f"_apply_wf_timestamps: wf_start_time is inconsistent across groups "
+                f"in {self.FileName!r} — differing groups: {inconsistent} "
+                f"(reference from {first_gname!r}: {reference}); "
+                f"keeping filename-derived start_timestamp"
+            )
+            return
+
+        # All groups agree — overwrite start_timestamp with the accurate UTC value.
+        # wf_start_time from LabVIEW TDMS is UTC; attach UTC tzinfo so the
+        # conversion step in __init__ can distinguish it from a local filename timestamp.
+        import pytz
+
+        ref_utc = (
+            reference if reference.tzinfo is not None else pytz.utc.localize(reference)
+        )
+        self.start_timestamp = pd.Timestamp(ref_utc)
+
+        # Derive end_timestamp from the first group's duration.
+        first_gname = next(iter(group_starts))
+        first_ch = next(
+            (k for k, v in self.Groups[first_gname].items() if isinstance(v, dict)),
+            None,
+        )
+        if first_ch is not None:
+            props = self.Groups[first_gname][first_ch]
+            dt = props.get("wf_increment", 0)
+            samples = props.get("wf_samples", 0)
+            self.end_timestamp = self.start_timestamp + pd.Timedelta(
+                seconds=dt * samples
+            )
+
     @property
-    def Type(self) -> int:  # type: ignore[override]
-        return 1
+    def Type(self) -> DataType:
+        return DataType.TDMS
 
     # --- core data access --------------------------------------------
 
     def getTdmsData(self, group: str, channel: str | list[str] | None) -> pd.DataFrame:
         if not isinstance(self.Data, dict):
-            raise Exception(f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict")
-        if channel is None:
+            raise Exception(
+                f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict"
+            )
+        if channel is None or not channel:
             return self.Data[group]
         return self.Data[group][channel]
 
@@ -90,22 +215,72 @@ class TdmsMagnetData(MagnetDataBase):
 
         return ()
 
-    def Units(self, debug: bool = False) -> None:  # noqa: N802
-        from pint import UnitRegistry
+    def Units(
+        self, debug: bool = False, json_file: str | None = None
+    ) -> None:  # noqa: N802
+        """Populate ``self.units``.
+
+        Resolution order:
+
+        1. *json_file* argument (explicit override) / ``self.defs_file``
+           — if a key's embedded TDMS ``unit_string`` disagrees, a warning is
+           printed and the defs_file value is used.
+        2. Embedded ``unit_string`` from TDMS channel properties (for keys not
+           covered by the defs_file).
+        3. ``PigBrotherUnits`` keyword matching (final fallback).
+        """
         from pint.errors import UndefinedUnitError
 
-        ureg: UnitRegistry = UnitRegistry()
-        for defn, unit in [
-            ("percent = 1 / 100 = %", "percent"),
-            ("ppm = 1e-6 = ppm", "ppm"),
-            ("var = 1", "var"),
-        ]:
-            try:
-                ureg.parse_units(unit)
-            except UndefinedUnitError:
-                ureg.define(defn)
+        from .magnetdata_base import _make_ureg
 
+        ureg = _make_ureg()
+
+        # Step 1 — collect embedded unit strings from TDMS channel properties
+        tdms_unit_strs: dict[str, str] = {}
+        for gname, channels in self.Groups.items():
+            if gname == "Infos" or not isinstance(channels, dict):
+                continue
+            for cname, props in channels.items():
+                raw = props.get("unit_string", "") if hasattr(props, "get") else ""
+                if raw and raw.strip():
+                    tdms_unit_strs[f"{gname}/{cname}"] = raw.strip()
+
+        # Step 2 — load defs_file (takes priority); warn on unit mismatch
+        resolved = json_file or self.defs_file
+        if resolved is not None:
+            from .field_defs import load_defs
+
+            field_defs = load_defs(resolved)
+            for key, tdms_unit_str in tdms_unit_strs.items():
+                if key not in field_defs or key.startswith("_"):
+                    continue
+                defs_unit_str = field_defs[key].get("unit")
+                if defs_unit_str is not None and defs_unit_str != tdms_unit_str:
+                    logger.warning(
+                        f"Units: {key} — TDMS embedded unit {tdms_unit_str!r} differs from "
+                        f"defs_file unit {defs_unit_str!r}; overriding with defs_file value"
+                    )
+            self.load_units_from_json(resolved, debug=debug)
+
+        # Step 3 — use embedded TDMS unit_string for keys not set by defs_file
+        for key, unit_str in tdms_unit_strs.items():
+            if key in self.units:
+                continue
+            if key.endswith("/t"):
+                self.units[key] = ("t", ureg.second)
+                continue
+            try:
+                pint_unit = ureg.parse_expression(unit_str)
+                self.units[key] = (key.split("/")[-1], pint_unit)
+            except (ValueError, AttributeError, UndefinedUnitError):
+                logger.debug(
+                    f"Units: cannot parse TDMS unit {unit_str!r} for {key}, falling back to keyword match"
+                )
+
+        # Step 4 — PigBrotherUnits keyword matching for any remaining entries
         for entry in self.Data:
+            if entry in self.units:
+                continue
             if entry == "t":
                 self.units["t"] = ("t", ureg.second)
             else:
@@ -114,7 +289,10 @@ class TdmsMagnetData(MagnetDataBase):
                     (group, channel) = entry.split("/")
                     if channel == "t":
                         self.units[entry] = ("t", ureg.second)
-                self.units[entry] = self.PigBrotherUnits(group)
+                        continue
+                pig = self.PigBrotherUnits(group)
+                if pig:
+                    self.units[entry] = pig
 
         if debug:
             logger.debug(f"Units: {self.Keys}")
@@ -129,12 +307,81 @@ class TdmsMagnetData(MagnetDataBase):
             elif key == "timestamp":
                 return ("time", None)
             else:
-                raise RuntimeError(f"{key} not defined in data - available keys are {self.Keys}")
+                raise RuntimeError(
+                    f"{key} not defined in data - available keys are {self.Keys}"
+                )
         (group, channel) = key.split("/")
         return self.PigBrotherUnits(group)
 
     def renameData(self, columns: dict) -> None:  # noqa: N802
-        """TDMS data does not support renaming channels; this is a no-op."""
+        """TDMS data does not support renaming channels.
+
+        Emits a warning when *columns* is non-empty so callers are not silently
+        misled into thinking the rename was applied.
+        """
+        if columns:
+            logger.warning(
+                f"renameData: TDMS does not support channel renaming; columns={list(columns)} ignored"
+            )
+
+    def addTime(self) -> int:  # noqa: N802
+        """Implement the MagnetDataBase.addTime contract for TDMS data.
+
+        Delegates to :meth:`addTdmsTime` (processes all non-Infos groups).
+        """
+        return self.addTdmsTime()
+
+    def cleanupData(  # noqa: N802
+        self,
+        keys_to_remove: list[str] | None = None,
+        keys_to_rename: dict[str, str] | None = None,
+        keys_to_add: dict[str, str] | None = None,
+        debug: bool = False,
+    ) -> int:
+        """Apply ETL operations to TDMS data.
+
+        ``keys_to_add`` entries must use ``"Group/Channel"`` syntax consistent
+        with :meth:`addData`.  ``keys_to_rename`` is ignored (TDMS does not
+        support channel renaming).
+
+        :param keys_to_remove: list of ``"Group/Channel"`` keys to drop.
+        :param keys_to_rename: unused for TDMS; a warning is emitted if non-empty.
+        :param keys_to_add: ``{"Group/Channel": "formula"}`` pairs; each formula
+            is evaluated via :meth:`addData`.
+        :param debug: passed through to :meth:`addData`.
+        :return: 0 on success.
+        """
+        if keys_to_rename:
+            logger.warning(
+                f"cleanupData: TDMS does not support renaming channels; keys_to_rename={list(keys_to_rename)} ignored"
+            )
+
+        if keys_to_add:
+            for key, formula in keys_to_add.items():
+                if key not in self.Keys:
+                    self.addData(key, formula, debug=debug)
+                else:
+                    logger.debug(f"cleanupData: key {key!r} already exists, skipping")
+
+        if keys_to_remove:
+            assert isinstance(self.Data, dict)
+            for key in keys_to_remove:
+                if "/" not in key:
+                    logger.warning(
+                        f"cleanupData: skip non-TDMS key {key!r} (no '/' separator)"
+                    )
+                    continue
+                group, channel = key.split("/", 1)
+                if group in self.Data and channel in self.Data[group].columns:
+                    self.Data[group].drop(columns=[channel], inplace=True)
+                    if key in self.Keys:
+                        self.Keys.remove(key)
+                else:
+                    logger.debug(
+                        f"cleanupData: key {key!r} not found, skipping removal"
+                    )
+
+        return 0
 
     # --- compute / add -----------------------------------------------
 
@@ -142,7 +389,7 @@ class TdmsMagnetData(MagnetDataBase):
         self, key: str, formula: str, unit: str | None = None, debug: bool = False
     ) -> int:
         (group, channel) = key.split("/")
-        print(f"add: key={key} - group={group}, channel={channel}")
+        logger.debug(f"add: key={key} - group={group}, channel={channel}")
 
         nformula = formula.replace(f"{group}/", "")
 
@@ -151,10 +398,10 @@ class TdmsMagnetData(MagnetDataBase):
         match = re.findall(r"(\w+)/(\w+)", nformula)
         if match:
             for matched in match:
-                print(f"matched={matched[0]}/{matched[1]}")
+                logger.debug(f"matched={matched[0]}/{matched[1]}")
                 self.Data[group][matched[1]] = self.Data[matched[0]][matched[1]]  # type: ignore[index]
                 nformula = nformula.replace(f"{matched[0]}/", "")
-        print(f"formula: {nformula}")
+        logger.debug(f"formula: {nformula}")
 
         try:
             self.Data[group].eval(nformula, inplace=True)  # type: ignore[index]
@@ -180,31 +427,51 @@ class TdmsMagnetData(MagnetDataBase):
         unit: tuple | None = None,
         debug: bool = False,
     ) -> None:
-        raise RuntimeError(f"computeData: key={key} not implemented for pigbrother file")
+        raise RuntimeError(
+            f"computeData: key={key} not implemented for pigbrother file"
+        )
 
     # --- time utilities ----------------------------------------------
 
     def getStartDate(self, group: str | None = None) -> tuple:  # noqa: N802
         if group is None:
+            group = next(
+                (g for g in self.Groups if g != "Infos" and self.Groups[g]),
+                None,
+            )
+        if group is None:
             return ()
+
         channel = list(self.Groups[group].keys())[0]
-        start_t = self.Groups[group][channel]["wf_start_time"].astype(datetime)
-        offset_t = self.Groups[group][channel]["wf_start_offset"]
-        print(
-            f"getStartDate: tdms start_t={start_t} (type={type(start_t)}), offset_t={offset_t} (type={type(offset_t)})"
-        )
+        props = self.Groups[group][channel]
+        if "wf_start_time" not in props:
+            return ()
+
+        start_t = props["wf_start_time"].astype(datetime)
+        logger.debug(f"getStartDate: tdms start_t={start_t} (type={type(start_t)})")
+
+        from datetime import timedelta
+
+        duration_s = self.getDuration(group)
+        end_t = start_t + timedelta(seconds=duration_s)
 
         dformat = "%Y.%m.%d"
         tformat = "%H:%M:%S"
-        start_date = datetime.strptime(start_t, dformat)
-        start_time = datetime.strptime(start_t, tformat)
-        end_date = datetime.strptime(start_t, dformat)
-        end_time = datetime.strptime(start_t, tformat)
-        return (start_date, start_time, end_date, end_time)
+        return (
+            start_t.strftime(dformat),
+            start_t.strftime(tformat),
+            end_t.strftime(dformat),
+            end_t.strftime(tformat),
+        )
 
     def getDuration(self, group: str | None = None) -> float:  # noqa: N802
         if group is None:
-            group = "Tensions_Aimant"
+            group = next(
+                (g for g in self.Groups if g != "Infos" and self.Groups[g]),
+                None,
+            )
+        if group is None:
+            return 0.0
         channel = list(self.Groups[group].keys())[0]
         ordered_dict = self.Groups[group][channel]
         dt = ordered_dict["wf_increment"]
@@ -225,12 +492,15 @@ class TdmsMagnetData(MagnetDataBase):
             )
 
         groups_to_process = [group] if group is not None else list(self.Data.keys())
-
+        print(f"addTdmsTime: groups_to_process={groups_to_process}", flush=True)
+        
         for gname in groups_to_process:
             if gname == "Infos":
                 continue
             if "t" in self.Data[gname].columns:
-                logger.debug(f"addTdmsTime: 't' already present in group '{gname}', skipping")
+                logger.debug(
+                    f"addTdmsTime: 't' already present in group '{gname}', skipping"
+                )
                 continue
 
             group_channels = self.Groups.get(gname, {})
@@ -295,7 +565,7 @@ class TdmsMagnetData(MagnetDataBase):
     # --- extract -----------------------------------------------------
 
     def extractData(self, keys: list[str]) -> pd.DataFrame:  # noqa: N802
-        print(f"extractData: filename={self.FileName}, keys={keys}", end="", flush=True)
+        logger.debug(f"extractData: filename={self.FileName}, keys={keys}")
         groups: list[str] = []
         channels: list[str] = []
         dfs: list[pd.DataFrame] = []
@@ -325,15 +595,91 @@ class TdmsMagnetData(MagnetDataBase):
 
         return result
 
-    def extractDataThreshold(self, key: str, threshold: float) -> pd.DataFrame:  # noqa: N802
+    def extractDataThreshold(
+        self, key: str, threshold: float
+    ) -> pd.DataFrame:  # noqa: N802
         (group, channel) = key.split("/")
         return self.Data[group][channel].loc[self.Data[group][channel] >= threshold]  # type: ignore[index]
 
+    def addTdmsTimestamp(  # noqa: N802
+        self,
+        group: str | None = None,
+        timezone: str | None = None,
+    ) -> int:
+        """Add a ``'timestamp'`` column (absolute datetime) to group(s) in Data.
+
+        Requires ``wf_start_time`` and ``wf_increment`` in channel properties.
+        Calls ``addTdmsTime`` first to ensure ``'t'`` column exists.
+
+        :param timezone: optional IANA timezone name (e.g. ``"Europe/Paris"``).
+            When provided the timestamp column is converted from UTC to that
+            timezone using :mod:`pytz`.
+        """
+        assert isinstance(self.Data, dict)
+
+        if group is not None and group not in self.Data:
+            raise RuntimeError(
+                f"addTdmsTimestamp {self.FileName}: group '{group}' not found"
+            )
+
+        groups_to_process = [group] if group is not None else list(self.Data.keys())
+
+        for gname in groups_to_process:
+            if gname == "Infos":
+                continue
+            if "timestamp" in self.Data[gname].columns:
+                logger.debug(
+                    f"addTdmsTimestamp: 'timestamp' already in '{gname}', skipping"
+                )
+                continue
+
+            group_channels = self.Groups.get(gname, {})
+            if not group_channels:
+                logger.warning(
+                    f"addTdmsTimestamp: no channel props for '{gname}', skipping"
+                )
+                continue
+
+            first_channel = list(group_channels.keys())[0]
+            props = group_channels[first_channel]
+            if "wf_start_time" not in props:
+                logger.warning(
+                    f"addTdmsTimestamp: no wf_start_time for '{gname}', skipping"
+                )
+                continue
+
+            self.addTdmsTime(group=gname)
+
+            start_dt = props["wf_start_time"].astype(datetime)
+            self.Data[gname]["timestamp"] = pd.Timestamp(start_dt) + pd.to_timedelta(
+                self.Data[gname]["t"], unit="s"
+            )
+
+            if timezone is not None:
+                import pytz
+
+                tz = pytz.timezone(timezone)
+                self.Data[gname]["timestamp"] = (
+                    self.Data[gname]["timestamp"]
+                    .dt.tz_localize(pytz.utc)
+                    .dt.tz_convert(tz)
+                )
+
+            key = f"{gname}/timestamp"
+            if key not in self.Keys:
+                self.Keys.append(key)
+
+            if "timestamp" not in self.Groups[gname]:
+                self.Groups[gname]["timestamp"] = {"unit_string": "datetime"}
+
+        return 0
+
     def extractTimeData(  # noqa: N802
-        self, timerange: str, group: str | None = None
+        self, timerange: str, group: str | None = None, timezone: str | None = None
     ) -> pd.DataFrame:
         trange = timerange.split(";")
-        print(f"Select data from {trange[0]} to {trange[1]}")
+        logger.debug(f"Select data from {trange[0]} to {trange[1]}")
+        self.addTdmsTimestamp(group=group, timezone=timezone)
         return self.Data[group]["timestamp"].between(trange[0], trange[1], inclusive="both")  # type: ignore[index]
 
     # --- persist / display -------------------------------------------
@@ -387,6 +733,8 @@ class TdmsMagnetData(MagnetDataBase):
 
         if xchannel == "t" and "t" not in self.Data[xgroup].columns:  # type: ignore[index]
             self.addTdmsTime(group=xgroup)
+        if xchannel == "timestamp" and "timestamp" not in self.Data[xgroup].columns:  # type: ignore[index]
+            self.addTdmsTimestamp(group=xgroup)
         df = self.Data[xgroup].copy()  # type: ignore[index]
 
         if normalize:
@@ -414,12 +762,12 @@ class TdmsMagnetData(MagnetDataBase):
     def stats(self, key: str | None = None) -> pd.DataFrame | None:
         from tabulate import tabulate
 
-        print("magnetdata.stats")
+        logger.info("magnetdata.stats")
         if key is not None:
             (group, channel) = key.split("/")
             if group in self.Data:
                 if channel in self.Data[group]:  # type: ignore[index]
-                    print(
+                    logger.info(
                         tabulate(
                             self.Data[group][channel].describe(),  # type: ignore[index]
                             headers="keys",
@@ -428,14 +776,16 @@ class TdmsMagnetData(MagnetDataBase):
                     )
                     return self.Data[group][channel].describe()  # type: ignore[index]
                 else:
-                    raise RuntimeError(f"magnetdata/stats: cannot find channel {channel}")
+                    raise RuntimeError(
+                        f"magnetdata/stats: cannot find channel {channel}"
+                    )
             else:
                 raise RuntimeError(f"magnetdata/stats: cannot find group {group}")
         else:
             for group in self.Data:
-                print(f"stats[{group}]: ")
+                logger.info(f"stats[{group}]: ")
                 df = self.Data[group].describe(include="all")  # type: ignore[index]
-                print(tabulate(df, headers="keys", tablefmt="psql"))
+                logger.info(tabulate(df, headers="keys", tablefmt="psql"))
         return None
 
     def info(self) -> None:
@@ -443,7 +793,7 @@ class TdmsMagnetData(MagnetDataBase):
 
         from tabulate import tabulate
 
-        print(f"magnetdata: {self.FileName}, Type={self.Type}")
+        logger.info(f"magnetdata: {self.FileName}, Type={self.Type.name}")
         headers = [
             "Group",
             "Channel",

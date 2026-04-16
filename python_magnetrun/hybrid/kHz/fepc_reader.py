@@ -11,13 +11,17 @@ from pathlib import Path
 
 import numpy as np
 
+from ...utils.validation import FileFormatError
+
 # Setup logger
 logger = logging.getLogger(__name__)
 
 # FEPC kHz format constants
 SAMPLES_PER_BLOCK = 50  # Number of samples in each data block
 KHZ_SAMPLING_FREQUENCY = 1000.0  # Sampling frequency in Hz for kHz files
-SAMPLE_INTERVAL = 1.0 / KHZ_SAMPLING_FREQUENCY  # Time interval between samples in seconds
+SAMPLE_INTERVAL = (
+    1.0 / KHZ_SAMPLING_FREQUENCY
+)  # Time interval between samples in seconds
 
 # Analog card constants
 ANALOG_CHANNELS = 16
@@ -56,7 +60,9 @@ class CardInfo:
     num_channels: int
     variable_names: list[str]
     calibrations: list[CalibrationInfo] | None = None  # Calibration for each channel
-    digital_info: list[dict] | None = None  # Additional info for digital variables (NUM_BIT, etc.)
+    digital_info: list[dict] | None = (
+        None  # Additional info for digital variables (NUM_BIT, etc.)
+    )
     analog_info: list[dict] | None = (
         None  # Additional info for analog variables (calibration, unit, etc.)
     )
@@ -73,7 +79,9 @@ class FEPCConfig:
     digital_variables: dict[int, list[str]] | None = (
         None  # Slot -> variable names for digital cards
     )
-    analog_variables: dict[int, list[str]] | None = None  # Slot -> variable names for analog cards
+    analog_variables: dict[int, list[str]] | None = (
+        None  # Slot -> variable names for analog cards
+    )
 
     def __post_init__(self):
         if self.digital_variables is None:
@@ -95,6 +103,48 @@ class FEPCConfig:
     def get_digital_slots(self) -> list[int]:
         """Return list of digital card slots"""
         return [card.slot for card in self.cards if card.card_type == "DIG"]
+
+
+def compute_hour_t0(
+    filepath: str, date_str: str, tz_name: str = "Europe/Paris"
+) -> float:
+    """
+    Compute t0 (Unix UTC timestamp) for the start of the hour encoded in filename.
+
+    Filename format: HHxxx.bin, e.g. '10HOST_1_LIST_0.bin' → hour 10
+    t0 = HH:00:00 local time (tz_name) converted to UTC Unix timestamp.
+
+    Parameters
+    ----------
+    filepath : str
+        Path to the bin file
+    date_str : str
+        Recording date as ISO string, e.g. '2024-01-15'
+    tz_name : str
+        Timezone name (default: 'Europe/Paris')
+
+    Returns
+    -------
+    float
+        Unix timestamp (seconds since 1970-01-01 00:00:00 UTC) for HH:00:00 local
+    """
+    import datetime
+    from zoneinfo import ZoneInfo
+
+    name = Path(filepath).name
+    try:
+        hour = int(name[:2])
+    except ValueError as e:
+        raise ValueError(f"Cannot extract hour from filename '{name}': {e}") from e
+
+    date = datetime.date.fromisoformat(date_str)
+    tz = ZoneInfo(tz_name)
+    dt = datetime.datetime(date.year, date.month, date.day, hour, 0, 0, tzinfo=tz)
+
+    logger.debug(
+        f"compute_hour_t0: filepath={filepath}, date_str={date_str}, tz_name={tz_name}, computed t0={dt.isoformat()} (local), {dt.astimezone(ZoneInfo('UTC')).isoformat()} (UTC)"
+    )
+    return dt.astimezone(ZoneInfo('UTC')).timestamp()
 
 
 def parse_cfg_file(cfg_path: str) -> FEPCConfig:
@@ -124,6 +174,7 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
 
     # First line contains the header with FEPC info
     header = lines[0]
+    logger.debug(f"header: {header}")
 
     # Parse header to get FEPC name and basic structure
     # Format: FEPC_NAME;num_cards;freq1;pre1;post1;type1;nchannels1;...
@@ -131,11 +182,11 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
 
     # Extract FEPC name (usually first element before numbers)
     fepc_name = parts[0].split("|")[0] if "|" in parts[0] else parts[0]
-    logger.debug(f"FEPC Name: {fepc_name}")
+    logger.info(f"FEPC Name: {fepc_name}")
 
     # Extract number of cards from parts[1]
     num_cards = int(parts[1]) if len(parts) > 1 else len(lines) - 1
-    logger.debug(f"Number of cards: {num_cards}")
+    logger.info(f"Number of cards: {num_cards}")
 
     # Parse card descriptions from header
     # Each card has 5 fields: freq, pre, post, type, nchannels
@@ -158,7 +209,7 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
                     "nchannels": nchannels,
                 }
             )
-            logger.debug(
+            logger.info(
                 f"Card {card_idx}: freq={freq}, pre={pre}, post={post}, type={card_type}, nchannels={nchannels}"
             )
             header_idx += 5
@@ -173,6 +224,9 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
                     "nchannels": ANALOG_CHANNELS if card_idx < 6 else DIGITAL_CHANNELS,
                 }
             )
+            logger.info(
+                f"Card {card_idx}: freq={10000}, pre={20}, post={50}, type={'ANA' if card_idx < 6 else 'DIG'}, nchannels={ANALOG_CHANNELS if card_idx < 6 else DIGITAL_CHANNELS} (fallback)"
+            )
 
     # Parse each card's information
     cards = []
@@ -184,7 +238,9 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
 
         # Get card description from header
         card_idx = line_idx - 1
-        card_desc = card_descriptions[card_idx] if card_idx < len(card_descriptions) else {}
+        card_desc = (
+            card_descriptions[card_idx] if card_idx < len(card_descriptions) else {}
+        )
 
         slot = card_idx
         card_type = card_desc.get("card_type", "ANA" if line_idx <= 6 else "DIG")  # type: ignore[assignment]
@@ -303,7 +359,9 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
             analog_var_list.append(
                 {
                     "name": var_name,
-                    "num_channel": (int(num_channel) if num_channel else len(analog_var_list)),
+                    "num_channel": (
+                        int(num_channel) if num_channel else len(analog_var_list)
+                    ),
                     "calibration": calib,
                     "info": line_dict,
                 }
@@ -403,7 +461,7 @@ def _extract_calibration(var_dict: dict) -> CalibrationInfo:
 
 
 def read_analog_block(
-    file, block_idx: int, endian: str = "big", verbose: bool = False
+    file, block_idx: int, endian: str = "big", t0: float = 0.0
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Read one analog data block (1614 bytes)
@@ -417,64 +475,59 @@ def read_analog_block(
     file : file object
         Open binary file
     block_idx : int
-        Block index to read
+        Sequential block index within the file (used for seek)
     endian : str
         Endianness: 'big' or 'little' (default: 'big')
+    t0 : float
+        Reference Unix timestamp (seconds). Timestamps are returned as elapsed
+        seconds from t0. Use HH:00:00 local time of the file as t0.
 
     Returns:
     --------
     data : np.ndarray
-        Shape (50, 16) - 50 samples, 16 channels, int16 values
+        Shape (50, 16) - 50 samples, 16 channels, raw uint16 values
     timestamps : np.ndarray
-        Shape (50,) - timestamp for each sample in seconds
-        Note: header timestamp corresponds to last sample (index 49),
-              so each previous sample has 1 ms subtracted
+        Shape (50,) - elapsed seconds from t0 for each sample.
+        Header timestamp is the LAST sample; earlier samples subtract 1 ms each.
     """
-
-    # Seek to block position
     file.seek(block_idx * ANALOG_BLOCK_SIZE)
 
-    # Read header (14 bytes total)
-    # Header structure:
-    #   Bytes 0-3:   Integer value (uint32)
-    #   Bytes 4-7:   Timestamp in seconds (uint32)
-    #   Bytes 8-9:   Timestamp in milliseconds (uint16)
-    #   Bytes 10-13: Unused (4 bytes)
     endian_char = ">" if endian == "big" else "<"
     header_bytes = file.read(ANALOG_HEADER_SIZE)
-    # Unpack as: uint32 (integer), uint32 (seconds), uint16 (milliseconds), 2×uint16 (unused)
+    # Bytes 0-3: block id (uint32), 4-7: seconds (uint32), 8-9: ms (uint16), 10-13: unused
     header_data = struct.unpack(f"{endian_char}IIH2H", header_bytes)
     actual_block_idx = header_data[0]
     t_seconds = header_data[1]
     t_milliseconds = header_data[2]
-    # Reconstruct timestamp: seconds + milliseconds converted to seconds
-    # This timestamp corresponds to the LAST sample (index 49) in the block
-    t_last = t_seconds + (t_milliseconds / KHZ_SAMPLING_FREQUENCY)
+    # Absolute UTC timestamp of the LAST sample in the block
+    t_last = t_seconds + t_milliseconds / 1000.0
 
-    header = {"values": header_data}
-    if verbose:
-        # try to reverse engineer header data (see claude "decoding numeric timestamp" chat)
-        logger.warning(
-            f"read_analog_block: block[{block_idx}] header={header}, t_last={t_last}, actual_block_idx={actual_block_idx}"
-        )
-
-    # Read data (50 samples × 16 channels)
-    data_bytes = file.read(ANALOG_DATA_SIZE)
-    dtype = np.dtype(np.uint16).newbyteorder(">" if endian == "big" else "<")
-    data = np.frombuffer(data_bytes, dtype=dtype).reshape(SAMPLES_PER_BLOCK, ANALOG_CHANNELS)
-    # print(f"read_analog_block: data shape={data.shape}")
-
-    # Create timestamp array: header timestamp is for last sample (index 49)
-    # Each previous sample is one sample interval earlier
-    timestamps = np.array(
-        [t_last - (SAMPLES_PER_BLOCK - 1 - i) * SAMPLE_INTERVAL for i in range(SAMPLES_PER_BLOCK)]
+    logger.debug(
+        f"read_analog_block: block[{block_idx}] actual_block_idx={actual_block_idx}, "
+        f"t_last={t_last:.3f}s, t0={t0:.3f}s, "
+        f"t_last-t0={t_last - t0:.3f}s, "
+        f"header_seconds={t_seconds}, header_milliseconds={t_milliseconds}"
     )
 
+    data_bytes = file.read(ANALOG_DATA_SIZE)
+    dtype = np.dtype(np.uint16).newbyteorder(">" if endian == "big" else "<")
+    data = np.frombuffer(data_bytes, dtype=dtype).reshape(
+        SAMPLES_PER_BLOCK, ANALOG_CHANNELS
+    )
+
+    # Timestamps relative to t0: last sample first, then subtract 1 ms per earlier sample
+    t_last_rel = t_last - t0
+    timestamps = t_last_rel - np.arange(SAMPLES_PER_BLOCK - 1, -1, -1) * SAMPLE_INTERVAL
+    logger.debug(
+        f"Analog block {block_idx}: actual_block_idx={actual_block_idx}, "
+        f"t_last={t_last:.3f}, t0={t0:.3f}, t_last_rel={t_last_rel:.3f}, "
+        f"timestamps[0]={timestamps[0]:.3f}, timestamps[-1]={timestamps[-1]:.3f}"
+    )
     return data, timestamps
 
 
 def read_digital_block(
-    file, block_idx: int, endian: str = "big", verbose: bool = False
+    file, block_idx: int, endian: str = "big", t0: float = 0.0
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Read one digital data block (212 bytes)
@@ -488,69 +541,49 @@ def read_digital_block(
     file : file object
         Open binary file
     block_idx : int
-        Block index to read
+        Sequential block index within the file (used for seek)
     endian : str
         Endianness: 'big' or 'little' (default: 'big')
+    t0 : float
+        Reference Unix timestamp (seconds). Timestamps are returned as elapsed
+        seconds from t0. Use HH:00:00 local time of the file as t0.
 
     Returns:
     --------
     data : np.ndarray
         Shape (50, 32) - 50 samples, 32 channels, boolean values
     timestamps : np.ndarray
-        Shape (50,) - timestamp for each sample in seconds
-        Note: header timestamp corresponds to last sample (index 49),
-              so each previous sample has 1 ms subtracted
+        Shape (50,) - elapsed seconds from t0 for each sample.
+        Header timestamp is the LAST sample; earlier samples subtract 1 ms each.
     """
-
-    # Seek to block position
     file.seek(block_idx * DIGITAL_BLOCK_SIZE)
 
-    # Read header (12 bytes total)
-    # Header structure:
-    #   Bytes 0-3:  Integer value (uint32)
-    #   Bytes 4-7:  Timestamp in seconds (uint32)
-    #   Bytes 8-9:  Timestamp in milliseconds (uint16)
-    #   Bytes 10-11: Unused (2 bytes)
     endian_char = ">" if endian == "big" else "<"
     header_bytes = file.read(DIGITAL_HEADER_SIZE)
-    # Unpack as: uint32 (integer), uint32 (seconds), uint16 (milliseconds), uint16 (unused)
+    # Bytes 0-3: block id (uint32), 4-7: seconds (uint32), 8-9: ms (uint16), 10-11: unused
     header_data = struct.unpack(f"{endian_char}IIH H", header_bytes)
     int_value = header_data[0]
     t_seconds = header_data[1]
     t_milliseconds = header_data[2]
-    # Reconstruct timestamp: seconds + milliseconds converted to seconds
-    # This timestamp corresponds to the LAST sample (index 49) in the block
-    t_last = t_seconds + (t_milliseconds / KHZ_SAMPLING_FREQUENCY)
+    t_last = t_seconds + t_milliseconds / KHZ_SAMPLING_FREQUENCY
 
-    header = {"values": header_data}
-    if verbose:
-        # try to reverse engineer header data (see claude "decoding numeric timestamp" chat)
-        logger.warning(
-            f"read_digital_block: block[{block_idx}] header={header}, t_last={t_last}, actual_block_idx={int_value}"
-        )
+    logger.debug(
+        f"read_digital_block: block[{block_idx}] actual_block_idx={int_value}, "
+        f"t_last-t0={t_last - t0:.3f}s"
+    )
 
-    # Read data (50 samples × 32 bits per sample)
-    # Each sample contains 32 digital bits (one per channel)
     data_bytes = file.read(DIGITAL_DATA_SIZE)
     dtype = np.dtype(np.uint16).newbyteorder(">" if endian == "big" else "<")
     data_uint16 = np.frombuffer(data_bytes, dtype=dtype).reshape(SAMPLES_PER_BLOCK, 2)
 
-    # Convert to individual boolean bits (32 channels per sample)
-    # Extract bits using vectorized numpy operations for efficiency
     data = np.zeros((SAMPLES_PER_BLOCK, DIGITAL_CHANNELS), dtype=bool)
     for bit in range(16):
-        # Extract bit position from word1 (channels 0-15)
         data[:, bit] = ((data_uint16[:, 0] >> bit) & 1).astype(bool)
-        # Extract bit position from word2 (channels 16-31)
         data[:, 16 + bit] = ((data_uint16[:, 1] >> bit) & 1).astype(bool)
 
-    # Create timestamp array: header timestamp is for last sample (index 49)
-    # Each previous sample is one sample interval earlier
-    timestamps = np.array(
-        [t_last - (SAMPLES_PER_BLOCK - 1 - i) * SAMPLE_INTERVAL for i in range(SAMPLES_PER_BLOCK)]
-    )
+    t_last_rel = t_last - t0
+    timestamps = t_last_rel - np.arange(SAMPLES_PER_BLOCK - 1, -1, -1) * SAMPLE_INTERVAL
 
-    logger.debug(f"read_digital_block: data shape = {data.shape}")
     return data, timestamps
 
 
@@ -559,12 +592,17 @@ def read_hour_file(
     card_type: str,
     num_blocks: int = 72000,
     endian: str = "big",
+    t0: float | None = None,
     debug: bool = False,
     debug_channel: int = 0,
     debug_interval: int = 1000,
-) -> np.ndarray:
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Read complete hour file (all blocks)
+
+    Block placement is determined by each block's header timestamp, not by its
+    sequential position in the file. Missing blocks (gaps) remain as NaN in both
+    data and timestamps arrays.
 
     Parameters:
     -----------
@@ -573,9 +611,13 @@ def read_hour_file(
     card_type : str
         'ANA' for analog or 'DIG' for digital
     num_blocks : int
-        Number of blocks to read (default 72000 = 1 hour)
+        Expected number of blocks for pre-allocation (default 72000 = 1 hour)
     endian : str
         Endianness: 'big' or 'little' (default: 'big')
+    t0 : float or None
+        Unix UTC timestamp of the origin (typically HH:00:00 local time from the
+        filename, obtained via compute_hour_t0). If None, the first valid block's
+        first-sample timestamp is used.
     debug : bool
         If True, plot data incrementally during reading (default: False)
     debug_channel : int
@@ -586,19 +628,18 @@ def read_hour_file(
     Returns:
     --------
     data : np.ndarray
-        For analog: shape (3600000, 16) - 3.6M samples, 16 channels
-        For digital: shape (3600000, 32) - 3.6M samples, 32 channels
+        For analog: shape (num_blocks*50, 16) - NaN where blocks are missing
+        For digital: shape (num_blocks*50, 32) - NaN where blocks are missing
+    timestamps : np.ndarray
+        Shape (num_blocks*50,) - elapsed seconds from t0, NaN where blocks are missing
     """
     import matplotlib.pyplot as plt
 
     num_channels = ANALOG_CHANNELS if card_type == "ANA" else DIGITAL_CHANNELS
-    total_samples = num_blocks * SAMPLES_PER_BLOCK
     logger.info(
-        f"read_hour_file: file={filepath}, card_type={card_type}, num_blocks={num_blocks}, num_channels={num_channels}, total_samples={total_samples}, endian={endian}"
+        f"read_hour_file: file={filepath}, card_type={card_type}, "
+        f"num_blocks={num_blocks}, endian={endian}, t0={t0}"
     )
-
-    # Estimate actual block numbers based on file size
-    from pathlib import Path
 
     block_size = ANALOG_BLOCK_SIZE if card_type == "ANA" else DIGITAL_BLOCK_SIZE
     file_path = Path(filepath)
@@ -608,92 +649,114 @@ def read_hour_file(
     remainder = file_size % block_size
 
     if remainder != 0:
-        logger.critical(
-            f"{filepath} - file size {file_size} is not a multiple of block size {block_size}, ignoring last {remainder} bytes"
+        raise FileFormatError(
+            f"{filepath}: file size {file_size} is not a multiple of block size "
+            f"{block_size} for card_type={card_type} (remainder={remainder} bytes)"
         )
-        raise
 
-    verbose = False
-    if num_blocks != actual_num_blocks:
-        verbose = True
-        logger.warning(f"{filepath}: expected {num_blocks} blocks got {actual_num_blocks}")
+    if actual_num_blocks != num_blocks:
+        logger.warning(
+            f"{filepath}: expected {num_blocks} blocks, got {actual_num_blocks} in file"
+        )
 
-    # Pre-allocate array
-    data = np.zeros((total_samples, num_channels), dtype=np.uint16 if card_type == "ANA" else bool)
-    # TODO set NaN instead of zero
-    data = np.empty((total_samples, num_channels))
-    data.fill(np.nan)
-    logger.info(
-        f"read_hour_file: file={filepath}, Allocated data array of shape {data.shape} for card type {card_type}"
-    )
+    # If t0 not provided, derive it from the absolute timestamp of the first block's
+    # first sample so that timestamps[0] ≈ 0.
+    _t0 = t0
+    if _t0 is None:
+        endian_char = ">" if endian == "big" else "<"
+        header_size = ANALOG_HEADER_SIZE if card_type == "ANA" else DIGITAL_HEADER_SIZE
+        fmt = f"{endian_char}IIH2H" if card_type == "ANA" else f"{endian_char}IIH H"
+        with open(filepath, "rb") as peek_f:
+            hdr = struct.unpack(fmt, peek_f.read(header_size))
+        t_last_first = hdr[1] + hdr[2] / KHZ_SAMPLING_FREQUENCY
+        _t0 = t_last_first - (SAMPLES_PER_BLOCK - 1) * SAMPLE_INTERVAL
+        logger.info(f"read_hour_file: t0 derived from first block header: {_t0}")
+
+    total_samples = actual_num_blocks * SAMPLES_PER_BLOCK
+    # Pre-allocate full-hour arrays filled with NaN
+    data = np.full((total_samples, num_channels), np.nan)
+    timestamps = np.full(total_samples, np.nan)
 
     # Setup debug plot if requested
     fig, ax, line = None, None, None
     if debug:
-        plt.ion()  # Interactive mode
+        plt.ion()
         fig, ax = plt.subplots(figsize=(14, 6))
-        ax.set_xlabel("Sample")
+        ax.set_xlabel("Time from t0 (s)")
         ax.set_ylabel(f"Channel {debug_channel}")
-        ax.set_title(f"Debug: Reading {filepath} - Block 0/{num_blocks}")
+        ax.set_title(f"Debug: Reading {Path(filepath).name} - 0/{actual_num_blocks}")
         ax.grid(True, alpha=0.3)
         (line,) = ax.plot([], [], linewidth=0.5, alpha=0.8)
         plt.show(block=False)
 
     with open(filepath, "rb") as f:
-        for block_idx in range(num_blocks):
+        for file_block_idx in range(actual_num_blocks):
             try:
                 if card_type == "ANA":
-                    block_data, timestamps = read_analog_block(f, block_idx, endian, verbose)
+                    block_data, block_timestamps = read_analog_block(
+                        f, file_block_idx, endian, _t0
+                    )
                 else:
-                    block_data, timestamps = read_digital_block(f, block_idx, endian, verbose)
+                    block_data, block_timestamps = read_digital_block(
+                        f, file_block_idx, endian, _t0
+                    )
 
-                # Store in output array
-                start_idx = block_idx * SAMPLES_PER_BLOCK
+                start_idx = file_block_idx * SAMPLES_PER_BLOCK
                 end_idx = start_idx + SAMPLES_PER_BLOCK
                 data[start_idx:end_idx, :] = block_data
+
+                timestamps[start_idx:end_idx] = block_timestamps
                 logger.debug(
-                    f"read_hour_file: file={filepath}, block_idx={block_idx}/{num_blocks}, start_idx={start_idx}, end_idx={end_idx} stored, block_data shape={block_data.shape}"
+                    f"read_hour_file: file_block={file_block_idx}/{actual_num_blocks}, "
+                    f"start_idx={start_idx}, t_first={block_timestamps[0]:.3f}s"
                 )
 
-                # Update debug plot at intervals
-                if debug and (block_idx + 1) % debug_interval == 0:
-                    current_end = end_idx
-                    x_data = np.arange(current_end)
-                    y_data = data[:current_end, debug_channel]
+                if debug and (file_block_idx + 1) % debug_interval == 0:
+                    valid = ~np.isnan(timestamps[:end_idx])
                     if line is not None:
-                        line.set_data(x_data, y_data)
+                        line.set_data(
+                            timestamps[:end_idx][valid],
+                            data[:end_idx, debug_channel][valid],
+                        )
                     if ax is not None:
                         ax.relim()
                         ax.autoscale_view()
                         ax.set_title(
-                            f"Debug: Reading {Path(filepath).name} - Block {block_idx + 1}/{num_blocks}"
+                            f"Debug: {Path(filepath).name} - {file_block_idx + 1}/{actual_num_blocks}"
                         )
                     if fig is not None:
                         fig.canvas.draw()
                         fig.canvas.flush_events()
-                    plt.pause(0.01)
+                    plt.pause(1)
+
             except struct.error as e:
                 logger.warning(
-                    f"read_hour_file: Error reading block {block_idx}/{num_blocks} in {filepath}: {e}"
+                    f"read_hour_file: Error reading file_block {file_block_idx}/{actual_num_blocks} "
+                    f"in {filepath}: {e}"
                 )
 
-        print(f"Reading complete from {filepath}, data shape: {data.shape}\n")
+    logger.info(
+        f"Reading complete from {filepath}, valid samples: "
+        f"{int(np.sum(~np.isnan(timestamps)))}/{total_samples}"
+    )
 
     if debug:
-        # Final update
+        valid = ~np.isnan(timestamps)
         if line is not None:
-            line.set_data(np.arange(total_samples), data[:, debug_channel])
+            line.set_data(timestamps[valid], data[valid, debug_channel])
         if ax is not None:
             ax.relim()
             ax.autoscale_view()
-            ax.set_title(f"Debug: {Path(filepath).name} - Complete ({num_blocks} blocks)")
+            ax.set_title(
+                f"Debug: {Path(filepath).name} - Complete ({actual_num_blocks} blocks)"
+            )
         if fig is not None:
             fig.canvas.draw()
             fig.canvas.flush_events()
         plt.ioff()
-        plt.show()  # Keep final plot open
+        plt.show()
 
-    return data
+    return data, timestamps
 
 
 def load_calibration(cnv_path: str) -> dict:
@@ -782,7 +845,9 @@ def apply_calibration(
         Calibrated data in physical units (float)
     """
     if cnv_dict is not None and cnv_dict["type"] == "piecewise":
-        logger.debug(f"apply piecewise calibration using CNV data (cvn_dict={cnv_dict})")
+        logger.debug(
+            f"apply piecewise calibration using CNV data (cvn_dict={cnv_dict})"
+        )
         # Piecewise linear calibration
         return _apply_piecewise_calibration(raw_data, cnv_dict)
 
@@ -798,7 +863,9 @@ def apply_calibration(
         return raw_data.astype(np.float64)
 
 
-def _apply_linear_calibration(raw_data: np.ndarray, calib: CalibrationInfo) -> np.ndarray:
+def _apply_linear_calibration(
+    raw_data: np.ndarray, calib: CalibrationInfo
+) -> np.ndarray:
     """
     Apply linear calibration: Signal = A * (COEF_A * N + COEF_B) + B
 
@@ -827,7 +894,9 @@ def _apply_piecewise_calibration(raw_data: np.ndarray, cnv_dict: dict) -> np.nda
 
     # Use numpy's interpolation
     # extrapolation uses nearest value for out-of-range points
-    physical_data = np.interp(raw_data.flatten(), n_values, physical_values).reshape(raw_data.shape)
+    physical_data = np.interp(raw_data.flatten(), n_values, physical_values).reshape(
+        raw_data.shape
+    )
 
     return physical_data
 
@@ -945,45 +1014,258 @@ def main():
     # Parse configuration if provided
     if args.config:
         config = parse_cfg_file(args.config)
-        print(f"FEPC: {config.fepc_name}")
-        print(f"Number of cards: {config.num_cards}")
+        logger.info(f"FEPC: {config.fepc_name}")
+        logger.info(f"Number of cards: {config.num_cards}")
 
         for card in config.cards:
-            print(f"\nSlot {card.slot}: {card.card_type} card")
-            print(f"  Sampling frequency: {KHZ_SAMPLING_FREQUENCY:.0f} Hz")
-            print(f"  Number of channels: {card.num_channels}")
-            print(
+            logger.info(f"\nSlot {card.slot}: {card.card_type} card")
+            logger.info(f"  Sampling frequency: {KHZ_SAMPLING_FREQUENCY:.0f} Hz")
+            logger.info(f"  Number of channels: {card.num_channels}")
+            logger.info(
                 f"  Variables: {', '.join(card.variable_names[:5])}{', ...' if len(card.variable_names) > 5 else ''}"
             )
 
     # Read data file if provided
     if args.datafile:
-        print(f"\nReading data file: {args.datafile}")
-        print(f"Card type: {args.card_type}")
-        print(f"Endianness: {args.endian}")
-        print(f"Number of blocks: {args.num_blocks}")
+        logger.info(f"Reading data file: {args.datafile}")
+        logger.info(f"Card type: {args.card_type}")
+        logger.info(f"Endianness: {args.endian}")
+        logger.info(f"Number of blocks: {args.num_blocks}")
 
-        data = read_hour_file(args.datafile, args.card_type, args.num_blocks, args.endian)
-        print(f"\nData shape: {data.shape}")
-        print(f"Data type: {data.dtype}")
+        data, timestamps = read_hour_file(
+            args.datafile, args.card_type, args.num_blocks, args.endian
+        )
+        logger.info(f"Data shape: {data.shape}")
+        logger.info(f"Data type: {data.dtype}")
+        logger.info(
+            f"Valid samples: {int(np.sum(~np.isnan(timestamps)))}/{len(timestamps)}"
+        )
 
         if args.card_type == "ANA":
-            print(f"Data range: [{data.min()}, {data.max()}]")
-            print(f"First 5 samples (channel 0): {data[:5, 0]}")
+            logger.info(f"Data range: [{np.nanmin(data)}, {np.nanmax(data)}]")
+            logger.info(f"First 5 samples (channel 0): {data[:5, 0]}")
 
     if not args.config and not args.datafile:
-        print("FEPC Reader module loaded successfully!")
-        print("\nUsage examples:")
-        print("  Parse config:  python fepc_reader.py --config HOST_2_DATA.CFG")
-        print(
+        logger.info("FEPC Reader module loaded successfully!")
+        logger.info("\nUsage examples:")
+        logger.info("  Parse config:  python fepc_reader.py --config HOST_2_DATA.CFG")
+        logger.info(
             "  Read data:     python fepc_reader.py --datafile data.bin --card-type ANA --endian big"
         )
-        print(
+        logger.info(
             "  Full example:  python fepc_reader.py -c HOST_2_DATA.CFG -d data.bin -t ANA -n 1000 -e big"
         )
         parser.print_help()
 
     return args
+
+
+def read_variable_from_files(
+    bin_files: list,
+    slot: int,
+    channel_idx: int,
+    card_type: str,
+    config=None,
+    endian: str = "big",
+    t0: float | None = None,
+    date_str: str | None = None,
+    debug: bool = False,
+    var_name: str = "Variable",
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Read specific variable from all bin files
+
+    Parameters:
+    -----------
+    bin_files : list
+        List of bin file paths
+    slot : int
+        Card slot number
+    channel_idx : int
+        Channel index within the card
+    card_type : str
+        'ANA' for analog or 'DIG' for digital
+    config : FEPCConfig, optional
+        Configuration object for calibration
+    endian : str
+        Endianness: 'big' or 'little' (default: 'big')
+    t0 : float or None
+        Unix UTC timestamp for the time origin. If None and date_str is given,
+        derived from the first filename via compute_hour_t0. If both are None,
+        derived from the first valid block.
+    date_str : str or None
+        Recording date as ISO string (e.g. '2024-01-15'), used to compute t0
+        from filename when t0 is not provided.
+    debug : bool
+        If True, plot data after each block is loaded (default: False)
+    var_name : str
+        Variable name for debug plot title
+
+    Returns:
+    --------
+    data : np.ndarray
+        Concatenated data from all files (NaN where blocks are missing)
+    time : np.ndarray
+        Elapsed time in seconds from t0 per sample (NaN where blocks are missing)
+    """
+    import matplotlib.pyplot as plt
+
+    all_data = []
+    all_timestamps = []
+
+    # global_t0: origin for returned time array (HH:00 of first file, or caller-supplied)
+    global_t0 = t0
+    if global_t0 is None and date_str is not None and bin_files:
+        global_t0 = compute_hour_t0(str(bin_files[0]), date_str)
+        logger.info(
+            f"read_variable_from_files: global_t0={global_t0} from {bin_files[0].name}"
+        )
+
+    # Setup debug plot if requested
+    fig, ax, line = None, None, None
+    if debug:
+        plt.ion()
+        fig, ax = plt.subplots(figsize=(14, 6))
+        ax.set_xlabel("Time from t0 (seconds)")
+        ax.set_ylabel(f"{var_name}")
+        ax.set_title(f"Debug: {var_name} (Slot {slot}) - Loading...")
+        ax.grid(True, alpha=0.3)
+        (line,) = ax.plot([], [], linewidth=0.5, alpha=0.8)
+        plt.show(block=False)
+
+    if debug:
+        print(f"Reading {len(bin_files)} files... (endian={endian})", flush=True)
+
+    for file_idx, file_path in enumerate(bin_files):
+        try:
+            if debug:
+                print(f"Reading file: {file_path.name}", flush=True)
+
+            # Each file is read with its own file-local t0 (timestamps stay in 0..3600s)
+            if date_str is not None:
+                file_t0 = compute_hour_t0(str(file_path), date_str)
+            else:
+                file_t0 = (
+                    global_t0  # fallback: same t0 for all (or None → derived inside)
+                )
+
+            hour_data, hour_timestamps = read_hour_file(
+                str(file_path),
+                card_type,
+                endian=endian,
+                t0=file_t0,
+                debug=debug,
+                debug_channel=channel_idx,
+            )
+
+            # Capture global_t0 from first file when not provided
+            if global_t0 is None and file_idx == 0:
+                valid_ts = hour_timestamps[~np.isnan(hour_timestamps)]
+                if len(valid_ts) > 0:
+                    global_t0 = file_t0 if file_t0 is not None else float(valid_ts[0])
+                    logger.info(
+                        f"read_variable_from_files: global_t0={global_t0} from first block"
+                    )
+
+            # Shift file-local timestamps to be relative to global_t0
+            if file_t0 is not None and global_t0 is not None and file_t0 != global_t0:
+                offset = file_t0 - global_t0
+                hour_timestamps = np.where(
+                    np.isnan(hour_timestamps), np.nan, hour_timestamps + offset
+                )
+
+            all_data.append(hour_data[:, channel_idx])
+            all_timestamps.append(hour_timestamps)
+            print(f"  ✓ {file_path.name}")
+
+            if debug:
+                current_data = np.concatenate(all_data)
+                current_ts = np.concatenate(all_timestamps)
+                valid = ~np.isnan(current_ts)
+                if line is not None:
+                    line.set_data(current_ts[valid], current_data[valid])
+                if ax is not None:
+                    ax.relim()
+                    ax.autoscale_view()
+                    ax.set_title(
+                        f"Debug: {var_name} (Slot {slot}) - File {file_idx + 1}/{len(bin_files)}"
+                    )
+                if fig is not None:
+                    fig.canvas.draw()
+                    fig.canvas.flush_events()
+                plt.pause(1)
+
+        except (OSError, ValueError, RuntimeError) as e:
+            print(f"  ✗ Error reading {file_path.name}: {e}")
+
+    if debug:
+        plt.ioff()
+        plt.close(fig)
+
+    if not all_data:
+        raise ValueError("No data could be read from bin files")
+
+    data = np.concatenate(all_data)
+    time = np.concatenate(all_timestamps)  # already relative to t0
+
+    return data, time
+
+
+def apply_variable_calibration(
+    data: np.ndarray, config, slot: int, channel_idx: int, cnv_directory: str = "."
+) -> np.ndarray:
+    """
+    Apply calibration to variable data
+
+    Parameters:
+    -----------
+    data : np.ndarray
+        Raw data
+    config : FEPCConfig
+        Configuration object
+    slot : int
+        Card slot
+    channel_idx : int
+        Channel index
+    cnv_directory : str
+        Directory containing CNV files for piecewise calibration
+
+    Returns:
+    --------
+    np.ndarray
+        Calibrated data
+    """
+    try:
+        card = config.get_card_by_slot(slot)
+        if card.card_type != "ANA":
+            # Digital data doesn't need calibration
+            return data.astype(np.float64)
+
+        if card.calibrations and channel_idx < len(card.calibrations):
+            calib_info = card.calibrations[channel_idx]
+
+            # Check if CNV file calibration should be used
+            if calib_info.cnv_file:
+                cnv_path = Path(cnv_directory) / calib_info.cnv_file
+                if cnv_path.exists():
+                    print(f"  Using CNV file calibration: {calib_info.cnv_file}")
+                    cnv_dict = load_calibration(str(cnv_path))
+                    return apply_calibration(data, cnv_dict=cnv_dict)
+                else:
+                    print(
+                        f"  Warning: CNV file {cnv_path} not found, using linear calibration"
+                    )
+
+            # Use linear calibration
+            print(
+                f"  Using linear calibration: A={calib_info.a}, B={calib_info.b}, COEFA={calib_info.coef_a}, COEFB={calib_info.coef_b}"
+            )
+            return apply_calibration(data, calib_info)
+
+    except (ValueError, IndexError, AttributeError) as e:
+        print(f"  Warning: Could not apply calibration: {e}")
+
+    return data.astype(np.float64)
 
 
 if __name__ == "__main__":

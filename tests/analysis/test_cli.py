@@ -14,23 +14,22 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from python_magnetrun.analysis.cli import (
+from python_magnetrun.analysis.args import (
+    args_to_processing_config,
+    create_argument_parser,
+    parse_arguments,
+)
+from python_magnetrun.analysis.cli import main
+from python_magnetrun.log_utils import (
     COMPACT_FORMAT,
     ROOT_LOGGER_NAME,
     ColoredFormatter,
     JSONFormatter,
     LogConfig,
     LogContext,
-    # Progress
     ProgressTracker,
-    args_to_processing_config,
-    # Argument parsing
-    create_argument_parser,
     get_logger,
-    main,
-    parse_arguments,
     set_log_level,
-    # Logging
     setup_logging,
     timed_operation,
 )
@@ -339,8 +338,6 @@ class TestTimedOperation:
 
     def test_with_exception(self):
         """Test timing when exception occurs."""
-        timing = {}
-
         with (
             pytest.raises(ValueError),
             timed_operation("Test", log_start=False) as timing,
@@ -394,7 +391,7 @@ class TestArgumentParser:
     def test_required_args(self):
         """Test required arguments."""
         args = parse_arguments(["input.tdms"])
-        assert args.input_file[0].name == "input.tdms"
+        assert args.input_file[0] == "input.tdms"
 
     def test_multiple_inputs(self):
         """Test multiple input files."""
@@ -493,8 +490,17 @@ class TestMain:
         mock_natsorted.return_value = ["test.tdms"]
         mock_record = MagicMock()
         mock_record.filename = "test"
+        mock_record.site = "M9"
+        mock_record.mode = "overview"
+        mock_record.t0 = None
         mock_record.duration = 100.0
+        mock_record.teb = 0.0
+        mock_record.BP = 0.0
         mock_record.has_data.return_value = True
+        mock_record.data = {}
+        mock_record.signatures = {}
+        mock_record.sync_info = {}
+        mock_record.metrics = {}
         mock_process.return_value = mock_record
 
         result = main(["test.tdms", "--dry-run"])

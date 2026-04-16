@@ -7,95 +7,81 @@ from datetime import datetime
 
 import matplotlib.pyplot as plt
 import pandas as pd
+from tabulate import tabulate
 
-from ..magnetdata import MagnetData
-from ..MagnetRun import MagnetRun
-from ..processing.correlations import pearson
-from ..processing.stats import stats
+from python_magnetrun.cli_args import create_base_parser, get_datadir_mapping
+from python_magnetrun.log_utils import get_logger, setup_logging
+from python_magnetrun.magnetdata_base import MagnetDataBase
+from python_magnetrun.MagnetRun import MagnetRun
+from python_magnetrun.processing.correlations import pearson
+from python_magnetrun.processing.stats import stats
+from python_magnetrun.utils.files import expand_input_files
+from python_magnetrun.utils.timestamps import parse_filename_timestamp
+
+logger = get_logger()
 
 
-def load_record(file: str, args, show: bool = False) -> MagnetData:
-    """Load record."""
-    # print(f'load_record: {file}')
-
+def load_record(file: str, args, show: bool = False) -> MagnetDataBase:
+    """Load record from a pupitre .txt or pigbrother .tdms file."""
     filename = os.path.basename(file)
-    (housing, timestamp) = filename.split("_")
-    site = "blbl"
+    extension = os.path.splitext(filename)[-1]
+    housing = args.housing if args.housing != "notdefined" else filename.split("_")[0]
+    site = args.site
 
-    mrun = MagnetRun.fromtxt(housing, site, file)
+    try:
+        if extension == ".txt":
+            mrun = MagnetRun.fromtxt(housing, site, file)
+        elif extension == ".tdms":
+            mrun = MagnetRun.fromtdms(site, housing, file)
+        else:
+            raise RuntimeError(f"unsupported file extension: {extension}")
+    except RuntimeError:
+        raise
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError(f"{file}: failed to load ({type(e).__name__}: {e})") from e
+
     data = mrun.MagnetData
-    if not isinstance(data, MagnetData):
-        raise RuntimeError(f"{file}: cannot load data as MagnetData")
+    if not isinstance(data, MagnetDataBase):
+        raise RuntimeError(
+            f"{file}: cannot load data as MagnetDataBase (got {type(data).__name__})"
+        )
 
     return data
 
 
-def select_data(data, args) -> bool:
+def select_data(data, args) -> dict | None:
+    """Return a result dict if the record passes selection criteria, else None."""
     duration = data.getDuration()
     if duration > args.duration:
         bdata = data.extractDataThreshold("Field", args.field)
         if not bdata.empty:
-            bfield = data.getData("Field")
-            print(
-                f"record: {data.FileName}, duration: {data.getDuration()} s, Field: min={bfield.min()}, mean={bfield.mean()}, max={bfield.max()}"
-            )
-            return True
-    return False
+            bfield = data.getData("Field").squeeze()
+            return {
+                "file": data.FileName,
+                "duration (s)": f"{duration:.1f}",
+                "Field min (T)": f"{bfield.min():.3f}",
+                "Field mean (T)": f"{bfield.mean():.3f}",
+                "Field max (T)": f"{bfield.max():.3f}",
+            }
+    return None
 
 
-"""
-    # print(f"stats: {data.stats('Field')}")
-
-        if show:
-            ax = plt.gca()
-            data.plotData("t", "Field", ax)
-            plt.title(f"{file}: Magnet Field")
-            plt.show()
-
-            ax = plt.gca()
-            data.plotData("t", "IH", ax)
-            data.plotData("t", "IB", ax)
-            plt.title(f"{file}: current")
-            plt.show()
-
-    return data
-    # print(f"stats: {mrun.getStats()}")
-"""
-
-
-def getTimestamp(file: str, debug: bool = False) -> datetime:
-    """
-    extract timestamp from file
-    """
-    # print(f"getTime({file}):", flush=True)
-
-    filename = ""
-    if "/" in file:
-        filename = file.split("/")
-    res = filename[-1].split("_")
-    if debug:
-        print(f"getTime({file})={res}", flush=True)
-
-    try:
-        (site, date_string) = res
-        date_string = date_string.replace(".txt", "")
-        tformat = "%Y.%m.%d---%H:%M:%S"
-        timestamp = datetime.strptime(date_string, tformat)
-        if debug:
-            print(f"{site}: timestamp={timestamp}")
-    except:  # noqa: E722
-        raise RuntimeError(f"getTimestamp: {file} failed -unexpected filename") from None
-
-    return timestamp
+def _sort_key(file: str) -> datetime:
+    """Return the start timestamp for *file*, raising RuntimeError if unparseable."""
+    ts = parse_filename_timestamp(file)
+    if ts is None:
+        raise RuntimeError(f"cannot parse timestamp from filename: {file!r}")
+    return ts
 
 
 def main():
     """Console script."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("inputfile", help="specify inputfile", nargs="+")
-    parser.add_argument("--debug", help="enable debug mode", action="store_true")
+    base_parser = create_base_parser()
+    parser = argparse.ArgumentParser(parents=[base_parser])
 
-    subparsers = parser.add_subparsers(title="commands", dest="command", help="sub-command help")
+    subparsers = parser.add_subparsers(
+        title="commands", dest="command", help="sub-command help"
+    )
     parser_select = subparsers.add_parser("select", help="select help")
     parser_stats = subparsers.add_parser("stats", help="stats help")
     parser_plot = subparsers.add_parser("plot", help="select help")
@@ -108,7 +94,9 @@ def main():
         type=float,
         default="60",
     )
-    parser_select.add_argument("--fields", help="select fields to plot", type=str, nargs="+")
+    parser_select.add_argument(
+        "--fields", help="select fields to plot", type=str, nargs="+"
+    )
     parser_select.add_argument(
         "--field",
         help="select field with a value more than",
@@ -117,8 +105,12 @@ def main():
     )
 
     # subcommand plot
-    parser_plot.add_argument("--fields", help="select fields to plot", type=str, nargs="+")
-    parser_plot.add_argument("--xfield", help="select x to plot", type=str, default="timestamp")
+    parser_plot.add_argument(
+        "--fields", help="select fields to plot", type=str, nargs="+"
+    )
+    parser_plot.add_argument(
+        "--xfield", help="select x to plot", type=str, default="timestamp"
+    )
     parser_plot.add_argument("--show", help="enable show mode", action="store_true")
     parser_plot.add_argument("--save", help="enable save mode", action="store_true")
 
@@ -126,13 +118,21 @@ def main():
     parser_aggregate.add_argument(
         "--fields", help="select fields to aggregate", type=str, nargs="+"
     )
-    parser_aggregate.add_argument("--name", help="set basename of file to be saved", type=str)
-    parser_aggregate.add_argument("--show", help="enable show mode", action="store_true")
-    parser_aggregate.add_argument("--save", help="enable save mode", action="store_true")
+    parser_aggregate.add_argument(
+        "--name", help="set basename of file to be saved", type=str
+    )
+    parser_aggregate.add_argument(
+        "--show", help="enable show mode", action="store_true"
+    )
+    parser_aggregate.add_argument(
+        "--save", help="enable save mode", action="store_true"
+    )
 
     # subcommand stats
     parser_stats.add_argument("--fields", help="select fields", type=str, nargs="+")
-    parser_stats.add_argument("--pairplot", help="enable save mode", action="store_true")
+    parser_stats.add_argument(
+        "--pairplot", help="enable save mode", action="store_true"
+    )
     parser_stats.add_argument(
         "--pearson", help="enable Pearson correlation calculation", action="store_true"
     )
@@ -146,131 +146,103 @@ def main():
     parser_stats.add_argument("--save", help="enable save mode", action="store_true")
 
     args = parser.parse_args()
+    logger.error(f"get-record: Arguments={args}, pwd={os.getcwd()}")
 
-    print(f"getrecords: Arguments={args}, pwd={os.getcwd()}")
+    setup_logging(level=args.log_level, log_file=args.log_file)
+    debug = args.log_level == "DEBUG"
 
-    # check if input_file is a string or a list
-    files = args.inputfile
+    # Always print input parameters for traceability
+    logger.info(f"getrecords: Arguments={args}, pwd={os.getcwd()}")
+
+    # Expand glob patterns and search configured data directories
+    datadir = get_datadir_mapping(args)
+    files = expand_input_files(args.input_file, datadir, args.housing)
+    print(f"files: {files}, datadir={datadir}")
 
     # need to be sorted by time??
-    files = sorted(files, key=lambda x: getTimestamp(x, args.debug), reverse=False)
-    if args.debug:
-        print(f"sort by time: {files}")
+    files = sorted(files, key=_sort_key, reverse=False)
+    logger.debug(f"sort by time: {files}")
 
     selected_keys = []
     if args.command == "plot":
         if args.xfield:
             selected_keys += [args.xfield]
         if args.fields:
-            print(f"args.fields={args.fields}")
+            logger.debug(f"args.fields={args.fields}")
             selected_keys += args.fields
     elif args.command == "aggregate":
         selected_keys += args.fields
     else:
         selected_keys += ["Field"]
-    print(f"selected_keys={selected_keys}", flush=True)
+    logger.debug(f"selected_keys={selected_keys}")
 
     min_duration = 60
     if args.command == "select":
         min_duration = args.duration
     elif args.command == "stats":
-        print(f"!!! OverWrite min duration for stats: {min_duration} -> 1000 !!!")
+        logger.warning(f"Overwriting min duration for stats: {min_duration} -> 1000")
         min_duration = 1000
 
     if "timestamp" not in selected_keys:
         selected_keys.append("timestamp")
-    print(f"selected_keys={selected_keys}", flush=True)
-
-    """
-    https://stackoverflow.com/questions/57601552/how-to-plot-timeseries-using-pandas-with-monthly-groupby
-    https://gist.github.com/vincentarelbundock/3485014
-
-    need to concat magnetdata
-    build 'month' and 'year' column in resulting dataframe
-
-    import pandas as pd
-    import statsmodels.api as sm
-    import seaborn as sns
-
-    df = sm.datasets.co2.load(as_pandas=True).data
-    df['month'] = pd.to_datetime(df.index).month
-    df['year'] = pd.to_datetime(df.index).year
-    sns.lineplot(x='month',y='co2',hue='year',data=df.query('year>1995')) # filtered over 1995 to make the plot less cluttered
-    """
+    logger.debug(f"selected_keys (with timestamp)={selected_keys}")
 
     ax = plt.gca()
 
     if args.command == "aggregate":
-        print(f"aggregate: fields={selected_keys}")
+        logger.info(f"aggregate: fields={selected_keys}")
 
         df_: list[pd.DataFrame] = []
 
         for file in files:
             try:
-                print(
-                    f"record: {file}",
-                    end=" ",
-                    flush=True,
-                )
+                logger.info(f"record: {file}")
                 data = load_record(file, args)
-                print(
-                    f", duration: {data.getDuration()} s",
-                    end=" ",
-                    flush=True,
-                )
+                logger.info(f"record: {file} - duration: {data.getDuration():.1f} s")
                 if data.getDuration() >= min_duration:
                     try:
                         df_.append(data.Data[selected_keys])
-                        print(f"- extract {selected_keys}", flush=True)
+                        logger.info(f"record: {file} - extracted {selected_keys}")
                     except (KeyError, IndexError) as error:
-                        print(
-                            f"- ignored dataset: {selected_keys} not all in {data.getKeys()} (error={error})"
+                        logger.warning(
+                            f"record: {file} - ignored: {selected_keys} not all in {data.getKeys()} (error={error})",
                         )
-                        pass
                 else:
-                    print("- skipped", flush=True)
+                    logger.info(
+                        f"record: {file} - skipped (duration < {min_duration} s)"
+                    )
 
             except (OSError, ValueError, RuntimeError) as error:
-                print(f"- fail to load (error={error})", flush=True)
-                pass
+                logger.error(f"record: {file} - fail to load ({error})")
 
-        print(f"plot over time with seaborn: {len(df_)} dataframes", flush=True)
+        logger.info(f"aggregate: {len(df_)} dataframes collected")
 
         df = pd.concat(df_, axis=0)
         output = f"aggregate-{'-'.join(args.fields)}.csv"
         df.to_csv(output)
-        print(f"concat dataframe: {df.head()}", flush=True)
-        print(f"{df.columns.values.tolist()} to {os.getcwd()}/{output}", flush=True)
-
-        # pd.DatetimeIndex(df['InsertedDate']).month
+        logger.debug(f"concat dataframe:\n{df.head()}")
+        logger.info(f"saved {df.columns.values.tolist()} to {os.getcwd()}/{output}")
 
         df["month"] = df["timestamp"].dt.month
         df["year"] = df["timestamp"].dt.year
-        print(f"concat df: {df.head()}")
+        logger.debug(f"concat df:\n{df.head()}")
 
         if args.fields:
             import seaborn as sns
 
             for key in args.fields:
-                print(f"seaborn plot for {key} per months over years", flush=True)
+                logger.info(f"seaborn plot for {key} per months over years")
                 ax = sns.lineplot(x="month", y=key, hue="year", data=df)
 
                 (symbol, unit) = data.getUnitKey(key)
                 ax.set_ylabel(f"{symbol} [{unit:~P}]")
                 ax.set_title(f"{file}: {key}")
-                """
-                # filtered over 1995 to make the plot less cluttered
-                sns.lineplot(
-                    x="month", y=key, hue="year", data=df.query("year>1995")
-                )
-                """
                 plt.grid()
                 if args.show:
                     plt.show()
                 if args.save:
-                    print(
-                        f"seaborn plot for {key} per months over years saved to {os.getcwd()}/{key}-seaborn.png",
-                        flush=True,
+                    logger.info(
+                        f"seaborn plot for {key} saved to {os.getcwd()}/{key}-seaborn.png"
                     )
                     plt.savefig(f"{key}-seaborn.png", dpi=300)
                 plt.close()
@@ -279,40 +251,36 @@ def main():
 
     # other commands
     legends = {}
+    select_rows: list[dict] = []
 
     for file in files:
-        # print(f'file={file}', flush=True)
         try:
-            print(
-                f"record: {file}",
-                end=" ",
-                flush=True,
-            )
+            logger.info(f"record: {file}")
             data = load_record(file, args)
-            print(
-                f", duration: {data.getDuration()} s",
-                end=" ",
-                flush=True,
-            )
-        except:  # noqa: E722
-            print("- fail to load")
+            logger.info(f"record: {file} - duration: {data.getDuration():.1f} s")
+        except (OSError, ValueError, RuntimeError) as error:
+            logger.error(f"record: {file} - fail to load ({error})")
             # is it possible to curate txt files
             # reading csv line by line with import csv??
 
         else:
             data.Units()
             if args.command == "select":
-                if select_data(data, args):
-                    bfield = data.getData("Field")
-                    print(
-                        f"- Field: min={bfield.min()}, mean={bfield.mean()}, max={bfield.max()}",
-                        flush=True,
-                    )
+                row = select_data(data, args)
+                if row is not None:
+                    logger.info(f"record: {file} - selected")
+                    select_rows.append(row)
+                else:
+                    logger.info(f"record: {file} - skipped")
 
             elif args.command == "stats":
-                if args.pearson and data.getDuration() >= min_duration:  # previous limit 1000:
-                    pearson(data, args.fields, args.save, args.show, args.debug)
-                elif args.pairplot and data.getDuration() >= min_duration:  # previous limit 1000:
+                if (
+                    args.pearson and data.getDuration() >= min_duration
+                ):  # previous limit 1000:
+                    pearson(data, args.fields, args.save, args.show, debug)
+                elif (
+                    args.pairplot and data.getDuration() >= min_duration
+                ):  # previous limit 1000:
                     import seaborn as sns
 
                     selected_keys = [
@@ -340,10 +308,7 @@ def main():
                         selected_keys = args.fields
 
                     selected_df = data.getData(selected_keys)
-                    print(
-                        f"pairplot: selected_keys={len(selected_keys)}",
-                        flush=True,
-                    )
+                    logger.info(f"pairplot: selected_keys={len(selected_keys)}")
                     ax = sns.pairplot(selected_df)
                     if args.show:
                         plt.show()
@@ -353,50 +318,57 @@ def main():
                     plt.close()
 
                 if args.fields:
-                    # save to tabular
-                    print(f"stats for {args.fields}")
-                    # print(data.getData(args.fields).head(20))
-
-                    stats(data, args.fields, args.debug)
+                    logger.info(f"stats for {args.fields}")
+                    stats(data, args.fields, debug)
 
             elif args.command == "plot":
                 if args.xfield not in data.Keys:
-                    print(f"- missing xfield={args.xfield} in {data.Keys}- ignored dataset")
+                    logger.warning(
+                        f"missing xfield={args.xfield} in {data.Keys} - ignored dataset"
+                    )
                 else:
                     if data.getDuration() >= min_duration:
                         if args.fields:
                             for key in args.fields:
                                 if key not in data.Keys:
-                                    print(f"\t- missing field={key} ignored dataset")
+                                    logger.warning(
+                                        f"missing field={key} - ignored dataset"
+                                    )
                                 else:
                                     bfield = data.getData(key).to_numpy()
                                     (symbol, unit) = data.getUnitKey(key)
-                                    print(
-                                        f"- {key}[{unit:~P}]: min={bfield.min()}, mean={bfield.mean()}, max={bfield.max()}",
-                                        flush=True,
+                                    logger.info(
+                                        f"{key}[{unit:~P}]: min={bfield.min()}, mean={bfield.mean()}, max={bfield.max()}",
                                     )
                                     data.plotData(args.xfield, key, ax)
 
                                     # overwrite legend
                                     if key in legends:
-                                        legends[key].append(f"{data.FileName.replace('.txt','')}")
+                                        legends[key].append(
+                                            f"{data.FileName.replace('.txt','')}"
+                                        )
                                     else:
-                                        legends[key] = [data.FileName.replace(".txt", "")]
+                                        legends[key] = [
+                                            data.FileName.replace(".txt", "")
+                                        ]
 
                     else:
-                        print(f"duration < {min_duration} - ignored dataset")
+                        logger.info(
+                            f"record: {file} - duration < {min_duration} s, ignored"
+                        )
+
+    if args.command == "select":
+        if select_rows:
+            print(tabulate(select_rows, headers="keys", tablefmt="simple"))
+        else:
+            print("No records matched selection criteria.")
 
     if args.command == "plot":
-        print(f"plot: {len(legends)} subplots", flush=True)
+        logger.info(f"plot: {len(legends)} subplots")
         if not legends:
-            print("no field to plot")
+            logger.warning("no field to plot")
         else:
-            # if len(legends) < 10:
-            #    ax.legend(legends)
-
-            # if legend
             leg = plt.legend()
-            # ax.get_legend().remove()
             ax.get_legend().set_visible(False)
 
             if args.show:

@@ -42,6 +42,18 @@ Description: Utils for viewing and analyzing magnet runs (Python 3)
  .
  This package installs the library for Python 3.
 
+Package: python3-magnetrun-examples
+Architecture: all
+Depends: python3-magnetrun, ${misc:Depends}
+Description: Utils for viewing and analyzing magnet runs (examples)
+ Python MagnetRun provides utils to view and analyse magnet runs:
+ * Load txt, cvs and tdms files from control/monitoring system
+ * Extract field(s)
+ * Plot field(s) vs time
+ * Plot field vs field
+ .
+ This package installs example scripts demonstrating use of python3-magnetrun.
+
 Package: python-python-magnetrun-doc
 Architecture: all
 Section: doc

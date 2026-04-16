@@ -12,13 +12,13 @@ from python_magnetrun.analysis.config import (
     DEFAULT_GROUP,
     DEFAULT_LEVELS,
     DEFAULT_WINDOW_SIZE,
+    # Pre-defined configurations
+    HOUSING_CONFIGS,
     LAG_THRESHOLD_RATIO,
     SAMPLING_RATE_ARCHIVE,
     SAMPLING_RATE_INCIDENTS,
     # Constants
     SAMPLING_RATE_OVERVIEW,
-    # Pre-defined configurations
-    SITE_CONFIGS,
     TIME_OFFSET_ARCHIVE,
     TIME_OFFSET_INCIDENTS,
     TIME_OFFSET_OVERVIEW,
@@ -28,7 +28,6 @@ from python_magnetrun.analysis.config import (
     ColorConfig,
     ThresholdConfig,
     VoltageChannelMapping,
-    setup,
 )
 
 
@@ -159,18 +158,18 @@ class TestVoltageChannelMapping:
         assert isinstance(result["Référence_GR1"], list)
 
 
-class TestSiteConfig:
-    """Test SiteConfig dataclass."""
+class TestHousingConfig:
+    """Test HousingConfig dataclass."""
 
     def test_available_sites(self):
         """All expected sites should be available."""
-        assert "M8" in SITE_CONFIGS
-        assert "M9" in SITE_CONFIGS
-        assert "M10" in SITE_CONFIGS
+        assert "M8" in HOUSING_CONFIGS
+        assert "M9" in HOUSING_CONFIGS
+        assert "M10" in HOUSING_CONFIGS
 
     def test_m9_configuration(self):
         """M9 should have correct channel mappings."""
-        config = SITE_CONFIGS["M9"]
+        config = HOUSING_CONFIGS["M9"]
         assert config.name == "M9"
         assert config.reference_gr1_current == "IH"
         assert config.reference_gr2_current == "IB"
@@ -183,7 +182,7 @@ class TestSiteConfig:
 
     def test_m8_configuration(self):
         """M8 should have swapped channel mappings vs M9."""
-        config = SITE_CONFIGS["M8"]
+        config = HOUSING_CONFIGS["M8"]
         assert config.name == "M8"
         # M8 swaps GR1/GR2 compared to M9
         assert config.reference_gr1_current == "IB"
@@ -191,36 +190,66 @@ class TestSiteConfig:
 
     def test_m10_configuration(self):
         """M10 should have same mapping as M8."""
-        m8 = SITE_CONFIGS["M8"]
-        m10 = SITE_CONFIGS["M10"]
+        m8 = HOUSING_CONFIGS["M8"]
+        m10 = HOUSING_CONFIGS["M10"]
         assert m10.reference_gr1_current == m8.reference_gr1_current
         assert m10.reference_gr2_current == m8.reference_gr2_current
 
     def test_get_pupitre_channel(self):
         """get_pupitre_channel() should return correct channel."""
-        m9 = SITE_CONFIGS["M9"]
+        m9 = HOUSING_CONFIGS["M9"]
         assert m9.get_pupitre_channel("Référence_GR1") == "IH"
         assert m9.get_pupitre_channel("Référence_GR2") == "IB"
 
-        m8 = SITE_CONFIGS["M8"]
+        m8 = HOUSING_CONFIGS["M8"]
         assert m8.get_pupitre_channel("Référence_GR1") == "IB"
         assert m8.get_pupitre_channel("Référence_GR2") == "IH"
 
     def test_voltage_channels_m9(self):
         """M9 voltage channels should be correct."""
-        m9 = SITE_CONFIGS["M9"]
-        assert m9.voltage_channels_gr1 == ("UH",)
-        assert m9.voltage_channels_gr2 == ("UB", "Ucoil15", "Ucoil16")
+        m9 = HOUSING_CONFIGS["M9"]
+        assert m9.voltage_channels_gr1 == (
+            "Ucoil1",
+            "Ucoil2",
+            "Ucoil3",
+            "Ucoil4",
+            "Ucoil5",
+            "Ucoil6",
+            "Ucoil7",
+            "Ucoil8",
+            "Ucoil9",
+            "Ucoil10",
+            "Ucoil11",
+            "Ucoil12",
+            "Ucoil13",
+            "Ucoil14",
+        )
+        assert m9.voltage_channels_gr2 == ("Ucoil15", "Ucoil16")
 
     def test_voltage_channels_m8_m10(self):
         """M8/M10 voltage channels should be swapped vs M9."""
-        m8 = SITE_CONFIGS["M8"]
-        assert m8.voltage_channels_gr1 == ("UB", "Ucoil15", "Ucoil16")
-        assert m8.voltage_channels_gr2 == ("UH",)
+        m8 = HOUSING_CONFIGS["M8"]
+        assert m8.voltage_channels_gr1 == ("Ucoil15", "Ucoil16")
+        assert m8.voltage_channels_gr2 == (
+            "Ucoil1",
+            "Ucoil2",
+            "Ucoil3",
+            "Ucoil4",
+            "Ucoil5",
+            "Ucoil6",
+            "Ucoil7",
+            "Ucoil8",
+            "Ucoil9",
+            "Ucoil10",
+            "Ucoil11",
+            "Ucoil12",
+            "Ucoil13",
+            "Ucoil14",
+        )
 
     def test_to_pupitre_dict(self):
         """to_pupitre_dict() should match original format."""
-        m9 = SITE_CONFIGS["M9"]
+        m9 = HOUSING_CONFIGS["M9"]
         result = m9.to_pupitre_dict()
         assert result["Référence_GR1"] == "IH"
         assert result["Référence_GR2"] == "IB"
@@ -286,20 +315,20 @@ class TestThresholdConfig:
 class TestAnalysisConfig:
     """Test AnalysisConfig dataclass."""
 
-    def test_for_site_valid(self):
-        """for_site() should create config for valid sites."""
-        for site in ["M8", "M9", "M10"]:
-            config = AnalysisConfig.for_site(site)
-            assert config.site.name == site
+    def test_for_housing_valid(self):
+        """for_housing() should create config for valid housings."""
+        for housing in ["M8", "M9", "M10"]:
+            config = AnalysisConfig.for_housing(housing)
+            assert config.housing.name == housing
 
-    def test_for_site_invalid(self):
-        """for_site() should raise ValueError for unknown site."""
-        with pytest.raises(ValueError, match="Unknown site"):
-            AnalysisConfig.for_site("INVALID")
+    def test_for_housing_invalid(self):
+        """for_housing() should raise ValueError for unknown housing."""
+        with pytest.raises(ValueError, match="Unknown housing"):
+            AnalysisConfig.for_housing("INVALID")
 
     def test_default_components(self):
         """Config should have all default components."""
-        config = AnalysisConfig.for_site("M9")
+        config = AnalysisConfig.for_housing("M9")
         assert isinstance(config.channels, ChannelMapping)
         assert isinstance(config.voltage_channels, VoltageChannelMapping)
         assert isinstance(config.thresholds, ThresholdConfig)
@@ -307,60 +336,19 @@ class TestAnalysisConfig:
 
     def test_convenience_methods(self):
         """Convenience methods should delegate correctly."""
-        config = AnalysisConfig.for_site("M9")
+        config = AnalysisConfig.for_housing("M9")
 
         assert config.get_pupitre_channel("Référence_GR1") == "IH"
         assert config.get_current_channel("Référence_GR1") == "Courant_GR1"
 
 
-class TestBackwardCompatibility:
-    """Test backward compatibility with original setup()."""
-
-    def test_setup_returns_tuple(self):
-        """setup() should return 6-element tuple."""
-        result = setup()
-        assert isinstance(result, tuple)
-        assert len(result) == 6
-
-    def test_setup_color_dict(self):
-        """First element should be color_dict."""
-        color_dict, *_ = setup()
-        assert color_dict == {"U": "red", "P": "green", "D": "blue"}
-
-    def test_setup_channels_dict(self):
-        """Second element should be channels_dict."""
-        _, channels_dict, *_ = setup()
-        assert channels_dict == {
-            "Référence_GR1": "Courant_GR1",
-            "Référence_GR2": "Courant_GR2",
-        }
-
-    def test_setup_pupitre_dict(self):
-        """Fourth element should be pupitre_dict with all sites."""
-        _, _, _, pupitre_dict, _, _ = setup()
-        assert "M8" in pupitre_dict
-        assert "M9" in pupitre_dict
-        assert "M10" in pupitre_dict
-
-        # Verify M9 values
-        assert pupitre_dict["M9"]["Référence_GR1"] == "IH"
-        assert pupitre_dict["M9"]["Référence_GR2"] == "IB"
-
-    def test_setup_threshold_dict(self):
-        """Sixth element should be threshold_dict."""
-        *_, threshold_dict = setup()
-        assert threshold_dict["IH"] == 1.0
-        assert threshold_dict["Courant_GR1"] == 0.5
-        assert threshold_dict["debitbrut"] == 25.0
-
-
 class TestIntegration:
     """Integration tests verifying complete workflows."""
 
-    def test_site_specific_workflow(self):
-        """Test complete workflow for each site."""
-        for site_name in ["M8", "M9", "M10"]:
-            config = AnalysisConfig.for_site(site_name)
+    def test_housing_specific_workflow(self):
+        """Test complete workflow for each housing."""
+        for housing_name in ["M8", "M9", "M10"]:
+            config = AnalysisConfig.for_housing(housing_name)
 
             # Should be able to get all channel mappings
             for ref_key in ["Référence_GR1", "Référence_GR2"]:
@@ -374,7 +362,7 @@ class TestIntegration:
 
     def test_immutability(self):
         """Frozen dataclasses should be immutable."""
-        config = AnalysisConfig.for_site("M9")
+        config = AnalysisConfig.for_housing("M9")
 
         with pytest.raises(Exception):  # noqa: B017 # FrozenInstanceError
-            config.site = SITE_CONFIGS["M8"]
+            config.housing = HOUSING_CONFIGS["M8"]

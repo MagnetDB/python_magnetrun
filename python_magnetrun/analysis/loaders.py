@@ -351,7 +351,7 @@ def extract_data(
                 date, time, date_format="%y%m%d", time_format="%H%M%S"
             )
         else:
-            logger.warning("Unexpected filename format: %s", filename)
+            logger.warning(f"Unexpected filename format: {filename}")
             # Try to parse anyway
             start_ftimestamp = ""
 
@@ -368,7 +368,7 @@ def extract_data(
 
         # Check if required key exists
         if key is not None and key not in mdata.getKeys():
-            logger.debug("%s: key %s not found", file, key)
+            logger.debug(f"{file}: key {key} not found")
             skip = True
 
         # Calculate end timestamp from duration
@@ -420,7 +420,9 @@ def find_files(
 
     # Pupitre pattern: /datadir/M9/2024.11.06*.txt
     pupitre_site_dir = pupitre_datadir / site
-    pupitre_filter = str(pupitre_site_dir / f"20{date[0:2]}.{date[2:4]}.{date[4:]}*.txt")
+    pupitre_filter = str(
+        pupitre_site_dir / f"20{date[0:2]}.{date[2:4]}.{date[4:]}*.txt"
+    )
 
     # Get base paths from overview file
     extension = os.path.splitext(overview_file)[-1]
@@ -514,7 +516,7 @@ def select_files(
                 selected.append(file)
 
         except (OSError, ValueError, RuntimeError) as e:
-            logger.warning("Error processing %s: %s", file, e)
+            logger.warning(f"Error processing {file}: {e}")
             continue
 
     return natsorted(selected) if selected else []
@@ -574,11 +576,16 @@ def load_df(
         if extension == ".txt":
             mrun = MagnetRun.fromtxt(site, insert, file)
             mdata = mrun.getMData()
-            t0 = mdata.Data["timestamp"].iloc[0]
-            selected_keys = ["t", "timestamp"]
+            logger.debug(f"load_df --pupitre -- {file}: mdata keys={mdata.getKeys()}")
+            t0 = mdata.start_timestamp
+            selected_keys = ["t"]
             if keys is not None:
                 selected_keys += keys
+            logger.debug(f"load_df: selected_keys={selected_keys}")
             df = pd.DataFrame(mdata.getData(selected_keys))
+            # Rebuild absolute timestamp from start_timestamp + t (needed for synchronization)
+            if t0 is not None:
+                df["timestamp"] = pd.Timestamp(t0) + pd.to_timedelta(df["t"], unit="s")
 
         elif extension == ".tdms":
             mrun = MagnetRun.fromtdms(site, insert, file)
@@ -586,14 +593,16 @@ def load_df(
 
             # Load data
             channels = list(mdata.Data[group].keys())
-            print(f"load_df: channels={channels}", flush=True)
+            logger.debug(f"load_df: channels={channels}")
             df = pd.DataFrame(mdata.getTdmsData(group, keys))
 
             # Check if first key exists
             first_key = channels[0] if keys is None or not keys else keys[0]
-            print(f"first_key: {first_key}", flush=True)
-            if keys is not None and keys[0] not in mdata.Groups.get(group, {}):
-                logger.debug(f"load_df: {group}/{keys[0]} not found in {mdata.FileName}")
+            logger.debug(f"first_key: {first_key}")
+            if keys is not None and keys and keys[0] not in mdata.Groups.get(group, {}):
+                logger.debug(
+                    f"load_df: {group}/{keys[0]} not found in {mdata.FileName}"
+                )
                 return df, t0
 
             # Get timing information
@@ -601,18 +610,19 @@ def load_df(
             dt = mdata.Groups[group][first_key]["wf_increment"]
             t_offset = mdata.Groups[group][first_key]["wf_start_offset"]
 
-            logger.debug("%s: t0=%s, dt=%s, t_offset=%s", file, t0, dt, t_offset)
+            logger.debug(f"{file}: t0={t0}, dt={dt}, t_offset={t_offset}")
 
             # Add timestamp column
             df["timestamp"] = [
-                np.datetime64(t0).astype(datetime) + timedelta(seconds=i * dt + t_offset)
+                np.datetime64(t0).astype(datetime)
+                + timedelta(seconds=i * dt + t_offset)
                 for i in df.index.to_list()
             ]
         else:
-            logger.warning("Unsupported file extension: %s", extension)
+            logger.warning(f"Unsupported file extension: {extension}")
 
     except (OSError, ValueError, RuntimeError, KeyError) as e:
-        logger.error("Failed to load %s: %s", file, e)
+        logger.error(f"Failed to load {file}: {e}")
 
     return df, t0
 
@@ -650,7 +660,9 @@ def load_data(
     >>> files = ["archive1.tdms", "archive2.tdms"]
     >>> dfs = load_data(files, "M9", "", "Courants_Alimentations", ["Courant_GR1"])
     """
-    logger.info(f"load_data: files={files}, group={group}, keys={keys}")
+    logger.info(
+        f"load_data: files={files}, site={site}, insert={insert}, group={group}, keys={keys}"
+    )
 
     df_list = []
     for file in files:
@@ -779,16 +791,18 @@ class FileDiscovery:
                 if candidate_path.exists():
                     resolved_overview = str(candidate_path)
                     overview_dir = str(candidate_dir)
-                    logger.debug("Resolved overview %s -> %s", overview_file, resolved_overview)
+                    logger.debug(f"Resolved overview {overview_file} -> {resolved_overview}")
                 else:
                     # Keep original (may be relative to cwd)
                     overview_dir = ""
-        logger.info(f"discover overview_dir={overview_dir}, resolved_overview={resolved_overview}")
+        logger.info(
+            f"discover overview_dir={overview_dir}, resolved_overview={resolved_overview}"
+        )
 
         # Extract site, mode, timestamp from filename
         parts = filename.split("_")
         if len(parts) < 3:
-            logger.error("Cannot parse filename: %s", filename)
+            logger.error(f"Cannot parse filename: {filename}")
             return FileSet(overview=[f"{overview_dir}/{overview_file}"])
 
         file_site = parts[0]
@@ -809,7 +823,7 @@ class FileDiscovery:
         )
 
         if skip or not start or not end:
-            logger.warning("Could not extract time range from %s", overview_file)
+            logger.warning(f"Could not extract time range from {overview_file}")
             return FileSet(overview=[f"{overview_dir}/{overview_file}"])
 
         # Get file patterns (pass a path that includes the directory)
@@ -821,14 +835,16 @@ class FileDiscovery:
             time,
             pupitre_datadir=self.pupitre_datadir,
         )
-        pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter = filters
+        pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter = (
+            filters
+        )
 
         logger.debug("File patterns:")
-        logger.debug("  pupitre: %s", pupitre_filter)
-        logger.debug("  archive: %s", archive_filter)
-        logger.debug("  default: %s", default_filter)
-        logger.debug("  trigger: %s", trigger_filter)
-        logger.debug("  spike: %s", spike_filter)
+        logger.debug(f"  pupitre: {pupitre_filter}")
+        logger.debug(f"  archive: {archive_filter}")
+        logger.debug(f"  default: {default_filter}")
+        logger.debug(f"  trigger: {trigger_filter}")
+        logger.debug(f"  spike: {spike_filter}")
 
         # Find and filter files
         file_set = FileSet(overview=[resolved_overview])
@@ -838,18 +854,16 @@ class FileDiscovery:
         file_set.default = select_files(glob.glob(default_filter), site, start, end)
         file_set.trigger = select_files(glob.glob(trigger_filter), site, start, end)
         file_set.spike = select_files(glob.glob(spike_filter), site, start, end)
-        logger.info("file_set.pupitre: %s", file_set.pupitre)
-        logger.info("file_set.archive: %s", file_set.archive)
-        logger.info("file_set.default: %s", file_set.default)
-        logger.info("file_set.spike: %s", file_set.spike)
-        logger.info("file_set.trigger: %s", file_set.trigger)
+        logger.info(f"file_set.pupitre: {file_set.pupitre}")
+        logger.info(f"file_set.archive: {file_set.archive}")
+        logger.info(f"file_set.default: {file_set.default}")
+        logger.info(f"file_set.spike: {file_set.spike}")
+        logger.info(f"file_set.trigger: {file_set.trigger}")
 
         logger.info(
-            "Discovered files for %s: %d archives, %d pupitres, %d incidents",
-            filename,
-            len(file_set.archive),
-            len(file_set.pupitre),
-            len(file_set.default) + len(file_set.trigger) + len(file_set.spike),
+            f"Discovered files for {filename}: {len(file_set.archive)} archives, "
+            f"{len(file_set.pupitre)} pupitres, "
+            f"{len(file_set.default) + len(file_set.trigger) + len(file_set.spike)} incidents"
         )
 
         return file_set

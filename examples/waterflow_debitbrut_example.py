@@ -10,7 +10,7 @@ Note: 'debitbrut' refers to the secondary cooling loop flow rate (French term ma
 for compatibility). In CSV files, use the column name 'flow_secondary' for clarity.
 """
 
-import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt  # noqa: I001
 import numpy as np
 
 from python_magnetcooling.waterflow import WaterFlow

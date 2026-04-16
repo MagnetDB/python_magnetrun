@@ -1,0 +1,128 @@
+"""ETL functions for preparing MagnetRun data."""
+
+import logging
+import re
+
+from natsort import natsorted
+
+from .magnetdata_base import DataType, MagnetDataBase
+
+logger = logging.getLogger(__name__)
+
+
+def _cleanup_pupitre_icoil(data: MagnetDataBase) -> None:
+    """Remove zero/duplicate Icoil columns and rename Icoil→IH/IB."""
+    import pandas as pd
+
+    logger.info(f"{data.__class__.__name__}: {data.FileName}")
+
+    assert isinstance(data.Data, pd.DataFrame)
+
+    # Drop all-zero columns (skip Flow* and Field*)
+    zero_cols = [
+        col
+        for col in data.Data.columns
+        if (data.Data[col] == 0).all()
+        and not col.startswith("Flow")
+        and not col.startswith("Field")
+    ]
+    if zero_cols:
+        logger.warning(
+            f"{data.__class__.__name__}: dropping zero columns {zero_cols} from {data.FileName!r}"
+        )
+        data.Data.drop(columns=zero_cols, inplace=True)
+        data.Keys = list(data.Data.columns)
+
+    # Resolve duplicate Icoil columns
+    Ikeys = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
+    if len(Ikeys) > 2:
+        ikeys_df = data.Data[Ikeys]
+        remove = []
+        for i in range(len(Ikeys)):
+            for j in range(i + 1, len(Ikeys)):
+                diff = ikeys_df[Ikeys[i]] - ikeys_df[Ikeys[j]]
+                if abs(diff.mean()) <= 1e-2:
+                    remove.append(Ikeys[j])
+        if remove:
+            logger.warning(
+                f"{data.__class__.__name__}: dropping duplicate Icoil columns {remove} from {data.FileName!r}"
+            )
+            data.Data.drop(columns=remove, inplace=True)
+            data.Keys = list(data.Data.columns)
+        Ikeys = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
+
+    # Rename Icoil[0]→IH, Icoil[-1]→IB
+    if Ikeys:
+        logger.warning(
+            f"{data.__class__.__name__}: renaming Icoil columns {Ikeys[0]}→IH, {Ikeys[-1]}→IB in {data.FileName!r}"
+        )
+        data.renameData(columns={Ikeys[0]: "IH"})
+        data.renameData(columns={Ikeys[-1]: "IB"})
+
+    logger.warning(
+        f"{data.__class__.__name__}: after cleanup Icoil columns: {natsorted([k for k in data.getKeys()])}"
+    )
+
+
+def prepareData(
+    data: MagnetDataBase,
+    housing: str,
+    keys_to_remove: list[str] | None = None,
+    keys_to_rename: dict[str, str] | None = None,
+    keys_to_add: dict[str, str] | None = None,
+    debug: bool = False,
+) -> None:
+    """Prepare magnet run data by adding computed fields and renaming columns.
+
+    When *keys_to_add* and *keys_to_rename* are both ``None`` the ETL maps are
+    derived automatically from the :class:`~python_magnetrun.housing_config.HousingConfig`
+    for the given *housing*:
+
+    - **PUPITRE**: adds ``pupitre_formula_map`` entries plus the UH/UB voltage
+      sum formulas (filtered to columns actually present), and renames
+      Flow/Rpm/Tin/HP index columns to role-based names.
+    - **TDMS** (pigbrother): adds ``pigbrother_formula_map`` entries.
+    - **HYBRID**: adds hybrid voltage sum formulas.
+
+    :param data: MagnetDataBase object to prepare in-place
+    :param housing: Housing name (e.g. "M8", "M9", "M10")
+    :param keys_to_remove: list of column names to remove, defaults to None
+    :param keys_to_rename: dict mapping old column names to new names, defaults to None
+    :param keys_to_add: dict mapping new column names to their formulas, defaults to None
+    :param debug: Enable debug output, defaults to False
+    """
+    from .housing_config import get_housing_config
+
+    cfg = get_housing_config(housing)
+
+    # Auto-build ETL maps from HousingConfig when caller passes None
+    if keys_to_add is None and keys_to_rename is None:
+        if data.Type == DataType.PUPITRE:
+            available = data.getKeys()
+            keys_to_add = {
+                **cfg.pupitre_formula_map,
+                **cfg.get_pupitre_voltage_formulas(available),
+            }
+            keys_to_rename = cfg.get_pupitre_rename_map()
+        elif data.Type == DataType.TDMS:
+            keys_to_add = cfg.pigbrother_formula_map
+        elif data.Type == DataType.HYBRID:
+            keys_to_add = {
+                **cfg.hybrid_formula_map,
+                **cfg.get_hybrid_voltage_formulas(data.getKeys()),
+            }
+
+    data.addTime()
+    _duration = data.getDuration()
+
+    data.cleanupData(
+        keys_to_remove=keys_to_remove,
+        keys_to_rename=keys_to_rename,
+        keys_to_add=keys_to_add,
+        debug=debug,
+    )
+
+    if data.Type == DataType.PUPITRE:
+        _cleanup_pupitre_icoil(data)
+
+    logger.debug(f"MagnetRun.prepareData: data.keys={data.getKeys()}")

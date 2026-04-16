@@ -29,7 +29,7 @@ def plot_vs_time(
     ax: Any = None,
     close: bool = False,
 ) -> None:
-    print(f"plot_vs_time: items={items}, close={close}", flush=True)
+    logger.info(f"plot_vs_time: items={items}, close={close}")
     keys = df.columns.values.tolist()
 
     ax = plt.gca()
@@ -47,7 +47,7 @@ def plot_vs_time(
             filename = f"{imagefile}_vs_time.png"
             if wd is not None:
                 filename = f"{wd}/{filename}"
-            print(f"save to file - {filename}")
+            logger.info(f"save to file - {filename}")
             plt.savefig(filename, dpi=300)
         plt.close()
 
@@ -57,12 +57,12 @@ def plot_key_vs_key(
 ) -> None:
     keys = df.columns.values.tolist()
     for pair in pairs:
-        print(f"pair={pair}")
+        logger.debug(f"pair={pair}")
         ax = plt.gca()
         # print("pair=", pair, " type=", type(pair))
         items = pair.split("-")
         if len(items) != 2:
-            print(f"invalid pair of keys: {pair}")
+            logger.error(f"invalid pair of keys: {pair}")
             sys.exit(1)
         key1 = items[0]
         key2 = items[1]
@@ -71,8 +71,8 @@ def plot_key_vs_key(
                 x=key1, y=key2, kind="scatter", color="red", grid=True, ax=ax
             )  # on graph per pair
         else:
-            print(f"unknown pair of keys: {pair}")
-            print(f"valid keys: {keys}")
+            logger.error(f"unknown pair of keys: {pair}")
+            logger.error(f"valid keys: {keys}")
             sys.exit(1)
         if show:
             plt.show()
@@ -80,7 +80,7 @@ def plot_key_vs_key(
             filename = f"{key1}_vs_{key2}.png"
             if wd is not None:
                 filename = f"{wd}/{filename}"
-            print(f"save to file - {filename}")
+            logger.info(f"save to file - {filename}")
             plt.savefig(filename, dpi=300)
         plt.close()
 
@@ -183,11 +183,11 @@ def plot_files(
                         )
                         # print(f"{f}: displayed")
                     else:
-                        print(
+                        logger.warning(
                             f"{f}: no displayed - key1={key1} and key2={key2} not in keys"  # noqa: E501
                         )
             except (OSError, pd.errors.ParserError, KeyError, ValueError) as e:
-                print(f"plot_files: failed to load {f} with pandas: {e}")
+                logger.error(f"plot_files: failed to load {f} with pandas: {e}")
 
     # add fit if present
     if fit:

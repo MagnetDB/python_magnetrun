@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from tabulate import tabulate  # type: ignore[import-untyped]
 
-from ..magnetdata import MagnetData
+from ..magnetdata_base import MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ numpy_NaN = np.NaN if numpy_version[0] == 1 else np.nan
 
 
 def stats(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     fields: list[str] | None = None,
     fmt: str = "simple",
     display: bool = True,
@@ -97,12 +97,12 @@ def stats(
 
     else:
         for group, df in Data.Data.items():
-            print(f"stats for {group}: ", flush=True)
+            logger.info(f"stats for {group}: ")
             tables = df.describe()
             headers = "keys"
 
     if display:
-        print("Statistics:\n")
-        print(tabulate(tables, headers, tablefmt=fmt), "\n")
+        logger.info("Statistics:")
+        logger.info(f"{tabulate(tables, headers, tablefmt=fmt)}")
 
     return (tables, headers)

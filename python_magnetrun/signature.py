@@ -4,7 +4,7 @@ from datetime import datetime
 import pandas as pd
 import pint
 
-from python_magnetrun.magnetdata import MagnetData
+from python_magnetrun.magnetdata_base import MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ class Signature:
     @classmethod
     def from_mdata(
         cls,
-        mdata: MagnetData,
+        mdata: MagnetDataBase,
         key: str,
         tkey: str,
         threshold: float,
@@ -199,7 +199,7 @@ class Signature:
         (symbol, unit) = mdata.getUnitKey(key)
         match mdata.Data:
             case pd.DataFrame():
-                t0 = mdata.Data.iloc[0]["timestamp"]
+                t0 = mdata.start_timestamp
                 # print('txt', type(t0), flush=True)
             case dict():
                 (group, channel) = key.split("/")
@@ -275,4 +275,4 @@ class Signature:
             del data["times"]
             del data["values"]
             json.dump(data, file, indent=4)
-        print(f"Signature saved to {os.path.abspath(sfilename)}")
+        logger.info(f"Signature saved to {os.path.abspath(sfilename)}")

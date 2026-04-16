@@ -5,7 +5,9 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 
-def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False) -> pd.DataFrame:
+def find_duplicates(
+    df: pd.DataFrame, name: str, key: str, strict: bool = False
+) -> pd.DataFrame:
     """Find duplicates key in dataframe and eventually drop them
 
     :param df: _description_
@@ -23,7 +25,8 @@ def find_duplicates(df: pd.DataFrame, name: str, key: str, strict: bool = False)
 
     counts = df[key].value_counts()
     if (counts > 1).any():
-        print(f"Duplicates found in {key}:")
-        print(counts[counts > 1])
+        logger.warning(
+            f"Duplicates found in {key}: tutu {counts[counts > 1].to_dict()}"
+        )
     df_clean = df.drop_duplicates(subset=[key])
     return df_clean

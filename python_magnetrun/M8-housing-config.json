@@ -1,0 +1,31 @@
+{
+  "_comment": "Default housing configuration for M8. M8 runs pupitre + pigbrother + hybrid (resistive + superconductor insert). GR1/GR2 supplies are swapped relative to M9: GR1 = B supply (IB), GR2 = H supply (IH). voltage_channels_gr* contain ONLY the Ucoil source probes (UB/UH are derived via get_pupitre_voltage_formulas).",
+  "name": "M8",
+  "formats": ["pupitre", "pigbrother", "hybrid"],
+  "reference_gr1_current": "IB",
+  "reference_gr2_current": "IH",
+  "reference_gr1_flow": "FlowB",
+  "reference_gr2_flow": "FlowH",
+  "reference_gr1_rpm": "RpmB",
+  "reference_gr2_rpm": "RpmH",
+  "reference_gr1_pin": "HPB",
+  "reference_gr2_pin": "HPH",
+  "voltage_channels_gr1": ["Ucoil15", "Ucoil16"],
+  "voltage_channels_gr2": ["Ucoil1", "Ucoil2", "Ucoil3", "Ucoil4", "Ucoil5",
+                            "Ucoil6", "Ucoil7", "Ucoil8", "Ucoil9", "Ucoil10",
+                            "Ucoil11", "Ucoil12", "Ucoil13", "Ucoil14"],
+  "reference_gr1_voltage": "UB",
+  "reference_gr2_voltage": "UH",
+  "pupitre_formula_map": {
+    "IH_ref": "IH_ref = Idcct3 + Idcct4",
+    "IB_ref": "IB_ref = Idcct1 + Idcct2"
+  },
+  "pigbrother_formula_map": {
+    "Courants_Alimentations/Référence_GR1": "Courants_Alimentations/Référence_GR1 = Référence_A1 + Référence_A2",
+    "Courants_Alimentations/Référence_GR2": "Courants_Alimentations/Référence_GR2 = Référence_A3 + Référence_A4"
+  },
+  "hybrid_formula_map": {
+      "FEPC-AUX-LNCMI/ALIM2": "FEPC-AUX-LNCMI/ALIM2_J1 + FEPC-AUX-LNCMI/ALIM2_J2",
+      "FEPC-AUX-LNCMI/ALIM1": "FEPC-AUX-LNCMI/ALIM1_J1 + FEPC-AUX-LNCMI/ALIM1_J2"
+  }
+}

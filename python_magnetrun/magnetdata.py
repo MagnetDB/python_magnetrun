@@ -1,235 +1,144 @@
-"""MagnetData — factory class and backward-compatible entry point.
+"""magnetdata — factory entry point and re-exports.
 
 The concrete implementations live in:
 - :mod:`python_magnetrun.magnetdata_base`   — ``MagnetDataBase`` ABC
 - :mod:`python_magnetrun.magnetdata_pandas` — ``PandasMagnetData`` and subclasses
 - :mod:`python_magnetrun.magnetdata_tdms`   — ``TdmsMagnetData``
 
-``MagnetData`` is kept for backward compatibility: external code that does
-``from .magnetdata import MagnetData`` and calls ``MagnetData(...)`` or any
-``MagnetData.from*`` classmethod continues to work unchanged.
-
-``MagnetDataBase`` is also re-exported from this module so callers can
-import it from the same place.
+Use :func:`load_magnetdata` to load a file by extension.  Import the concrete
+classes directly for construction or isinstance checks.
 """
 
 import logging
 import os
 
-import pandas as pd
-
-from .magnetdata_base import MagnetDataBase  # re-export
-from .magnetdata_pandas import (  # noqa: F401  (re-exported for convenience)
+from .magnetdata_base import DataType, MagnetDataBase
+from .magnetdata_pandas import (
     BProfileMagnetData,
     EnsightMagnetData,
     FeelppMagnetData,
     PandasMagnetData,
 )
-from .magnetdata_tdms import TdmsMagnetData  # noqa: F401
+from .magnetdata_tdms import TdmsMagnetData
+from .utils.validation import FileFormatError
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "MagnetData",
     "MagnetDataBase",
+    "DataType",
     "PandasMagnetData",
     "EnsightMagnetData",
     "BProfileMagnetData",
     "FeelppMagnetData",
     "TdmsMagnetData",
+    "FileFormatError",
+    "load_magnetdata",
 ]
 
 
-class MagnetData(PandasMagnetData):
-    """Backward-compatible magnet data container and factory.
+def load_magnetdata(
+    filename: str,
+    defs_file: str | None = None,
+) -> MagnetDataBase:
+    """Load a magnet data file and return the appropriate MagnetDataBase subclass.
 
-    Extends :class:`PandasMagnetData` so that direct construction
-    ``MagnetData(filename, Groups, Keys, Type, Data)`` continues to work.
-    The ``Type`` parameter is stored via a property; all method logic is
-    inherited from :class:`PandasMagnetData`.
+    Dispatches on file extension:
 
-    The ``from*`` classmethods return the appropriate :class:`MagnetDataBase`
-    subclass (e.g. :class:`PandasMagnetData`, :class:`TdmsMagnetData`).
+    - ``.tdms`` → :class:`TdmsMagnetData`
+    - ``.txt``  → :class:`PandasMagnetData`
+    - ``.csv``  → :class:`PandasMagnetData`
 
-    FileName: name of the input file
-    Data: pandas dataframe
-    Keys:
-    Groups:
-    Type: 0 for Pandas data (default), 1 for Tdms, 2 for Ensight
+    :param filename: path to the data file
+    :param defs_file: optional path to a field definitions JSON file
+    :return: the loaded data object
+    :raises ValueError: if the file extension is not recognised
     """
+    ext = os.path.splitext(filename)[-1].lower()
+    if ext == ".tdms":
+        return _fromtdms(filename, defs_file=defs_file)
+    elif ext == ".txt":
+        return PandasMagnetData.fromtxt(filename, defs_file=defs_file or "pupitre-defs.json")
+    elif ext == ".csv":
+        return PandasMagnetData.fromcsv(filename, defs_file=defs_file)
+    else:
+        raise ValueError(f"load_magnetdata: unsupported file extension {ext!r}")
 
-    def __init__(
-        self,
-        filename: str,
-        Groups: dict,
-        Keys: list[str],
-        Type: int = 0,
-        Data: pd.DataFrame | dict | None = None,
-    ) -> None:
-        """Default constructor — accepts the legacy 5-argument signature."""
-        self._type = Type
-        # Call MagnetDataBase.__init__ directly to avoid PandasMagnetData asserting
-        # that Data is always a DataFrame (Type=1/2 passes dict or empty df)
-        MagnetDataBase.__init__(self, filename, Groups, Keys, Data)
-        self.units: dict = {}
 
-    @property
-    def Type(self) -> int:  # type: ignore[override]
-        """Integer data-type discriminator (0=Pandas, 1=TDMS, 2=Ensight)."""
-        return self._type
+def _fromtdms(name: str, defs_file: str | None = "pigbrother-defs.json") -> TdmsMagnetData:
+    """Load a pigbrother TDMS file and return a :class:`TdmsMagnetData`.
 
-    # ------------------------------------------------------------------
-    # Factory classmethods — return the appropriate subclass
-    # ------------------------------------------------------------------
+    This function contains the TDMS-specific loading logic previously on
+    ``MagnetData.fromtdms``.
 
-    @classmethod
-    def fromtdms(cls, name: str) -> "TdmsMagnetData":
-        """Create from a pigbrother TDMS file.
+    :param name: filename with a .tdms extension
+    :param defs_file: path to a field definitions file; defaults to the
+        bundled ``pigbrother-defs.json``
+    :raises FileNotFoundError: if *name* does not exist
+    :raises RuntimeError: if file extension is not .tdms or required group missing
+    :return: TdmsMagnetData instance
+    """
+    import pandas as pd
+    from nptdms import TdmsFile
 
-        :param name: filename with a .tdms extension
-        :raises FileNotFoundError: if *name* does not exist
-        :raises RuntimeError: if file extension is not .tdms or required group missing
-        :return: TdmsMagnetData instance
-        """
-        from nptdms import TdmsFile
+    from .utils.validation import validate_tdms_format
 
-        logger.debug(f"magnetdata.fromtdms: {name}")
+    logger.debug(f"load_magnetdata/_fromtdms: {name}")
 
-        Keys: list[str] = []
-        Groups: dict = {}
-        Data: dict[str, pd.DataFrame] = {}
-        if not os.path.exists(name):
-            raise FileNotFoundError(f"fromtdms: file not found: {name}")
-        f_extension = os.path.splitext(name)[-1]
+    Keys: list[str] = []
+    Groups: dict = {}
+    Data: dict[str, pd.DataFrame] = {}
 
-        if f_extension != ".tdms":
-            raise RuntimeError(f"fromtdms: expect a tdms filename - got {name}")
+    if not os.path.exists(name):
+        raise FileNotFoundError(f"_fromtdms: file not found: {name}")
+    f_extension = os.path.splitext(name)[-1]
+    if f_extension != ".tdms":
+        raise RuntimeError(f"_fromtdms: expect a tdms filename - got {name}")
+    validate_tdms_format(name)
 
-        # add t_offset to account for tdms downsampled data
-        t_offset: float = 0.0
-        if "Overview" in name:
-            t_offset = (1) / 2.0
-        elif "Archive" in name:
-            t_offset = (1 / 120.0) / 2.0
+    t_offset: float = 0.0
+    if "Overview" in name:
+        t_offset = 1 / 2.0
+    elif "Archive" in name:
+        t_offset = (1 / 120.0) / 2.0
 
-        rawData = TdmsFile.open(name)
-        for group in rawData.groups():
-            gname = group.name.replace(" ", "_")
-            gname = gname.replace("_et_Ref.", "")
-            Groups[gname] = {}
-            if gname != "Infos":
-                Data[gname] = {}
-
-                for channel in group.channels():
-                    cname = channel.name.replace(" ", "_")
-                    Keys.append(f"{gname}/{cname}")
-                    Groups[gname][cname] = channel.properties
-                    if "wf_start_offset" in Groups[gname][cname]:
-                        logger.debug(
-                            f"update wf_start_offset for {gname}/{cname} - original value: {Groups[gname][cname]['wf_start_offset']}"
-                        )
-                        Groups[gname][cname]["wf_start_offset"] = t_offset
-
-                Data[gname] = group.as_dataframe(
-                    time_index=False,
-                    absolute_time=False,
-                    scaled_data=True,
-                )
-
-                Data[gname].rename(
-                    columns={col: col.replace(" ", "_") for col in Data[gname].columns},
-                    inplace=True,
-                )
-
-            else:
-                Groups[gname] = group
-
-        if "Courants_Alimentations" not in Data:
-            raise RuntimeError(
-                f"magnetdata/fromtdms: Courants_Alimentations group not found in {name}"
+    rawData = TdmsFile.open(name)
+    for group in rawData.groups():
+        gname = group.name.replace(" ", "_")
+        gname = gname.replace("_et_Ref.", "")
+        if gname != group.name:
+            logger.warning(
+                "fromtdms: group name rewritten %r -> %r (old TDMS format)",
+                group.name,
+                gname,
             )
-
-        # Add reference for GR1, GR2
-        if "Référence_A1" in Data["Courants_Alimentations"]:
-            Data["Courants_Alimentations"]["Référence_GR1"] = (
-                Data["Courants_Alimentations"]["Référence_A1"]
-                + Data["Courants_Alimentations"]["Référence_A2"]
+        Groups[gname] = {}
+        if gname != "Infos":
+            Data[gname] = {}
+            for channel in group.channels():
+                cname = channel.name.replace(" ", "_")
+                Keys.append(f"{gname}/{cname}")
+                Groups[gname][cname] = channel.properties
+                if "wf_start_offset" in Groups[gname][cname]:
+                    logger.debug(
+                        f"update wf_start_offset for {gname}/{cname} - original value: "
+                        f"{Groups[gname][cname]['wf_start_offset']}"
+                    )
+                    Groups[gname][cname]["wf_start_offset"] = t_offset
+            Data[gname] = group.as_dataframe(
+                time_index=False, absolute_time=False, scaled_data=True
             )
-            Keys.append("Courants_Alimentations/Référence_GR1")
-            Groups["Courants_Alimentations"]["Référence_GR1"] = Groups["Courants_Alimentations"][
-                "Référence_A1"
-            ]
-        if "Référence_A3" in Data["Courants_Alimentations"]:
-            Data["Courants_Alimentations"]["Référence_GR2"] = (
-                Data["Courants_Alimentations"]["Référence_A3"]
-                + Data["Courants_Alimentations"]["Référence_A4"]
+            Data[gname].rename(
+                columns={col: col.replace(" ", "_") for col in Data[gname].columns},
+                inplace=True,
             )
-            Keys.append("Courants_Alimentations/Référence_GR2")
-            Groups["Courants_Alimentations"]["Référence_GR2"] = Groups["Courants_Alimentations"][
-                "Référence_A3"
-            ]
+        else:
+            Groups[gname] = group
 
-        return TdmsMagnetData(name, Groups, Keys, Data)
+    if "Courants_Alimentations" not in Data:
+        raise RuntimeError(
+            f"_fromtdms: Courants_Alimentations group not found in {name}"
+        )
 
-    @classmethod
-    def fromtxt(cls, name: str) -> "PandasMagnetData":
-        """Create from a pupitre .txt file."""
-        with open(name) as f:
-            f_extension = os.path.splitext(name)[-1]
-            if f_extension == ".txt":
-                Data = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=1)
-                Keys = Data.columns.values.tolist()
-            else:
-                raise RuntimeError(f"fromtxt: expect a txt filename - got {name}")
-        return PandasMagnetData(name, {}, Keys, Data)
-
-    @classmethod
-    def fromensight(cls, name: str) -> "EnsightMagnetData":
-        """Create from a CSV ensight file."""
-        with open(name) as f:
-            Data = pd.read_csv(f, sep=",", engine="python", skiprows=2)
-            Keys = Data.columns.values.tolist()
-        return EnsightMagnetData(name, {}, Keys, Data)
-
-    @classmethod
-    def fromcsv(cls, name: str) -> "PandasMagnetData":
-        """Create from a CSV file."""
-        with open(name) as f:
-            Data = pd.read_csv(f, sep=",", engine="python", skiprows=0)
-            Keys = Data.columns.values.tolist()
-        return PandasMagnetData(name, {}, Keys, Data)
-
-    @classmethod
-    def fromStringIO(  # noqa: N802
-        cls, name: str, sep: str = r"\s+", skiprows: int = 1
-    ) -> "PandasMagnetData":
-        """Create from a StringIO / in-memory string."""
-        from io import StringIO
-
-        Data = pd.DataFrame()
-        Keys: list[str] = []
-        try:
-            Data = pd.read_csv(StringIO(name), sep=sep, engine="python", skiprows=skiprows)
-            Keys = Data.columns.values.tolist()
-        except (pd.errors.ParserError, ValueError, OSError):
-            print("magnetdata.fromStringIO: trouble loading data")
-            with open("wrongdata.txt", "w", newline="\n") as fo:
-                fo.write(name)
-
-        return PandasMagnetData("stringIO", {}, Keys, Data)
-
-    @classmethod
-    def frombprofile(cls, name: str) -> "BProfileMagnetData":
-        """Create from a bprofile CSV file (Index, Position, Profile columns)."""
-        with open(name) as f:
-            Data = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=0)
-            Keys = Data.columns.values.tolist()
-        return BProfileMagnetData(name, {}, Keys, Data)
-
-    @classmethod
-    def fromfeelpp(cls, name: str, skiprows: int = 0) -> "FeelppMagnetData":
-        """Create from a feelpp simulation CSV file."""
-        with open(name) as f:
-            Data = pd.read_csv(f, sep=",", engine="python", skiprows=skiprows)
-            Keys = Data.columns.values.tolist()
-        return FeelppMagnetData(name, {}, Keys, Data)
+    mdata = TdmsMagnetData(name, Groups, Keys, Data, defs_file=defs_file)
+    return mdata

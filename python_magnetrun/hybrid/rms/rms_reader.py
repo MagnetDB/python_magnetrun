@@ -15,6 +15,8 @@ from typing import Any
 
 import pandas as pd
 
+from ...utils.validation import validate_rms_format
+
 # Setup logger
 logger = logging.getLogger(__name__)
 
@@ -60,10 +62,13 @@ class RMSFileReader:
         self.variables: list[RMSVariable] = []
         self.metadata: dict[str, Any] = {}
         self.data: pd.DataFrame | None = None
-        self.endian = ">" if endian == "big" else "<"  # '>' for big-endian, '<' for little-endian
+        self.endian = (
+            ">" if endian == "big" else "<"
+        )  # '>' for big-endian, '<' for little-endian
 
     def parse_header(self) -> None:
         """Parse the ASCII header from the RMS file."""
+        validate_rms_format(str(self.filepath))
         with open(self.filepath, "rb") as f:
             header_lines = []
             while True:
@@ -134,7 +139,9 @@ class RMSFileReader:
             max_val = float(props["max"]) if "max" in props else None
             display_format = props.get("df")
 
-            variable = RMSVariable(name, var_type, unit, min_val, max_val, display_format)
+            variable = RMSVariable(
+                name, var_type, unit, min_val, max_val, display_format
+            )
             self.variables.append(variable)
 
     def _parse_windows(self, line: str) -> None:
@@ -154,7 +161,7 @@ class RMSFileReader:
 
     def _parse_frequency(self, line: str) -> None:
         """Parse the sampling frequency line."""
-        # Format: # frequency = 10.000 Hz
+        # Format: # frequency = 0.1 Hz
         match = re.search(r"# frequency\s*=\s*([\d.]+)\s*Hz", line)
         if match:
             self.metadata["frequency"] = float(match.group(1))
@@ -210,12 +217,14 @@ class RMSFileReader:
         # Prepare data arrays
         timestamps = []
         data_arrays: dict[str, list] = {var.name: [] for var in self.variables}
-        assert len(data_arrays) == len(self.variables), (
-            f"Data arrays length mismatch: {len(data_arrays)} vs {len(self.variables)}"
-        )
+        assert len(data_arrays) == len(
+            self.variables
+        ), f"Data arrays length mismatch: {len(data_arrays)} vs {len(self.variables)}"
         logger.debug(f"Reading {len(self.variables)} variables")
         logger.debug(f"Analog: {len([var for var in self.variables if var.is_analog])}")
-        logger.debug(f"Digital: {len([var for var in self.variables if not var.is_analog])}")
+        logger.debug(
+            f"Digital: {len([var for var in self.variables if not var.is_analog])}"
+        )
 
         # Parse each sample
         for i in range(num_samples):
@@ -224,7 +233,9 @@ class RMSFileReader:
 
             # Read timestamp (8 bytes, double precision float)
             # nombre de secondes depuis 01/01/1970 00:00 UTC
-            timestamp = struct.unpack(f"{self.endian}d", sample_data[0:timestamp_size])[0]
+            timestamp = struct.unpack(f"{self.endian}d", sample_data[0:timestamp_size])[
+                0
+            ]
             timestamps.append(timestamp)
 
             # Read variables in order
@@ -287,7 +298,9 @@ class RMSFileReader:
                     "display_format": var.display_format,
                 }
             )
-        logger.debug(f"Variable info collected: {len(var_info)} variables ({len(self.variables)})")
+        logger.debug(
+            f"Variable info collected: {len(var_info)} variables ({len(self.variables)})"
+        )
         return pd.DataFrame(var_info)
 
     def get_metadata(self) -> dict[str, Any]:
@@ -309,7 +322,9 @@ class RMSFileReader:
         print(f"End Time: {self.metadata.get('end_time', 'Unknown')}")
         print(f"Data Offset: 0x{self.metadata.get('data_offset', 0):x}")
         print(f"Sample Width: {self.metadata.get('sample_width', 'Unknown')} bytes")
-        print(f"Timestamp Size: {self.metadata.get('timestamp_bytes', 'Unknown')} bytes")
+        print(
+            f"Timestamp Size: {self.metadata.get('timestamp_bytes', 'Unknown')} bytes"
+        )
         print(f"Number of Variables: {len(self.variables)}")
 
         # Count analog vs digital
@@ -322,6 +337,7 @@ class RMSFileReader:
             print(f"Number of Samples: {len(self.data)}")
             duration = (self.data.index[-1] - self.data.index[0]).total_seconds()
             print(f"Duration: {duration:.2f} seconds")
+        print(flush=True)
 
 
 # Convenience functions
@@ -345,7 +361,9 @@ def read_rms_file(filepath: str, endian: str = "big") -> pd.DataFrame:
     return reader.read()
 
 
-def get_rms_info(filepath: str, endian: str = "big") -> tuple[dict[str, Any], pd.DataFrame]:
+def get_rms_info(
+    filepath: str, endian: str = "big"
+) -> tuple[dict[str, Any], pd.DataFrame]:
     """
     Get metadata and variable information from an RMS file.
 
@@ -385,21 +403,21 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    print(f"Reading RMS file with {args.endian}-endian format...")
+    logger.info(f"Reading RMS file with {args.endian}-endian format...")
     reader = RMSFileReader(args.filepath, endian=args.endian)
     reader.print_summary()
 
-    print("\nVariable Information:")
-    print(reader.get_variable_info())
-    print(f"{len(reader.variables)} variables read")
+    logger.info("\nVariable Information:")
+    logger.info(reader.get_variable_info())
+    logger.info(f"{len(reader.variables)} variables read")
 
-    print("\nReading data...")
+    logger.info("\nReading data...")
     df = reader.read()
-    print(f"\nData shape: {df.shape}")
-    print("\nFirst few rows:")
-    print(df.head())
-    print("\nData types:")
-    print(df.dtypes)
+    logger.info(f"\nData shape: {df.shape}")
+    logger.info("\nFirst few rows:")
+    logger.info(df.head())
+    logger.info("\nData types:")
+    logger.info(df.dtypes)
 
 
 if __name__ == "__main__":

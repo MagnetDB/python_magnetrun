@@ -3,38 +3,50 @@ idea from chatgpt
 """
 
 import argparse
+import logging
 import os
 
 import pandas as pd
 import statsmodels.api as sm
 
-from python_magnetrun.MagnetRun import MagnetRun, prepareData_legacy
+from python_magnetrun.cli_args import create_base_parser
+from python_magnetrun.log_utils import setup_logging
+from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.smoothers import savgol
 
 _default_input = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "data", "M9_2019.02.14-23_00_38.txt"
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "data",
+    "M9_2019.02.14-23_00_38.txt",
 )
 
-parser = argparse.ArgumentParser()
+logger = logging.getLogger("python_magnetrun")
+command_line = None
+base_parser = create_base_parser()
+parser = argparse.ArgumentParser("Field factor identification", parents=[base_parser])
 parser.add_argument(
     "input_file",
     nargs="?",
     default=_default_input,
     help="enter input file (ex: ~/M9_2024.05.13---16_30_51.txt)",
 )
-parser.add_argument("--window", help="stopping criteria for nlopt", type=int, default=10)
+parser.add_argument(
+    "--window", help="stopping criteria for nlopt", type=int, default=10
+)
 args, _unknown = parser.parse_known_args()
-print(f"args: {args}", flush=True)
+setup_logging(level=args.log_level, log_file=args.log_file)
+logger.debug(f"args: {args}")
 
 file = args.input_file
 window = args.window
 
 filename = os.path.basename(file)
-site = filename.split("_")[0]
-insert = "tutu"
-mrun = MagnetRun.fromtxt(site, insert, file)
+housing = filename.split("_")[0] if args.housing is None else args.housing
+site = args.site
+insert = args.insert
+mrun = MagnetRun.fromtxt(housing, site, file)
 mdata = mrun.getMData()
-prepareData_legacy(mdata, site, debug=True)
 
 
 B = mdata.Data["Field"]

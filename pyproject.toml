@@ -59,6 +59,7 @@ signal = [
 ]
 dev = [
     "pytest>=6.2",
+    "pytest-cov>=4.0.0",
     "ruff>=0.4.0",
     "mypy>=1.9.0",
     "pre-commit>=3.7.0",
@@ -75,15 +76,21 @@ doc = [
 Homepage = "https://github.com/MagnetDB/python_magnetrun"
 
 [project.scripts]
-python-magnetrun = "python_magnetrun.python_magnetrun:main"
+python-magnetrun = "python_magnetrun.cli:main"
 srvdata-to-magnetrun = "python_magnetrun.requests.cli:main"
 magnetrun-analysis = "python_magnetrun.analysis:main"
 hybrid-magnetrun = "python_magnetrun.hybrid.cli:main"
 magnetrun-alimconfig = "python_magnetrun.configAlims.convertxml:main"
 magnetrun-pigbrother-logparser = "python_magnetrun.tdms.log_parser:main"
+magnetrun-processing = "python_magnetrun.processing.cli:main"
+magnetrun-field-defs = "python_magnetrun.field_defs:main"
+magnetrun-housing-config = "python_magnetrun.housing_config:main"
 
 [tool.setuptools.packages.find]
 include = ["python_magnetrun*"]
+
+[tool.setuptools.package-data]
+python_magnetrun = ["*.json"]
 
 [tool.ruff]
 line-length = 100
@@ -104,3 +111,11 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 python_files = ["test_*.py", "test-*.py"]
 # norecursedirs = ["python_magnetcooling", "rustfs", "docs", "examples", "notebooks"]
+addopts = "--cov=python_magnetrun --cov-report=term-missing --cov-report=xml"
+
+[tool.coverage.run]
+source = ["python_magnetrun"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+show_missing = true

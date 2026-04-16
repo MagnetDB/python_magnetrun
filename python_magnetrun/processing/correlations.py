@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from ..magnetdata import MagnetData
+from ..magnetdata_base import MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def lag_correlation(
     :return: _description_
     :rtype: _type_
     """
-    print(f"lag_correlation: {data1['field']} - {data2['field']}")
+    logger.info(f"lag_correlation: {data1['field']} - {data2['field']}")
 
     from scipy.signal import correlate, correlation_lags
 
@@ -93,7 +93,7 @@ def lag_correlation(
     # print(time_trend_slice_lag.head())
 
     # Plot the results
-    print(f'name_series="{name_series}", name_trend="{name_trend}", lag={lag}s')
+    logger.info(f'name_series="{name_series}", name_trend="{name_trend}", lag={lag}s')
 
     plt.figure(figsize=(12, 6))
     plt.subplot(2, 1, 1)
@@ -136,7 +136,7 @@ def compute_lag(
     save: bool = False,
     debug: bool = False,
 ) -> pd.Timedelta:
-    print(f"compute_lag: {df1_data['field']} - {df2_data['field']}")
+    logger.info(f"compute_lag: {df1_data['field']} - {df2_data['field']}")
 
     ts1 = df1_data["df"].copy()
     key1 = df1_data["field"]
@@ -162,11 +162,11 @@ def compute_lag(
         ts2_index = ts2.index.to_list()
         ts2_resampled = ts2.resample("1s", origin=ts2_index[0]).asfreq()
     except Exception as e:
-        print(f"compute_lag: resample error: {e}")
-        print(f"ts2 index:\n{ts2.index}")
-        print(f"ts2:\n{ts2}")
+        logger.error(f"compute_lag: resample error: {e}")
+        logger.error(f"ts2 index:\n{ts2.index}")
+        logger.error(f"ts2:\n{ts2}")
         duplicates = ts2.index.duplicated()
-        print(duplicates)
+        logger.error(f"{duplicates}")
         raise e
     pstart: np.ndarray = np.array([], dtype=int)
     pend: np.ndarray = np.array([], dtype=int)
@@ -202,7 +202,7 @@ def compute_lag(
         "df": ts1,
         "range": {"start": otstart, "end": otend},
     }
-    print(f"compute_lag: {ts1_data['field']} - {ts2_data['field']}")
+    logger.info(f"compute_lag: {ts1_data['field']} - {ts2_data['field']}")
     lag = lag_correlation(
         ts2_data,
         ts1_data,
@@ -218,7 +218,7 @@ def compute_lag(
 
 
 def pearson(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     fields: list[str],
     save: bool = False,
     show: bool = False,
@@ -237,10 +237,10 @@ def pearson(
             for j in range(i + 1, nFields):
                 df = Data.getData(["t", fields[i], fields[j]])
                 overall_pearson_r = df.corr().iloc[0, 1]
-                print(f"Pandas computed Pearson r: {overall_pearson_r}")
+                logger.info(f"Pandas computed Pearson r: {overall_pearson_r}")
 
                 r, p = stats.pearsonr(df.dropna()[fields[i]], df.dropna()[fields[j]])
-                print(f"Scipy computed Pearson r: {r} and p-value: {p}")
+                logger.info(f"Scipy computed Pearson r: {r} and p-value: {p}")
 
                 # Compute rolling window synchrony
                 f, ax = plt.subplots(figsize=(7, 3))
@@ -280,7 +280,7 @@ def crosscorr(datax: pd.Series, datay: pd.Series, lag: int = 0, wrap: bool = Fal
 
 
 def tlcc(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     xfield: str,
     yfield: str,
     save: bool = False,
@@ -317,7 +317,7 @@ def tlcc(
 
 
 def wtlcc(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     xfield: str,
     yfield: str,
     save: bool = False,
@@ -359,7 +359,7 @@ def wtlcc(
 
 
 def rwtlcc(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     xfield: str,
     yfield: str,
     save: bool = False,
