@@ -135,11 +135,12 @@ Either add it to a `hybrid` extras group or document the soft requirement explic
 
 ## Code Duplication Summary
 
-| Duplicate area | Locations |
-|---|---|
-| Protocol for `MagnetRun`/`HybridRun` interface | `DataProvider` in `hybrid_run.py`, `DataLoader` in `data_protocol.py` |
-| Plot logic | `commands/plot.py`, legacy `viewcsv.py` |
-| Argument parsing for smoothing/logging | `cli_args.py` builders vs. `processing/cli.py` inline argparse |
+| Duplicate area | Locations | Status |
+|---|---|---|
+| Protocol for `MagnetRun`/`HybridRun` interface | `DataProvider` in `hybrid_run.py`, `DataLoader` in `data_protocol.py` | Done |
+| `Référence_GR → Courant_GR` mapping | `config.py ChannelMapping` + `analysis/cli.py:162-165` | Done — cli.py now uses `channel_map.to_dict()` |
+| Plot logic | `commands/plot.py`, legacy `viewcsv.py` | Needs work |
+| Argument parsing for smoothing/logging | `cli_args.py` builders vs. `processing/cli.py` inline argparse | Needs work |
 
 ---
 
@@ -163,7 +164,7 @@ Either add it to a `hybrid` extras group or document the soft requirement explic
 | Protocol duplication (`DataProvider` / `DataLoader`) | Done |
 | Timestamp convention (Pandas + TDMS) | Done |
 | `HybridData` timestamp support | Pending (out of current scope) |
-| Cross-domain comparison (`DataLoader` extension, Phase A1–A3) | In progress — A0 done, A1 partial |
+| Cross-domain comparison (`DataLoader` extension, Phase A1–A3) | Done — A0–A3 complete |
 | Downsampling refactoring (`DownsampleConfig`, shared module) | Planned — see `downsampling-refactoring.plan.md` |
 | Plotting refactoring (`plotting/` subpackage, backend protocol, JS path) | Planned — see `plotting-refactoring.plan.md` |
 
@@ -171,11 +172,10 @@ The core abstractions are well-conceived — the ABC, the defs system, and `Hous
 foundations. All major structural issues are now resolved: housing config consolidation, `MagnetData`
 shim replacement, `getUnitKey` fix, `saveData` delegation, hardcoded-path removal, `Data` type
 divergence (external callers cleaned up), Protocol unification (`DataLoader` only), and timestamp
-convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC). Remaining work is:
-Phase A1–A3 of the cross-domain comparison plan (`getDomain()` in protocol + runners,
-`MagnetRun.get_time_range()` delegation, protocol compliance tests), CLI fragmentation, minor
-housekeeping (`tsdownsample` extras, editor backup file), and `HybridData` timestamp support
-(out of current scope, tracked in [`prompts/hybriddata-timestamp-plan.md`](hybriddata-timestamp-plan.md)).
+convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC). Remaining work in priority order: (7) cross-domain Phase A1–A3 (protocol + compliance tests,
+~half-day, no dependencies); (8) downsampling refactoring; (9) plotting refactoring (depends on
+8); (10) `HybridData` timestamp support (out of current scope); (11) cross-domain Phases B–G
+(`ComparisonSession`, adapters, CLI — depends on 8, 9, 10); (12) editor backup file.
 
 ---
 
@@ -223,11 +223,7 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
    ([magnetdata_pandas.py:471-479](python_magnetrun/magnetdata_pandas.py#L471-L479)).
    `TdmsMagnetData.addTime()` stores naive UTC. Both subclasses are consistent.
    See [`prompts/timestamp-utc-refactoring.plan.md`](timestamp-utc-refactoring.plan.md).
-
-   **`HybridData` timestamp support** *(pending, out of current scope)* — tracked in
-   **[`prompts/hybriddata-timestamp-plan.md`](hybriddata-timestamp-plan.md)**:
-   add `start_timestamp`, `end_timestamp`, `_infer_timestamps()`, `addTime()`,
-   `getStartDate()`, `getDuration()` to `HybridData`.
+   `HybridData` timestamp support is deferred — see item 10.
 
 2. **`Data` attribute type divergence** *(done)* — no external `.Data` access remains outside
    the two subclasses. `MagnetRun.py` and all callers route through `getData()`. The
@@ -245,45 +241,52 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
 
 6. **Hardcoded default path** *(done)* — removed from `cli_args.py`.
 
-7. **`tsdownsample` + downsampling refactoring** *(effort: M)* — extract `downsample_data()` from
+7. **Cross-domain comparison — Phase A1–A3** *(effort: M, do next)* — complete protocol work
+   before tackling downsampling/plotting. No dependencies on items 8–9.
+
+   Full plan: **[`prompts/cross-domain-comparison.prompt.md`](cross-domain-comparison.prompt.md)**.
+
+   | Phase | Task | Status |
+   |---|---|---|
+   | A0 | Delete `DataProvider` from `hybrid_run.py` | Done |
+   | A1 | Add `get_time_range()` to `DataLoader` protocol | Done (`data_protocol.py`) |
+   | A1 | Add `getDomain()` to `DataLoader` protocol | Done (`data_protocol.py`) |
+   | A2 | `HybridRun.get_time_range()` | Done (`hybrid_run.py`) |
+   | A2 | `HybridRun.getDomain() → "operational"` | Done (`hybrid_run.py`) |
+   | A2 | `MagnetRun.get_time_range()` delegation | Done (`MagnetRun.py`) |
+   | A2 | `MagnetRun.getDomain() → "operational"` | Done (`MagnetRun.py`) |
+   | A3 | Protocol compliance tests (`tests/test_protocol.py`) | Done |
+
+8. **`tsdownsample` + downsampling refactoring** *(effort: M)* — extract `downsample_data()` from
    `hybrid_run.py` into `python_magnetrun/utils/downsampling.py`; introduce `DownsampleConfig`
    dataclass; add downsampling support to `PandasMagnetData` and `TdmsMagnetData`; update
    `DownsamplingLoader` protocol; reconcile `analysis/processing.py` percentage model.
    Add `tsdownsample` to `pyproject.toml` as a `hybrid` extras dependency.
    Full plan: **[`prompts/downsampling-refactoring.plan.md`](downsampling-refactoring.plan.md)**.
 
-8. **Plotting refactoring** *(effort: L)* — create `python_magnetrun/plotting/` subpackage with
+9. **Plotting refactoring** *(effort: L)* — create `python_magnetrun/plotting/` subpackage with
    `PlottingBackend` protocol, `MatplotlibBackend`, `PlotlyBackend`, `plot_subplots()`,
    `plot_overlay()` (with normalization), and `AnnotationManager`.  Adds JS-frontend path via
    `to_json()` and native marimo / voilà support via the Plotly backend.
    Full plan: **[`prompts/plotting-refactoring.plan.md`](plotting-refactoring.plan.md)**.
    Depends on downsampling plan Steps 1–2 for full method selection.
 
-9. **Editor backup file** *(effort: S)* — remove `pigbrother-defs.json~` and add `*.json~` to
-   `.gitignore`.
+10. **`HybridData` timestamp support** *(effort: M, out of current scope)* — tracked in
+    **[`prompts/hybriddata-timestamp-plan.md`](hybriddata-timestamp-plan.md)**:
+    add `start_timestamp`, `end_timestamp`, `_infer_timestamps()`, `addTime()`,
+    `getStartDate()`, `getDuration()` to `HybridData`. Required before `HybridRun` can
+    participate as a source in `ComparisonSession` (Phase E).
 
----
+11. **Cross-domain comparison — Phases B–G** *(effort: XL)* — depends on items 8, 9, and 10.
 
-### Cross-Domain Comparison — Phase A remaining work
+    | Phase | Task |
+    |---|---|
+    | B | `SimulationRun` adapter (`python_magnetrun/simulation/`) |
+    | C | `BFieldRun` adapter (`python_magnetrun/bfield/`) |
+    | D | Extend `*-defs.json` with `simulation`/`bfield` aliases; `KeyMapping` in `comparison/key_mapping.py` (reuses `field_defs.build_crossref()`, no hardcoded dict) |
+    | E | `ComparisonSession` (`python_magnetrun/comparison/session.py`) |
+    | F | `magnetrun-compare` CLI |
+    | G | `tests/test_comparison.py` |
 
-Full plan in **[`prompts/cross-domain-comparison.prompt.md`](cross-domain-comparison.prompt.md)**.
-
-| Phase | Task | Status |
-|---|---|---|
-| A0 | Delete `DataProvider` from `hybrid_run.py` | Done |
-| A1 | Add `get_time_range()` to `DataLoader` protocol | Done (`data_protocol.py:177`) |
-| A1 | Add `getDomain()` to `DataLoader` protocol | **Todo** |
-| A2 | `HybridRun.get_time_range()` | Done (`hybrid_run.py:822`) |
-| A2 | `HybridRun.getDomain() → "operational"` | **Todo** |
-| A2 | `MagnetRun.get_time_range()` delegation | **Todo** |
-| A2 | `MagnetRun.getDomain() → "operational"` | **Todo** |
-| A3 | Protocol compliance tests (`tests/test_protocol.py`) | **Todo** |
-| B | `SimulationRun` adapter | Not started |
-| C | `BFieldRun` adapter | Not started |
-| D | `CHANNEL_ALIASES` + `KeyMapping` in `analysis/config.py` | Not started |
-| E | `ComparisonSession` | Not started |
-| F | `magnetrun-compare` CLI | Not started |
-| G | `tests/test_comparison.py` | Not started |
-
-Immediate next step: complete Phase A1–A3 (add `getDomain()` to protocol + both runners,
-add `MagnetRun.get_time_range()` delegation, write `tests/test_protocol.py`). ~2 h total.
+12. **Editor backup file** *(effort: S)* — remove `pigbrother-defs.json~` and add `*.json~` to
+    `.gitignore`.

@@ -208,58 +208,80 @@ class ColorConfig:
 # =============================================================================
 @dataclass(frozen=True)
 class ChannelMapping:
-    """
-    Mapping between reference and current channels.
+    """TDMS setpoint/actual channel pairs for each power-supply group.
 
-    Maps TDMS reference channel names to their corresponding current channels.
+    For each group (GR1, GR2) the TDMS data contains two channels:
+    - a *setpoint* (``Référence_GRn``) — what the supply is asked to deliver
+    - an *actual* (``Courant_GRn``) — what is measured
 
-    Attributes
-    ----------
-    reference_gr1 : str
-        Current channel name for Référence_GR1
-    reference_gr2 : str
-        Current channel name for Référence_GR2
+    Attributes are the *actual* channel names; the setpoint names are
+    ``"Référence_GR1"`` / ``"Référence_GR2"`` and are fixed by the acquisition
+    system.
     """
 
     reference_gr1: str = "Courant_GR1"
     reference_gr2: str = "Courant_GR2"
 
-    def get_current_channel(self, reference_key: str) -> str:
-        """
-        Get the current channel name for a reference key.
+    # Fixed setpoint channel names (acquisition-system convention).
+    _SETPOINT: dict[str, str] = field(
+        default_factory=lambda: {
+            "GR1": "Référence_GR1",
+            "GR2": "Référence_GR2",
+        },
+        compare=False,
+        repr=False,
+    )
+
+    def get_group_channels(self, group: str) -> tuple[str, str]:
+        """Return ``(setpoint_channel, actual_channel)`` for *group*.
 
         Parameters
         ----------
-        reference_key : str
-            Reference channel name (e.g., "Référence_GR1")
+        group:
+            Group identifier: ``"GR1"`` or ``"GR2"``.
 
         Returns
         -------
-        str
-            Corresponding current channel name
+        tuple[str, str]
+            ``(setpoint_channel, actual_channel)`` — both are TDMS channel names.
+        """
+        actual = {"GR1": self.reference_gr1, "GR2": self.reference_gr2}.get(group)
+        if actual is None:
+            raise KeyError(f"Unknown group: {group!r}. Valid groups: GR1, GR2")
+        return self._SETPOINT[group], actual
 
-        Raises
-        ------
-        KeyError
-            If reference_key is not a valid reference channel
+    def get_setpoint_channel(self, group: str) -> str:
+        """Return the setpoint (Référence) channel name for *group*."""
+        return self.get_group_channels(group)[0]
+
+    def get_actual_channel(self, group: str) -> str:
+        """Return the actual (Courant) channel name for *group*."""
+        return self.get_group_channels(group)[1]
+
+    def get_current_channel(self, reference_key: str) -> str:
+        """Return the actual channel for a setpoint key (backward compat).
+
+        Parameters
+        ----------
+        reference_key:
+            Setpoint channel name, e.g. ``"Référence_GR1"``.
         """
         mapping = {
             "Référence_GR1": self.reference_gr1,
             "Référence_GR2": self.reference_gr2,
         }
         if reference_key not in mapping:
-            logger.error(
-                "Unknown reference key: %s. Valid keys: %s",
-                reference_key,
-                list(mapping.keys()),
-            )
             raise KeyError(
-                f"Unknown reference key: {reference_key}. Valid keys: {list(mapping.keys())}"
+                f"Unknown setpoint key: {reference_key!r}. Valid keys: {list(mapping)}"
             )
         return mapping[reference_key]
 
+    def groups(self) -> list[str]:
+        """Return the list of group identifiers: ``["GR1", "GR2"]``."""
+        return list(self._SETPOINT)
+
     def to_dict(self) -> dict[str, str]:
-        """Convert to dictionary format (backward compatibility)."""
+        """Return ``{setpoint_channel: actual_channel}`` (backward compat)."""
         return {
             "Référence_GR1": self.reference_gr1,
             "Référence_GR2": self.reference_gr2,

@@ -834,6 +834,9 @@ class HybridRun:
     # Convenience methods for comparison with MagnetRun data
     # -------------------------------------------------------------------------
 
+    def getDomain(self) -> str:
+        return "operational"
+
     def get_time_range(self) -> tuple[datetime, datetime]:
         """Get time range of available data"""
         if self.HybridData is None:

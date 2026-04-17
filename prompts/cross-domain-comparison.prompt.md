@@ -309,58 +309,83 @@ __all__ = ["BFieldRun"]
 
 ## Phase D — Channel name normalization (`KeyMapping`)
 
-**File:** `python_magnetrun/analysis/config.py`  (extend existing)
+> **Design revision** (2026-04-16): the original plan proposed a hardcoded
+> `CHANNEL_ALIASES` dict in `analysis/config.py`. This is superseded by
+> `field_defs.py`, which already stores cross-format aliases in the `*-defs.json`
+> files under the `"aliases"` key, and provides `build_crossref()` to build an
+> O(1) lookup index. Phase D should reuse that infrastructure rather than
+> duplicating it.
 
-### D1 — Add `CHANNEL_ALIASES` registry
+### D0 — Extend the `*-defs.json` files with `simulation` and `bfield` aliases
 
-The existing `ROADMAP.md` Phase 2E already proposes this. Implement it now as
-it is required by `ComparisonSession`:
+The existing alias entries in `pupitre-defs.json` / `pigbrother-defs.json` already
+cover `"pigbrother"` and `"hybrid"` format names. Add `"simulation"` and `"bfield"`
+entries where a cross-domain correspondence exists, using the `magnetrun-field-defs`
+CLI:
 
-```python
-# Logical name → list of known aliases per domain
-CHANNEL_ALIASES: dict[str, dict[str, list[str]]] = {
-    "IH": {
-        "operational": ["IH", "Courant_GR1", "I_H1", "Idcct1"],
-        "simulation":  ["Icoil_helix", "I_helix", "IH"],
-        "bfield":      [],
-    },
-    "IB": {
-        "operational": ["IB", "Courant_GR2", "I_B1", "Idcct2"],
-        "simulation":  ["Icoil_bitter", "I_bitter", "IB"],
-        "bfield":      [],
-    },
-    "Field": {
-        "operational": ["Field", "Champ_magn", "B"],
-        "simulation":  ["B0", "Bz", "Field"],
-        "bfield":      ["Profile", "B", "Field"],
-    },
-    "FlowH": {
-        "operational": ["FlowH", "Debit_GR1", "flow_GR1"],
-        "simulation":  [],
-        "bfield":      [],
-    },
-    # ... extend as more channels are validated
-}
+```bash
+magnetrun-field-defs pupitre-defs.json alias-add IH simulation Icoil_helix
+magnetrun-field-defs pupitre-defs.json alias-add IB simulation Icoil_bitter
+magnetrun-field-defs pupitre-defs.json alias-add Field simulation B0
+magnetrun-field-defs pupitre-defs.json alias-add Field bfield Profile
+# ... add further entries as the simulation/bfield formats are confirmed
 ```
 
-### D2 — Add `KeyMapping` helper
+> The exact simulation field names (`Icoil_helix`, `B0`, etc.) need confirmation
+> with the user — see Open Question #4.
+
+### D1 — Add `KeyMapping` resolver
+
+**File:** `python_magnetrun/comparison/key_mapping.py` (new, not `analysis/config.py`)
+
+`KeyMapping` is a thin resolver on top of `field_defs.build_crossref()`. It does
+**not** own alias data — that lives exclusively in the JSON files.
 
 ```python
-class KeyMapping:
-    """Resolve logical channel names to source-specific key names."""
+from python_magnetrun.field_defs import build_crossref, load_defs
 
-    def __init__(self, aliases: dict = CHANNEL_ALIASES) -> None:
-        self._aliases = aliases
+class KeyMapping:
+    """Resolve logical channel names to source-specific key names.
+
+    Alias data is read from *-defs.json files via field_defs.build_crossref().
+    Logical keys are the canonical field names in the defs files (e.g. "IH",
+    "Field"); domains are alias format names (e.g. "simulation", "bfield",
+    "pigbrother", "hybrid").
+    """
+
+    def __init__(self, defs_files: dict[str, str | Path]) -> None:
+        """
+        Parameters
+        ----------
+        defs_files:
+            ``{format_name: path_to_defs_json}`` — e.g.
+            ``{"pupitre": "pupitre-defs.json", "simulation": "feelpp-defs.json"}``.
+            Bare filenames are resolved via ``field_defs.resolve_defs_file()``.
+        """
+        self._index = build_crossref(defs_files)
+
+    @classmethod
+    def default(cls) -> "KeyMapping":
+        """Construct with the standard bundled defs files."""
+        return cls({
+            "pupitre":    "pupitre-defs.json",
+            "pigbrother": "pigbrother-defs.json",
+            "hybrid":     "hybrid-defs.json",
+        })
 
     def resolve(self, logical_key: str, domain: str, available_keys: list[str]) -> str | None:
-        """Return the first alias for logical_key in domain that is in available_keys.
+        """Return the alias of *logical_key* in *domain* that is in *available_keys*.
 
-        Returns None if no match found.
+        Checks the logical key itself first (the key may exist unchanged in the
+        target domain), then falls back to the aliases recorded in the defs file.
+        Returns None if no match is found.
         """
-        candidates = self._aliases.get(logical_key, {}).get(domain, [])
-        for candidate in candidates:
-            if candidate in available_keys:
-                return candidate
+        if logical_key in available_keys:
+            return logical_key
+        candidates = self._index.get(domain, {}).get(logical_key, {})
+        for alias in candidates.values():
+            if alias in available_keys:
+                return alias
         return None
 
     def resolve_or_raise(self, logical_key: str, domain: str, available_keys: list[str]) -> str:
@@ -372,6 +397,28 @@ class KeyMapping:
             )
         return key
 ```
+
+### D2 — No change to `analysis/config.py` or `analysis/processing.py`
+
+`CHANNEL_ALIASES` is **not** added to `analysis/config.py`. The defs JSON files
+are the single source of truth for alias data. `KeyMapping` is placed in
+`python_magnetrun/comparison/key_mapping.py` alongside `ComparisonSession`.
+
+The hardcoded mappings in the analysis submodule are **not** candidates for
+field_defs replacement:
+
+- `ChannelMapping` (`config.py`) maps `Référence_GR1` → `Courant_GR1` — a fixed
+  TDMS-internal relationship, not a cross-format alias.
+- `_get_pupitre_channel()` (`processing.py`) maps `Courant_GR1` → `IH`/`IB`
+  depending on housing — housing-dependent, rightly in `HousingConfig`.
+
+The duplicate in `analysis/cli.py:162-165` has been removed. `cli.py` now uses
+`channel_map.to_dict()` and the new group-centric `ChannelMapping` API
+(`get_setpoint_channel(group)`, `get_actual_channel(group)`, `groups()`).
+
+**Optional future improvement:** `analysis/plotting.py` hardcodes axis labels.
+Using `load_defs()` for symbol/unit lookup would make plots self-documenting,
+but this is a quality-of-life improvement independent of Phase D.
 
 ---
 
@@ -530,6 +577,7 @@ Use synthetic DataFrames (no real files) for all tests except CLI smoke tests.
 | `python_magnetrun/bfield/__init__.py` | Package init |
 | `python_magnetrun/bfield/bfield_run.py` | BFieldRun adapter |
 | `python_magnetrun/comparison/__init__.py` | Package init |
+| `python_magnetrun/comparison/key_mapping.py` | `KeyMapping` resolver (Phase D) |
 | `python_magnetrun/comparison/session.py` | ComparisonSession |
 | `python_magnetrun/comparison/cli.py` | `magnetrun-compare` CLI |
 | `tests/test_protocol.py` | Protocol compliance tests |
@@ -539,11 +587,12 @@ Use synthetic DataFrames (no real files) for all tests except CLI smoke tests.
 
 | File | Change |
 |---|---|
-| `python_magnetrun/hybrid/data_protocol.py` | Add `getDomain()` and `get_time_range()` to `DataLoader` protocol (Phase A1) |
-| `python_magnetrun/hybrid/hybrid_run.py` | Delete `DataProvider`; add `getDomain() → "operational"` (Phase A0, A2) |
+| `python_magnetrun/hybrid/data_protocol.py` | Add `getDomain()` to `DataLoader` protocol (Phase A1 — `get_time_range()` already done) |
+| `python_magnetrun/hybrid/hybrid_run.py` | Add `getDomain() → "operational"` (Phase A2 — `DataProvider` already deleted) |
 | `python_magnetrun/MagnetRun.py` | Add `get_time_range()` delegation + `getDomain() → "operational"` (Phase A2) |
 | `python_magnetrun/magnetdata_base.py` | No change needed — `get_time_range()` already concrete in subclasses |
-| `python_magnetrun/analysis/config.py` | Add `CHANNEL_ALIASES` and `KeyMapping` (Phase D) |
+| `python_magnetrun/analysis/config.py` | **No change** — `CHANNEL_ALIASES` is not added here (see Phase D revision) |
+| `pupitre-defs.json`, `pigbrother-defs.json`, `hybrid-defs.json` | Add `"simulation"` and `"bfield"` alias entries (Phase D0) |
 | `pyproject.toml` | Add `magnetrun-compare` entry point; add new packages to `find_packages` (Phase F) |
 
 ---

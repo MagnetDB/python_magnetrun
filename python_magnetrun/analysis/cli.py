@@ -156,17 +156,19 @@ def main(args: list[str] | None = None) -> int:
 
                     # Get site config for channel mappings
                     # instead get_housing_config from input_file
+                    from .config import AnalysisConfig
                     site_config = get_housing_config(record.site)
+                    analysis_cfg = AnalysisConfig.for_housing(record.site)
+                    channel_map = analysis_cfg.channels
 
-                    # Build channel dictionaries for plotting
-                    channels_dict = {
-                        "Référence_GR1": "Courant_GR1",
-                        "Référence_GR2": "Courant_GR2",
-                    }
+                    # Build setpoint→actual and setpoint→pupitre dicts from ChannelMapping.
+                    channels_dict = channel_map.to_dict()
                     pupitre_dict = {
                         record.site: {
-                            "Référence_GR1": site_config.reference_gr1_current,
-                            "Référence_GR2": site_config.reference_gr2_current,
+                            channel_map.get_setpoint_channel(g): site_config.reference_gr1_current
+                            if g == "GR1"
+                            else site_config.reference_gr2_current
+                            for g in channel_map.groups()
                         }
                     }
 
@@ -185,11 +187,8 @@ def main(args: list[str] | None = None) -> int:
                     logger.info("get database done")
                     logger.info(f"df_archive: {df_archive.head()}")
 
-                    # Determine keys to analyze
-                    keys = [
-                        "Référence_GR1",
-                        "Référence_GR2",
-                    ]
+                    # Determine keys to analyze: all setpoint channels
+                    keys = [channel_map.get_setpoint_channel(g) for g in channel_map.groups()]
 
                     # Process each key
                     for key in keys:

@@ -148,6 +148,13 @@ class MagnetRun:
         """returns Housing"""
         return self.Housing
 
+    def getDomain(self) -> str:
+        return "operational"
+
+    def get_time_range(self):
+        """Delegate to the underlying MagnetData object."""
+        return self.MagnetData.get_time_range()
+
     def setSite(self, site: str) -> None:
         """set Site"""
         self.Site = site

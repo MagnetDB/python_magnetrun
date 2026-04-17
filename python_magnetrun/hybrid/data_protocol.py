@@ -134,6 +134,14 @@ class DataLoader(Protocol):
         """Get housing identifier"""
         ...
 
+    def getDomain(self) -> str:
+        """Return 'operational', 'simulation', or 'bfield'."""
+        ...
+
+    def get_time_range(self) -> tuple[datetime, datetime]:
+        """Return (start, end) of the dataset as UTC datetimes."""
+        ...
+
 
 @runtime_checkable
 class DownsamplingLoader(Protocol):
