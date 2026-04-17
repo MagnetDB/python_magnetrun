@@ -43,6 +43,9 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase) -> None:
                 diff = ikeys_df[Ikeys[i]] - ikeys_df[Ikeys[j]]
                 if abs(diff.mean()) <= 1e-2:
                     remove.append(Ikeys[j])
+
+        remove = list(set(remove))
+
         if remove:
             logger.warning(
                 f"{data.__class__.__name__}: dropping duplicate Icoil columns {remove} from {data.FileName!r}"
