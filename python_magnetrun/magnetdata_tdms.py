@@ -310,6 +310,8 @@ class TdmsMagnetData(MagnetDataBase):
                 raise RuntimeError(
                     f"{key} not defined in data - available keys are {self.Keys}"
                 )
+        if key in self.units:
+            return self.units[key]
         (group, channel) = key.split("/")
         return self.PigBrotherUnits(group)
 
@@ -324,12 +326,20 @@ class TdmsMagnetData(MagnetDataBase):
                 f"renameData: TDMS does not support channel renaming; columns={list(columns)} ignored"
             )
 
-    def addTime(self) -> int:  # noqa: N802
+    def addTime(self, time_zone: str = "Europe/Paris") -> int:  # noqa: N802
         """Implement the MagnetDataBase.addTime contract for TDMS data.
 
-        Delegates to :meth:`addTdmsTime` (processes all non-Infos groups).
+        Eagerly computes both ``t`` and ``timestamp`` (naive UTC) for **all**
+        non-``Infos`` groups.  Call this once before :meth:`extractTimeData`
+        or any ``timestamp``-based plot.
+
+        :param time_zone: accepted for interface compatibility; TDMS timestamps
+            are derived from ``wf_start_time`` which is already UTC, so no
+            timezone conversion is required here.
         """
-        return self.addTdmsTime()
+        self.addTdmsTime()
+        self.addTdmsTimestamp()  # timezone=None → stores naive UTC
+        return 0
 
     def cleanupData(  # noqa: N802
         self,
@@ -585,8 +595,6 @@ class TdmsMagnetData(MagnetDataBase):
 
             if all_same_string(groups):
                 group = groups[0]
-                if "t" not in self.Data[group].columns:  # type: ignore[index]
-                    self.addTdmsTime(group=group)
                 result["t"] = self.Data[group]["t"]  # type: ignore[index]
             else:
                 raise RuntimeError(
@@ -675,12 +683,37 @@ class TdmsMagnetData(MagnetDataBase):
         return 0
 
     def extractTimeData(  # noqa: N802
-        self, timerange: str, group: str | None = None, timezone: str | None = None
+        self, timerange: str, group: str | None = None, time_zone: str = "Europe/Paris"
     ) -> pd.DataFrame:
+        """Return rows whose ``timestamp`` falls within *timerange*.
+
+        :param timerange: ``"YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS"`` in local
+            time (the ``time_zone`` timezone).  Both boundaries are inclusive.
+        :param group: TDMS group name (required).
+        :param time_zone: IANA timezone of the datetime strings in *timerange*
+            (default ``"Europe/Paris"``).
+        :raises RuntimeError: if *group* is ``None`` or :meth:`addTime` has not
+            been called yet.
+        """
+        if group is None:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.extractTimeData: group is required for TDMS data"
+            )
+        assert isinstance(self.Data, dict)
+        if "timestamp" not in self.Data[group].columns:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.extractTimeData: call addTime() before extractTimeData()"
+            )
         trange = timerange.split(";")
         logger.debug(f"Select data from {trange[0]} to {trange[1]}")
-        self.addTdmsTimestamp(group=group, timezone=timezone)
-        return self.Data[group]["timestamp"].between(trange[0], trange[1], inclusive="both")  # type: ignore[index]
+        import pytz
+
+        tz = pytz.timezone(time_zone)
+        t_start = pd.Timestamp(trange[0]).tz_localize(tz).tz_convert(pytz.utc).tz_localize(None)
+        t_end = pd.Timestamp(trange[1]).tz_localize(tz).tz_convert(pytz.utc).tz_localize(None)
+        return self.Data[group][
+            self.Data[group]["timestamp"].between(t_start, t_end, inclusive="both")
+        ]
 
     # --- persist / display -------------------------------------------
 
@@ -702,6 +735,7 @@ class TdmsMagnetData(MagnetDataBase):
         label: str | None = None,
         normalize: bool = False,
         offset: float = 0,
+        time_zone: str = "Europe/Paris",
     ) -> None:
         import matplotlib
         import matplotlib.pyplot as plt
@@ -731,11 +765,19 @@ class TdmsMagnetData(MagnetDataBase):
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: xgroup={xgroup} != {ygroup}"
             )
 
-        if xchannel == "t" and "t" not in self.Data[xgroup].columns:  # type: ignore[index]
-            self.addTdmsTime(group=xgroup)
-        if xchannel == "timestamp" and "timestamp" not in self.Data[xgroup].columns:  # type: ignore[index]
-            self.addTdmsTimestamp(group=xgroup)
         df = self.Data[xgroup].copy()  # type: ignore[index]
+
+        # Convert naive UTC timestamp → naive local time for display
+        if xchannel == "timestamp":
+            import pytz
+
+            tz = pytz.timezone(time_zone)
+            df["timestamp"] = (
+                df["timestamp"]
+                .dt.tz_localize(pytz.utc)
+                .dt.tz_convert(tz)
+                .dt.tz_localize(None)  # naive local for clean axis labels
+            )
 
         if normalize:
             ymax = abs(df[ychannel].max())
@@ -748,7 +790,6 @@ class TdmsMagnetData(MagnetDataBase):
                 label=f"{ychannel} (norm with {ymax:.3e} {yunit:~P})",
                 grid=True,
             )
-            del df
         else:
             df.plot(x=xchannel, y=ychannel, alpha=alpha, ax=ax, grid=True)
 

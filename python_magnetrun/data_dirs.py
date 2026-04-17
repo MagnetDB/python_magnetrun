@@ -126,3 +126,34 @@ MAGNETTOOLS_DATA_DIR: str = _first_env(
 
 Override via ``MAGNETRUN_MAGNETTOOLS_DATA_DIR``.  No hard-coded default.
 """
+
+# ---------------------------------------------------------------------------
+# Run-log (ACQ_ENET) data files — per data source
+# ---------------------------------------------------------------------------
+
+PIGBROTHER_RUNLOG_DIR: str = _first_env(
+    "MAGNETRUN_PIGBROTHER_RUNLOG_DIR",
+    default="",
+)
+"""Root directory for pigbrother run-log files (co-located with .tdms files).
+
+Override via ``MAGNETRUN_PIGBROTHER_RUNLOG_DIR``.  No hard-coded default.
+"""
+
+PUPITRE_RUNLOG_DIR: str = _first_env(
+    "MAGNETRUN_PUPITRE_RUNLOG_DIR",
+    default="",
+)
+"""Root directory for pupitre run-log files.
+
+Override via ``MAGNETRUN_PUPITRE_RUNLOG_DIR``.  No hard-coded default.
+"""
+
+HYBRID_RUNLOG_DIR: str = _first_env(
+    "MAGNETRUN_HYBRID_RUNLOG_DIR",
+    default="",
+)
+"""Root directory for hybrid run-log files.
+
+Override via ``MAGNETRUN_HYBRID_RUNLOG_DIR``.  No hard-coded default.
+"""

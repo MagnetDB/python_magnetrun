@@ -31,7 +31,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -50,22 +50,6 @@ try:
 except ImportError:
     HAS_TSDOWNSAMPLE = False
     logger.debug("tsdownsample not available - downsampling will use simple stride")
-
-
-class DataProvider(Protocol):
-    """Protocol defining common interface for data providers (MagnetRun, HybridRun)"""
-
-    def getData(self, key: str | None = None) -> Any:
-        """Get data for a specific key"""
-        ...
-
-    def getKeys(self) -> list[str]:
-        """Get list of available data keys"""
-        ...
-
-    def getType(self) -> int:
-        """Get data type identifier"""
-        ...
 
 
 @dataclass
@@ -427,6 +411,9 @@ class HybridRun:
     """
     MagnetRun-compatible interface for hybrid magnet data.
 
+    Implements the :class:`~python_magnetrun.hybrid.data_protocol.DataLoader` protocol
+    (structural subtyping — no explicit base class required).
+
     Provides the same interface as MagnetRun while supporting:
     - kHz data from FEPC acquisition
     - RMS data
@@ -761,6 +748,22 @@ class HybridRun:
             "count": len(data),
             "duration_s": float(time[-1] - time[0]) if len(time) > 1 else 0,
         }
+
+    def getDataFrame(self) -> list[pd.DataFrame]:
+        """Return data as a list of DataFrames, one per available key.
+
+        Each DataFrame has a 'time' column (seconds from start of day) and
+        a column named after the variable key.
+        """
+        if self.HybridData is None:
+            raise RuntimeError("HybridRun.getDataFrame: no HybridData associated")
+        frames = []
+        for key in self.getKeys():
+            result = self.getData(key)
+            if isinstance(result, tuple) and len(result) == 2:
+                data, time = result
+                frames.append(pd.DataFrame({"time": time, key: data}))
+        return frames
 
     def saveData(self, filename: str, key: str | None = None) -> None:
         """

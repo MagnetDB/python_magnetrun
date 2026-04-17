@@ -7,7 +7,7 @@ from typing import Any
 import pandas as pd
 
 from .magnetdata import load_magnetdata
-from .magnetdata_base import MagnetDataBase
+from .magnetdata_base import DataType, MagnetDataBase
 from .magnetdata_pandas import PandasMagnetData
 from .runetl import prepareData
 
@@ -198,14 +198,24 @@ class MagnetRun:
         else:
             raise RuntimeError("MagnetRun.getStats: no MagnetData associated")
 
+    def getDataFrame(self) -> pd.DataFrame | list[pd.DataFrame]:
+        """Return data as DataFrame(s).
+
+        For pupitre data returns a single DataFrame.
+        For pigbrother/TDMS data returns a list of DataFrames, one per group.
+        """
+        if self.MagnetData is None:
+            raise RuntimeError("MagnetRun.getDataFrame: no MagnetData associated")
+        if self.MagnetData.Type == DataType.PUPITRE:
+            return self.MagnetData.getData()
+        elif self.MagnetData.Type == DataType.TDMS:
+            return [self.MagnetData.getData(group) for group in self.MagnetData.Groups]
+        else:
+            raise RuntimeError(
+                f"MagnetRun.getDataFrame: unsupported type {self.MagnetData.Type}"
+            )
+
     def saveData(self, filename: str) -> None:
         """save Data to file"""
         if self.MagnetData is not None:
-            if isinstance(self.MagnetData.Data, pd.DataFrame):
-                self.MagnetData.Data.to_csv(
-                    filename, sep="\t", index=False, header=True
-                )
-            else:
-                raise RuntimeError(
-                    f"MagnetRun.save: unsupported type of Data ({type(self.MagnetData.Data)})"  # noqa: E501
-                )
+            self.MagnetData.saveData(self.MagnetData.getKeys(), filename)

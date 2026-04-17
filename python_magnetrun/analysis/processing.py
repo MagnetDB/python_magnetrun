@@ -608,7 +608,7 @@ def process_overview_file(
     # Discover associated files
     discovery = FileDiscovery(
         pigbrother_datadir=config.pigbrother_datadir,
-        log_datadir=os.path.dirname(overview_file) or None,
+        pigbrother_runlog_dir=os.path.dirname(overview_file) or None,
     )
 
     # Use the new `discover` API which returns a FileSet

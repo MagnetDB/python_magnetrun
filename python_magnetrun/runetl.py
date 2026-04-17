@@ -12,17 +12,17 @@ logger = logging.getLogger(__name__)
 
 def _cleanup_pupitre_icoil(data: MagnetDataBase) -> None:
     """Remove zero/duplicate Icoil columns and rename Icoil→IH/IB."""
-    import pandas as pd
-
     logger.info(f"{data.__class__.__name__}: {data.FileName}")
 
-    assert isinstance(data.Data, pd.DataFrame)
+    assert data.Type == DataType.PUPITRE
+
+    df = data.getData()
 
     # Drop all-zero columns (skip Flow* and Field*)
     zero_cols = [
         col
-        for col in data.Data.columns
-        if (data.Data[col] == 0).all()
+        for col in df.columns
+        if (df[col] == 0).all()
         and not col.startswith("Flow")
         and not col.startswith("Field")
     ]
@@ -30,13 +30,13 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase) -> None:
         logger.warning(
             f"{data.__class__.__name__}: dropping zero columns {zero_cols} from {data.FileName!r}"
         )
-        data.Data.drop(columns=zero_cols, inplace=True)
-        data.Keys = list(data.Data.columns)
+        data.removeData(zero_cols)
+        df = data.getData()
 
     # Resolve duplicate Icoil columns
     Ikeys = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
     if len(Ikeys) > 2:
-        ikeys_df = data.Data[Ikeys]
+        ikeys_df = data.getData(Ikeys)
         remove = []
         for i in range(len(Ikeys)):
             for j in range(i + 1, len(Ikeys)):
@@ -47,8 +47,7 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase) -> None:
             logger.warning(
                 f"{data.__class__.__name__}: dropping duplicate Icoil columns {remove} from {data.FileName!r}"
             )
-            data.Data.drop(columns=remove, inplace=True)
-            data.Keys = list(data.Data.columns)
+            data.removeData(remove)
         Ikeys = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
 
     # Rename Icoil[0]→IH, Icoil[-1]→IB

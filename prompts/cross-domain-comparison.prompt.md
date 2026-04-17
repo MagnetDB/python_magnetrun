@@ -1,6 +1,6 @@
 # Cross-Domain Comparison — Architecture Evolution Plan
 
-*Created: 2026-04-08 — Updated: 2026-04-08*
+*Created: 2026-04-08 — Updated: 2026-04-16*
 
 ## Goal
 
@@ -17,8 +17,10 @@ simulation data (feelpp, ensight, magnettools), and magnetic field measurements
 |---|---|---|
 | `load_magnetdata()` standalone factory | `magnetdata.py` | **Done** — shim replaced in commit `274d6bd` |
 | `get_time_range()` on data objects | `magnetdata_pandas.py:418`, `magnetdata_tdms.py:409` | **Done** — concrete implementations exist |
-| `DataProvider`/`DataLoader` duplication resolved | `hybrid/hybrid_run.py`, `hybrid/data_protocol.py` | **Blocking** — must be done in Phase A |
-| `MagnetRun.get_time_range()` delegation wrapper | `MagnetRun.py` | **Blocking** — data layer done, wrapper missing |
+| `DataProvider`/`DataLoader` duplication resolved | `hybrid/hybrid_run.py`, `hybrid/data_protocol.py` | **Done** — `DataProvider` deleted (Phase A0) |
+| `get_time_range()` added to `DataLoader` protocol | `hybrid/data_protocol.py:177` | **Done** — `HybridRun.get_time_range()` also exists (`hybrid_run.py:822`) |
+| `getDomain()` added to `DataLoader` protocol | `hybrid/data_protocol.py` | **Blocking** — not yet in protocol |
+| `MagnetRun.get_time_range()` delegation wrapper | `MagnetRun.py` | **Blocking** — wrapper missing |
 | `getDomain()` on `MagnetRun` and `HybridRun` | `MagnetRun.py`, `hybrid/hybrid_run.py` | **Blocking** — not yet implemented |
 
 ---
@@ -48,21 +50,16 @@ DataLoader protocol (extended — all sources)
 **Files:** `python_magnetrun/hybrid/data_protocol.py`, `python_magnetrun/hybrid/hybrid_run.py`,
 `python_magnetrun/MagnetRun.py`
 
-### A0 — Remove `DataProvider` duplication *(do first)*
+### A0 — Remove `DataProvider` duplication *(done)*
 
-`hybrid_run.py:55` defines `DataProvider` with only `getData/getKeys/getType` — a strict
-subset of `DataLoader` from `data_protocol.py:78`. Having two protocols for the same concept
-makes Phase A's extension ambiguous and worsens REVIEW issue #7.
-
-Steps:
-1. Delete the `DataProvider` class from `hybrid_run.py`
-2. Replace all `DataProvider` type annotations in `hybrid_run.py` with `DataLoader`
-3. Add `from python_magnetrun.hybrid.data_protocol import DataLoader` import if missing
+`DataProvider` has been deleted from `hybrid_run.py`. All type annotations now use `DataLoader`
+from `hybrid/data_protocol.py`.
 
 ### A1 — Add `getDomain()` and `get_time_range()` to the protocol
 
-The current `DataLoader` protocol (`data_protocol.py:78–134`) requires only
-`getData`, `getKeys`, `getType`, `getSite`, `getHousing`. Add:
+`get_time_range()` has been added to `DataLoader` (`data_protocol.py:177`). `getDomain()` is
+still missing. The current `DataLoader` protocol requires `getData`, `getKeys`, `getType`,
+`getSite`, `getHousing`, `get_time_range`. Still needed — add `getDomain()`:
 
 ```python
 @runtime_checkable
@@ -83,9 +80,9 @@ class DataLoader(Protocol):
 `get_time_range()` is **already concrete** in the data layer:
 - `PandasMagnetData.get_time_range()` — `magnetdata_pandas.py:418` (uses Date/Time columns)
 - `TdmsMagnetData.get_time_range()` — `magnetdata_tdms.py:409` (uses wf_start_time)
-- `HybridRun.get_time_range()` — `hybrid_run.py:819` (already implemented)
+- `HybridRun.get_time_range()` — `hybrid_run.py:822` (already implemented)
 
-What is still missing:
+What is still missing (`getDomain()` and `MagnetRun` delegation):
 
 **`MagnetRun.py`** — add two methods:
 

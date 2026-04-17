@@ -5,7 +5,12 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
-from .data_dirs import HYBRID_DATA_DIR, PIGBROTHER_DATA_DIR, PUPITRE_DATA_DIR
+from .data_dirs import (
+    HYBRID_DATA_DIR,
+    PIGBROTHER_DATA_DIR,
+    PIGBROTHER_RUNLOG_DIR,
+    PUPITRE_DATA_DIR,
+)
 
 
 def validate_file_extension(allowed_extensions: list[str]) -> Callable[[str], str]:
@@ -249,12 +254,15 @@ def create_analysis_parser() -> argparse.ArgumentParser:
     managed_plots_parser = create_managed_plots_parser()
 
     parser = argparse.ArgumentParser(parents=[base_parser, managed_plots_parser])
-    parser.add_argument("--logs", nargs="+", help="enter log files from ACQ_ENET")
+    parser.add_argument("--runlogs", nargs="+", help="enter run-log files from ACQ_ENET")
     parser.add_argument(
-        "--log_datadir",
-        help="enter log datadir (default srvdata)",
+        "--runlog_datadir",
+        help=(
+            "root directory for ACQ_ENET run-log files "
+            "(overrides MAGNETRUN_PIGBROTHER_RUNLOG_DIR)"
+        ),
         type=str,
-        default="/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install",
+        default=PIGBROTHER_RUNLOG_DIR or None,
     )
     parser.add_argument(
         "--tkey",

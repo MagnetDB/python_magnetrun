@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from python_magnetrun.magnetdata_base import MagnetDataBase
+from python_magnetrun.magnetdata_base import DataType, MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -159,23 +159,22 @@ def trends(
     (symbol, unit) = mdata.getUnitKey(key)
 
     dt = 1
-    match mdata.Data:
-        case pd.DataFrame():
-            df = mdata.getData([tkey, key])
-            # t0 = mdata.Data.iloc[0]["timestamp"]
-        case dict():
-            (group, channel) = key.split("/")
-            # t0 = mdata.Groups[group][channel]["wf_start_time"]
+    if mdata.Type == DataType.TDMS:
+        (group, channel) = key.split("/")
+        # t0 = mdata.Groups[group][channel]["wf_start_time"]
 
-            df = mdata.getData(key).copy()
-            dt = mdata.Groups[group][channel]["wf_increment"]
-            df[tkey] = df.index * dt
-            # print(f"trends {mdata.FileName}: t0={t0}, dt={dt}, type={type(dt)}")
-            # rename df key
-            if debug:
-                logger.debug(f"tdms data: {df.head()}")
-                logger.debug(f"rename {channel} to {key}")
-            df.rename(columns={channel: key}, inplace=True)
+        df = mdata.getData(key).copy()
+        dt = mdata.Groups[group][channel]["wf_increment"]
+        df[tkey] = df.index * dt
+        # print(f"trends {mdata.FileName}: t0={t0}, dt={dt}, type={type(dt)}")
+        # rename df key
+        if debug:
+            logger.debug(f"tdms data: {df.head()}")
+            logger.debug(f"rename {channel} to {key}")
+        df.rename(columns={channel: key}, inplace=True)
+    else:
+        df = mdata.getData([tkey, key])
+        # t0 = mdata.Data.iloc[0]["timestamp"]
 
     if debug:
         logger.debug(f"{key}: data({df[tkey].shape})")

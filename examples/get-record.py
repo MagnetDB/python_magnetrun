@@ -201,7 +201,7 @@ def main():
                 logger.info(f"record: {file} - duration: {data.getDuration():.1f} s")
                 if data.getDuration() >= min_duration:
                     try:
-                        df_.append(data.Data[selected_keys])
+                        df_.append(data.getData(selected_keys))
                         logger.info(f"record: {file} - extracted {selected_keys}")
                     except (KeyError, IndexError) as error:
                         logger.warning(

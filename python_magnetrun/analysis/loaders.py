@@ -39,6 +39,7 @@ import numpy as np
 import pandas as pd
 from natsort import natsorted
 
+from ..runlogs.pigbrother import PIGBROTHER_LOG_FILENAME
 from .config import (
     DEFAULT_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
@@ -188,7 +189,8 @@ class FileSet:
     Container for a set of related files.
 
     Groups all files associated with a single overview file:
-    overview, archive, pupitre, and incident files (default, trigger, spike).
+    overview, archive, pupitre, incident files (default, trigger, spike),
+    and run-log files (pigbrother ACQ_ENET, pupitre Cirrus).
 
     Attributes
     ----------
@@ -204,6 +206,10 @@ class FileSet:
         Manual trigger incident files
     spike : List[str]
         Spike incident files
+    pigbrother_runlog : List[str]
+        Pigbrother run-log files (``LOG_ACQ_ENET.txt``)
+    pupitre_runlog : List[str]
+        Pupitre Cirrus run-log files (``cirrus/A[1-4]/YYYY-MM-DD_cirrus_out.log``)
     """
 
     overview: list[str] = field(default_factory=list)
@@ -212,6 +218,8 @@ class FileSet:
     default: list[str] = field(default_factory=list)
     trigger: list[str] = field(default_factory=list)
     spike: list[str] = field(default_factory=list)
+    pigbrother_runlog: list[str] = field(default_factory=list)
+    pupitre_runlog: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, list[str]]:
         """Convert to dictionary format (backward compatibility)."""
@@ -222,6 +230,8 @@ class FileSet:
             "default": self.default,
             "trigger": self.trigger,
             "spike": self.spike,
+            "pigbrother_runlog": self.pigbrother_runlog,
+            "pupitre_runlog": self.pupitre_runlog,
         }
 
     @classmethod
@@ -234,6 +244,8 @@ class FileSet:
             default=d.get("default", []),
             trigger=d.get("trigger", []),
             spike=d.get("spike", []),
+            pigbrother_runlog=d.get("pigbrother_runlog", []),
+            pupitre_runlog=d.get("pupitre_runlog", []),
         )
 
     def __len__(self) -> int:
@@ -245,6 +257,8 @@ class FileSet:
             + len(self.default)
             + len(self.trigger)
             + len(self.spike)
+            + len(self.pigbrother_runlog)
+            + len(self.pupitre_runlog)
         )
 
     @property
@@ -592,7 +606,7 @@ def load_df(
             mdata = mrun.getMData()
 
             # Load data
-            channels = list(mdata.Data[group].keys())
+            channels = list(mdata.getData(group).keys())
             logger.debug(f"load_df: channels={channels}")
             df = pd.DataFrame(mdata.getTdmsData(group, keys))
 
@@ -720,32 +734,48 @@ class FileDiscovery:
     ----------
     pupitre_datadir : str or Path
         Directory containing pupitre data files
-    log_datadir : str or Path, optional
-        Directory containing log files (defaults to pupitre_datadir)
+    pigbrother_datadir : str or Path
+        Root directory for pigbrother ``.tdms`` files
+    pigbrother_runlog_dir : str or Path, optional
+        Directory that contains ``LOG_ACQ_ENET.txt``.
+        Defaults to ``pigbrother_datadir`` when not set.
+    pupitre_runlog_dir : str or Path, optional
+        Root directory for pupitre Cirrus run-log files
+        (``cirrus/A[1-4]/YYYY-MM-DD_cirrus_out.log``).
+        No default — leave ``None`` to skip pupitre run-log discovery.
 
     Attributes
     ----------
     pupitre_datadir : Path
         Pupitre data directory
-    log_datadir : Path
-        Log data directory
+    pigbrother_datadir : Path
+        Pigbrother data directory
+    pigbrother_runlog_dir : Path
+        Directory searched for ``LOG_ACQ_ENET.txt``
+    pupitre_runlog_dir : Path or None
+        Root for Cirrus run-log discovery, or ``None`` if not configured
 
     Examples
     --------
     >>> discovery = FileDiscovery(pupitre_datadir="/data/pupitre")
     >>> file_set = discovery.discover("M9_Overview_241106-1643.tdms")
     >>> print(f"Found {len(file_set.archive)} archive files")
+    >>> print(f"Pigbrother runlog: {file_set.pigbrother_runlog}")
     """
 
     def __init__(
         self,
         pupitre_datadir: str | Path = DEFAULT_DATA_DIR,
         pigbrother_datadir: str | Path = DEFAULT_PIGBROTHER_DATA_DIR,
-        log_datadir: str | Path | None = None,
+        pigbrother_runlog_dir: str | Path | None = None,
+        pupitre_runlog_dir: str | Path | None = None,
     ):
         self.pupitre_datadir = Path(pupitre_datadir)
         self.pigbrother_datadir = Path(pigbrother_datadir)
-        self.log_datadir = Path(log_datadir) if log_datadir else self.pupitre_datadir
+        self.pigbrother_runlog_dir = (
+            Path(pigbrother_runlog_dir) if pigbrother_runlog_dir else self.pigbrother_datadir
+        )
+        self.pupitre_runlog_dir = Path(pupitre_runlog_dir) if pupitre_runlog_dir else None
 
     def discover(
         self,
@@ -860,10 +890,31 @@ class FileDiscovery:
         logger.info(f"file_set.spike: {file_set.spike}")
         logger.info(f"file_set.trigger: {file_set.trigger}")
 
+        # --- Pigbrother run-log (LOG_ACQ_ENET.txt) ---
+        pb_log = self.pigbrother_runlog_dir / PIGBROTHER_LOG_FILENAME
+        if pb_log.exists():
+            file_set.pigbrother_runlog = [str(pb_log)]
+            logger.info(f"file_set.pigbrother_runlog: {file_set.pigbrother_runlog}")
+        else:
+            logger.debug(f"Pigbrother runlog not found at {pb_log}")
+
+        # --- Pupitre run-log (Cirrus cirrus/A[1-4]/YYYY-MM-DD_cirrus_out.log) ---
+        if self.pupitre_runlog_dir is not None and start and end:
+            from ..runlogs.pupitre import discover_pupitre_runlogs
+
+            file_set.pupitre_runlog = discover_pupitre_runlogs(
+                self.pupitre_runlog_dir,
+                start_date=start[:10],
+                end_date=end[:10],
+            )
+            logger.info(f"file_set.pupitre_runlog: {file_set.pupitre_runlog}")
+
         logger.info(
             f"Discovered files for {filename}: {len(file_set.archive)} archives, "
             f"{len(file_set.pupitre)} pupitres, "
-            f"{len(file_set.default) + len(file_set.trigger) + len(file_set.spike)} incidents"
+            f"{len(file_set.default) + len(file_set.trigger) + len(file_set.spike)} incidents, "
+            f"{len(file_set.pigbrother_runlog)} pigbrother runlog, "
+            f"{len(file_set.pupitre_runlog)} pupitre runlog"
         )
 
         return file_set

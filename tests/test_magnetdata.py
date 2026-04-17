@@ -720,24 +720,123 @@ class TestExtractDataThreshold:
 
 
 # ---------------------------------------------------------------------------
-# extractTimeData
+# extractTimeData — pandas
 # ---------------------------------------------------------------------------
 
 
 class TestExtractTimeData:
+    """PandasMagnetData.extractTimeData — requires addTime() first; timerange in
+    local time ``"YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS"``."""
+
+    def test_raises_without_add_time(self, simple_magnetdata: PandasMagnetData) -> None:
+        """Must raise RuntimeError when timestamp column is absent."""
+        with pytest.raises(RuntimeError, match="addTime"):
+            simple_magnetdata.extractTimeData("2022-03-30 21:55:17;2022-03-30 21:55:18")
+
     def test_filters_by_time_range(self, simple_magnetdata: PandasMagnetData) -> None:
-        # Time values: ["21:55:17", "21:55:18", "21:55:19"]
-        df = simple_magnetdata.extractTimeData("21:55:17;21:55:18")
+        # Date="2022.03.30" → CEST (UTC+2); local 21:55:17-19 → UTC 19:55:17-19.
+        # Passing local range 21:55:17–21:55:18 must return exactly 2 rows.
+        simple_magnetdata.addTime()
+        df = simple_magnetdata.extractTimeData("2022-03-30 21:55:17;2022-03-30 21:55:18")
         assert len(df) == 2
 
     def test_inclusive_boundaries(self, simple_magnetdata: PandasMagnetData) -> None:
-        df = simple_magnetdata.extractTimeData("21:55:17;21:55:17")
+        simple_magnetdata.addTime()
+        df = simple_magnetdata.extractTimeData("2022-03-30 21:55:17;2022-03-30 21:55:17")
         assert len(df) == 1
-        assert df["Time"].iloc[0] == "21:55:17"
+
+    def test_full_range(self, simple_magnetdata: PandasMagnetData) -> None:
+        simple_magnetdata.addTime()
+        df = simple_magnetdata.extractTimeData("2022-03-30 21:55:17;2022-03-30 21:55:19")
+        assert len(df) == 3
 
     def test_empty_range(self, simple_magnetdata: PandasMagnetData) -> None:
-        df = simple_magnetdata.extractTimeData("22:00:00;22:59:59")
+        simple_magnetdata.addTime()
+        df = simple_magnetdata.extractTimeData("2022-03-30 22:00:00;2022-03-30 22:59:59")
         assert len(df) == 0
+
+    def test_result_is_dataframe(self, simple_magnetdata: PandasMagnetData) -> None:
+        simple_magnetdata.addTime()
+        result = simple_magnetdata.extractTimeData("2022-03-30 21:55:17;2022-03-30 21:55:18")
+        assert isinstance(result, pd.DataFrame)
+
+
+# ---------------------------------------------------------------------------
+# extractTimeData — TDMS
+# ---------------------------------------------------------------------------
+
+
+class TestExtractTimeDataTdms:
+    """TdmsMagnetData.extractTimeData — requires addTime() + group name;
+    timestamps are naive UTC; timerange strings are local (Europe/Paris)."""
+
+    @pytest.fixture()
+    def tdms_with_ts(self) -> TdmsMagnetData:
+        """5 samples at 1 Hz, wf_start_time = 2024-01-01 10:00:00 UTC.
+
+        In Europe/Paris (CET = UTC+1 in January) the local times are
+        11:00:00 – 11:00:04.
+        """
+        import numpy as np
+
+        wf_start = np.datetime64("2024-01-01T10:00:00")
+        df = pd.DataFrame({"ChA": [1.0, 2.0, 3.0, 4.0, 5.0]})
+        groups = {
+            "GrpX": {
+                "ChA": {
+                    "wf_increment": 1.0,
+                    "wf_start_offset": 0.0,
+                    "wf_samples": 5,
+                    "wf_start_time": wf_start,
+                }
+            }
+        }
+        return TdmsMagnetData(
+            "M8_Default_240101-1100.tdms", groups, ["GrpX/ChA"], {"GrpX": df}
+        )
+
+    def test_raises_when_group_is_none(self, tdms_with_ts: TdmsMagnetData) -> None:
+        """group parameter is mandatory for TDMS data."""
+        tdms_with_ts.addTime()
+        with pytest.raises(RuntimeError, match="group is required"):
+            tdms_with_ts.extractTimeData("2024-01-01 11:00:01;2024-01-01 11:00:03")
+
+    def test_raises_without_add_time(self, tdms_with_ts: TdmsMagnetData) -> None:
+        """Must raise RuntimeError when timestamp column is absent."""
+        with pytest.raises(RuntimeError, match="addTime"):
+            tdms_with_ts.extractTimeData(
+                "2024-01-01 11:00:01;2024-01-01 11:00:03", group="GrpX"
+            )
+
+    def test_filters_by_time_range(self, tdms_with_ts: TdmsMagnetData) -> None:
+        # Local Paris 11:00:01–11:00:03 → UTC 10:00:01–10:00:03 → rows 1, 2, 3
+        tdms_with_ts.addTime()
+        df = tdms_with_ts.extractTimeData(
+            "2024-01-01 11:00:01;2024-01-01 11:00:03", group="GrpX"
+        )
+        assert len(df) == 3
+
+    def test_inclusive_lower_boundary(self, tdms_with_ts: TdmsMagnetData) -> None:
+        tdms_with_ts.addTime()
+        df = tdms_with_ts.extractTimeData(
+            "2024-01-01 11:00:00;2024-01-01 11:00:00", group="GrpX"
+        )
+        assert len(df) == 1
+
+    def test_empty_range(self, tdms_with_ts: TdmsMagnetData) -> None:
+        tdms_with_ts.addTime()
+        df = tdms_with_ts.extractTimeData(
+            "2024-01-01 12:00:00;2024-01-01 13:00:00", group="GrpX"
+        )
+        assert len(df) == 0
+
+    def test_full_range_returns_all_rows(self, tdms_with_ts: TdmsMagnetData) -> None:
+        tdms_with_ts.addTime()
+        df = tdms_with_ts.extractTimeData(
+            "2024-01-01 11:00:00;2024-01-01 11:00:04", group="GrpX"
+        )
+        assert isinstance(df, pd.DataFrame)
+        assert len(df) == 5
 
 
 # ---------------------------------------------------------------------------
@@ -869,11 +968,12 @@ class TestRealisticM9Txt:
         assert len(df) == 26123
         assert (df["Field"] >= 20.0).all()
 
-    def test_extract_time_data(self, m9: MagnetDataBase) -> None:
-        df = m9.extractTimeData("23:00:39;23:00:41")
+    def test_extract_time_data(self) -> None:
+        # CET (UTC+1) in February; local 23:00:39–41 → UTC 22:00:39–41.
+        md = load_magnetdata(str(M9_TXT))
+        md.addTime()
+        df = md.extractTimeData("2019-02-14 23:00:39;2019-02-14 23:00:41")
         assert len(df) == 3
-        assert df["Time"].iloc[0] == "23:00:39"
-        assert df["Time"].iloc[-1] == "23:00:41"
 
     def test_save_and_reload(self, m9: MagnetDataBase, tmp_path: Path) -> None:
         out = tmp_path / "m9_subset.csv"

@@ -126,7 +126,7 @@ if __name__ == "__main__":
                 (group, channel) = key.split("/")
                 period = mdata.Groups[group][channel]["wf_increment"]
 
-                ts = mdata.Data[group][channel]
+                ts = mdata.getData(f"{group}/{channel}")[channel]
                 # print(ts, type(ts))
 
                 """

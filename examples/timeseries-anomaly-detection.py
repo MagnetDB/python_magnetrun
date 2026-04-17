@@ -302,7 +302,7 @@ if __name__ == "__main__":
             (group, channel) = key.split("/")
             (symbol, unit) = mdata.getUnitKey(key)
 
-            ts = mdata.Data[group][channel]
+            ts = mdata.getData(f"{group}/{channel}")[channel]
             if args.normalize:
                 ts = ts / ts.max()
             detector = TimeSeriesAnomalyDetector(ts)

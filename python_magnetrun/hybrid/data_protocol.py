@@ -34,6 +34,8 @@ from typing import (
 import numpy as np
 import pandas as pd
 
+from ..magnetdata_base import DataType
+
 
 class DataSourceType(Enum):
     """Enumeration of data source types"""
@@ -209,7 +211,7 @@ def get_data_info(loader: DataLoader) -> DataInfo:
     if loader_type == "MagnetRun":
         mdata = loader.getMData() if hasattr(loader, "getMData") else None
         if mdata:
-            source_type = DataSourceType.TDMS if mdata.Type == 1 else DataSourceType.PUPITRE
+            source_type = DataSourceType.TDMS if mdata.Type == DataType.TDMS else DataSourceType.PUPITRE
             filename = mdata.FileName
         else:
             source_type = DataSourceType.UNKNOWN

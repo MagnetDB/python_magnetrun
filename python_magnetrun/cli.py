@@ -21,6 +21,7 @@ from .commands.select import (
 from .commands.stats import display_stats
 from .hybrid import HybridRun
 from .log_utils import format_exception_location, setup_logging
+from .magnetdata_base import DataType
 from .MagnetRun import MagnetRun
 from .utils.files import expand_input_files
 
@@ -136,14 +137,15 @@ def main():
                 mdata.info()
 
             if args.convert:
-                data = mdata.Data
-                if mdata.Type == 0:
+                if mdata.Type == DataType.PUPITRE:
+                    data = mdata.getData()
                     csvfile = file.replace(f_extension, ".csv")
                     data.to_csv(csvfile, sep="\t", index=True, header=True)
-                elif mdata.Type == 1:
-                    for key, df in data.items():
-                        logger.debug(f"convert: key={key}")
-                        csvfile = file.replace(f_extension, f"-{key}.csv")
+                elif mdata.Type == DataType.TDMS:
+                    for group in mdata.Groups:
+                        logger.debug(f"convert: group={group}")
+                        df = mdata.getData(group)
+                        csvfile = file.replace(f_extension, f"-{group}.csv")
                         df.to_csv(csvfile, sep="\t", index=True, header=True)
 
     # Load hybrid data if requested

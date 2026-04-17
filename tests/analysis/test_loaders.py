@@ -337,13 +337,13 @@ class TestFileDiscovery:
         """Default init should set directories."""
         fd = FileDiscovery()
         assert fd.pupitre_datadir is not None
-        assert fd.log_datadir == fd.pupitre_datadir
+        assert fd.pigbrother_runlog_dir == fd.pigbrother_datadir
 
     def test_init_custom_dirs(self):
         """Custom directories should be set."""
-        fd = FileDiscovery(pupitre_datadir="/custom/pupitre", log_datadir="/custom/logs")
+        fd = FileDiscovery(pupitre_datadir="/custom/pupitre", pigbrother_runlog_dir="/custom/logs")
         assert str(fd.pupitre_datadir) == "/custom/pupitre"
-        assert str(fd.log_datadir) == "/custom/logs"
+        assert str(fd.pigbrother_runlog_dir) == "/custom/logs"
 
     def test_init_path_conversion(self):
         """String paths should be converted to Path."""

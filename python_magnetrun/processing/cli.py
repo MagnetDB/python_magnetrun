@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 from ..log_utils import SIMPLE_FORMAT, setup_logging
-from ..magnetdata_base import MagnetDataBase
+from ..magnetdata_base import DataType, MagnetDataBase
 from ..MagnetRun import MagnetRun
 
 ##from IPython.display import Image
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 def addtime(mdata: MagnetDataBase, group: str, channel: str) -> pd.DataFrame:
     logger.debug("addtime")
 
-    df = pd.DataFrame(mdata.Data[group][channel])
+    df = pd.DataFrame(mdata.getData(f"{group}/{channel}"))
     t0 = mdata.Groups[group][channel]["wf_start_time"]
     dt = mdata.Groups[group][channel]["wf_increment"]
     df["t"] = [i * dt for i in df.index.to_list()]
@@ -190,7 +190,7 @@ def main():
         logger.info(f"smooth: {skeys}")
         for key in skeys:
             # TODO fix for tdms
-            if mdata.Type == 0:
+            if mdata.Type == DataType.PUPITRE:
                 selected_df = mrun.getMData().extractData(["t", key])
             else:
                 (group, channel) = key.split("/")

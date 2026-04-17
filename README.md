@@ -21,7 +21,10 @@ Python `MagnetRun` contains utilities to view and analyze Magnet runs from LNCMI
 - [Features](#features)
 - [Basic Usage](#basic-usage)
 - [Analysis](#analysis)
+- [ETL and Pipelines](#etl-and-pipelines)
+- [Object Storage (RustFS)](#object-storage-rustfs)
 - [Running Tests](#running-tests)
+- [Breaking Changes](#breaking-changes)
 - [To-do](#to-do)
 - [Credits](#credits)
 
@@ -186,10 +189,13 @@ Hybrid data does not require network mounting; simply point `--hybrid_datadir` t
 - Field factor identification via OLS regression
 - Time-series synchronization between data sources
 - Distance and similarity metrics (Euclidean, MAE, MAPE, DTW, TLCC)
-- Extract data from `srv-data-lncmi `
+- Extract data from `srv-data-lncmi`
 - Prepare data for injection into `magnetdb`
 - Field-definition management (`*-defs.json`) with cross-format aliases
 - Per-housing sensor role configuration (`<Housing>-housing-config.json`)
+- ETL pipeline: clean Pupitre data, rename channels, compute thermal/hydraulic quantities
+- Waterflow and thermal pipeline modules (integrates with `python_magnetcooling`)
+- Object storage integration via `rustfs/` (S3-compatible, RustFS/MinIO)
 
 ---
 
@@ -564,6 +570,9 @@ threshold = config.thresholds.get("Courant_GR1")
 from python_magnetrun.magnetdata import MagnetData
 
 data = MagnetData.fromtxt("srvdata/M9_2024.05.09---16_34_03.txt")
+prepareData(data, housing="M9")  # applies housing-specific renaming and timestamp parsing
+data.Units()
+
 print(data.Keys)          # list of available field names
 df = data.Data            # pandas DataFrame
 print(df[["t", "Field", "IH", "IB"]].head())
@@ -575,6 +584,9 @@ print(df[["t", "Field", "IH", "IB"]].head())
 from python_magnetrun.magnetdata import MagnetData
 
 data = MagnetData.fromtdms("pigbrotherdata/Fichiers_Data/M9/Overview/M9_Overview_240509-1634.tdms")
+prepareData(data, housing="M9")  # applies housing-specific renaming and timestamp parsing
+data.Units()
+
 print(data.Keys)          # list of "Group/Channel" keys
 # Access a specific group as a DataFrame
 df = data.Data["Courants_Alimentations"]
@@ -784,6 +796,83 @@ The regression output reports `fh` and `fB` coefficients. Cross-reference with f
 
 ---
 
+## ETL and Pipelines
+
+### ETL (`runetl`)
+
+`python_magnetrun.runetl` provides functions to clean and normalise raw Pupitre data
+before further processing or ingestion into a database:
+
+- drop all-zero non-essential columns
+- rename `Icoil` → `IH` / `IB` based on housing config
+- attach computed `timestamp` (naive UTC)
+
+```python
+from python_magnetrun.runetl import prepare_pupitre
+
+data = prepare_pupitre("srvdata/M9_2024.05.09---16_34_03.txt", housing="M9")
+```
+
+### Waterflow pipeline (`waterflow_pipeline`)
+
+Extracts hydraulic operating points (flow rate, pressure drop, pump speed) from a
+prepared Pupitre DataFrame and fits pump curves using `python_magnetcooling`:
+
+```python
+from python_magnetrun.waterflow_pipeline import extract_hydraulic_data, fit_pump_curve
+
+hyd = extract_hydraulic_data(df, housing_cfg=cfg)
+result = fit_pump_curve(hyd)
+print(result.coefficients)
+```
+
+### Thermal pipeline (`thermal_pipeline`)
+
+Computes per-circuit and global thermal quantities (inlet/outlet temperature, heat
+load, efficiency) from prepared DataFrames using an iterative calorimetric scheme:
+
+```python
+from python_magnetrun.thermal_pipeline import compute_thermal
+
+thermal = compute_thermal(df, housing_cfg=cfg)
+print(thermal.heat_load_gr1)
+```
+
+---
+
+## Object Storage (RustFS)
+
+The `rustfs/` subdirectory provides a self-contained `magnetfs` Python package and
+Docker Compose setup for local S3-compatible object storage (RustFS / MinIO-compatible).
+
+**Workflow:**
+
+1. Start RustFS locally:
+
+```bash
+cd rustfs
+docker compose up -d
+```
+
+2. Convert and upload Pupitre `.txt` data to Parquet:
+
+```bash
+magnetfs upload srvdata/M9_2024.05.09---16_34_03.txt
+```
+
+3. Read and plot data directly from the bucket:
+
+```bash
+magnetfs plot M9_2024.05.09---16_34_03 --key Field
+```
+
+A Streamlit dashboard (`app_streamlit.py`) and a Panel dashboard (`app_panel.py`) are
+also included for interactive exploration.
+
+See [rustfs/README.md](rustfs/README.md) for full setup instructions.
+
+---
+
 ## Running Tests
 
 Run the standard test suite:
@@ -813,6 +902,36 @@ pytest --on-demand tests/test-tin.py
 
 ---
 
+## Breaking Changes
+
+### v0.3.0 — Timestamp convention unified to naive UTC
+
+`timestamp` columns in all `MagnetData` classes are now stored as **naive UTC**.
+Previously `PandasMagnetData` stored local time, which silently broke comparisons with
+TDMS/hybrid timestamps.
+
+| Class | Before (≤ 0.2.x) | After (≥ 0.3.0) |
+|---|---|---|
+| `PandasMagnetData.Data["timestamp"]` | naive local time | naive UTC |
+| `TdmsMagnetData.Data[group]["timestamp"]` | naive UTC | naive UTC (unchanged) |
+
+**`extractTimeData` timerange format changed:**
+
+```python
+# Old (≤ 0.2.x)
+md.extractTimeData("09:53:00;10:00:00")
+
+# New (≥ 0.3.0)
+md.extractTimeData("2025-11-05 09:53:00;2025-11-05 10:00:00")
+```
+
+`TdmsMagnetData.addTime()` is now eager: it populates all groups in one call (no need
+to call `addTdmsTimestamp()` separately).
+
+See [BREAKING_CHANGES.md](BREAKING_CHANGES.md) for the full migration guide.
+
+---
+
 ## To-do
 
 **Fix**
@@ -821,10 +940,12 @@ pytest --on-demand tests/test-tin.py
 **Finish**
 - [ ] hybrid data loading and unified interface
 - [ ] hybrid data validation and comparison with Pupitre/PigBrother
+- [ ] `HybridData` timestamp unification (follow-up to v0.3.0)
 
 **Refactor:**
 - [X] Split argparse options into separate Python files
-- [x] Add an example / a test for each subcommand in `python_magnetrun`
+- [X] Add an example / a test for each subcommand in `python_magnetrun`
+- [X] Rework `MagnetData` into base + pandas + tdms classes
 - [ ] Store stats (plateaus, duration) in a DataFrame, CSV, or database
 - [ ] Refactor plot functions to use a common interface and support multiple backends (Matplotlib, Plotly, Seaborn)
 - [ ] Refactor `analysis` module to separate synchronization, metrics, and visualization into distinct classes/functions
@@ -833,6 +954,7 @@ pytest --on-demand tests/test-tin.py
 - [X] Docs for aggregate
 - [X] Add a note to mount PigBrother data
 - [X] Add note to mount Pupitre data if applicable
+- [X] Document ETL, waterflow, and thermal pipeline modules
 
 **CI/CD:**
 - [X] Add code coverage with `pytest-cov` (generates `coverage.xml`)
@@ -843,15 +965,15 @@ pytest --on-demand tests/test-tin.py
 - [ ] Use python_magnetunits for unit conversions and dimensional analysis in formulas (e.g. power, busbar losses)
 
 **Dashboard:**
-- [ ] Build a dashboard (e.g. with Streamlit or Dash) for interactive exploration of runs, field profiles, and correlations
-- [ ] Add Jupyter notebooks with examples of data loading, plotting, and analysis
+- [X] Streamlit and Panel dashboards via `rustfs/` object storage integration
 - [ ] Add Marimo notebooks equivalents
-- [ ] Add standalone voila dashboard for non-technical users -- along with a Dockerfile for easy deployment
+- [ ] Add standalone voila dashboard for non-technical users — along with a Dockerfile for easy deployment
 
 **Features:**
-- [ ] Store processed Pupitre data in a specific file format (ETL output)
+- [X] ETL functions to clean and normalise Pupitre data (`runetl`)
+- [X] Waterflow and thermal pipeline modules
 - [X] Rewrite `txt2csv` to use methods in `utils` and `plots`
-- [ ] Check `addData` complex formulas (involving `freesteam` / `iapws`) -- with `pyparsing` ?
+- [ ] Check `addData` complex formulas (involving `freesteam` / `iapws`) — with `pyparsing`?
 - [ ] Export data to `great_tables`, `tabular`, `rich` or `csv2md`
 - [ ] Add support for Origin files (`liborigin` / Python bindings)
 - [ ] For `select`, support multiple field criteria

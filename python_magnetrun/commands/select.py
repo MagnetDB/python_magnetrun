@@ -5,6 +5,7 @@ import os
 
 import matplotlib.pyplot as plt
 
+from ..magnetdata_base import DataType
 from ..MagnetRun import MagnetRun
 from ..processing.smoothers import savgol
 
@@ -145,7 +146,7 @@ def convert_to_csv(file, inputs):
 
     extension = os.path.splitext(file)[-1]
     file_name = file.replace(extension, ".csv")
-    if mdata.Type == 0:
+    if mdata.Type == DataType.PUPITRE:
         mdata.to_csv(file_name, sep="\t", index=False, header=True)
 
 
@@ -169,16 +170,16 @@ def output_timerange(file, inputs, extensions, args):
         timerange = item.split(";")
 
         file_name = file.replace(f_extension, "")
-        file_name = file_name + "_from" + str(timerange[0].replace(":", "-"))
-        file_name = file_name + "_to" + str(timerange[1].replace(":", "-")) + ".csv"
+        file_name = file_name + "_from" + timerange[0].replace(":", "-").replace(" ", "T")
+        file_name = file_name + "_to" + timerange[1].replace(":", "-").replace(" ", "T") + ".csv"
 
-        if mdata.Type == 0:
-            selected_df = mdata.extractTimeData(timerange)
+        if mdata.Type == DataType.PUPITRE:
+            selected_df = mdata.extractTimeData(item)
             if selected_df is not None:
                 selected_df.to_csv(file_name, sep="\t", index=False, header=True)
-        elif mdata.Type == 1:
-            for group in mdata.Data:
-                selected_df = mdata.extractTimeData(timerange, group)
+        elif mdata.Type == DataType.TDMS:
+            for group in mdata.Groups:
+                selected_df = mdata.extractTimeData(item, group)
                 if selected_df is not None:
                     selected_df.to_csv(file_name, sep="\t", index=False, header=True)
 
@@ -203,8 +204,8 @@ def output_time(file, inputs, extensions, times):
     for item in select_args:
         select_args_str += f"-{item:.3f}s"
 
-    if mdata.Type == 0:
-        data = mdata.Data
+    if mdata.Type == DataType.PUPITRE:
+        data = mdata.getData()
         df = data[data["t"].isin(times)]
         if mdata.start_timestamp is not None:
             import pandas as pd
@@ -215,10 +216,10 @@ def output_time(file, inputs, extensions, times):
         file_name = file_name + select_args_str + ".csv"
         df.to_csv()
 
-    elif mdata.Type == 1:
-        data = mdata.Data
-        for group in data:
-            df = data[data.index.isin(times)]
+    elif mdata.Type == DataType.TDMS:
+        for group in mdata.Groups:
+            df = mdata.getData(group)
+            df = df[df.index.isin(times)]
             file_name = file.replace(f_extension, f"-{group}")
             file_name = file_name + select_args_str + ".csv"
             df.to_csv()

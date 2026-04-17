@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from tabulate import tabulate  # type: ignore[import-untyped]
 
-from ..magnetdata_base import MagnetDataBase
+from ..magnetdata_base import DataType, MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,7 @@ def stats(
     # fmt: "plain", "simple", "psql"
 
     # see https://github.com/astanin/python-tabulate for tablefmt
-    if isinstance(Data.Data, pd.DataFrame):
+    if Data.Type != DataType.TDMS:
         # print(f"data keys: {Data.getKeys()}", flush=True)
         tables: list | pd.DataFrame = []
         headers: list[str] | str = [
@@ -69,7 +69,7 @@ def stats(
             ]
             if f in Data.getKeys():
                 fname, unit = Data.getUnitKey(f)
-                df = Data.Data[f]
+                df = Data.getData([f])[f]
                 logger.debug(f"get stats for {f} ({Data.getKeys()})")
                 logger.debug(f"{f}: {df.head()}")
                 v_min = float(df.min())
@@ -96,7 +96,8 @@ def stats(
             tables.append(table)
 
     else:
-        for group, df in Data.Data.items():
+        for group in Data.Groups:
+            df = Data.getData(group)
             logger.info(f"stats for {group}: ")
             tables = df.describe()
             headers = "keys"

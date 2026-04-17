@@ -421,7 +421,16 @@ class PandasMagnetData(MagnetDataBase):
         logger.warning(f"available keys are: {self.Keys}")
         return 0.0
 
-    def addTime(self) -> int:  # noqa: N802
+    def addTime(self, time_zone: str = "Europe/Paris") -> int:  # noqa: N802
+        """Compute ``t`` (elapsed seconds) and ``timestamp`` (naive UTC) columns.
+
+        Drops ``Date`` and ``Time`` after conversion.  The ``timestamp`` column
+        stores naive UTC regardless of the local timezone of the source data.
+        Call this before :meth:`extractTimeData` or any ``timestamp``-based plot.
+
+        :param time_zone: IANA timezone of the source ``Date``/``Time`` columns
+            (default ``"Europe/Paris"``).
+        """
         assert isinstance(self.Data, pd.DataFrame)
         if "Date" not in self.Keys or "Time" not in self.Keys:
             raise RuntimeError(
@@ -445,13 +454,13 @@ class PandasMagnetData(MagnetDataBase):
             ) from None
 
         try:
-            _timestamp = self.Data.Date + self.Data.Time
+            _local_ts = self.Data.Date + self.Data.Time
         except (ValueError, TypeError):
             raise RuntimeError(
                 f"MagnetData/AddTime {self.FileName}: failed to create timestamp column"
             ) from None
 
-        self.Data["_timestamp"] = _timestamp
+        self.Data["_timestamp"] = _local_ts
         from .utils.duplicates import find_duplicates
 
         self.Data = find_duplicates(self.Data, self.FileName, "_timestamp")
@@ -459,8 +468,18 @@ class PandasMagnetData(MagnetDataBase):
         t0 = self.Data["_timestamp"].iloc[0]
         self.Data["t"] = (self.Data["_timestamp"] - t0).dt.total_seconds()
 
-        self.Data.drop(["Date", "Time"], axis=1, inplace=True)
-        self.Data.rename(columns={"_timestamp": "timestamp"}, inplace=True)
+        # Convert local → UTC → naive UTC
+        import pytz
+
+        tz = pytz.timezone(time_zone)
+        self.Data["timestamp"] = (
+            self.Data["_timestamp"]
+            .dt.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
+            .dt.tz_convert(pytz.utc)
+            .dt.tz_localize(None)  # strip tzinfo → naive UTC
+        )
+
+        self.Data.drop(["Date", "Time", "_timestamp"], axis=1, inplace=True)
         self.Keys = self.Data.columns.values.tolist()
         return 0
 
@@ -523,14 +542,30 @@ class PandasMagnetData(MagnetDataBase):
         return self.Data.loc[self.Data[key] >= threshold]
 
     def extractTimeData(  # noqa: N802
-        self, timerange: str, group: str | None = None
+        self, timerange: str, group: str | None = None, time_zone: str = "Europe/Paris"
     ) -> pd.DataFrame:
+        """Return rows whose ``timestamp`` falls within *timerange*.
+
+        :param timerange: ``"YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS"`` in local
+            time (the ``time_zone`` timezone).  Both boundaries are inclusive.
+        :param group: unused for pandas data; accepted for interface compatibility.
+        :param time_zone: IANA timezone of the datetime strings in *timerange*
+            (default ``"Europe/Paris"``).
+        :raises RuntimeError: if :meth:`addTime` has not been called yet.
+        """
         assert isinstance(self.Data, pd.DataFrame)
+        if "timestamp" not in self.Keys:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.extractTimeData: call addTime() before extractTimeData()"
+            )
         trange = timerange.split(";")
         logger.debug(f"Select data from {trange[0]} to {trange[1]}")
-        return self.Data[
-            self.Data["Time"].between(trange[0], trange[1], inclusive="both")
-        ]
+        import pytz
+
+        tz = pytz.timezone(time_zone)
+        t_start = pd.Timestamp(trange[0]).tz_localize(tz).tz_convert(pytz.utc).tz_localize(None)
+        t_end = pd.Timestamp(trange[1]).tz_localize(tz).tz_convert(pytz.utc).tz_localize(None)
+        return self.Data[self.Data["timestamp"].between(t_start, t_end, inclusive="both")]
 
     # --- persist / display -------------------------------------------
 
@@ -548,6 +583,7 @@ class PandasMagnetData(MagnetDataBase):
         label: str | None = None,
         normalize: bool = False,
         offset: float = 0,
+        time_zone: str = "Europe/Paris",
     ) -> None:
         import matplotlib
         import matplotlib.pyplot as plt
@@ -571,8 +607,22 @@ class PandasMagnetData(MagnetDataBase):
 
         assert isinstance(self.Data, pd.DataFrame)
         (ysymbol, yunit) = self.getUnitKey(y)
+
+        df = self.Data.copy()
+
+        # Convert UTC timestamp → naive local time for display
+        if x == "timestamp":
+            import pytz
+
+            tz = pytz.timezone(time_zone)
+            df["timestamp"] = (
+                df["timestamp"]
+                .dt.tz_localize(pytz.utc)
+                .dt.tz_convert(tz)
+                .dt.tz_localize(None)  # naive local for clean axis labels
+            )
+
         if normalize:
-            df = self.Data.copy()
             ymax = abs(df[y].max())
             df[y] /= ymax
             df.plot(
@@ -583,9 +633,8 @@ class PandasMagnetData(MagnetDataBase):
                 label=f"{y} (norm with {ymax:.3e} {yunit:~P})",
                 grid=True,
             )
-            del df
         else:
-            self.Data.plot(x=x, y=y, ax=ax, alpha=alpha, grid=True)
+            df.plot(x=x, y=y, ax=ax, alpha=alpha, grid=True)
 
         if yunit is not None:
             plt.ylabel(f"{ysymbol} [{yunit:~P}]")

@@ -63,6 +63,28 @@ class MagnetDataBase(ABC):
         UTC timestamp of the first record in the dataset (naive, no tzinfo).
     end_timestamp : datetime or None
         UTC timestamp of the last record in the dataset (naive, no tzinfo).
+
+    Timestamp convention
+    --------------------
+    All timestamp columns and ``start_timestamp`` / ``end_timestamp`` attributes
+    store **naive UTC** :class:`~pandas.Timestamp` values (no tzinfo).
+
+    ============================================================  ========================  =========
+    Attribute / column                                            Type                      Value
+    ============================================================  ========================  =========
+    ``start_timestamp`` / ``end_timestamp``                       naive ``datetime``        UTC
+    ``t`` column                                                  float                     elapsed seconds from first sample
+    ``timestamp`` column                                          naive ``pd.Timestamp``    UTC
+    ============================================================  ========================  =========
+
+    Conversion to local time for display or user-facing filtering is performed
+    **only** at display/filter boundaries (:meth:`plotData`,
+    :meth:`extractTimeData`).  The ``time_zone`` parameter on those methods
+    (default ``"Europe/Paris"``) controls the local timezone used.
+
+    :meth:`addTime` must be called before :meth:`extractTimeData` or any
+    ``timestamp``-based plot.  It is *eager*: it computes both ``t`` and
+    ``timestamp`` for all groups at once.
     """
 
     def __init__(
@@ -223,6 +245,7 @@ class MagnetDataBase(ABC):
         label: str | None = None,
         normalize: bool = False,
         offset: float = 0,
+        time_zone: str = "Europe/Paris",
     ) -> None:
         raise NotImplementedError(f"{self.__class__.__name__}.plotData not implemented")
 
@@ -237,7 +260,7 @@ class MagnetDataBase(ABC):
     def getDuration(self, group: str | None = None) -> float:  # noqa: N802
         return 0.0
 
-    def addTime(self) -> int:  # noqa: N802
+    def addTime(self, time_zone: str = "Europe/Paris") -> int:  # noqa: N802
         return 0
 
     def shiftTime(self, dt: float) -> int:  # noqa: N802
@@ -266,6 +289,6 @@ class MagnetDataBase(ABC):
         )
 
     def extractTimeData(  # noqa: N802
-        self, timerange: str, group: str | None = None
+        self, timerange: str, group: str | None = None, time_zone: str = "Europe/Paris"
     ) -> pd.DataFrame:
         raise NotImplementedError(f"{self.__class__.__name__}.extractTimeData not implemented")

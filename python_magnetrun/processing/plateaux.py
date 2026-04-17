@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from ..magnetdata import load_magnetdata
-from ..magnetdata_base import MagnetDataBase
+from ..magnetdata_base import DataType, MagnetDataBase
 from ..utils.sequence import list_duplicates_of, list_sequence
 
 logger = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def nplateaus(
 
     ykey = ""
     df = pd.DataFrame()
-    if not isinstance(Data.Data, pd.DataFrame):
+    if Data.Type == DataType.TDMS:
         if xField[0] == "t":
             (group, channel) = yField[0].split("/")
 
@@ -200,7 +200,7 @@ def plateaus(
 
     group = None
     df = pd.DataFrame()
-    if not isinstance(Data.Data, pd.DataFrame):
+    if Data.Type == DataType.TDMS:
         (group, channel) = yField[0].split("/")
         df = Data.getData([f"{group}/t", yField[0]])
         ykey = channel
@@ -300,11 +300,12 @@ def plateaus(
     logger.info(f"Field plateaus(thresold={threshold}: {len(plateaux)})")
     actual_plateaux = []
     for p in plateaux:
-        if Data.Type == 0:
+        if Data.Type == DataType.PUPITRE:
             from datetime import timedelta
 
-            t0_s = float(Data.Data["t"].iloc[p[0]])
-            t1_s = float(Data.Data["t"].iloc[p[1]])
+            _t = Data.getData(["t"])["t"]
+            t0_s = float(_t.iloc[p[0]])
+            t1_s = float(_t.iloc[p[1]])
             t0 = Data.start_timestamp + timedelta(seconds=t0_s)
             t1 = Data.start_timestamp + timedelta(seconds=t1_s)
         else:

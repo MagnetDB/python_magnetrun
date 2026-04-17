@@ -130,6 +130,7 @@ pigbrotherdata
 *.csv
 *.csv.*
 *.tdms
+*.json~
 
 M*.csv
 #M*.txt

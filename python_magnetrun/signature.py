@@ -4,7 +4,7 @@ from datetime import datetime
 import pandas as pd
 import pint
 
-from python_magnetrun.magnetdata_base import MagnetDataBase
+from python_magnetrun.magnetdata_base import DataType, MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
@@ -197,14 +197,13 @@ class Signature:
 
         t0 = datetime.now()
         (symbol, unit) = mdata.getUnitKey(key)
-        match mdata.Data:
-            case pd.DataFrame():
-                t0 = mdata.start_timestamp
-                # print('txt', type(t0), flush=True)
-            case dict():
-                (group, channel) = key.split("/")
-                t0 = mdata.Groups[group][channel]["wf_start_time"].astype(datetime)
-                # print('tdms', type(t0), flush=True)
+        if mdata.Type == DataType.TDMS:
+            (group, channel) = key.split("/")
+            t0 = mdata.Groups[group][channel]["wf_start_time"].astype(datetime)
+            # print('tdms', type(t0), flush=True)
+        else:
+            t0 = mdata.start_timestamp
+            # print('txt', type(t0), flush=True)
 
         (changes, regimes, times, values, components) = trends(
             mdata,
