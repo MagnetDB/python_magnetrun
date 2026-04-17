@@ -10,6 +10,7 @@ import pandas as pd
 from scipy.signal import find_peaks
 from tabulate import tabulate
 
+from ..magnetdata_base import DataType
 from ..MagnetRun import MagnetRun
 from ..processing.smoothers import savgol
 from .plot import plot_bkpts
@@ -61,7 +62,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
         if args.keys:
             multiindex[1] = args.keys
             for key in args.keys:
-                if mdata.Type == 0:
+                if mdata.Type == DataType.PUPITRE:
                     logger.info(f"pupitre: stats for {key}")
                     (symbol, unit) = mdata.getUnitKey(key)
 
@@ -69,7 +70,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                     num_points_threshold = int(args.dthreshold / period)
                     tkey = "t"
                     channel = key
-                elif mdata.Type == 1:
+                elif mdata.Type == DataType.TDMS:
                     logger.info(f"pigbrother: stats for {key}")
                     (symbol, unit) = mdata.getUnitKey(key)
 
@@ -179,12 +180,12 @@ def display_stats(file, inputs, args, multiindex, columns, data):
 
                 if args.detect_bkpts:
                     ts = None
-                    if mdata.Type == 0:
-                        ts = mdata.Data[key]
+                    if mdata.Type == DataType.PUPITRE:
+                        ts = mdata.getData([key])[key]
                         freq = 1
                         logger.info(f"{key}: freq={freq} Hz")
-                    elif mdata.Type == 1:
-                        ts = mdata.Data[group][channel]
+                    elif mdata.Type == DataType.TDMS:
+                        ts = mdata.getData(f"{group}/{channel}")[channel]
                         freq = 1 / mdata.Groups[group][channel]["wf_increment"]
                         logger.info(f"{group}/{channel}: freq={freq} Hz")
 
@@ -305,7 +306,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                         args.save,
                     )
 
-                    if mdata.Type == 1:
+                    if mdata.Type == DataType.TDMS:
                         # select key from GR1 or GR2
                         selected = [
                             t
@@ -320,7 +321,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                             period = mdata.Groups[group][channel]["wf_increment"]
                             num_points_threshold = int(args.dthreshold / period)
 
-                            ts = mdata.Data[group][channel]
+                            ts = mdata.getData(f"{group}/{channel}")[channel]
                             smoothed = savgol(
                                 y=ts.to_numpy(),
                                 window=args.window,

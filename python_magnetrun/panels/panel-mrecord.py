@@ -33,7 +33,7 @@ mrun.MagnetData.removeData("Date")
 mrun.MagnetData.removeData("Time")
 print("keys:", mrun.getKeys())
 
-data = mrun.MagnetData.Data
+data = mrun.MagnetData.getData()
 # print("data:", type(data) )
 # data.drop(['Date', 'Time'], axis=1)
 # print("data:", data )

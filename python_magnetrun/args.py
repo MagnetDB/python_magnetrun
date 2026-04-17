@@ -57,7 +57,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser_select.add_argument("--output_time", nargs="+", help="output key(s) for time")
     parser_select.add_argument(
         "--output_timerange",
-        help="set time range to extract (start;end)",
+        help="set time range to extract (YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS, local time)",
         action="append",
     )
     parser_select.add_argument(
