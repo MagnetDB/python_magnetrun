@@ -42,6 +42,7 @@ from typing import Any
 
 import pandas as pd
 
+from ..utils.downsampling import DownsampleConfig  # noqa: F401 — available for callers
 from .config import (
     DEFAULT_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,

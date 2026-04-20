@@ -11,6 +11,7 @@ from matplotlib.cbook import flatten
 
 from ..hybrid import HybridRun
 from ..MagnetRun import MagnetRun
+from ..utils.downsampling import DownsampleConfig
 
 logger = logging.getLogger(__name__)
 
@@ -196,7 +197,9 @@ def plot_vs_time(input_files, inputs, extensions, args):
 
         for key in vs_time_hybrid:
             try:
-                data, time = hrun.getData(key, downsample=args.hybrid_downsample)
+                data, time = hrun.getData(
+                    key, downsample=DownsampleConfig(n_out=args.hybrid_downsample)
+                )
                 data = np.asarray(data, dtype=float)
                 time = np.asarray(time, dtype=float)
 

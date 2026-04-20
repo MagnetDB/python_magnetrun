@@ -63,7 +63,7 @@ from .data_protocol import (
     load_comparable_data,
 )
 from .hybrid_data import HybridData, HybridDataInfo
-from .hybrid_run import HybridRun, LoadOptions, downsample_data, load_hybrid
+from .hybrid_run import HybridRun, LoadOptions, load_hybrid
 from .outliers import (
     OutlierDetector,
     OutlierMethod,
@@ -102,7 +102,6 @@ __all__ = [
     "find_outlier_segments",
     # Utility functions
     "list_available_dates",
-    "downsample_data",
     "load_comparable_data",
     "compare_loaders",
 ]

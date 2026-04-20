@@ -40,6 +40,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+hybrid = [
+    "tsdownsample>=1.0",
+]
 system = [
     "clawpack>=5.11.0",
     "ht>=0.1.55",

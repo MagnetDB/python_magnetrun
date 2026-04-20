@@ -23,7 +23,7 @@ run_cmd() {
     local id="$1"
     shift
     printf "[%2s] " "$id"
-    if eval "$@" > /dev/null 2>&1; then
+    if "$@" > /dev/null 2>&1; then
         echo "PASS: $*"
         (( PASS++ )) || true
     else
@@ -53,7 +53,7 @@ echo "--- Basic Usage ---"
 
 # 1: List available fields
 run_cmd 1 python3 -m python_magnetrun.cli \
-    --housing M9 '"2019.02.14 - 23:00:38.txt"' info --list
+    --housing M9 "2019.02.14 - 23:00:38.txt" info --list
 
 # 2: Select records by criteria
 run_cmd 2 python3 "$EXAMPLES/get-record.py" --housing M8 '2025.*.txt' \
@@ -65,13 +65,13 @@ run_cmd 3 python3 -m python_magnetrun.cli \
 
 # 4: Plot with pigbrother (pigbrother TDMS resolved via env, only txt passed)
 run_cmd 4 python3 -m python_magnetrun.cli \
-    --housing M10 '"2025.01.27 - "*.txt' M10_Overview_250127-1605.tdms \
+    --housing M10 "2025.01.27 - "*.txt M10_Overview_250127-1605.tdms \
     plot --key_vs_key timestamp-IH \
          --key_vs_key "timestamp-Courants_Alimentations/Référence_GR1"
 
 # 5: Hybrid plot — requires external files not in repo
 skip_cmd 5 "requires external hybrid data" \
-    "python3 -m python_magnetrun.cli --housing M8 M8_Overview_250522-0802.tdms '"2025.05.22 - 08:02:56.txt"' --hybrid_datadir /mnt/LNCMIG-Data/records/CEA ..."
+    "python3 -m python_magnetrun.cli --housing M8 M8_Overview_250522-0802.tdms '"2025.05.22 - 08:02:56.txt"' --hybrid_date 2025-05-22 "
 
 echo ""
 echo "--- Statistics and plateau detection ---"
@@ -150,7 +150,7 @@ echo ""
 echo "--- Advanced Usage: Breakpoint detection ---"
 
 run_cmd 24 python3 "$TESTS/test-signature.py" \
-    --housing M9 '"2025.01.27 - 15:39:29.txt"' --window=10 --threshold 1.e-2
+    --housing M9 "2025.01.27 - 15:39:29.txt" --window=10 --threshold 1.e-2
 
 # 25: pigbrother analysis (TDMS resolved via env)
 run_cmd 25 python3 -m python_magnetrun.analysis \
@@ -172,18 +172,18 @@ echo ""
 echo "--- Advanced Usage: Piecewise linear regression ---"
 
 run_cmd 29 python3 "$EXAMPLES/corr_Ih_Ib.py" \
-    --housing M9 '"2024.11.06 - 16:43:44.txt"' \
+    --housing M9 "2024.11.06 - 16:43:44.txt" \
     --xkey IH --ykey IB --algo piecewise_regression --breakpoints 2
 
 run_cmd 30 python3 "$EXAMPLES/corr_Ih_Ib.py" \
-    --housing M9 '"2024.11.06 - 16:43:44.txt"' \
+    --housing M9 "2024.11.06 - 16:43:44.txt" \
     --xkey t --ykey Field --algo pwlf --breakpoints 11
 
 echo ""
 echo "--- Advanced Usage: Field factor identification ---"
 
 # 31: requires file from home directory
-run_cmd 31 python3 $TESTS/test-fieldfactor.py --housing M9 '"2024.05.13 - 16:30:51.txt"'
+run_cmd 31 python3 $TESTS/test-fieldfactor.py --housing M9 "2024.05.13 - 16:30:51.txt"
 
 # Clean up generated files
 rm -f M11-site-config.json analysis.json analysis.log

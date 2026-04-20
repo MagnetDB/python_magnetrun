@@ -5,7 +5,10 @@ from __future__ import annotations
 import logging
 import sys
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .utils.downsampling import DownsampleConfig
 
 import pandas as pd
 
@@ -159,7 +162,13 @@ class TdmsMagnetData(MagnetDataBase):
             return self.Data[group]
         return self.Data[group][channel]
 
-    def getData(self, key: list[str] | str | None = None) -> pd.DataFrame:
+    def getData(
+        self,
+        key: list[str] | str | None = None,
+        downsample: DownsampleConfig | None = None,
+    ) -> pd.DataFrame:
+        from .utils.downsampling import downsample_dataframe
+
         channels: list[str] = []
         groups: list[str] = []
 
@@ -189,7 +198,12 @@ class TdmsMagnetData(MagnetDataBase):
                 f"magnetata:getData for tdms - expect only one group - got {len(groups)}"
             )
 
-        return self.getTdmsData(groups[0], channels)
+        df = self.getTdmsData(groups[0], channels)
+        if downsample is not None and len(df) > downsample.n_out:
+            time_col = "t" if "t" in df.columns else df.columns[0]
+            value_cols = [c for c in df.columns if c != time_col]
+            df = downsample_dataframe(df, time_col=time_col, value_cols=value_cols, config=downsample)
+        return df
 
     def getKeys(self) -> list[str]:
         return self.Keys

@@ -21,7 +21,7 @@
     "unit": "second"
   },
   "Field": {
-    "description": "Resistive Magnets Axial field",
+    "description": "\"Resistive Magnets Axial field\"",
     "symbol": "Bz",
     "unit": "tesla",
     "aliases": {
@@ -567,7 +567,6 @@
   },
   "Power": {
     "description": "Total power dissipated in the system",
-
     "symbol": "Power",
     "unit": "megawatt"
   },

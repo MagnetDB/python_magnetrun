@@ -10,6 +10,8 @@ from typing import Any
 
 import pandas as pd
 
+from .utils.downsampling import DownsampleConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -116,8 +118,12 @@ class MagnetDataBase(ABC):
         """Data-type discriminator."""
 
     @abstractmethod
-    def getData(self, key: list[str] | str | None = None) -> pd.DataFrame:
-        """Return data for the given key(s)."""
+    def getData(
+        self,
+        key: list[str] | str | None = None,
+        downsample: DownsampleConfig | None = None,
+    ) -> pd.DataFrame:
+        """Return data for the given key(s), optionally downsampled."""
 
     @abstractmethod
     def getKeys(self) -> list[str]:

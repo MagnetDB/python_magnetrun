@@ -35,6 +35,7 @@ import numpy as np
 import pandas as pd
 
 from ..magnetdata_base import DataType
+from ..utils.downsampling import DownsampleConfig
 
 
 class DataSourceType(Enum):
@@ -155,7 +156,7 @@ class DownsamplingLoader(Protocol):
     def getData(
         self,
         key: str | None = None,
-        downsample: int | None = None,
+        downsample: DownsampleConfig | None = None,
     ) -> Any:
         """
         Get data with optional downsampling.
@@ -164,8 +165,8 @@ class DownsamplingLoader(Protocol):
         ----------
         key : str, optional
             Data key
-        downsample : int, optional
-            Target number of points (None = no downsampling)
+        downsample : DownsampleConfig, optional
+            Downsampling configuration (None = no downsampling)
 
         Returns
         -------
@@ -242,7 +243,7 @@ def get_data_info(loader: DataLoader) -> DataInfo:
 def load_comparable_data(
     loader: DataLoader,
     key: str,
-    target_points: int = 10000,
+    downsample: DownsampleConfig | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Load data from any loader in a comparable format.
@@ -253,31 +254,35 @@ def load_comparable_data(
     Parameters
     ----------
     loader : DataLoader
-        Any DataLoader implementation
+        Any DataLoader implementation.
     key : str
-        Data key
-    target_points : int
-        Target number of points (for large datasets)
+        Data key.
+    downsample : DownsampleConfig, optional
+        Downsampling configuration.  Pass ``None`` to return the full
+        dataset (e.g. for low-frequency pupitre data that needs no
+        reduction).  Each loader in a comparison can receive a different
+        config via :func:`compare_loaders`.
 
     Returns
     -------
     tuple
         (data_array, time_array)
     """
-    # Check if loader supports downsampling
-    if isinstance(loader, DownsamplingLoader):
-        result = loader.getData(key, downsample=target_points)
+    from ..utils.downsampling import downsample_arrays
+
+    # Prefer the loader's own downsampling path when available.
+    if downsample is not None and isinstance(loader, DownsamplingLoader):
+        result = loader.getData(key, downsample=downsample)
         if isinstance(result, tuple):
             return result
 
-    # Standard getData
+    # Fall back to plain getData (no downsampling argument).
     result = loader.getData(key)
 
-    # Handle different return types
+    # Normalise return type to (data_array, time_array).
     if isinstance(result, tuple) and len(result) == 2:
         data, time = result
     elif isinstance(result, pd.DataFrame):
-        # Assume first column is time or index is time
         if "t" in result.columns:
             time = result["t"].values
             data = result.drop(columns=["t"]).values.flatten()
@@ -296,16 +301,12 @@ def load_comparable_data(
     else:
         raise TypeError(f"Unexpected data type: {type(result)}")
 
-    # Ensure numpy arrays
     data = np.asarray(data)
     time = np.asarray(time)
 
-    # Apply simple downsampling if needed and loader doesn't support it
-    if len(data) > target_points:
-        stride = len(data) // target_points
-        indices = np.arange(0, len(data), stride)[:target_points]
-        data = data[indices]
-        time = time[indices]
+    # Apply downsampling manually for loaders that don't support DownsamplingLoader.
+    if downsample is not None and len(data) > downsample.n_out:
+        data, time = downsample_arrays(data, time, downsample)
 
     return data, time
 
@@ -385,7 +386,8 @@ def compare_loaders(
     loader2: DataLoader,
     key1: str,
     key2: str,
-    target_points: int = 10000,
+    downsample1: DownsampleConfig | None = None,
+    downsample2: DownsampleConfig | None = None,
 ) -> dict[str, Any]:
     """
     Compare data from two loaders.
@@ -393,20 +395,32 @@ def compare_loaders(
     Parameters
     ----------
     loader1, loader2 : DataLoader
-        Data loaders to compare
+        Data loaders to compare (e.g. MagnetRun and HybridRun).
     key1, key2 : str
-        Keys for each loader
-    target_points : int
-        Number of points for comparison
+        Keys for each loader.
+    downsample1 : DownsampleConfig, optional
+        Downsampling config for *loader1*.  Pass ``None`` to use full
+        resolution (e.g. low-frequency pupitre data needs no reduction).
+    downsample2 : DownsampleConfig, optional
+        Downsampling config for *loader2*.  Typically set for high-frequency
+        sources such as HybridRun kHz data.
 
     Returns
     -------
     dict
         Comparison results including correlation, RMSE, etc.
+
+    Examples
+    --------
+    >>> compare_loaders(
+    ...     mrun, hrun, "IH", "kHz/FEPC-LNCMI/I_H1",
+    ...     downsample1=None,
+    ...     downsample2=DownsampleConfig(n_out=10000, method="minmax_lttb"),
+    ... )
     """
-    # Load data
-    d1, t1 = load_comparable_data(loader1, key1, target_points)
-    d2, t2 = load_comparable_data(loader2, key2, target_points)
+    # Load data — each side uses its own downsampling config.
+    d1, t1 = load_comparable_data(loader1, key1, downsample1)
+    d2, t2 = load_comparable_data(loader2, key2, downsample2)
 
     # Align time series
     aligned_d1, aligned_d2, common_time = align_time_series((d1, t1), (d2, t2))

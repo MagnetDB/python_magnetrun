@@ -37,19 +37,11 @@ import numpy as np
 import pandas as pd
 
 # Local imports
+from ..utils.downsampling import DownsampleConfig, downsample_arrays, downsample_dataframe
 from .hybrid_data import HybridData
 
 # Setup logger
 logger = logging.getLogger(__name__)
-
-# Try to import tsdownsample for efficient downsampling
-try:
-    from tsdownsample import MinMaxLTTBDownsampler
-
-    HAS_TSDOWNSAMPLE = True
-except ImportError:
-    HAS_TSDOWNSAMPLE = False
-    logger.debug("tsdownsample not available - downsampling will use simple stride")
 
 
 @dataclass
@@ -60,9 +52,8 @@ class LoadOptions:
     lazy: bool = True  # Use lazy loading (memory mapping)
     cache: bool = True  # Cache loaded data
 
-    # Downsampling options !!! TODO make option dependant on method !!!
-    downsample: int | None = None  # Target number of points (None = no downsampling)
-    downsample_method: str = "stride"  # 'minmax_lttb', 'lttb', 'stride'
+    # Downsampling options
+    downsample: DownsampleConfig | None = None
 
     # Time range selection
     start_time: datetime | None = None
@@ -315,98 +306,6 @@ class LazyKHzLoader(LazyArrayLoader):
         return data
 
 
-def downsample_data(
-    data: np.ndarray,
-    time: np.ndarray,
-    target_points: int,
-    method: str = "stride",
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Downsample time series data for visualization.
-
-    Parameters
-    ----------
-    data : np.ndarray
-        Data array to downsample
-    time : np.ndarray
-        Time array
-    target_points : int
-        Target number of points after downsampling
-    method : str
-        Downsampling method: 'minmax_lttb', 'lttb', 'stride', 'minmax'
-
-    Returns
-    -------
-    tuple
-        (downsampled_data, downsampled_time)
-    """
-    # Strip NaN entries from both arrays before any downsampling algorithm sees them.
-    # Missing blocks produce NaN timestamps; those entries are non-plottable and cause
-    # most downsampling libraries to fail. Gaps remain visible as jumps on the time axis.
-    valid = ~np.isnan(time) & ~np.isnan(data)
-    if not np.all(valid):
-        n_nan = int(np.sum(~valid))
-        logger.debug(
-            f"downsample_data: stripping {n_nan} NaN entries before downsampling"
-        )
-        data = data[valid]
-        time = time[valid]
-
-    if len(data) == 0:
-        return data, time
-
-    if len(data) <= target_points:
-        return data, time
-
-    logger.info(f"Downsampling {len(data)} points to {target_points} using {method}")
-
-    if method == "minmax_lttb" and HAS_TSDOWNSAMPLE:
-        # Use tsdownsample MinMaxLTTB (best for visualization)
-        downsampler = MinMaxLTTBDownsampler()
-        indices = downsampler.downsample(time, data, n_out=target_points)
-        return data[indices], time[indices]
-
-    elif method == "lttb" and HAS_TSDOWNSAMPLE:
-        from tsdownsample import LTTBDownsampler
-
-        downsampler = LTTBDownsampler()
-        indices = downsampler.downsample(time, data, n_out=target_points)
-        return data[indices], time[indices]
-
-    elif method == "minmax":
-        # Simple min/max downsampling (preserves peaks)
-        bucket_size = len(data) // (target_points // 2)
-        n_buckets = len(data) // bucket_size
-
-        result_data = []
-        result_time = []
-
-        for i in range(n_buckets):
-            start = i * bucket_size
-            end = start + bucket_size
-            bucket_data = data[start:end]
-            bucket_time = time[start:end]
-
-            min_idx = np.argmin(bucket_data)
-            max_idx = np.argmax(bucket_data)
-
-            # Add min first, then max (or vice versa based on order)
-            if min_idx < max_idx:
-                result_data.extend([bucket_data[min_idx], bucket_data[max_idx]])
-                result_time.extend([bucket_time[min_idx], bucket_time[max_idx]])
-            else:
-                result_data.extend([bucket_data[max_idx], bucket_data[min_idx]])
-                result_time.extend([bucket_time[max_idx], bucket_time[min_idx]])
-
-        return np.array(result_data), np.array(result_time)
-
-    else:
-        # Simple stride-based downsampling
-        stride = len(data) // target_points
-        indices = np.arange(0, len(data), stride)[:target_points]
-        return data[indices], time[indices]
-
-
 class HybridRun:
     """
     MagnetRun-compatible interface for hybrid magnet data.
@@ -576,7 +475,7 @@ class HybridRun:
         self,
         key: str | None = None,
         hours: range | list[int] | None = None,
-        downsample: int | None = None,
+        downsample: DownsampleConfig | int | None = None,
         options: LoadOptions | None = None,
     ) -> dict | tuple[np.ndarray, np.ndarray] | pd.DataFrame:
         """
@@ -616,11 +515,15 @@ class HybridRun:
             opts.hours = hours
 
         if downsample is not None:
+            ds_config = (
+                DownsampleConfig(n_out=downsample)
+                if isinstance(downsample, int)
+                else downsample
+            )
             opts = LoadOptions(
                 lazy=opts.lazy,
                 cache=opts.cache,
-                downsample=downsample,
-                downsample_method=opts.downsample_method,
+                downsample=ds_config,
                 start_time=opts.start_time,
                 end_time=opts.end_time,
                 hours=opts.hours,
@@ -634,7 +537,12 @@ class HybridRun:
             return self.HybridData  # .Data
 
         # Check cache first
-        cache_key = f"{key}:{opts.downsample}:{opts.hours}"
+        ds = opts.downsample
+        cache_key = (
+            f"{key}:{ds.n_out}:{ds.method}:{opts.hours}"
+            if ds is not None
+            else f"{key}:None:{opts.hours}"
+        )
         if opts.cache and cache_key in self._cache:
             entry = self._cache[cache_key]
             logger.debug(f"Cache hit for {cache_key}")
@@ -685,10 +593,8 @@ class HybridRun:
             raise ValueError(f"Unknown data type: {data_type}")
 
         # Apply downsampling if requested
-        if opts.downsample and len(data) > opts.downsample:
-            data, time = downsample_data(
-                data, time, opts.downsample, opts.downsample_method
-            )
+        if opts.downsample is not None and len(data) > opts.downsample.n_out:
+            data, time = downsample_arrays(data, time, opts.downsample)
 
         # Cache result
         if opts.cache:
@@ -749,7 +655,10 @@ class HybridRun:
             "duration_s": float(time[-1] - time[0]) if len(time) > 1 else 0,
         }
 
-    def getDataFrame(self) -> list[pd.DataFrame]:
+    def getDataFrame(
+        self,
+        downsample: DownsampleConfig | None = None,
+    ) -> list[pd.DataFrame]:
         """Return data as a list of DataFrames, one per available key.
 
         Each DataFrame has a 'time' column (seconds from start of day) and
@@ -759,10 +668,18 @@ class HybridRun:
             raise RuntimeError("HybridRun.getDataFrame: no HybridData associated")
         frames = []
         for key in self.getKeys():
-            result = self.getData(key)
+            result = self.getData(key, downsample=downsample)
             if isinstance(result, tuple) and len(result) == 2:
                 data, time = result
-                frames.append(pd.DataFrame({"time": time, key: data}))
+                df = pd.DataFrame({"time": time, key: data})
+                if downsample is not None:
+                    # Route through downsample_dataframe so the config is
+                    # stamped on df.attrs.  No actual downsampling occurs
+                    # because the arrays are already at target size.
+                    df = downsample_dataframe(
+                        df, time_col="time", value_cols=[key], config=downsample
+                    )
+                frames.append(df)
         return frames
 
     def saveData(self, filename: str, key: str | None = None) -> None:
@@ -892,7 +809,7 @@ class HybridRun:
         mrun: Any,  # MagnetRun
         hybrid_key: str,
         magnetrun_key: str,
-        downsample: int = 10000,
+        downsample: DownsampleConfig | int = 10000,
     ) -> pd.DataFrame:
         """
         Create comparison DataFrame between HybridRun and MagnetRun data.
@@ -914,7 +831,10 @@ class HybridRun:
             Comparison DataFrame with columns: time_hybrid, hybrid_data, time_mr, mr_data
         """
         # Get hybrid data
-        h_data, h_time = self.getData(hybrid_key, downsample=downsample)
+        ds_config = (
+            DownsampleConfig(n_out=downsample) if isinstance(downsample, int) else downsample
+        )
+        h_data, h_time = self.getData(hybrid_key, downsample=ds_config)
 
         # Get MagnetRun data
         mdata = mrun.getMData()

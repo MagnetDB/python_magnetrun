@@ -1,3 +1,4 @@
+from .downsampling import DownsampleConfig, downsample_arrays, downsample_dataframe
 from .timestamps import (
     TXT_TIMESTAMP_FORMATS,
     parse_filename_timestamp,
@@ -17,6 +18,9 @@ from .validation import (
 )
 
 __all__ = [
+    "DownsampleConfig",
+    "downsample_arrays",
+    "downsample_dataframe",
     "TXT_TIMESTAMP_FORMATS",
     "FileFormatError",
     "parse_filename_timestamp",

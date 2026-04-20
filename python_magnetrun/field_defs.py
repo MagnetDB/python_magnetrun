@@ -507,14 +507,14 @@ def main() -> None:
         print(f"Added {args.key!r} to {args.json_file}")
 
     elif args.command == "update":
-        unit_val = _UNSET
+        upd_unit: str | None | object = _UNSET
         if args.unit is not _UNSET:
-            unit_val = None if str(args.unit).lower() == "null" else args.unit
+            upd_unit = None if str(args.unit).lower() == "null" else args.unit
         update_field_def(
             args.json_file,
             args.key,
             symbol=args.symbol,
-            unit=unit_val,
+            unit=upd_unit,
             description=args.description,
         )
         print(f"Updated {args.key!r} in {args.json_file}")
@@ -540,7 +540,7 @@ def main() -> None:
                 print(f"  {fmt}: {target}")
 
     elif args.command == "crossref":
-        defs_files: dict[str, str] = {}
+        defs_files: dict[str, str | Path] = {}
         for spec in args.formats:
             if "=" not in spec:
                 parser.error(f"--format must be NAME=FILE, got: {spec!r}")

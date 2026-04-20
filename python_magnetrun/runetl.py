@@ -34,7 +34,7 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase) -> None:
         df = data.getData()
 
     # Resolve duplicate Icoil columns
-    Ikeys = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
+    Ikeys: list = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
     if len(Ikeys) > 2:
         ikeys_df = data.getData(Ikeys)
         remove = []
@@ -51,7 +51,7 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase) -> None:
                 f"{data.__class__.__name__}: dropping duplicate Icoil columns {remove} from {data.FileName!r}"
             )
             data.removeData(remove)
-        Ikeys = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
+        Ikeys: list = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
 
     # Rename Icoil[0]→IH, Icoil[-1]→IB
     if Ikeys:

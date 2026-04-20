@@ -6,7 +6,10 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .utils.downsampling import DownsampleConfig
 
 import pandas as pd
 from natsort import natsorted
@@ -92,8 +95,19 @@ class PandasMagnetData(MagnetDataBase):
                 )
         return self.Data[selected_keys]  # type: ignore[index]
 
-    def getData(self, key: list[str] | str | None = None) -> pd.DataFrame:
-        return self.getPandasData(key)
+    def getData(
+        self,
+        key: list[str] | str | None = None,
+        downsample: DownsampleConfig | None = None,
+    ) -> pd.DataFrame:
+        from .utils.downsampling import downsample_dataframe
+
+        df = self.getPandasData(key)
+        if downsample is not None and len(df) > downsample.n_out:
+            time_col = "t" if "t" in df.columns else df.columns[0]
+            value_cols = [c for c in df.columns if c != time_col]
+            df = downsample_dataframe(df, time_col=time_col, value_cols=value_cols, config=downsample)
+        return df
 
     def getKeys(self) -> list[str]:
         return self.Keys

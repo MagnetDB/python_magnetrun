@@ -10,6 +10,7 @@ from .magnetdata import load_magnetdata
 from .magnetdata_base import DataType, MagnetDataBase
 from .magnetdata_pandas import PandasMagnetData
 from .runetl import prepareData
+from .utils.downsampling import DownsampleConfig
 
 logger = logging.getLogger(__name__)
 
@@ -177,10 +178,14 @@ class MagnetRun:
         else:
             raise RuntimeError("no magnetdata attached to this magnetrun")
 
-    def getData(self, key: str = "") -> Any:
-        """return Data"""
+    def getData(
+        self,
+        key: str = "",
+        downsample: DownsampleConfig | None = None,
+    ) -> Any:
+        """return Data, optionally downsampled"""
         if self.MagnetData is not None:
-            return self.MagnetData.getData(key)
+            return self.MagnetData.getData(key, downsample=downsample)
         else:
             raise RuntimeError("MagnetRun.getData: no MagnetData associated")
 
@@ -205,8 +210,11 @@ class MagnetRun:
         else:
             raise RuntimeError("MagnetRun.getStats: no MagnetData associated")
 
-    def getDataFrame(self) -> pd.DataFrame | list[pd.DataFrame]:
-        """Return data as DataFrame(s).
+    def getDataFrame(
+        self,
+        downsample: DownsampleConfig | None = None,
+    ) -> pd.DataFrame | list[pd.DataFrame]:
+        """Return data as DataFrame(s), optionally downsampled.
 
         For pupitre data returns a single DataFrame.
         For pigbrother/TDMS data returns a list of DataFrames, one per group.
@@ -214,9 +222,12 @@ class MagnetRun:
         if self.MagnetData is None:
             raise RuntimeError("MagnetRun.getDataFrame: no MagnetData associated")
         if self.MagnetData.Type == DataType.PUPITRE:
-            return self.MagnetData.getData()
+            return self.MagnetData.getData(downsample=downsample)
         elif self.MagnetData.Type == DataType.TDMS:
-            return [self.MagnetData.getData(group) for group in self.MagnetData.Groups]
+            return [
+                self.MagnetData.getData(group, downsample=downsample)
+                for group in self.MagnetData.Groups
+            ]
         else:
             raise RuntimeError(
                 f"MagnetRun.getDataFrame: unsupported type {self.MagnetData.Type}"
