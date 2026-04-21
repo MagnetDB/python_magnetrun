@@ -29,6 +29,7 @@ from python_magnetrun.hybrid.vprocess.vprocess_reader import (
     read_vprocess_file,
 )
 from python_magnetrun.log_utils import get_logger, setup_logging
+from python_magnetrun.plotting import PlotStyle, get_backend, plot_overlay, plot_subplots
 
 # Setup logger
 logger = get_logger()
@@ -91,73 +92,57 @@ def plot_variables(
     if missing_vars:
         logger.warning(f"Variables not found: {', '.join(missing_vars)}")
 
-    df_plot = df[available_vars]
+    # Reset DatetimeIndex into a plain column so plot_subplots/plot_overlay can use it
+    df_plot = df[available_vars].reset_index(names="t")
 
-    # Create figure
+    b = get_backend("matplotlib")
+    style = PlotStyle(figsize=(12, 3))
+
+    if title is None:
+        title = f"VProcess Data: {Path(filepath).name}"
+
     if layout == "overlay":
-        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
-        axes = [ax]
-
-        for var in available_vars:
-            ax.plot(df_plot.index, df_plot[var], label=var, linewidth=0.8, alpha=0.8)
-
+        fig = plot_overlay(df_plot, available_vars, t_col="t", backend=b, style=style, title=title)
+        axes = list(fig._magnetrun_axes)
+        ax = axes[0]
         ax.set_ylabel("Value", fontsize=10, fontweight="bold")
         ax.set_xlabel("Time", fontsize=10, fontweight="bold")
         ax.legend(loc="best")
-        ax.grid(True, alpha=0.3)
-
     else:  # subplots
-        n_vars = len(available_vars)
-        fig, axes = plt.subplots(n_vars, 1, figsize=(12, 3 * n_vars), sharex=True)
-
-        if n_vars == 1:
-            axes = [axes]
+        fig = plot_subplots(df_plot, available_vars, t_col="t", backend=b, style=style, title=title)
+        axes = list(fig._magnetrun_axes)
 
         for i, var in enumerate(available_vars):
             ax = axes[i]
-            ax.plot(df_plot.index, df_plot[var], linewidth=0.8)
             ax.set_ylabel(var, fontsize=10, fontweight="bold")
-            ax.grid(True, alpha=0.3)
 
-            # Add statistics
-            mean_val = df_plot[var].mean()
-            std_val = df_plot[var].std()
-            min_val = df_plot[var].min()
-            max_val = df_plot[var].max()
-
-            stats_text = f"μ={mean_val:.2f}, σ={std_val:.2f}\nmin={min_val:.2f}, max={max_val:.2f}"
+            # Add per-variable statistics box
+            col_data = df_plot[var]
+            stats_text = (
+                f"μ={col_data.mean():.2f}, σ={col_data.std():.2f}\n"
+                f"min={col_data.min():.2f}, max={col_data.max():.2f}"
+            )
             ax.text(
-                0.02,
-                0.98,
-                stats_text,
-                transform=ax.transAxes,
-                verticalalignment="top",
-                fontsize=8,
+                0.02, 0.98, stats_text,
+                transform=ax.transAxes, verticalalignment="top", fontsize=8,
                 bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
             )
 
-    # Format x-axis
+    # Format x-axis with date labels
     axes[-1].set_xlabel("Time", fontsize=10, fontweight="bold")
     axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
     plt.setp(axes[-1].xaxis.get_majorticklabels(), rotation=45, ha="right")
 
-    # Set title
-    if title is None:
-        title = f"VProcess Data: {Path(filepath).name}"
-    fig.suptitle(title, fontsize=12, fontweight="bold")
-
     plt.tight_layout()
 
-    # Save if requested
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        b.save(fig, Path(save_path), dpi=150)
         logger.info(f"Figure saved to: {save_path}")
 
-    # Show if requested
     if show:
-        plt.show()
+        b.show(fig)
     else:
-        plt.close()
+        plt.close(fig)
 
     return fig, axes
 

@@ -471,6 +471,10 @@ class HybridRun:
             return self.HybridData
         raise RuntimeError("No HybridData attached to this HybridRun")
 
+    def getUnitKey(self, key: str) -> tuple:
+        """Return ``(symbol, unit)`` for *key* — delegates to :attr:`HybridData`."""
+        return self.getMData().getUnitKey(key)
+
     def getData(
         self,
         key: str | None = None,

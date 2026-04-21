@@ -24,7 +24,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     smoothing_parser = create_common_smoothing_parser()
     managed_plots_parser = create_managed_plots_parser()
 
-    parser = argparse.ArgumentParser(parents=[base_parser])
+    parser = argparse.ArgumentParser(parents=[base_parser, hybrid_parser])
 
     subparsers = parser.add_subparsers(title="commands", dest="command", help="sub-command help")
 
@@ -37,7 +37,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser_add = subparsers.add_parser(
         "add",
         help="add help",
-        parents=[plot_parser, hybrid_parser, managed_plots_parser],
+        parents=[plot_parser, managed_plots_parser],
     )
     parser_add.add_argument(
         "--formula", help="add new column with associated formula", type=str, default=""
@@ -49,7 +49,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     _parser_plot = subparsers.add_parser(
         "plot",
         help="plot help",
-        parents=[plot_parser, hybrid_parser, managed_plots_parser],
+        parents=[plot_parser, managed_plots_parser],
     )
 
     # Select subcommand

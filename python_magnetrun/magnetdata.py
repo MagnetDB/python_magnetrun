@@ -56,7 +56,9 @@ def load_magnetdata(
     """
     ext = os.path.splitext(filename)[-1].lower()
     if ext == ".tdms":
-        return _fromtdms(filename, defs_file=defs_file)
+        if defs_file is not None:
+            return _fromtdms(filename, defs_file=defs_file)
+        return _fromtdms(filename)
     elif ext == ".txt":
         return PandasMagnetData.fromtxt(filename, defs_file=defs_file or "pupitre-defs.json")
     elif ext == ".csv":

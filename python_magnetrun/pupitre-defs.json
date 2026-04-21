@@ -22,6 +22,7 @@
   },
   "Field": {
     "description": "\"Resistive Magnets Axial field\"",
+    "label": "Magnetic Field",
     "symbol": "Bz",
     "unit": "tesla",
     "aliases": {
@@ -30,76 +31,91 @@
   },
   "SupraField": {
     "description": "Superconducting Magnet Field",
+    "label": "SC Magnetic Field",
     "symbol": "B",
     "unit": "tesla"
   },
   "Tin1": {
     "description": "Input Temperature in primary cooling loop GR1",
+    "label": "Inlet Temp. GR1",
     "symbol": "T",
     "unit": "degC"
   },
   "Tin2": {
     "description": "Input Temperature in primary cooling loop GR2",
+    "label": "Inlet Temp. GR2",
     "symbol": "T",
     "unit": "degC"
   },
   "Tout": {
     "description": "Output Temperature in primary cooling loop",
+    "label": "Outlet Temp.",
     "symbol": "T",
     "unit": "degC"
   },
   "teb": {
     "description": "Input Temperature in secondary cooling loop",
+    "label": "Inlet Temp. Secondary",
     "symbol": "T",
     "unit": "degC"
   },
   "tsb": {
     "description": "Output Temperature in secondary cooling loop",
+    "label": "Outlet Temp. Secondary",
     "symbol": "T",
     "unit": "degC"
   },
   "HP1": {
     "description": "High pressure in primary cooling loop GR1",
+    "label": "High Pressure GR1",
     "symbol": "P",
     "unit": "bar"
   },
   "HP2": {
     "description": "High pressure in primary cooling loop GR2",
+    "label": "High Pressure GR2",
     "symbol": "P",
     "unit": "bar"
   },
   "BP": {
     "description": "Low pressure in primary cooling loop",
+    "label": "Low Pressure",
     "symbol": "P",
     "unit": "bar"
   },
   "Flow1": {
     "description": "primary cooling loop Waterflow for GR1",
+    "label": "Flow GR1",
     "symbol": "Q",
     "unit": "liter / second"
   },
   "Flow2": {
     "description": "primary cooling loop Waterflow for GR2",
+    "label": "Flow GR2",
     "symbol": "Q",
     "unit": "liter / second"
   },
   "debitbrut": {
     "description": "secondary cooling loop Waterflow ",
+    "label": "Flow Secondary",
     "symbol": "Q",
     "unit": "meter ** 3 / hour"
   },
   "Rpm1": {
     "description": "Rotational speed of primary cooling loop GR1",
+    "label": "Speed GR1",
     "symbol": "Rpm",
     "unit": "rpm"
   },
   "Rpm2": {
     "description": "Rotational speed of primary cooling loop GR2",
+    "label": "Speed GR2",
     "symbol": "Rpm",
     "unit": "rpm"
   },
   "Idcct1": {
     "description": "Current in A1 supply",
+    "label": "Current A1",
     "symbol": "I",
     "unit": "ampere",
     "aliases": {
@@ -109,6 +125,7 @@
   },
   "Idcct2": {
     "description": "Current in A2 supply",
+    "label": "Current A2",
     "symbol": "I",
     "unit": "ampere",
     "aliases": {
@@ -118,6 +135,7 @@
   },
   "Idcct3": {
     "description": "Current in A3 supply",
+    "label": "Current A3",
     "symbol": "I",
     "unit": "ampere",
     "aliases": {
@@ -127,6 +145,7 @@
   },
   "Idcct4": {
     "description": "Current in A4 supply",
+    "label": "Current A4",
     "symbol": "I",
     "unit": "ampere",
     "aliases": {
@@ -314,6 +333,7 @@
   },
   "Ucoil15": {
     "description": "Voltage tap on Inner Bitter",
+    "label": "Voltage Inner Bitter",
     "symbol": "U",
     "unit": "volt",
     "aliases": {
@@ -323,6 +343,7 @@
   },
   "Ucoil16": {
     "description": "Voltage tap on Outer Bitter",
+    "label": "Voltage Outer Bitter",
     "symbol": "U",
     "unit": "volt",
     "aliases": {
@@ -492,91 +513,109 @@
   },
   "Pmagnet": {
     "description": "Total power dissipated in the magnet coils (calibrated from Icoil1-16 and Ucoil1-16)",
+    "label": "Magnet Power",
     "symbol": "Power",
     "unit": "megawatt"
   },
   "Ptot": {
     "description": "Total power dissipated in the system: Pmagnet + pump power + other loads)",
+    "label": "Total Power",
     "symbol": "Power",
     "unit": "megawatt"
   },
   "Q": {
     "description": "",
+    "label": "Reactive Power",
     "symbol": "Preac",
     "unit": "megavar"
   },
   "IH": {
     "description": "Current in PolyHelices insert",
+    "label": "Current (PolyHelices)",
     "symbol": "I",
     "unit": "ampere"
   },
   "IB": {
     "description": "Current in Bitter insert",
+    "label": "Current (Bitter)",
     "symbol": "I",
     "unit": "ampere"
   },
   "UH": {
     "description": "Voltage in PolyHelices insert",
+    "label": "Voltage (PolyHelices)",
     "symbol": "U",
     "unit": "volt"
   },
   "UB": {
     "description": "Voltage in Bitter insert",
+    "label": "Voltage (Bitter)",
     "symbol": "U",
     "unit": "volt"
   },
   "FlowH": {
     "description": "Waterflow in PolyHelices cooling loop",
+    "label": "Flow (PolyHelices)",
     "symbol": "Q",
     "unit": "liter / second"
   },
   "FlowB": {
     "description": "Waterflow in Bitter cooling loop",
+    "label": "Flow (Bitter)",
     "symbol": "Q",
     "unit": "liter / second"
   },
   "RpmH": {
     "description": "Rotational speed of PolyHelices cooling loop",
+    "label": "Speed (PolyHelices)",
     "symbol": "Rpm",
     "unit": "rpm"
   },
   "RpmB": {
     "description": "Rotational speed of Bitter cooling loop",
+    "label": "Speed (Bitter)",
     "symbol": "Rpm",
     "unit": "rpm"
   },
   "TinH": {
     "description": "Input Temperature in primary cooling loop for PolyHelices insert",
+    "label": "Inlet Temp. (PolyHelices)",
     "symbol": "T",
     "unit": "degC"
   },
   "TinB": {
     "description": "Input Temperature in primary cooling loop for Bitter insert",
+    "label": "Inlet Temp. (Bitter)",
     "symbol": "T",
     "unit": "degC"
   },
   "HPH": {
     "description": "High pressure in primary cooling loop for PolyHelices insert",
+    "label": "High Pressure (PolyHelices)",
     "symbol": "P",
     "unit": "bar"
   },
   "HPB": {
     "description": "High pressure in primary cooling loop for Bitter insert",
+    "label": "High Pressure (Bitter)",
     "symbol": "P",
     "unit": "bar"
   },
   "Power": {
     "description": "Total power dissipated in the system",
+    "label": "Total Power",
     "symbol": "Power",
     "unit": "megawatt"
   },
   "PeH": {
     "description": "Power dissipated in PolyHelices insert",
+    "label": "Power (PolyHelices)",
     "symbol": "Power",
     "unit": "megawatt"
   },
   "PeB": {
     "description": "Power dissipated in Bitter insert",
+    "label": "Power (Bitter)",
     "symbol": "Power",
     "unit": "megawatt"
   }

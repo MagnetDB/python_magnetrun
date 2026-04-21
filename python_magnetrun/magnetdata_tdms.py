@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import sys
 from datetime import datetime
@@ -202,7 +203,18 @@ class TdmsMagnetData(MagnetDataBase):
         if downsample is not None and len(df) > downsample.n_out:
             time_col = "t" if "t" in df.columns else df.columns[0]
             value_cols = [c for c in df.columns if c != time_col]
-            df = downsample_dataframe(df, time_col=time_col, value_cols=value_cols, config=downsample)
+            df = downsample_dataframe(
+                df, time_col=time_col, value_cols=value_cols, config=downsample
+            )
+
+        # Attach unit metadata so plotting functions can label axes correctly.
+        # Uses a per-key try/except because Units() may not have been called yet.
+        units_attrs: dict = {}
+        for col in df.columns:
+            with contextlib.suppress(KeyError, RuntimeError):
+                units_attrs[col] = self.getUnitKey(col)
+        df.attrs["units"] = units_attrs
+
         return df
 
     def getKeys(self) -> list[str]:
@@ -272,7 +284,7 @@ class TdmsMagnetData(MagnetDataBase):
                 if defs_unit_str is not None and defs_unit_str != tdms_unit_str:
                     logger.warning(
                         f"Units: {key} — TDMS embedded unit {tdms_unit_str!r} differs from "
-                        f"defs_file unit {defs_unit_str!r}; overriding with defs_file value"
+                        f"defs_file unit {defs_unit_str!r}; overriding with defs_file value -- aka {defs_unit_str!r}"
                     )
             self.load_units_from_json(resolved, debug=debug)
 
@@ -327,7 +339,7 @@ class TdmsMagnetData(MagnetDataBase):
         if key in self.units:
             return self.units[key]
         (group, channel) = key.split("/")
-        return self.PigBrotherUnits(group)
+        return self.PigBrotherUnits(channel)
 
     def renameData(self, columns: dict) -> None:  # noqa: N802
         """TDMS data does not support renaming channels.
@@ -410,8 +422,18 @@ class TdmsMagnetData(MagnetDataBase):
     # --- compute / add -----------------------------------------------
 
     def addData(  # noqa: N802
-        self, key: str, formula: str, unit: str | None = None, debug: bool = False
+        self,
+        key: str,
+        formula: str,
+        unit: str | tuple | None = None,
+        debug: bool = False,
+        label: str = "",
+        description: str = "",
     ) -> int:
+        from pint.errors import UndefinedUnitError
+
+        from .magnetdata_base import FieldMeta, _make_ureg
+
         (group, channel) = key.split("/")
         logger.debug(f"add: key={key} - group={group}, channel={channel}")
 
@@ -432,9 +454,37 @@ class TdmsMagnetData(MagnetDataBase):
             self.Keys.append(key)
 
             first_key = list(self.Groups[group].keys())[0]
+            first_props = self.Groups[group][first_key]
+            unit_str = unit if isinstance(unit, str) else (unit[0] if isinstance(unit, tuple) and unit else "")
             self.Groups[group][channel] = {
-                "wf_increment": self.Groups[group][first_key]["wf_increment"]
+                "wf_increment": first_props["wf_increment"],
+                "wf_start_time": first_props.get("wf_start_time"),
+                "wf_samples": first_props.get("wf_samples", 0),
+                "wf_start_offset": first_props.get("wf_start_offset", 0.0),
+                "unit_string": unit_str,
             }
+
+            # Populate self.units and self.field_meta for the new key.
+            if isinstance(unit, tuple) and len(unit) == 2:
+                symbol, pint_unit = unit
+            elif isinstance(unit, str) and unit:
+                try:
+                    ureg = _make_ureg()
+                    parsed = ureg.parse_expression(unit)
+                    pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+                    symbol = channel
+                except (ValueError, UndefinedUnitError):
+                    pint_unit = None
+                    symbol = channel
+            else:
+                symbol = channel
+                pint_unit = None
+
+            if pint_unit is not None or symbol != channel:
+                self.units[key] = (symbol, pint_unit)
+                self.field_meta[key] = FieldMeta(
+                    symbol=symbol, unit=pint_unit, label=label, description=description
+                )
 
         except pd.errors.UndefinedVariableError as error:
             raise RuntimeError(
@@ -517,7 +567,7 @@ class TdmsMagnetData(MagnetDataBase):
 
         groups_to_process = [group] if group is not None else list(self.Data.keys())
         print(f"addTdmsTime: groups_to_process={groups_to_process}", flush=True)
-        
+
         for gname in groups_to_process:
             if gname == "Infos":
                 continue
@@ -553,8 +603,10 @@ class TdmsMagnetData(MagnetDataBase):
 
             if "t" not in self.Groups[gname]:
                 self.Groups[gname]["t"] = {
+                    "wf_samples": props.get("wf_samples", 0),
                     "wf_increment": dt,
                     "wf_start_offset": t_offset,
+                    "wf_start_time": props.get("wf_start_time"),
                     "unit_string": "s",
                 }
 
@@ -692,7 +744,13 @@ class TdmsMagnetData(MagnetDataBase):
                 self.Keys.append(key)
 
             if "timestamp" not in self.Groups[gname]:
-                self.Groups[gname]["timestamp"] = {"unit_string": "datetime"}
+                self.Groups[gname]["timestamp"] = {
+                    "wf_samples": props["wf_samples"],
+                    "wf_increment": props["wf_increment"],
+                    "wf_start_offset": props["wf_start_offset"],
+                    "wf_start_time": props["wf_start_time"],
+                    "unit_string": "datetime",
+                }
 
         return 0
 
@@ -723,8 +781,18 @@ class TdmsMagnetData(MagnetDataBase):
         import pytz
 
         tz = pytz.timezone(time_zone)
-        t_start = pd.Timestamp(trange[0]).tz_localize(tz).tz_convert(pytz.utc).tz_localize(None)
-        t_end = pd.Timestamp(trange[1]).tz_localize(tz).tz_convert(pytz.utc).tz_localize(None)
+        t_start = (
+            pd.Timestamp(trange[0])
+            .tz_localize(tz)
+            .tz_convert(pytz.utc)
+            .tz_localize(None)
+        )
+        t_end = (
+            pd.Timestamp(trange[1])
+            .tz_localize(tz)
+            .tz_convert(pytz.utc)
+            .tz_localize(None)
+        )
         return self.Data[group][
             self.Data[group]["timestamp"].between(t_start, t_end, inclusive="both")
         ]
@@ -750,19 +818,21 @@ class TdmsMagnetData(MagnetDataBase):
         normalize: bool = False,
         offset: float = 0,
         time_zone: str = "Europe/Paris",
+        color: str | None = None,
     ) -> None:
         import matplotlib
         import matplotlib.pyplot as plt
 
+        logger.info(f"plotData: plotting {y} vs {x} from {self.FileName!r}")
         matplotlib.rcParams["text.usetex"] = True
 
-        if x != "t" and x != "timestamp" and x not in self.Keys:
+        if x not in self.Keys + ["t", "timestamp"]:
             raise RuntimeError(
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no x={x} key (valid keys= {self.Keys})"
             )
 
         if y not in self.Keys:
-            raise Exception(
+            raise RuntimeError(
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {y} key (valid keys: {self.Keys})"
             )
 
@@ -793,19 +863,24 @@ class TdmsMagnetData(MagnetDataBase):
                 .dt.tz_localize(None)  # naive local for clean axis labels
             )
 
+        kwargs: dict = {
+            "x": xchannel,
+            "y": ychannel,
+            "ax": ax,
+            "alpha": alpha,
+            "grid": False,
+        }
+        if color is not None:
+            kwargs["color"] = color
+
         if normalize:
             ymax = abs(df[ychannel].max())
             df[ychannel] /= ymax
-            df.plot(
-                x=xchannel,
-                y=ychannel,
-                ax=ax,
-                alpha=alpha,
-                label=f"{ychannel} (norm with {ymax:.3e} {yunit:~P})",
-                grid=True,
-            )
-        else:
-            df.plot(x=xchannel, y=ychannel, alpha=alpha, ax=ax, grid=True)
+            kwargs["label"] = f"{label or ychannel} (norm with {ymax:.3e} {yunit:~P})"
+        elif label is not None:
+            kwargs["label"] = label
+
+        df.plot(**kwargs)
 
         if yunit is not None:
             plt.ylabel(f"{ysymbol} [{yunit:~P}]")
@@ -860,6 +935,10 @@ class TdmsMagnetData(MagnetDataBase):
         tables = []
         for group, values in self.Groups.items():
             for item in values:
+                print(
+                    f"info: group={group}, item={item}, values={values[item]}",
+                    flush=True,
+                )
                 if isinstance(values[item], dict | OrderedDict):
                     table = [
                         group,

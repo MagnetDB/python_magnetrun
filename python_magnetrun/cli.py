@@ -40,7 +40,7 @@ def main():
     args = parser.parse_args()
 
     # Configure logging level
-    log_level = getattr(logging, args.log_level.upper(), logging.WARNING)
+    log_level = getattr(logging, args.log_level.upper(), logging.INFO)
     setup_logging(level=log_level, log_file=args.log_file if args.log_file else None)
     logger.setLevel(log_level)
 
@@ -149,25 +149,23 @@ def main():
                         df.to_csv(csvfile, sep="\t", index=True, header=True)
 
     # Load hybrid data if requested
-    hybrid_datadir = getattr(args, "hybrid_datadir", None)
-    hybrid_date = getattr(args, "hybrid_date", None)
-    if hybrid_datadir and hybrid_date:
+    if args.hybrid_datadir and args.hybrid_date:
         try:
             hrun = HybridRun.fromdir(
-                base_dir=hybrid_datadir,
-                date_str=hybrid_date,
+                base_dir=args.hybrid_datadir,
+                date_str=args.hybrid_date,
                 fepc_system=args.fepc_system,
                 site=args.site or "",
             )
             inputs["hybrid"] = {"data": hrun}
             logger.info(
-                f"loaded hybrid data: {hybrid_datadir}, date={hybrid_date}, "
+                f"loaded hybrid data: {args.hybrid_datadir}, date={args.hybrid_date}, "
                 f"fepc_system={args.fepc_system}"
             )
         except (OSError, ValueError, RuntimeError) as error:
             tb_str = "".join(traceback.format_exception(*sys.exc_info()))
             logger.error(
-                f"hybrid data ({hybrid_datadir}, {hybrid_date}): "
+                f"hybrid data ({args.hybrid_datadir}, {args.hybrid_date}): "
                 f"an error occurred at {format_exception_location()}"
             )
             logger.error(f"Error: {error}")

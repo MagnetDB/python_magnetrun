@@ -38,7 +38,13 @@ class MagnetRun:
         self.StartTime = start_time
 
     @classmethod
-    def fromtdms(cls, housing: str, site: str, filename: str) -> "MagnetRun":
+    def fromtdms(
+        cls,
+        housing: str,
+        site: str,
+        filename: str,
+        time_zone: str = "Europe/Paris",
+    ) -> "MagnetRun":
         """create from a tdms file"""
         # print(f"MagnetRun:fromtdms: {filename}", flush=True)
         # with open(filename, "r") as f:
@@ -51,11 +57,21 @@ class MagnetRun:
 
         group = list(data.Groups.keys())[0]
         channel = list(data.Groups[group].keys())[0]
-        start_t = pd.Timestamp(data.Groups[group][channel]["wf_start_time"])
-        offset_t = pd.Timedelta(data.Groups[group][channel]["wf_start_offset"])
-        start_time = (start_t + offset_t).to_pydatetime()
+        # Use wf_start_time only — do NOT add wf_start_offset.
+        # addTdmsTime computes t = index*dt + wf_start_offset, so wf_start_offset
+        # is already encoded in the t values.  Adding it to StartTime would
+        # cause double-counting when computing delta_t for multi-file alignment.
+        ts = pd.Timestamp(data.Groups[group][channel]["wf_start_time"])
+        wf_start_offset = data.Groups[group][channel].get("wf_start_offset", 0.0)
+        # wf_start_time is UTC; normalise to naive UTC regardless of tzinfo.
+        import pytz
+
+        if ts.tzinfo is None:
+            ts = ts.tz_localize(pytz.utc)
+        start_time = ts.tz_convert(pytz.utc).to_pydatetime().replace(tzinfo=None)
         logger.debug(
-            f"magnetrun.fromtdms: start_time={start_time}, type={type(start_time)}"
+            f"magnetrun.fromtdms: start_time={start_time} (naive UTC), "
+            f"wf_start_offset={wf_start_offset} s (already in t values, not added to StartTime)"
         )
         return cls(housing, site, data, start_time=start_time)
 
@@ -68,6 +84,7 @@ class MagnetRun:
         keys_to_remove: list[str] | None = None,
         keys_to_rename: dict[str, str] | None = None,
         keys_to_add: dict[str, str] | None = None,
+        time_zone: str = "Europe/Paris",
     ) -> "MagnetRun":
         """create from a txt file"""
         logger.debug(
@@ -86,10 +103,15 @@ class MagnetRun:
         data.Units()
         (start_date, start_time, end_date, end_time) = res
 
-        # print("magnetrun.fromtxt: data=", data)
-        # Combine start_date (YYYY.MM.DD) and start_time (HH:MM:SS) into datetime
+        # Combine start_date (YYYY.MM.DD) and start_time (HH:MM:SS) into datetime.
+        # The timestamp from pupitre data is local time; convert to naive UTC so it
+        # is directly comparable with timestamps from pigbrother (.tdms) files.
+        import pytz
+
         start_t = datetime.strptime(f"{start_date} {start_time}", "%Y.%m.%d %H:%M:%S")
-        logger.debug(f"MagnetRun/from_txt: start_t={start_t}, type={type(start_t)}")
+        tz = pytz.timezone(time_zone)
+        start_t = tz.localize(start_t).astimezone(pytz.utc).replace(tzinfo=None)
+        logger.debug(f"MagnetRun/from_txt: start_t={start_t} (naive UTC)")
         return cls(housing, site, data, start_time=start_t)
 
     @classmethod

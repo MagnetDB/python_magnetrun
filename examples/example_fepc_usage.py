@@ -9,8 +9,8 @@ This demonstrates:
 
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 from python_magnetrun.hybrid.kHz.fepc_reader import (
     parse_cfg_file,
@@ -154,34 +154,35 @@ def example_extract_variable(config):
 
 def example_plot_data(data, card, num_samples=5000):
     """Example: Plot some channels"""
+    from python_magnetrun.plotting import PlotStyle, get_backend, plot_subplots
+
     print("\n" + "=" * 60)
     print("EXAMPLE 5: Plotting Data")
     print("=" * 60)
 
     # Plot first 3 channels
     num_channels_to_plot = min(3, data.shape[1])
+    fields = list(card.variable_names[:num_channels_to_plot])
     time = np.arange(num_samples) / 10000.0  # Convert to seconds (10 kHz sampling)
 
-    fig, axes = plt.subplots(num_channels_to_plot, 1, figsize=(12, 8))
-    if num_channels_to_plot == 1:
-        axes = [axes]
+    df_plot = pd.DataFrame(
+        {"t": time, **{f: data[:num_samples, i] for i, f in enumerate(fields)}}
+    )
 
-    for i in range(num_channels_to_plot):
-        axes[i].plot(time, data[:num_samples, i])
-        axes[i].set_ylabel(card.variable_names[i])
-        axes[i].grid(True, alpha=0.3)
-        if i == num_channels_to_plot - 1:
-            axes[i].set_xlabel("Time (s)")
+    b = get_backend("matplotlib")
+    fig = plot_subplots(
+        df_plot,
+        fields,
+        t_col="t",
+        backend=b,
+        title=f"Slot {card.slot} - First {num_channels_to_plot} channels",
+        style=PlotStyle(figsize=(12, 3)),
+    )
 
-    plt.suptitle(f"Slot {card.slot} - First {num_channels_to_plot} channels")
-    plt.tight_layout()
-
-    # Save plot
-    output_path = f"fepc_data_slot_{card.slot}.png"
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    output_path = Path(f"fepc_data_slot_{card.slot}.png")
+    b.save(fig, output_path, dpi=150)
     print(f"\nPlot saved to: {output_path}")
-
-    return output_path
+    return str(output_path)
 
 
 def example_calibration():

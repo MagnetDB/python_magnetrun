@@ -1,0 +1,35 @@
+{
+  "style": {
+    "figsize": [
+      12,
+      5
+    ],
+    "dpi": 300,
+    "grid": true,
+    "grid_alpha": 0.3,
+    "legend_loc": "best",
+    "title_fontsize": 12,
+    "label_fontsize": 10
+  },
+  "colors": {
+    "overview": "blue",
+    "archive": "red",
+    "pupitre": "green",
+    "incident": "yellow",
+    "regime_up": "green",
+    "regime_down": "red",
+    "regime_plateau": "blue",
+    "palette": [
+      "#1f77b4",
+      "#ff7f0e",
+      "#2ca02c",
+      "#d62728",
+      "#9467bd",
+      "#8c564b",
+      "#e377c2",
+      "#7f7f7f",
+      "#bcbd22",
+      "#17becf"
+    ]
+  }
+}

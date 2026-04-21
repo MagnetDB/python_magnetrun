@@ -34,7 +34,6 @@ Example usage::
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import Any
 
 import matplotlib
@@ -42,89 +41,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from python_magnetrun.plotting.style import (  # noqa: F401
+    DEFAULT_COLORS,
+    DEFAULT_STYLE,
+    PlotColors,
+    PlotStyle,
+)
+
 # Module logger
 logger = logging.getLogger("magnetrun.analysis.plotting")
-
-
-# =============================================================================
-# Configuration dataclasses
-# =============================================================================
-@dataclass
-class PlotStyle:
-    """
-    Configuration for plot styling.
-
-    Attributes
-    ----------
-    figsize : Tuple[int, int]
-        Figure size in inches (width, height)
-    dpi : int
-        Resolution for saved figures
-    grid : bool
-        Whether to show grid
-    grid_alpha : float
-        Grid transparency
-    legend_loc : str
-        Legend location
-    title_fontsize : int
-        Title font size
-    label_fontsize : int
-        Axis label font size
-    """
-
-    figsize: tuple[int, int] = (12, 5)
-    dpi: int = 300
-    grid: bool = True
-    grid_alpha: float = 0.3
-    legend_loc: str = "best"
-    title_fontsize: int = 12
-    label_fontsize: int = 10
-
-
-@dataclass
-class PlotColors:
-    """
-    Color configuration for different data sources and regimes.
-
-    Attributes
-    ----------
-    overview : str
-        Color for overview data
-    archive : str
-        Color for archive data
-    pupitre : str
-        Color for pupitre data
-    incident : str
-        Color for incident markers
-    regime_up : str
-        Color for 'Up' regime spans
-    regime_down : str
-        Color for 'Down' regime spans
-    regime_plateau : str
-        Color for 'Plateau' regime spans
-    """
-
-    overview: str = "blue"
-    archive: str = "red"
-    pupitre: str = "green"
-    incident: str = "yellow"
-    regime_up: str = "green"
-    regime_down: str = "red"
-    regime_plateau: str = "blue"
-
-    def get_regime_color(self, regime: str) -> str:
-        """Get color for a regime type."""
-        regime_map = {
-            "U": self.regime_up,
-            "D": self.regime_down,
-            "P": self.regime_plateau,
-        }
-        return regime_map.get(regime, "gray")
-
-
-# Default instances
-DEFAULT_STYLE = PlotStyle()
-DEFAULT_COLORS = PlotColors()
 
 
 # =============================================================================
@@ -454,63 +379,35 @@ def plot_data(
             df_pupitre, tkey, pupitre_key, colors.pupitre, f"Pupitre: {pupitre_key}"
         )
 
-    # Store annotation metadata for interactivity
-    annotation_dict = {}
-
-    # Plot incidents
+    # Plot incidents via AnnotationManager
     if df_incidents is not None and interactive:
+        from python_magnetrun.plotting.annotations import AnnotationManager
+        from python_magnetrun.plotting.matplotlib_backend import MatplotlibBackend
+
+        manager = AnnotationManager(MatplotlibBackend(), style=style, colors=colors)
+
         for itype, incident_list in df_incidents.items():
             for i, idf in enumerate(incident_list):
                 if idf.empty:
                     continue
 
-                # Get midpoint for annotation
                 t_mid = idf[tkey].median()
-
-                # Get the channel key for this incident
                 incident_key = channels_dict.get(key, key)
                 if incident_key not in idf.columns:
                     continue
 
-                f_mid = idf[incident_key].median()
-
-                # Plot marker
-                (point,) = ax.plot(t_mid, f_mid, "yo", markersize=8)
-
-                # Add annotation with arrow
-                annot = ax.annotate(
-                    rf"{itype} \#{i + 1}",
-                    xy=(t_mid, f_mid),
-                    xytext=(10, 10),
-                    textcoords="offset points",
-                    bbox=dict(boxstyle="round,pad=0.5", fc=colors.incident, alpha=0.7),
-                    arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0"),
-                )
-
-                # Make annotation clickable
-                annot.set_picker(True)
-
-                # Store metadata for click handler
-                annotation_dict[annot] = {
-                    "anomaly": rf"{itype} \#{i + 1}",
+                label = rf"{itype} \#{i + 1}"
+                detail = {
+                    "anomaly": label,
                     "idx": i,
+                    "tkey": tkey,
                     "df": idf,
                     "pupitre": (df_pupitre, pupitre_dict.get(site, {}).get(key)),
                     "archive": (df_archive, channels_dict.get(key)),
                 }
+                manager.add(fig, 0, t_mid, label, detail)
 
-    # Setup interactive click handler
-    if interactive and annotation_dict:
-        open_figures = {}
-
-        def on_pick(event):
-            if event.artist in annotation_dict:
-                metadata = annotation_dict[event.artist]
-                _show_incident_detail(
-                    metadata, open_figures, tkey, colors, style, downsample_percent
-                )
-
-        fig.canvas.mpl_connect("pick_event", on_pick)
+        manager.connect(fig)
 
     # Finalize plot
     ax.legend(labels=legends, loc=style.legend_loc)
@@ -540,70 +437,6 @@ def plot_data(
 
     return fig
 
-
-def _show_incident_detail(
-    metadata: dict[str, Any],
-    open_figures: dict[int, Any],
-    tkey: str,
-    colors: PlotColors,
-    style: PlotStyle,
-    downsample_percent: float,
-) -> None:
-    """Show detailed view of an incident when clicked."""
-
-    anomaly = metadata["anomaly"]
-    idx = metadata["idx"]
-    idf = metadata["df"]
-    pupitre, pupitre_key = metadata["pupitre"]
-    archive, archive_key = metadata["archive"]
-
-    # Close previous subplot if it exists
-    if idx in open_figures:
-        plt.close(open_figures[idx])
-
-    # Create subplot
-    fig_sub, ax_sub = plt.subplots(figsize=(8, 5))
-
-    # Plot incident data
-    if archive_key and archive_key in idf.columns:
-        x, y = idf[tkey].values, idf[archive_key].values
-        if downsample_percent < 100.0:
-            x, y = downsample_for_plot(x, y, downsample_percent)
-        ax_sub.plot(x, y, color=colors.incident, label=f"Incident: {archive_key}")
-
-    # Plot pupitre context
-    if pupitre is not None and not pupitre.empty and pupitre_key:
-        t_start, t_end = idf[tkey].iloc[0], idf[tkey].iloc[-1]
-        mask = (pupitre[tkey] >= t_start) & (pupitre[tkey] <= t_end)
-        pupitre_slice = pupitre[mask]
-        if not pupitre_slice.empty and pupitre_key in pupitre_slice.columns:
-            x, y = pupitre_slice[tkey].values, pupitre_slice[pupitre_key].values
-            ax_sub.plot(
-                x, y, color=colors.pupitre, alpha=0.7, label=f"Pupitre: {pupitre_key}"
-            )
-
-    # Plot archive context
-    if archive is not None and not archive.empty and archive_key:
-        t_start, t_end = idf[tkey].iloc[0], idf[tkey].iloc[-1]
-        mask = (archive[tkey] >= t_start) & (archive[tkey] <= t_end)
-        archive_slice = archive[mask]
-        if not archive_slice.empty and archive_key in archive_slice.columns:
-            x, y = archive_slice[tkey].values, archive_slice[archive_key].values
-            ax_sub.plot(
-                x, y, color=colors.archive, alpha=0.5, label=f"Archive: {archive_key}"
-            )
-
-    ax_sub.set_xlabel(tkey)
-    ax_sub.set_xlim(idf[tkey].iloc[0], idf[tkey].iloc[-1])
-    ax_sub.set_title(anomaly)
-    ax_sub.legend()
-    ax_sub.grid(True, alpha=style.grid_alpha)
-
-    fig_sub.tight_layout()
-    fig_sub.show()
-
-    # Store figure reference
-    open_figures[idx] = fig_sub
 
 
 def plot_comparison(

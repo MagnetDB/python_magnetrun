@@ -74,6 +74,59 @@ def create_common_plot_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--normalize", help="normalize data before plot", action="store_true"
     )
+    parser.add_argument(
+        "--backend",
+        choices=["matplotlib", "plotly", "plotly-resampler", "plotly-widget"],
+        default="matplotlib",
+        help=(
+            "plotting backend. 'plotly' enables interactive HTML output and JSON export. "
+            "'plotly-resampler'/'plotly-widget' require a live Python kernel."
+        ),
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print Plotly JSON spec to stdout instead of displaying/saving (requires --backend plotly)",
+    )
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--subplots",
+        action="store_true",
+        default=False,
+        help="display each field in a separate subplot sharing the time axis (default: overlay on one axes)",
+    )
+    mode_group.add_argument(
+        "--overlay",
+        action="store_true",
+        default=False,
+        help="overlay all fields on one axes (default mode; explicit flag for clarity)",
+    )
+    parser.add_argument(
+        "--unit",
+        metavar="FIELD=UNIT",
+        action="append",
+        default=None,
+        help=(
+            "override display unit for a field (pint-parseable); repeatable. "
+            "Example: --unit Field_B=tesla --unit Courant_GR1=ampere"
+        ),
+    )
+    parser.add_argument(
+        "--same-color-per-type",
+        action="store_true",
+        default=False,
+        help=(
+            "use one fixed color per file type (.txt → pupitre, .tdms → archive) "
+            "instead of a distinct palette color per file"
+        ),
+    )
+    parser.add_argument(
+        "--plot-config",
+        metavar="FILE",
+        type=Path,
+        default=None,
+        help="path to a plot config JSON file (colors + style); overrides built-in defaults",
+    )
     return parser
 
 
@@ -236,11 +289,23 @@ def create_managed_plots_parser() -> argparse.ArgumentParser:
     """
     parser = argparse.ArgumentParser(add_help=False)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--save", help="save graphs (png format)", action="store_true")
     group.add_argument(
-        "--show", help="display graphs (require X11; default)", action="store_true"
+        "--save",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="FILE",
+        help=(
+            "save figure to FILE (.png/.html chosen by backend); "
+            "omit FILE for an auto-generated name in the current directory"
+        ),
     )
-    parser.set_defaults(show=True)
+    group.add_argument(
+        "--show",
+        action="store_true",
+        default=False,
+        help="display figure interactively (default when neither flag is given)",
+    )
     return parser
 
 

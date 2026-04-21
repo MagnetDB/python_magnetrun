@@ -911,13 +911,59 @@ class HybridData:
     def load_units_from_json(self, json_file: str, debug: bool = False) -> None:
         """Populate ``self.units`` from a JSON field-definition file.
 
-        Delegates to :meth:`MagnetDataBase.load_units_from_json
-        <python_magnetrun.magnetdata_base.MagnetDataBase.load_units_from_json>`;
-        see that method for the JSON format description.
+        Overrides the base-class implementation to handle the ``kHz/``,
+        ``rms/``, and ``trigger/`` key prefixes used in :attr:`Keys`.
+        JSON entries use the short form ``"SYSTEM/VARIABLE"``; this method
+        matches them against all prefixed variants present in ``self.Keys``.
         """
-        from ..magnetdata_base import MagnetDataBase
+        from ..field_defs import load_defs
+        from ..magnetdata_base import FieldMeta, _make_ureg
 
-        MagnetDataBase.load_units_from_json(self, json_file, debug)  # type: ignore[arg-type]
+        ureg = _make_ureg()
+        field_defs: dict = load_defs(json_file)
+
+        # Build short_key → [full_key, ...] map.
+        # Full keys: "kHz/FEPC-AUX-LNCMI/ALIM1_J1"  →  short: "FEPC-AUX-LNCMI/ALIM1_J1"
+        short_to_fulls: dict[str, list[str]] = {}
+        _prefixes = {"kHz", "rms", "trigger"}
+        for full_key in self.Keys:
+            parts = full_key.split("/", 1)
+            short_key = parts[1] if len(parts) == 2 and parts[0] in _prefixes else full_key
+            short_to_fulls.setdefault(short_key, []).append(full_key)
+
+        for json_key, defn in field_defs.items():
+            if json_key.startswith("_"):
+                continue
+            # Accept a direct match (json_key already has a prefix) or a short match.
+            full_keys = [json_key] if json_key in self.Keys else short_to_fulls.get(json_key, [])
+            if not full_keys:
+                logger.debug(f"load_units_from_json: {json_key!r} not in Keys, skipping")
+                continue
+
+            symbol: str = defn.get("symbol", "")
+            unit_str: str | None = defn.get("unit")
+            label: str = defn.get("label", "")
+            description: str = defn.get("description", "")
+
+            if unit_str is None:
+                pint_unit = None
+            else:
+                try:
+                    parsed = ureg.parse_expression(unit_str)
+                    pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+                except (ValueError, AttributeError) as exc:
+                    raise ValueError(
+                        f"load_units_from_json: cannot parse unit {unit_str!r} for field {json_key!r}"
+                    ) from exc
+
+            meta = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
+            for full_key in full_keys:
+                self.units[full_key] = (symbol, pint_unit)
+                self.field_meta[full_key] = meta
+                if debug:
+                    logger.debug(
+                        f"load_units_from_json: {json_key!r} → {full_key!r}  symbol={symbol}, unit={pint_unit}"
+                    )
 
     def Units(self, debug: bool = False, json_file: str | None = None) -> None:
         """Populate ``self.units`` from a field-definition JSON file.
@@ -933,8 +979,55 @@ class HybridData:
             self.load_units_from_json(resolved, debug=debug)
 
     def getUnitKey(self, key: str) -> tuple:
-        """Get unit for a specific key"""
+        """Return ``(symbol, unit)`` for *key*, or ``()`` when not available."""
         return self.units.get(key, ())
+
+    def getFieldMeta(self, key: str):  # type: ignore[override]
+        """Return :class:`FieldMeta` for *key*, or ``None`` when not available."""
+        return self.field_meta.get(key)
+
+    def addData(  # noqa: N802
+        self,
+        key: str,
+        formula: str,
+        unit: str | tuple | None = None,
+        debug: bool = False,
+        label: str = "",
+        description: str = "",
+    ) -> int:
+        """Register a derived field lazily (stored for future use).
+
+        HybridData does not hold a single in-memory DataFrame, so derived
+        fields cannot be computed eagerly.  This method records the intent so
+        that callers that inspect ``self.field_meta`` can still discover the
+        field's metadata.
+        """
+        from pint.errors import UndefinedUnitError
+
+        from ..magnetdata_base import FieldMeta, _make_ureg
+
+        if isinstance(unit, tuple) and len(unit) == 2:
+            symbol, pint_unit = unit
+        elif isinstance(unit, str) and unit:
+            try:
+                ureg = _make_ureg()
+                parsed = ureg.parse_expression(unit)
+                pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+                symbol = key
+            except (ValueError, UndefinedUnitError):
+                pint_unit = None
+                symbol = key
+        else:
+            symbol = key
+            pint_unit = None
+
+        if key not in self.Keys:
+            self.Keys.append(key)
+        if pint_unit is not None or label:
+            self.units[key] = (symbol, pint_unit)
+            self.field_meta[key] = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
+        logger.debug(f"HybridData.addData: registered derived key {key!r} (lazy)")
+        return 0
 
     # -------------------------------------------------------------------------
     # Plotting Methods (delegating to plotting module)

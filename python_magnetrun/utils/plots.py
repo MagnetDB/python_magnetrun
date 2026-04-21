@@ -2,7 +2,6 @@ import logging
 import sys
 from typing import Any
 
-import matplotlib
 import matplotlib.cm as cm
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
@@ -10,11 +9,6 @@ import numpy as np
 import pandas as pd
 
 logger = logging.getLogger(__name__)
-
-# print("matplotlib=", matplotlib.rcParams.keys())
-# matplotlib.rcParams['text.latex.unicode'] = True key not available
-
-matplotlib.rcParams["text.usetex"] = True
 
 
 # TODO add method to use MagnetData instead of df

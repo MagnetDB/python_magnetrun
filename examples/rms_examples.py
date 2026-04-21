@@ -9,7 +9,6 @@ import logging
 import re
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import pandas as pd
 
 from python_magnetrun.hybrid.rms.rms_reader import RMSFileReader, read_rms_file
@@ -139,6 +138,8 @@ def example_analog_signals(filepath):
 # =========================
 def example_plotting(filepath, variables_to_plot):
     """Plot selected variables over time."""
+    from python_magnetrun.plotting import PlotStyle, get_backend, plot_subplots
+
     df = read_rms_file(filepath)
 
     # Filter variables that exist
@@ -148,21 +149,21 @@ def example_plotting(filepath, variables_to_plot):
         print("None of the requested variables found in file")
         return
 
-    # Create subplots
-    fig, axes = plt.subplots(len(vars_to_plot), 1, figsize=(12, 3 * len(vars_to_plot)))
-    if len(vars_to_plot) == 1:
-        axes = [axes]
+    # Reset DatetimeIndex into a plain column so plot_subplots can use it
+    df_plot = df[vars_to_plot].reset_index(names="t")
 
-    for ax, var in zip(axes, vars_to_plot, strict=False):
-        df[var].plot(ax=ax)
-        ax.set_ylabel(var)
-        ax.set_xlabel("Time")
-        ax.grid(True)
+    b = get_backend("matplotlib")
+    fig = plot_subplots(
+        df_plot,
+        vars_to_plot,
+        t_col="t",
+        backend=b,
+        style=PlotStyle(figsize=(12, 3)),
+    )
 
-    plt.tight_layout()
-    plt.savefig("rms_plot.png", dpi=150)
-    print("Plot saved to rms_plot.png")
-
+    out = Path("rms_plot.png")
+    b.save(fig, out, dpi=150)
+    print(f"Plot saved to {out}")
     return fig
 
 

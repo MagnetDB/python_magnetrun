@@ -567,9 +567,10 @@ threshold = config.thresholds.get("Courant_GR1")
 **Single Pupitre file (`.txt`):**
 
 ```python
-from python_magnetrun.magnetdata import MagnetData
+from python_magnetrun.magnetdata import load_magnetdata
+from python_magnetrun.runetl import prepareData
 
-data = MagnetData.fromtxt("srvdata/M9_2024.05.09---16_34_03.txt")
+data = load_magnetdata("data/M9_2019.02.14-23_00_38.txt")
 prepareData(data, housing="M9")  # applies housing-specific renaming and timestamp parsing
 data.Units()
 
@@ -581,9 +582,10 @@ print(df[["t", "Field", "IH", "IB"]].head())
 **Single PigBrother file (`.tdms`):**
 
 ```python
-from python_magnetrun.magnetdata import MagnetData
+from python_magnetrun.magnetdata import load_magnetdata
+from python_magnetrun.runetl import prepareData
 
-data = MagnetData.fromtdms("pigbrotherdata/Fichiers_Data/M9/Overview/M9_Overview_240509-1634.tdms")
+data = load_magnetdata("pigbrotherdata/Fichiers_Data/M9/Overview/M9_Overview_240509-1634.tdms")
 prepareData(data, housing="M9")  # applies housing-specific renaming and timestamp parsing
 data.Units()
 
@@ -599,7 +601,7 @@ print(df[["Référence_GR1", "Courant_GR1"]].head())
 from python_magnetrun.analysis import load_data, FileDiscovery
 
 # Discover files associated with an overview TDMS
-discovery = FileDiscovery("M9_Overview_250303-1234.tdms", pupitre_datadir="srvdata/")
+discovery = FileDiscovery("M9_Overview_250303-1234.tdms", pupitre_datadir="data/")
 file_set = discovery.discover()
 
 # Load DataFrames from a file set
@@ -720,7 +722,7 @@ Each run is assigned a signature based on detected breakpoints:
 
 ```bash
 python3 tests/test-signature.py \
-    srvdata/M10_2025.01.27---15:39:29.txt \
+    data/M10_2025.01.27---15:39:29.txt \
     --window=10 --threshold 1.e-2
 ```
 
@@ -766,7 +768,7 @@ Fit a piecewise-linear model for the Ih/Ib relationship:
 
 ```bash
 python3 examples/corr_Ih_Ib.py \
-    srvdata/M9_2024.11.06---16:43:44.txt \
+    data/M9_2024.11.06---16:43:44.txt \
     --xkey IH --ykey IB \
     --algo piecewise_regression --breakpoints 2
 ```
@@ -775,7 +777,7 @@ Fit Field(t) with multiple breakpoints:
 
 ```bash
 python3 examples/corr_Ih_Ib.py \
-    srvdata/M9_2024.11.06---16:43:44.txt \
+    data/M9_2024.11.06---16:43:44.txt \
     --xkey t --ykey Field \
     --algo pwlf --breakpoints 11
 ```
@@ -810,7 +812,7 @@ before further processing or ingestion into a database:
 ```python
 from python_magnetrun.runetl import prepare_pupitre
 
-data = prepare_pupitre("srvdata/M9_2024.05.09---16_34_03.txt", housing="M9")
+data = prepare_pupitre("data/M9_2024.05.09---16_34_03.txt", housing="M9")
 ```
 
 ### Waterflow pipeline (`waterflow_pipeline`)
@@ -857,7 +859,7 @@ docker compose up -d
 2. Convert and upload Pupitre `.txt` data to Parquet:
 
 ```bash
-magnetfs upload srvdata/M9_2024.05.09---16_34_03.txt
+magnetfs upload data/M9_2024.05.09---16_34_03.txt
 ```
 
 3. Read and plot data directly from the bucket:

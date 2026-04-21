@@ -166,7 +166,7 @@ Either add it to a `hybrid` extras group or document the soft requirement explic
 | `HybridData` timestamp support | Pending (out of current scope) |
 | Cross-domain comparison (`DataLoader` extension, Phase A1–A3) | Done — A0–A3 complete |
 | Downsampling refactoring (`DownsampleConfig`, shared module) | Planned — see `downsampling-refactoring.plan.md` |
-| Plotting refactoring (`plotting/` subpackage, backend protocol, JS path) | Planned — see `plotting-refactoring.plan.md` |
+| Plotting refactoring (`plotting/` subpackage, backend protocol, JS path) | Done — see `plotting-refactoring.plan.md` |
 
 The core abstractions are well-conceived — the ABC, the defs system, and `HousingConfig` are solid
 foundations. All major structural issues are now resolved: housing config consolidation, `MagnetData`
@@ -264,12 +264,14 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
    Add `tsdownsample` to `pyproject.toml` as a `hybrid` extras dependency.
    Full plan: **[`prompts/downsampling-refactoring.plan.md`](downsampling-refactoring.plan.md)**.
 
-9. **Plotting refactoring** *(effort: L)* — create `python_magnetrun/plotting/` subpackage with
-   `PlottingBackend` protocol, `MatplotlibBackend`, `PlotlyBackend`, `plot_subplots()`,
-   `plot_overlay()` (with normalization), and `AnnotationManager`.  Adds JS-frontend path via
-   `to_json()` and native marimo / voilà support via the Plotly backend.
+9. **Plotting refactoring** *(done)* — `python_magnetrun/plotting/` subpackage created with
+   `PlottingBackend` protocol, `MatplotlibBackend`, `PlotlyBackend`,
+   `PlotlyResamplerBackend`, `plot_subplots()`, `plot_overlay()` (with normalization),
+   and `AnnotationManager`.  JS-frontend path via `to_json()`.  `analysis/plotting.py`
+   now imports `PlotStyle`/`PlotColors` from `plotting.style` and uses `AnnotationManager`.
+   `commands/plot.py` gains `--backend` and `--json` flags.  `pyproject.toml` gains
+   `plotting` and `resampler` extras groups.
    Full plan: **[`prompts/plotting-refactoring.plan.md`](plotting-refactoring.plan.md)**.
-   Depends on downsampling plan Steps 1–2 for full method selection.
 
 10. **`HybridData` timestamp support** *(effort: M, out of current scope)* — tracked in
     **[`prompts/hybriddata-timestamp-plan.md`](hybriddata-timestamp-plan.md)**:

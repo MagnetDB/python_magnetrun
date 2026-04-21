@@ -142,6 +142,7 @@ def add_field_def(
     symbol: str,
     unit: str | None,
     description: str = "",
+    label: str = "",
     overwrite: bool = False,
 ) -> None:
     """Add a new field entry to *json_file*.
@@ -158,6 +159,9 @@ def add_field_def(
         Pint-parseable unit string, or ``None`` for dimensionless/timestamp.
     description:
         Optional human-readable description.
+    label:
+        Optional human-readable plot label (e.g. ``"Magnetic Field"``).
+        Stored only when non-empty to keep files compact.
     overwrite:
         If True, silently replace an existing entry; otherwise raise ``KeyError``.
     """
@@ -166,7 +170,10 @@ def add_field_def(
         if not overwrite:
             raise KeyError(f"{key!r} already exists in {json_file}")
         logger.info(f"add_field_def: overwriting existing entry {key!r}")
-    defs[key] = {"description": description, "symbol": symbol, "unit": unit}
+    entry: dict = {"description": description, "symbol": symbol, "unit": unit}
+    if label:
+        entry["label"] = label
+    defs[key] = entry
     save_defs(json_file, defs)
     logger.info(f"add_field_def: added {key!r} to {json_file}")
 
@@ -177,6 +184,7 @@ def update_field_def(
     symbol: str | None = None,
     unit: str | None | object = _UNSET,
     description: str | None = None,
+    label: str | None = None,
 ) -> None:
     """Update one or more attributes of an existing field entry in *json_file*.
 
@@ -195,6 +203,9 @@ def update_field_def(
         New unit string, ``None`` to set dimensionless, or omit to leave unchanged.
     description:
         New description, or ``None`` to leave unchanged.
+    label:
+        New human-readable plot label, or ``None`` to leave unchanged.
+        Pass ``""`` to remove the label from the entry.
     """
     defs = load_defs(json_file)
     if key not in defs or key.startswith("_"):
@@ -206,6 +217,11 @@ def update_field_def(
         entry["unit"] = unit
     if description is not None:
         entry["description"] = description
+    if label is not None:
+        if label == "":
+            entry.pop("label", None)  # remove when explicitly cleared
+        else:
+            entry["label"] = label
     defs[key] = entry
     save_defs(json_file, defs)
     logger.info(f"update_field_def: updated {key!r} in {json_file}")
@@ -232,8 +248,9 @@ def delete_field_def(json_file: str | Path, key: str) -> None:
 def list_field_defs(json_file: str | Path) -> list[dict]:
     """Return all non-comment entries in *json_file* as a list of dicts.
 
-    Each dict has keys ``"field"``, ``"symbol"``, ``"unit"``, ``"description"``,
-    ``"aliases"``.  A formatted table is also printed to stdout.
+    Each dict has keys ``"field"``, ``"symbol"``, ``"unit"``, ``"label"``,
+    ``"description"``, ``"aliases"``.  A formatted table is also printed to
+    stdout.
     """
     defs = load_defs(json_file)
     rows = [
@@ -241,6 +258,7 @@ def list_field_defs(json_file: str | Path) -> list[dict]:
             "field": key,
             "symbol": entry.get("symbol", ""),
             "unit": entry.get("unit", ""),
+            "label": entry.get("label", ""),
             "description": entry.get("description", ""),
             "aliases": entry.get("aliases", {}),
         }
@@ -249,12 +267,12 @@ def list_field_defs(json_file: str | Path) -> list[dict]:
     ]
     if rows:
         w = max(len(r["field"]) for r in rows)
-        header = f"{'Field':<{w}}  {'Symbol':<8}  {'Unit':<24}  Description"
+        header = f"{'Field':<{w}}  {'Symbol':<8}  {'Unit':<20}  {'Label':<20}  Description"
         print(header)
         print("-" * len(header))
         for r in rows:
             print(
-                f"{r['field']:<{w}}  {r['symbol']:<8}  {str(r['unit']):<24}  {r['description']}"
+                f"{r['field']:<{w}}  {r['symbol']:<8}  {str(r['unit']):<20}  {r['label']:<20}  {r['description']}"
             )
             for fmt, target in r["aliases"].items():
                 print(f"  {'':>{w}}  alias[{fmt}] = {target}")
@@ -435,6 +453,7 @@ def main() -> None:
         "unit", help='Pint-parseable unit string, or "null" for dimensionless'
     )
     p_add.add_argument("--description", default="", help="Human-readable description")
+    p_add.add_argument("--label", default="", help="Human-readable plot label (e.g. 'Magnetic Field')")
     p_add.add_argument(
         "--overwrite",
         action="store_true",
@@ -453,6 +472,7 @@ def main() -> None:
         help='New unit string, or "null" to set dimensionless',
     )
     p_upd.add_argument("--description", default=None, help="New description")
+    p_upd.add_argument("--label", default=None, help="New plot label (pass empty string to remove)")
 
     # delete / remove
     for _del_cmd in ("delete", "remove"):
@@ -502,6 +522,7 @@ def main() -> None:
             args.symbol,
             unit_val,
             description=args.description,
+            label=args.label,
             overwrite=args.overwrite,
         )
         print(f"Added {args.key!r} to {args.json_file}")
@@ -516,6 +537,7 @@ def main() -> None:
             symbol=args.symbol,
             unit=upd_unit,
             description=args.description,
+            label=args.label,
         )
         print(f"Updated {args.key!r} in {args.json_file}")
 

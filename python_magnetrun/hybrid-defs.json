@@ -1,12 +1,12 @@
 {
   "_comment": "Field definitions for Hybrid (.tdms) data files (kHz acquisition). Each entry maps a channel key (FEPC_system/variable) to {description, symbol, unit}. unit must be a pint-parseable string; use null for dimensionless/time columns. 'aliases' maps housing-independent cross-references to other acquisition formats (pupitre field name, pigbrother Group/Channel key). Housing-dependent mappings (e.g. GR1=IH vs IB) belong in site_config.py.",
 
-  "FEPC-AUX-LNCMI/ALIM1_J1":  {"description": "", "symbol": "I", "unit": "A", "aliases": {"pupitre": "Idcct1",  "pigbrother": "Courants_Alimentations/Courant_A1"}},
-  "FEPC-AUX-LNCMI/ALIM1_J2":  {"description": "", "symbol": "I", "unit": "A", "aliases": {"pupitre": "Idcct2",  "pigbrother": "Courants_Alimentations/Courant_A2"}},
-  "FEPC-AUX-LNCMI/ALIM2_J1":  {"description": "", "symbol": "I", "unit": "A", "aliases": {"pupitre": "Idcct3",  "pigbrother": "Courants_Alimentations/Courant_A3"}},
-  "FEPC-AUX-LNCMI/ALIM2_J2":  {"description": "", "symbol": "I", "unit": "A", "aliases": {"pupitre": "Idcct4",  "pigbrother": "Courants_Alimentations/Courant_A4"}},
-  "FEPC-AUX-LNCMI/BITTER_V1": {"description": "", "symbol": "U", "unit": "V", "aliases": {"pupitre": "Ucoil15", "pigbrother": "Tensions_Aimant/Externe1"}},
-  "FEPC-AUX-LNCMI/BITTER_V2": {"description": "", "symbol": "U", "unit": "V", "aliases": {"pupitre": "Ucoil16", "pigbrother": "Tensions_Aimant/Externe2"}},
+  "FEPC-AUX-LNCMI/ALIM1_J1":  {"description": "Supply current, converter A1", "label": "Current A1", "symbol": "I", "unit": "A", "aliases": {"pupitre": "Idcct1",  "pigbrother": "Courants_Alimentations/Courant_A1"}},
+  "FEPC-AUX-LNCMI/ALIM1_J2":  {"description": "Supply current, converter A2", "label": "Current A2", "symbol": "I", "unit": "A", "aliases": {"pupitre": "Idcct2",  "pigbrother": "Courants_Alimentations/Courant_A2"}},
+  "FEPC-AUX-LNCMI/ALIM2_J1":  {"description": "Supply current, converter A3", "label": "Current A3", "symbol": "I", "unit": "A", "aliases": {"pupitre": "Idcct3",  "pigbrother": "Courants_Alimentations/Courant_A3"}},
+  "FEPC-AUX-LNCMI/ALIM2_J2":  {"description": "Supply current, converter A4", "label": "Current A4", "symbol": "I", "unit": "A", "aliases": {"pupitre": "Idcct4",  "pigbrother": "Courants_Alimentations/Courant_A4"}},
+  "FEPC-AUX-LNCMI/BITTER_V1": {"description": "External coil voltage, probe 1", "label": "Bitter Voltage 1", "symbol": "U", "unit": "V", "aliases": {"pupitre": "Ucoil15", "pigbrother": "Tensions_Aimant/Externe1"}},
+  "FEPC-AUX-LNCMI/BITTER_V2": {"description": "External coil voltage, probe 2", "label": "Bitter Voltage 2", "symbol": "U", "unit": "V", "aliases": {"pupitre": "Ucoil16", "pigbrother": "Tensions_Aimant/Externe2"}},
   "FEPC-AUX-LNCMI/PH_V1":     {"description": "", "symbol": "U", "unit": "V"},
   "FEPC-AUX-LNCMI/PH_V2":     {"description": "", "symbol": "U", "unit": "V"},
   "FEPC-AUX-LNCMI/PH_V3":     {"description": "", "symbol": "U", "unit": "V"},

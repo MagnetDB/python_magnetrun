@@ -40,6 +40,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+plotting = [
+    "plotly>=5.0",
+    "kaleido>=0.2",
+]
+resampler = [
+    "plotly-resampler>=0.9",
+]
 hybrid = [
     "tsdownsample>=1.0",
 ]
@@ -88,12 +95,14 @@ magnetrun-pigbrother-logparser = "python_magnetrun.tdms.log_parser:main"
 magnetrun-processing = "python_magnetrun.processing.cli:main"
 magnetrun-field-defs = "python_magnetrun.field_defs:main"
 magnetrun-housing-config = "python_magnetrun.housing_config:main"
+magnetrun-plot-config = "python_magnetrun.plotting.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["python_magnetrun*"]
 
 [tool.setuptools.package-data]
 python_magnetrun = ["*.json"]
+"python_magnetrun.plotting" = ["*.json"]
 
 [tool.ruff]
 line-length = 100

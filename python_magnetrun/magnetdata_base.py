@@ -6,13 +6,35 @@ import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import IntEnum
-from typing import Any
+from typing import Any, NamedTuple
 
 import pandas as pd
 
 from .utils.downsampling import DownsampleConfig
 
 logger = logging.getLogger(__name__)
+
+
+class FieldMeta(NamedTuple):
+    """Physical metadata for one field/channel.
+
+    Attributes
+    ----------
+    symbol:
+        Short physical symbol used in axis labels (e.g. ``"B"``, ``"I"``).
+    unit:
+        Pint ``Unit`` object, or ``None`` for dimensionless / timestamp fields.
+    label:
+        Human-readable plot label (e.g. ``"Magnetic Field"``).  Empty string
+        when not set in the JSON definition.
+    description:
+        Longer free-text description from the JSON file.
+    """
+
+    symbol: str
+    unit: Any  # pint.Unit | None
+    label: str
+    description: str
 
 
 class DataType(IntEnum):
@@ -104,6 +126,7 @@ class MagnetDataBase(ABC):
         self.Keys = Keys
         self.Data: pd.DataFrame | dict = Data if Data is not None else pd.DataFrame()
         self.units: dict = {}
+        self.field_meta: dict[str, FieldMeta] = {}
         self.defs_file: str | None = defs_file
         self.start_timestamp: datetime | None = start_timestamp
         self.end_timestamp: datetime | None = end_timestamp
@@ -136,6 +159,14 @@ class MagnetDataBase(ABC):
     @abstractmethod
     def getUnitKey(self, key: str) -> tuple:
         """Return ``(symbol, unit)`` for *key*."""
+
+    def getFieldMeta(self, key: str) -> FieldMeta | None:
+        """Return :class:`FieldMeta` for *key*, or ``None`` if not available.
+
+        Populated by :meth:`load_units_from_json`.  Returns ``None`` rather
+        than raising so callers can fall back gracefully.
+        """
+        return self.field_meta.get(key)
 
     @abstractmethod
     def extractData(self, keys: list[str]) -> pd.DataFrame:
@@ -185,13 +216,16 @@ class MagnetDataBase(ABC):
                     # parse_expression may return a Quantity (e.g. 1 T) or a Unit;
                     # always store a Unit so formatting with ~P gives "T" not "1 T"
                     pint_unit = parsed.units if hasattr(parsed, "units") else parsed
-                except Exception as exc:  # noqa: BLE001
+                except (ValueError, AttributeError) as exc:
                     raise ValueError(
                         f"load_units_from_json: cannot parse unit {unit_str!r} for field {key!r}"
                     ) from exc
+            label: str = defn.get("label", "")
+            description: str = defn.get("description", "")
             self.units[key] = (symbol, pint_unit)
+            self.field_meta[key] = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
             if debug:
-                logger.debug(f"load_units_from_json: {key} → symbol={symbol}, unit={pint_unit}")
+                logger.debug(f"load_units_from_json: {key} → symbol={symbol}, unit={pint_unit}, label={label!r}")
 
     def getType(self) -> DataType:
         """Return the data-type discriminator."""
@@ -225,7 +259,13 @@ class MagnetDataBase(ABC):
     # Compute / add — raise by default; subclasses override
 
     def addData(  # noqa: N802
-        self, key: str, formula: str, unit: str | None = None, debug: bool = False
+        self,
+        key: str,
+        formula: str,
+        unit: str | tuple | None = None,
+        debug: bool = False,
+        label: str = "",
+        description: str = "",
     ) -> int:
         raise NotImplementedError(f"{self.__class__.__name__}.addData not implemented")
 
@@ -234,8 +274,10 @@ class MagnetDataBase(ABC):
         method: Any,
         key: str,
         kparams: list,
-        unit: tuple | None = None,
+        unit: tuple | str | None = None,
         debug: bool = False,
+        label: str = "",
+        description: str = "",
     ) -> None:
         raise NotImplementedError(f"{self.__class__.__name__}.computeData not implemented")
 
@@ -252,6 +294,7 @@ class MagnetDataBase(ABC):
         normalize: bool = False,
         offset: float = 0,
         time_zone: str = "Europe/Paris",
+        color: str | None = None,
     ) -> None:
         raise NotImplementedError(f"{self.__class__.__name__}.plotData not implemented")
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import sys
@@ -107,6 +108,15 @@ class PandasMagnetData(MagnetDataBase):
             time_col = "t" if "t" in df.columns else df.columns[0]
             value_cols = [c for c in df.columns if c != time_col]
             df = downsample_dataframe(df, time_col=time_col, value_cols=value_cols, config=downsample)
+
+        # Attach unit metadata so plotting functions can label axes correctly.
+        # Uses a per-key try/except because Units() may not have been called yet.
+        units_attrs: dict = {}
+        for col in df.columns:
+            with contextlib.suppress(KeyError, RuntimeError):
+                units_attrs[col] = self.getUnitKey(col)
+        df.attrs["units"] = units_attrs
+
         return df
 
     def getKeys(self) -> list[str]:
@@ -375,8 +385,18 @@ class PandasMagnetData(MagnetDataBase):
     # --- compute / add -----------------------------------------------
 
     def addData(  # noqa: N802
-        self, key: str, formula: str, unit: str | None = None, debug: bool = False
+        self,
+        key: str,
+        formula: str,
+        unit: str | tuple | None = None,
+        debug: bool = False,
+        label: str = "",
+        description: str = "",
     ) -> int:
+        from pint.errors import UndefinedUnitError
+
+        from .magnetdata_base import FieldMeta, _make_ureg
+
         assert isinstance(self.Data, pd.DataFrame)
         if key in self.Keys:
             logger.warning(
@@ -385,8 +405,19 @@ class PandasMagnetData(MagnetDataBase):
         else:
             self.Data.eval(formula, inplace=True)
             self.Keys = self.Data.columns.values.tolist()
-            if unit:
-                self.units[key] = unit
+            if isinstance(unit, tuple) and len(unit) == 2:
+                symbol, pint_unit = unit
+                self.units[key] = (symbol, pint_unit)
+                self.field_meta[key] = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
+            elif isinstance(unit, str) and unit:
+                try:
+                    ureg = _make_ureg()
+                    parsed = ureg.parse_expression(unit)
+                    pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+                    self.units[key] = (key, pint_unit)
+                    self.field_meta[key] = FieldMeta(symbol=key, unit=pint_unit, label=label, description=description)
+                except (ValueError, UndefinedUnitError):
+                    self.Units(debug)
             else:
                 self.Units(debug)
         return 0
@@ -396,9 +427,15 @@ class PandasMagnetData(MagnetDataBase):
         method: Any,
         key: str,
         kparams: list,
-        unit: tuple | None = None,
+        unit: tuple | str | None = None,
         debug: bool = False,
+        label: str = "",
+        description: str = "",
     ) -> None:
+        from pint.errors import UndefinedUnitError
+
+        from .magnetdata_base import FieldMeta, _make_ureg
+
         logger.debug(f"computeData: Key={key}")
         if key in self.Keys:
             logger.warning(f"Key {key} already exists in DataFrame")
@@ -409,8 +446,19 @@ class PandasMagnetData(MagnetDataBase):
             data.append(method(*values))
         self.Data[key] = data
         self.Keys = self.Data.columns.values.tolist()
-        if unit:
-            self.units[key] = unit
+        if isinstance(unit, tuple) and len(unit) == 2:
+            symbol, pint_unit = unit
+            self.units[key] = (symbol, pint_unit)
+            self.field_meta[key] = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
+        elif isinstance(unit, str) and unit:
+            try:
+                ureg = _make_ureg()
+                parsed = ureg.parse_expression(unit)
+                pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+                self.units[key] = (key, pint_unit)
+                self.field_meta[key] = FieldMeta(symbol=key, unit=pint_unit, label=label, description=description)
+            except (ValueError, UndefinedUnitError):
+                self.Units(debug)
         else:
             self.Units(debug)
         logger.debug("done")
@@ -598,18 +646,15 @@ class PandasMagnetData(MagnetDataBase):
         normalize: bool = False,
         offset: float = 0,
         time_zone: str = "Europe/Paris",
+        color: str | None = None,
     ) -> None:
         import matplotlib
         import matplotlib.pyplot as plt
 
         logger.info(f"plotData: plotting {y} vs {x} from {self.FileName!r}")
-        logger.warning(
-            "plotData: using matplotlib with usetex=True - ensure that LaTeX is installed and configured correctly for best results"
-        )
-        print(self.Keys, flush=True)
         matplotlib.rcParams["text.usetex"] = True
 
-        if x not in self.Keys + ["t", "timestamps"]:
+        if x not in self.Keys + ["t", "timestamp"]:
             raise RuntimeError(
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no x={x} key (valid keys= {self.Keys})"
             )
@@ -636,19 +681,18 @@ class PandasMagnetData(MagnetDataBase):
                 .dt.tz_localize(None)  # naive local for clean axis labels
             )
 
+        kwargs: dict = {"x": x, "y": y, "ax": ax, "alpha": alpha, "grid": False}
+        if color is not None:
+            kwargs["color"] = color
+
         if normalize:
             ymax = abs(df[y].max())
             df[y] /= ymax
-            df.plot(
-                x=x,
-                y=y,
-                ax=ax,
-                alpha=alpha,
-                label=f"{y} (norm with {ymax:.3e} {yunit:~P})",
-                grid=True,
-            )
-        else:
-            df.plot(x=x, y=y, ax=ax, alpha=alpha, grid=True)
+            kwargs["label"] = f"{label or y} (norm with {ymax:.3e} {yunit:~P})"
+        elif label is not None:
+            kwargs["label"] = label
+
+        df.plot(**kwargs)
 
         if yunit is not None:
             plt.ylabel(f"{ysymbol} [{yunit:~P}]")
