@@ -4,6 +4,7 @@ import contextlib
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -46,7 +47,7 @@ def _get_df_with_time(mdata, plot_args: list[str]) -> tuple[pd.DataFrame, list[s
 
         # get t using group of the first key in plot_args
         first_key = plot_args[0]
-        tkey: str = None
+        tkey: str | None = None
         if "/" in first_key:
             group = first_key.split("/")[0]
             tkey = f"{group}/t"
@@ -566,7 +567,7 @@ def plot_vs_time(input_files, inputs, extensions, args):
     symbol, unit = None, None
     seen_units: set[str] = set()
     field_units: dict[str, str] = {}       # short key → unit_str, for mixed-unit hint
-    field_pint_units: dict[str, object] = {}  # short key → pint unit, for dimensionality check
+    field_pint_units: dict[str, Any] = {}  # short key → pint unit, for dimensionality check
     f_extension = ""
     file = ""
     key = ""

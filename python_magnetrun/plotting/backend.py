@@ -83,6 +83,10 @@ class PlottingBackend(Protocol):
         """Display *fig* interactively."""
         ...
 
+    def finalize(self, fig: Any, *, xlabel: str = "t [s]") -> None:
+        """Apply final touches (axis labels, tight layout, etc.)."""
+        ...
+
     def to_json(self, fig: Any) -> str:
         """Serialise to a self-contained JSON string (Plotly spec).
 
