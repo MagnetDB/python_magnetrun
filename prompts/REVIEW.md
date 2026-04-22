@@ -1,6 +1,6 @@
 # Package Review: `python_magnetrun`
 
-Date: 2026-04-16 (updated)
+Date: 2026-04-21 (updated)
 
 ---
 
@@ -165,17 +165,18 @@ Either add it to a `hybrid` extras group or document the soft requirement explic
 | Timestamp convention (Pandas + TDMS) | Done |
 | `HybridData` timestamp support | Pending (out of current scope) |
 | Cross-domain comparison (`DataLoader` extension, Phase A1–A3) | Done — A0–A3 complete |
-| Downsampling refactoring (`DownsampleConfig`, shared module) | Planned — see `downsampling-refactoring.plan.md` |
+| Downsampling refactoring (`DownsampleConfig`, shared module) | Done — see `downsampling-refactoring.plan.md` |
 | Plotting refactoring (`plotting/` subpackage, backend protocol, JS path) | Done — see `plotting-refactoring.plan.md` |
 
 The core abstractions are well-conceived — the ABC, the defs system, and `HousingConfig` are solid
 foundations. All major structural issues are now resolved: housing config consolidation, `MagnetData`
 shim replacement, `getUnitKey` fix, `saveData` delegation, hardcoded-path removal, `Data` type
-divergence (external callers cleaned up), Protocol unification (`DataLoader` only), and timestamp
-convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC). Remaining work in priority order: (7) cross-domain Phase A1–A3 (protocol + compliance tests,
-~half-day, no dependencies); (8) downsampling refactoring; (9) plotting refactoring (depends on
-8); (10) `HybridData` timestamp support (out of current scope); (11) cross-domain Phases B–G
-(`ComparisonSession`, adapters, CLI — depends on 8, 9, 10); (12) editor backup file.
+divergence (external callers cleaned up), Protocol unification (`DataLoader` only), timestamp
+convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC), downsampling refactoring
+(`DownsampleConfig`, shared `utils/downsampling.py`, `tsdownsample` extras), and plotting
+refactoring (subpackage, backends, label/legend uniformization). Remaining work in priority order:
+(10) `HybridData` timestamp support (out of current scope); (11) cross-domain Phases B–G
+(`ComparisonSession`, adapters, CLI — depends on 10); (12) editor backup file.
 
 ---
 
@@ -257,11 +258,11 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
    | A2 | `MagnetRun.getDomain() → "operational"` | Done (`MagnetRun.py`) |
    | A3 | Protocol compliance tests (`tests/test_protocol.py`) | Done |
 
-8. **`tsdownsample` + downsampling refactoring** *(effort: M)* — extract `downsample_data()` from
-   `hybrid_run.py` into `python_magnetrun/utils/downsampling.py`; introduce `DownsampleConfig`
-   dataclass; add downsampling support to `PandasMagnetData` and `TdmsMagnetData`; update
-   `DownsamplingLoader` protocol; reconcile `analysis/processing.py` percentage model.
-   Add `tsdownsample` to `pyproject.toml` as a `hybrid` extras dependency.
+8. **`tsdownsample` + downsampling refactoring** *(done)* — `downsample_data()` extracted from
+   `hybrid_run.py` into `python_magnetrun/utils/downsampling.py`; `DownsampleConfig` dataclass
+   introduced; downsampling support added to `PandasMagnetData` and `TdmsMagnetData`; `DownsamplingLoader`
+   protocol updated; `analysis/processing.py` percentage model reconciled.
+   `tsdownsample` added to `pyproject.toml` as a `hybrid` extras dependency.
    Full plan: **[`prompts/downsampling-refactoring.plan.md`](downsampling-refactoring.plan.md)**.
 
 9. **Plotting refactoring** *(done)* — `python_magnetrun/plotting/` subpackage created with
@@ -271,6 +272,8 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
    now imports `PlotStyle`/`PlotColors` from `plotting.style` and uses `AnnotationManager`.
    `commands/plot.py` gains `--backend` and `--json` flags.  `pyproject.toml` gains
    `plotting` and `resampler` extras groups.
+   Label/legend uniformization sub-plan also complete: canonical `"symbol [unit]"` format,
+   shared `format_label()` utility, consistent `ax.set_*` API across all backends.
    Full plan: **[`prompts/plotting-refactoring.plan.md`](plotting-refactoring.plan.md)**.
 
 10. **`HybridData` timestamp support** *(effort: M, out of current scope)* — tracked in
@@ -279,12 +282,12 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     `getStartDate()`, `getDuration()` to `HybridData`. Required before `HybridRun` can
     participate as a source in `ComparisonSession` (Phase E).
 
-11. **Cross-domain comparison — Phases B–G** *(effort: XL)* — depends on items 8, 9, and 10.
+11. **Cross-domain comparison — Phases B–G** *(effort: XL)* — depends on item 10.
 
     | Phase | Task |
     |---|---|
-    | B | `SimulationRun` adapter (`python_magnetrun/simulation/`) |
-    | C | `BFieldRun` adapter (`python_magnetrun/bfield/`) |
+    | B | `SimulationRun` adapter (`python_magnetrun/simulation/`) | Done |
+    | C | `BFieldRun` adapter (`python_magnetrun/bfield/`) | Done |
     | D | Extend `*-defs.json` with `simulation`/`bfield` aliases; `KeyMapping` in `comparison/key_mapping.py` (reuses `field_defs.build_crossref()`, no hardcoded dict) |
     | E | `ComparisonSession` (`python_magnetrun/comparison/session.py`) |
     | F | `magnetrun-compare` CLI |

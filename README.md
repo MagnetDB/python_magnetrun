@@ -729,9 +729,9 @@ python3 tests/test-signature.py \
 Detect breakpoints in PigBrother overview files and synchronize:
 
 ```bash
-python3 -m python_magnetrun.analysis \
+python3 -m python_magnetrun.analysis.cli \
     pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250211-*.tdms \
-    --key Référence_GR1 --show --synchronize
+    --show [--synchronize]
 ```
 
 ### Anomaly detection
@@ -937,20 +937,21 @@ See [BREAKING_CHANGES.md](BREAKING_CHANGES.md) for the full migration guide.
 ## To-do
 
 **Fix**
-- [ ] Fix time data in Hybrid kHz files
+- [X] Fix time data in Hybrid kHz files
 
 **Finish**
 - [ ] hybrid data loading and unified interface
 - [ ] hybrid data validation and comparison with Pupitre/PigBrother
-- [ ] `HybridData` timestamp unification (follow-up to v0.3.0)
+- [X] `HybridData` timestamp unification (follow-up to v0.3.0)
 
 **Refactor:**
 - [X] Split argparse options into separate Python files
 - [X] Add an example / a test for each subcommand in `python_magnetrun`
 - [X] Rework `MagnetData` into base + pandas + tdms classes
 - [ ] Store stats (plateaus, duration) in a DataFrame, CSV, or database
-- [ ] Refactor plot functions to use a common interface and support multiple backends (Matplotlib, Plotly, Seaborn)
+- [X] Refactor plot functions to use a common interface and support multiple backends (Matplotlib, Plotly, Seaborn)
 - [ ] Refactor `analysis` module to separate synchronization, metrics, and visualization into distinct classes/functions
+- [ ] Add hybrid data support to `analysis` module (e.g. synchronization with Pupitre/PigBrother, distance metrics)
 
 **Docs:**
 - [X] Docs for aggregate
@@ -967,7 +968,7 @@ See [BREAKING_CHANGES.md](BREAKING_CHANGES.md) for the full migration guide.
 - [ ] Use python_magnetunits for unit conversions and dimensional analysis in formulas (e.g. power, busbar losses)
 
 **Dashboard:**
-- [X] Streamlit and Panel dashboards via `rustfs/` object storage integration
+- [ ] Streamlit and Panel dashboards via `rustfs/` object storage integration
 - [ ] Add Marimo notebooks equivalents
 - [ ] Add standalone voila dashboard for non-technical users — along with a Dockerfile for easy deployment
 
