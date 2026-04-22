@@ -49,7 +49,7 @@ def parse_txt_filename(filename: str) -> datetime | None:
             return datetime.strptime(date_string, fmt)
         except ValueError:
             continue
-    logger.warning("parse_txt_filename: unrecognised date format in %r", filename)
+    logger.warning(f"parse_txt_filename: unrecognised date format in {filename}")
     return None
 
 
@@ -67,8 +67,7 @@ def parse_tdms_filename(filename: str) -> datetime | None:
     parts = name.split("_")
     if len(parts) < 3:
         logger.warning(
-            "parse_tdms_filename: cannot parse %r (expected site_mode_timestamp[_dmode])",
-            filename,
+            f"parse_tdms_filename: cannot parse {filename} (expected site_mode_timestamp[_dmode])"
         )
         return None
     timestamp_part = parts[2]
@@ -76,7 +75,7 @@ def parse_tdms_filename(filename: str) -> datetime | None:
         date_str, time_str = timestamp_part.split("-", 1)
     except ValueError:
         logger.warning(
-            "parse_tdms_filename: cannot split timestamp %r in %r",
+            f"parse_tdms_filename: cannot split timestamp {timestamp_part} in {filename}",
             timestamp_part,
             filename,
         )
@@ -111,7 +110,7 @@ def parse_filename_timestamp(filename: str) -> datetime | None:
     if ext == ".tdms":
         return parse_tdms_filename(filename)
     logger.debug(
-        "parse_filename_timestamp: unsupported extension %r for %r", ext, filename
+        f"parse_filename_timestamp: unsupported extension {ext} for {filename}"
     )
     return None
 

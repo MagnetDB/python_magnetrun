@@ -30,6 +30,8 @@ from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
+from python_magnetrun.utils.downsampling import DownsampleConfig, downsample_arrays
+
 # Type checking import to avoid circular import
 if TYPE_CHECKING:
     from .hybrid_data import HybridData
@@ -41,119 +43,11 @@ from .outliers import OutlierResult
 # Setup logger
 logger = logging.getLogger(__name__)
 
-# Try to import tsdownsample for efficient downsampling
-try:
-    from tsdownsample import MinMaxLTTBDownsampler
 
-    HAS_TSDOWNSAMPLE = True
-except ImportError:
-    HAS_TSDOWNSAMPLE = False
-    logger.debug("tsdownsample not available - downsampling will use simple stride")
-
-
-def downsample_for_plot(
-    data: np.ndarray,
-    time: np.ndarray,
-    target_points: int = 50000,
-    method: str = "auto",
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Downsample data for efficient plotting while preserving visual features.
-
-    Uses MinMaxLTTB algorithm when available (tsdownsample package),
-    which preserves peaks and valleys for accurate visualization.
-
-    Parameters
-    ----------
-    data : np.ndarray
-        Data array to downsample
-    time : np.ndarray
-        Time array
-    target_points : int
-        Target number of points after downsampling (default: 50000)
-        - For interactive plots, 10000-50000 is usually sufficient
-        - For high-resolution exports, use higher values
-    method : str
-        Downsampling method:
-        - 'auto': Use MinMaxLTTB if available, else stride
-        - 'minmax_lttb': Force MinMaxLTTB (requires tsdownsample)
-        - 'stride': Simple stride-based (fastest, may miss peaks)
-        - 'minmax': Min/max in buckets (preserves peaks, 2x points)
-
-    Returns
-    -------
-    tuple
-        (downsampled_data, downsampled_time)
-
-    Examples
-    --------
-    >>> # For a 3.6M point dataset (1 hour at 1kHz)
-    >>> data_ds, time_ds = downsample_for_plot(data, time, target_points=10000)
-    >>> plt.plot(time_ds, data_ds)  # Fast plotting with visual accuracy
-    """
-    n_points = len(data)
-
-    if n_points <= target_points:
-        return data, time
-
-    logger.debug(
-        f"Downsampling {n_points:,} points to {target_points:,} "
-        f"(ratio: {n_points / target_points:.1f}x)"
-    )
-
-    # Ensure proper data types for tsdownsample
-    data = np.asarray(data, dtype=np.float64)
-    time = np.asarray(time, dtype=np.float64)
-
-    if method == "auto":
-        method = "minmax_lttb" if HAS_TSDOWNSAMPLE else "stride"
-
-    if method == "minmax_lttb":
-        if not HAS_TSDOWNSAMPLE:
-            logger.warning(
-                "tsdownsample not installed, falling back to stride method. "
-                "Install with: pip install tsdownsample"
-            )
-            method = "stride"
-        else:
-            downsampler = MinMaxLTTBDownsampler()
-            indices = downsampler.downsample(time, data, n_out=target_points)
-            return data[indices], time[indices]
-
-    if method == "minmax":
-        # Min/max in buckets - preserves peaks but doubles point count
-        bucket_size = n_points // (target_points // 2)
-        n_buckets = n_points // bucket_size
-
-        result_data = []
-        result_time = []
-
-        for i in range(n_buckets):
-            start = i * bucket_size
-            end = min(start + bucket_size, n_points)
-            bucket_data = data[start:end]
-            bucket_time = time[start:end]
-
-            min_idx = np.argmin(bucket_data)
-            max_idx = np.argmax(bucket_data)
-
-            # Add in order (min first if it comes before max)
-            if min_idx <= max_idx:
-                result_data.extend([bucket_data[min_idx], bucket_data[max_idx]])
-                result_time.extend([bucket_time[min_idx], bucket_time[max_idx]])
-            else:
-                result_data.extend([bucket_data[max_idx], bucket_data[min_idx]])
-                result_time.extend([bucket_time[max_idx], bucket_time[min_idx]])
-
-        return np.array(result_data), np.array(result_time)
-
-    # Default: stride-based downsampling
-    stride = max(1, n_points // target_points)
-    indices = np.arange(0, n_points, stride)
-    if len(indices) > target_points:
-        indices = indices[:target_points]
-
-    return data[indices], time[indices]
+def _make_downsample_config(target_points: int, method: str) -> DownsampleConfig:
+    """Map hybrid plot method names to DownsampleConfig."""
+    ds_method = "minmax_lttb" if method == "auto" else method
+    return DownsampleConfig(n_out=target_points, method=ds_method)
 
 
 def _get_khz_unit(hybrid_data: "HybridData", system: str, variable: str) -> str:
@@ -165,12 +59,18 @@ def _get_khz_unit(hybrid_data: "HybridData", system: str, variable: str) -> str:
     for card in config.cards:
         if variable in card.variable_names:
             idx = card.variable_names.index(variable)
-            if card.calibrations and idx < len(card.calibrations) and card.calibrations[idx]:
+            if (
+                card.calibrations
+                and idx < len(card.calibrations)
+                and card.calibrations[idx]
+            ):
                 return card.calibrations[idx].unit or ""
     return ""
 
 
-def _get_rms_unit(hybrid_data: "HybridData", system: str, variable: str, file_idx: int = 0) -> str:
+def _get_rms_unit(
+    hybrid_data: "HybridData", system: str, variable: str, file_idx: int = 0
+) -> str:
     """Get unit for an RMS variable from variable info."""
     try:
         var_info = hybrid_data.get_rms_variable_info(system, file_idx=file_idx)
@@ -329,8 +229,12 @@ def plot_khz_variables(
             # Apply downsampling for efficient plotting
             if downsample is not None and len(data) > downsample:
                 original_len = len(data)
-                data, time = downsample_for_plot(data, time, downsample, downsample_method)
-                logger.info(f"Downsampled {variable}: {original_len:,} -> {len(data):,} points")
+                data, time = downsample_arrays(
+                    data, time, _make_downsample_config(downsample, downsample_method)
+                )
+                logger.info(
+                    f"Downsampled {variable}: {original_len:,} -> {len(data):,} points"
+                )
 
             unit = _get_khz_unit(hybrid_data, system, variable)
             ylabel = f"{variable}" + (f" [{unit}]" if unit else "")
@@ -707,7 +611,11 @@ def plot_khz_variable(
         for card in config.cards:
             if variable in card.variable_names:
                 idx = card.variable_names.index(variable)
-                if card.calibrations and idx < len(card.calibrations) and card.calibrations[idx]:
+                if (
+                    card.calibrations
+                    and idx < len(card.calibrations)
+                    and card.calibrations[idx]
+                ):
                     unit = card.calibrations[idx].unit or ""
                 break
 
@@ -727,7 +635,9 @@ def plot_khz_variable(
             plot_data, plot_time = outlier_result.apply_to_data(
                 data, time, strategy=outlier_strategy
             )
-            outlier_info = f" ({outlier_result.n_outliers:,} outliers {outlier_strategy}d)"
+            outlier_info = (
+                f" ({outlier_result.n_outliers:,} outliers {outlier_strategy}d)"
+            )
             logger.info(
                 f"Applied outlier handling: {outlier_result.n_outliers:,} outliers "
                 f"({outlier_result.outlier_percentage:.2f}%) using {outlier_strategy}"
@@ -736,10 +646,12 @@ def plot_khz_variable(
     # Apply downsampling for efficient plotting
     if downsample is not None and len(plot_data) > downsample:
         original_len = len(plot_data)
-        plot_data, plot_time = downsample_for_plot(
-            plot_data, plot_time, downsample, downsample_method
+        plot_data, plot_time = downsample_arrays(
+            plot_data, plot_time, _make_downsample_config(downsample, downsample_method)
         )
-        logger.info(f"Downsampled {variable}: {original_len:,} -> {len(plot_data):,} points")
+        logger.info(
+            f"Downsampled {variable}: {original_len:,} -> {len(plot_data):,} points"
+        )
 
     # Create figure if needed
     if ax is None:
@@ -759,8 +671,10 @@ def plot_khz_variable(
             outlier_data = data[outlier_mask]
             outlier_time = time[outlier_mask]
             if len(outlier_data) > downsample // 10:  # Use fewer points for outliers
-                outlier_data, outlier_time = downsample_for_plot(
-                    outlier_data, outlier_time, downsample // 10, "stride"
+                outlier_data, outlier_time = downsample_arrays(
+                    outlier_data,
+                    outlier_time,
+                    DownsampleConfig(n_out=downsample // 10, method="stride"),
                 )
         else:
             outlier_data = data[outlier_mask]
@@ -867,10 +781,14 @@ def plot_rms_variable(
     """
     import matplotlib.pyplot as plt
 
-    logger.debug(f"plot_rms_variable: system={system}, variable={variable}, hours={hours}")
+    logger.debug(
+        f"plot_rms_variable: system={system}, variable={variable}, hours={hours}"
+    )
 
     # Read data using read_rms_variable (same pattern as kHz)
-    data, time = hybrid_data.read_rms_variable(system, variable, file_idx=file_idx, hours=hours)
+    data, time = hybrid_data.read_rms_variable(
+        system, variable, file_idx=file_idx, hours=hours
+    )
 
     # Get unit if available from variable info
     unit = ""
@@ -908,7 +826,9 @@ def plot_rms_variable(
     # Apply downsampling if requested
     if downsample is not None and len(data) > downsample:
         original_len = len(data)
-        data, time = downsample_for_plot(data, time, downsample, downsample_method)
+        data, time = downsample_arrays(
+            data, time, _make_downsample_config(downsample, downsample_method)
+        )
         logger.info(f"Downsampled {variable}: {original_len:,} -> {len(data):,} points")
 
     # Create figure if needed
@@ -940,7 +860,9 @@ def plot_rms_variable(
                 label=f"Outliers ({outlier_result.n_outliers})",
                 zorder=5,
             )
-            logger.info(f"Highlighting {outlier_result.n_outliers} outliers in {variable}")
+            logger.info(
+                f"Highlighting {outlier_result.n_outliers} outliers in {variable}"
+            )
 
     ax.set_xlabel("Time (s)")
     ax.set_ylabel(ylabel)
@@ -1006,7 +928,9 @@ def plot_khz_with_rms(
     """
     import matplotlib.pyplot as plt
 
-    logger.debug(f"plot_khz_with_rms: system={system}, khz={khz_variable}, rms={rms_variable}")
+    logger.debug(
+        f"plot_khz_with_rms: system={system}, khz={khz_variable}, rms={rms_variable}"
+    )
 
     if rms_variable is None:
         rms_variable = khz_variable
@@ -1022,7 +946,9 @@ def plot_khz_with_rms(
         khz_data, khz_time = hybrid_data.read_khz_variable(
             system, khz_variable, hours=hours, apply_calib=apply_calib
         )
-        axes[0].plot(khz_time, khz_data, "b-", linewidth=0.5, label=f"{khz_variable} (kHz)")
+        axes[0].plot(
+            khz_time, khz_data, "b-", linewidth=0.5, label=f"{khz_variable} (kHz)"
+        )
         axes[0].set_xlabel("Time (s)")
         axes[0].set_ylabel(khz_variable)
         axes[0].set_title(f"kHz Data: {khz_variable}")

@@ -112,9 +112,9 @@ def plot_df(
         (x, y) = fit
         ax.plot(x, y, color="red", linestyle="dashed", linewidth=2, label="fit")
 
-    plt.ylabel(key2)
-    plt.xlabel(key1)
-    plt.title(f"{name}: {key2}({key1})")
+    ax.set_ylabel(key2)
+    ax.set_xlabel(key1)
+    ax.set_title(f"{name}: {key2}({key1})")
 
     if not show:
         filename = f"{name}-{key1}_vs_{key2}.png"
@@ -193,10 +193,9 @@ def plot_files(
         (x, y) = fit
         ax.plot(x, y, color="red", linestyle="dashed", linewidth=2, label="fit")
 
-    # ax.legend()
-    plt.legend(loc="best")
-    plt.ylabel(key2)
-    plt.xlabel(key1)
+    ax.legend(loc="best")
+    ax.set_ylabel(key2)
+    ax.set_xlabel(key1)
 
     if not show:
         filename = f"{name}-{key1}_vs_{key2}.png"

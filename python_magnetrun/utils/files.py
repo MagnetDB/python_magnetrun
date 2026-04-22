@@ -95,9 +95,7 @@ def expand_input_files(
                             os.path.join(base_datadir, site_from_name, pattern)
                         )
                     if housing and housing not in ("notdefined", ""):
-                        candidates.append(
-                            os.path.join(base_datadir, housing, pattern)
-                        )
+                        candidates.append(os.path.join(base_datadir, housing, pattern))
 
         logger.debug(f"candidates: {candidates}")
 
@@ -111,7 +109,9 @@ def expand_input_files(
                 break
 
         if not matched:
-            logger.warning(f"No matches found for pattern: {pattern} (tried: {candidates})")
+            logger.warning(
+                f"No matches found for pattern: {pattern} (tried: {candidates})"
+            )
             expanded_files.append(pattern)
 
     logger.debug(f"expanded_files: {expanded_files}")
@@ -119,16 +119,16 @@ def expand_input_files(
 
 
 def extract_data(
-    file: str, site: str, insert: str, key: str | None, dry_run: bool = False
+    file: str, housing: str, site: str, key: str | None, dry_run: bool = False
 ) -> tuple:
     """Extract start and end timestamps from a data file.
 
     :param file: Path to the data file (.txt, .tdms, or .csv)
     :type file: str
-    :param site: Site identifier (e.g., M8, M9, M10)
+    :param housing: Housing identifier (e.g., M8, M9, M10)
+    :type housing: str
+    :param site: Site identifier -- aka Magnet Assembly
     :type site: str
-    :param insert: Insert identifier
-    :type insert: str
     :param key: Optional key to validate existence in the file
     :type key: str | None
     :param dry_run: If True, skip loading actual data and only parse timestamps from filename
@@ -150,7 +150,7 @@ def extract_data(
                 start_timestamp = dt.timestamp()
                 start_ftimestamp = dt.strftime(_ftformat)
             if not dry_run:
-                mrun = MagnetRun.fromtxt(site, insert, file)
+                mrun = MagnetRun.fromtxt(housing, site, file)
         case ".tdms":
             dt = parse_filename_timestamp(file)
             if dt is not None:
@@ -158,7 +158,7 @@ def extract_data(
                 start_ftimestamp = dt.strftime(_ftformat)
             if not dry_run:
                 try:
-                    mrun = MagnetRun.fromtdms(site, insert, file)
+                    mrun = MagnetRun.fromtdms(housing, site, file)
                 except RuntimeError as e:
                     logger.error(f"Error loading tdms file {file}: {e}")
                     skip = True
@@ -321,7 +321,9 @@ def load_df(file, site, insert, group, keys) -> tuple:
             mrun = MagnetRun.fromtdms(site, insert, file)
             mdata = mrun.getMData()
             if keys[0] not in mdata.Groups[group]:
-                logger.warning(f"load_df tdms {group}/{keys[0]} not found in {mdata.FileName}")
+                logger.warning(
+                    f"load_df tdms {group}/{keys[0]} not found in {mdata.FileName}"
+                )
                 """
                 print(f"available keys are: {mdata.Groups[group].keys()}")
                 for key in mdata.Groups[group]:
