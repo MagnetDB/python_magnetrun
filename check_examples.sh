@@ -92,7 +92,7 @@ echo "--- Derived quantities ---"
 # 9: Add formula
 run_cmd 9 python3 -m python_magnetrun.cli \
     "data/M10_2020.10.23---20_10_41.txt" \
-    add --formula '"PowerH = IH * UH / 1.e+6"' --plot --save
+    add --formula '"PowerH = IH * UH / 1.e+6"' --plot --save "$PWD"/power.png
 
 # 10: pigbrother add formula (pigbrother TDMS resolved via env)
 run_cmd 10 python3 -m python_magnetrun.cli \

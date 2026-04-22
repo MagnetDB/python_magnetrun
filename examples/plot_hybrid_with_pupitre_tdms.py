@@ -347,7 +347,7 @@ def plot_comparison(
         #     ),
         #     flush=True,
         # )
-        data, time = hybrid_data.getData(hybrid_key, downsample=10000, hours=hours)
+        data, time = hybrid_data.getData(hybrid_key, hours=hours)
         logger.debug(
             f"Hybrid data loaded: {len(data)} points, "
             f"time range: {time[0] if len(time) > 0 else 'N/A'} to {time[-1] if len(time) > 0 else 'N/A'} seconds"
