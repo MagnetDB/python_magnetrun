@@ -3,6 +3,7 @@
 import contextlib
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,63 @@ def _flatten(nested):
             yield from item
         else:
             yield item
+
+
+# Regex for field style spec: [LINESTYLE][MARKER][:N]
+# LINESTYLE: '-', '--', '-.'
+# MARKER:    any single or multi-char matplotlib marker string (e.g. 'o', '+', 's', 'D')
+# :N:        markevery integer
+_FIELD_STYLE_RE = re.compile(r"^(-{1,2}\.?)?([^:]+)?(?::(\d+))?$")
+
+
+def parse_field_style_spec(
+    spec: str,
+) -> tuple[str | None, str | None, int | None]:
+    """Parse a style spec string into ``(linestyle, marker, markevery)``.
+
+    Syntax: ``[LINESTYLE][MARKER][:N]``
+
+    Examples::
+
+        '-'       → lines only          (linestyle='-',    marker=None, markevery=None)
+        'o'       → markers only        (linestyle='none', marker='o',  markevery=None)
+        'o:10'    → markers every 10 pt (linestyle='none', marker='o',  markevery=10)
+        '-o:5'    → lines + markers/5pt (linestyle='-',    marker='o',  markevery=5)
+        '--s'     → dashed + square mk  (linestyle='--',   marker='s',  markevery=None)
+    """
+    m = _FIELD_STYLE_RE.match(spec)
+    if not m:
+        raise ValueError(f"invalid field style spec: {spec!r}")
+    ls_part, mk_part, ev_part = m.group(1), m.group(2), m.group(3)
+    # No linestyle given but marker present → suppress lines
+    linestyle = ls_part if ls_part is not None else ("none" if mk_part else None)
+    marker = mk_part if mk_part else None
+    markevery = int(ev_part) if ev_part else None
+    return linestyle, marker, markevery
+
+
+def _parse_field_styles(
+    field_style_args: list[str] | None,
+) -> dict[str, tuple[str | None, str | None, int | None]]:
+    """Parse a list of ``FIELD=STYLESPEC`` strings.
+
+    The returned dict is keyed by both the full key and its short (post-``/``)
+    component so look-ups work for both ``group/channel`` and bare ``channel``
+    forms.
+    """
+    result: dict[str, tuple[str | None, str | None, int | None]] = {}
+    if not field_style_args:
+        return result
+    for item in field_style_args:
+        if "=" not in item:
+            raise ValueError(f"--field_style expects FIELD=STYLESPEC, got {item!r}")
+        field, spec = item.split("=", 1)
+        parsed = parse_field_style_spec(spec)
+        result[field] = parsed
+        # also register short key so both 'group/chan' and 'chan' match
+        short = field.split("/")[-1] if "/" in field else field
+        result.setdefault(short, parsed)
+    return result
 
 
 def _get_df_with_time(mdata, plot_args: list[str]) -> tuple[pd.DataFrame, list[str]]:
@@ -596,6 +654,8 @@ def plot_vs_time(input_files, inputs, extensions, args):
     legends = []
     t0 = []
     symbol, unit = None, None
+    key_color_idx = 0  # global counter for palette cycling across all files+keys
+    field_styles = _parse_field_styles(getattr(args, "field_style", None))
 
     # Pre-compute disambiguated legend labels using the first file's FieldMeta.
     # resolve_legend_labels handles: JSON label > symbol_suffix > field name,
@@ -632,10 +692,17 @@ def plot_vs_time(input_files, inputs, extensions, args):
 
         src_color = cfg.colors.get_file_color(i, f_extension, same_color_per_type)
         for key in plot_args:
+            if not same_color_per_type:
+                src_color = cfg.colors.palette[key_color_idx % len(cfg.colors.palette)]
             try:
                 (symbol, unit) = mdata.getUnitKey(key)
                 logger.debug(
                     f"legend: file={os.path.basename(file)!r} key={key!r} symbol={symbol!r} unit={unit!r}"
+                )
+                short_key = key.split("/")[-1] if "/" in key else key
+                _fs = field_styles.get(key) or field_styles.get(short_key)
+                _fs_linestyle, _fs_marker, _fs_markevery = (
+                    _fs if _fs else (None, None, None)
                 )
                 mdata.plotData(
                     x="t",
@@ -644,10 +711,12 @@ def plot_vs_time(input_files, inputs, extensions, args):
                     normalize=args.normalize,
                     offset=delta_t,
                     color=src_color,
+                    marker=_fs_marker,
+                    linestyle=_fs_linestyle,
+                    markevery=_fs_markevery,
                 )
                 unit_str = f"{unit:~P}" if unit is not None else "?"
                 seen_units.add(unit_str)
-                short_key = key.split("/")[-1] if "/" in key else key
                 field_units.setdefault(short_key, unit_str)
                 field_pint_units.setdefault(short_key, unit)
                 basename = os.path.basename(file).replace(f_extension, "")
@@ -666,6 +735,8 @@ def plot_vs_time(input_files, inputs, extensions, args):
                 logger.error(f"key: {key} not found in {file}: {e}")
                 logger.info(f"available keys: {mdata.getKeys()}")
                 continue
+            finally:
+                key_color_idx += 1
         logger.debug(f"legend: after file {os.path.basename(file)!r}: {legends}")
 
     # -- Hybrid data (matplotlib path) --
@@ -789,6 +860,13 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
         title = f"{'-'.join(klabels)}"
 
     legends = []
+    # Resolve marker / linestyle from CLI args
+    no_lines: bool = getattr(args, "no_lines", False)
+    marker: str | None = getattr(args, "marker", None)
+    if no_lines and marker is None:
+        marker = "o"
+    linestyle: str | None = "none" if no_lines else None
+
     # split pairs in key1, key2
     print(f"key_vs_key={args.key_vs_key}", flush=True)
     print(f"extensions={extensions}", flush=True)
@@ -811,7 +889,13 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
             key2 = items[1]
             print(f"plotting {key1} vs {key2} from {file}", flush=True)
             try:
-                mdata.plotData(x=key1, y=key2, ax=my_ax)
+                mdata.plotData(
+                    x=key1,
+                    y=key2,
+                    ax=my_ax,
+                    marker=marker,
+                    linestyle=linestyle,
+                )
                 legends.append(f"{basename}: {key1} vs {key2}")
             except RuntimeError as e:
                 logger.error(f"pair {pair!r}: key not found in {file}: {e}")

@@ -166,7 +166,7 @@ Either add it to a `hybrid` extras group or document the soft requirement explic
 | `HybridData` timestamp support | Pending (out of current scope) |
 | Cross-domain comparison (`DataLoader` extension, Phase A1–A3) | Done — A0–A3 complete |
 | Downsampling refactoring (`DownsampleConfig`, shared module) | Done — see `downsampling-refactoring.plan.md` |
-| Plotting refactoring (`plotting/` subpackage, backend protocol, JS path) | Done — see `plotting-refactoring.plan.md` |
+| Plotting refactoring (`plotting/` subpackage, backend protocol, JS path) | Done — or replace with HoloViews migration (~8 d); see `holoviews-migration.plan.md` |
 | `analysis/` internal refactoring (data loading, downsampling adoption, channel mapping, function decomposition) | Needs work — see `analysis-subpackage-refactoring.plan.md` |
 | `hybrid/` internal refactoring (outlier dedup, `OutlierConfig`, `signal_processing.py`) | Needs work — see `hybrid-subpackage-refactoring.plan.md` |
 | Pipeline redesign: polars npTDMS, narwhals in `MagnetRun`, no-double-load pipeline | Planned — see `mrun-cache-implementation.plan.md` (3 phases; Phase 1 independent) |
@@ -177,9 +177,12 @@ shim replacement, `getUnitKey` fix, `saveData` delegation, hardcoded-path remova
 divergence (external callers cleaned up), Protocol unification (`DataLoader` only), timestamp
 convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC), downsampling refactoring
 (`DownsampleConfig`, shared `utils/downsampling.py`, `tsdownsample` extras), and plotting
-refactoring (subpackage, backends, label/legend uniformization). Remaining work in priority order:
-(10) `analysis/` internal refactoring; (11) `HybridData` timestamp support (out of current scope,
-requires analysis Phase 6 first); (12) `hybrid/` internal refactoring; (13) editor backup file;
+refactoring (subpackage, backends, label/legend uniformization). An alternative HoloViews-based
+plotting system (~8 d) would replace the current three-backend implementation with
+`hv.extension()` + Panel + datashader and subsume `analysis/` downsampling Phase 2.
+Remaining work in priority order: (9b/optional) HoloViews migration; (10) `analysis/`
+internal refactoring; (11) `HybridData` timestamp support (out of current scope, requires
+analysis Phase 6 first); (12) `hybrid/` internal refactoring; (13) editor backup file;
 (14) cross-domain Phases B–G (`ComparisonSession`, adapters, CLI — depends on 11).
 
 ---
@@ -269,16 +272,22 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
    `tsdownsample` added to `pyproject.toml` as a `hybrid` extras dependency.
    Full plan: **[`prompts/downsampling-refactoring.plan.md`](downsampling-refactoring.plan.md)**.
 
-9. **Plotting refactoring** *(done)* — `python_magnetrun/plotting/` subpackage created with
-   `PlottingBackend` protocol, `MatplotlibBackend`, `PlotlyBackend`,
-   `PlotlyResamplerBackend`, `plot_subplots()`, `plot_overlay()` (with normalization),
-   and `AnnotationManager`.  JS-frontend path via `to_json()`.  `analysis/plotting.py`
-   now imports `PlotStyle`/`PlotColors` from `plotting.style` and uses `AnnotationManager`.
-   `commands/plot.py` gains `--backend` and `--json` flags.  `pyproject.toml` gains
-   `plotting` and `resampler` extras groups.
+9. **Plotting refactoring** *(done — or replace with HoloViews migration)* —
+   `python_magnetrun/plotting/` subpackage created with `PlottingBackend` protocol,
+   `MatplotlibBackend`, `PlotlyBackend`, `PlotlyResamplerBackend`, `plot_subplots()`,
+   `plot_overlay()` (with normalization), and `AnnotationManager`.  JS-frontend path via
+   `to_json()`.  `analysis/plotting.py` now imports `PlotStyle`/`PlotColors` from
+   `plotting.style` and uses `AnnotationManager`.  `commands/plot.py` gains `--backend`
+   and `--json` flags.  `pyproject.toml` gains `plotting` and `resampler` extras groups.
    Label/legend uniformization sub-plan also complete: canonical `"symbol [unit]"` format,
    shared `format_label()` utility, consistent `ax.set_*` API across all backends.
    Full plan: **[`prompts/plotting-refactoring.plan.md`](plotting-refactoring.plan.md)**.
+
+   **Alternative path:** replace the `PlottingBackend`/three-backend system with HoloViews +
+   Panel + datashader (~8 days effort). This supersedes the current implementation and
+   simplifies `analysis-subpackage-refactoring` Phase 2 (downsampling). Both the current
+   state and HoloViews migration preserve `PlotStyle`/`PlotColors`/`format_label()`.
+   Full plan: **[`prompts/holoviews-migration.plan.md`](holoviews-migration.plan.md)**.
 
 10. **`analysis/` internal refactoring** *(effort: ~5–7 d)* — tracked in
     **[`prompts/analysis-subpackage-refactoring.plan.md`](analysis-subpackage-refactoring.plan.md)**.

@@ -301,6 +301,9 @@ class MagnetDataBase(ABC):
         offset: float = 0,
         time_zone: str = "Europe/Paris",
         color: str | None = None,
+        marker: str | None = None,
+        linestyle: str | None = None,
+        markevery: int | None = None,
     ) -> None:
         raise NotImplementedError(f"{self.__class__.__name__}.plotData not implemented")
 

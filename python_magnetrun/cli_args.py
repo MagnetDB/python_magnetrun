@@ -127,6 +127,35 @@ def create_common_plot_parser() -> argparse.ArgumentParser:
         default=None,
         help="path to a plot config JSON file (colors + style); overrides built-in defaults",
     )
+    parser.add_argument(
+        "--marker",
+        metavar="MARKER",
+        default=None,
+        help=(
+            "matplotlib marker style for key_vs_key plots (e.g. 'o', '+', 'x', 's'). "
+            "Default: no marker."
+        ),
+    )
+    parser.add_argument(
+        "--no-lines",
+        action="store_true",
+        default=False,
+        help="for key_vs_key: draw only markers, suppress connecting lines (implies --marker o if no --marker given)",
+    )
+    parser.add_argument(
+        "--field_style",
+        metavar="FIELD=STYLESPEC",
+        action="append",
+        default=None,
+        help=(
+            "per-field plot style for --vs_time; repeatable. "
+            "STYLESPEC syntax: [LINESTYLE][MARKER][:N] where LINESTYLE is '-', '--' or '-.', "
+            "MARKER is any matplotlib marker (e.g. 'o', '+', 's'), and N is markevery. "
+            "Examples: --field_style Référence_A1=- "
+            "--field_style Référence_A2=o:10 "
+            "--field_style Référence_A2=-o:5"
+        ),
+    )
     return parser
 
 

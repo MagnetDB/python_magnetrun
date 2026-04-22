@@ -645,6 +645,9 @@ class PandasMagnetData(MagnetDataBase):
         offset: float = 0,
         time_zone: str = "Europe/Paris",
         color: str | None = None,
+        marker: str | None = None,
+        linestyle: str | None = None,
+        markevery: int | None = None,
     ) -> None:
         import matplotlib
         import matplotlib.pyplot as plt
@@ -673,6 +676,12 @@ class PandasMagnetData(MagnetDataBase):
         kwargs: dict = {"x": x, "y": y, "ax": ax, "alpha": alpha, "grid": False}
         if color is not None:
             kwargs["color"] = color
+        if marker is not None:
+            kwargs["marker"] = marker
+        if linestyle is not None:
+            kwargs["linestyle"] = linestyle
+        if markevery is not None:
+            kwargs["markevery"] = markevery
 
         if normalize:
             ymax = abs(df[y].max())

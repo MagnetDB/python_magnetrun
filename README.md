@@ -20,6 +20,13 @@ Python `MagnetRun` contains utilities to view and analyze Magnet runs from LNCMI
 - [Mounting Data Directories](#mounting-data-directories)
 - [Features](#features)
 - [Basic Usage](#basic-usage)
+  - [List available fields](#list-available-fields)
+  - [Select records by criteria](#select-records-by-criteria)
+  - [Plotting vs time](#plotting-vs-time)
+  - [Plotting key vs key](#plotting-key-vs-key)
+  - [Customising plot style per field](#customising-plot-style-per-field)
+  - [Statistics and plateau detection](#statistics-and-plateau-detection)
+  - [Derived quantities](#derived-quantities)
 - [Analysis](#analysis)
 - [ETL and Pipelines](#etl-and-pipelines)
 - [Object Storage (RustFS)](#object-storage-rustfs)
@@ -406,33 +413,66 @@ python3 examples/get-record.py \
     --housing M8 "2025.*.txt" select --duration 60 --field 18.
 ```
 
-### Plotting
+### Plotting vs time
 
-Plot the magnetic field over time:
+#### Single field
 
 ```bash
 python3 -m python_magnetrun.cli \
     srvdata/M9_2019.02.14---23:00:38.txt \
-    plot --vs_time "Field"
+    plot --vs_time Field
 ```
 
-Compare current from PigBrother and Pupitre side by side:
+#### Multiple fields from a PigBrother TDMS overview
+
+Two fields on one axes — each drawn in a **distinct colour** from the default palette:
 
 ```bash
 python3 -m python_magnetrun.cli \
-    srvdata/M10_2025.01.27---*.txt \
-    pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms \
-    plot \
-    --key_vs_key timestamp-IH \
-    --key_vs_key timestamp-Courants_Alimentations/Référence_GR1
+    M9_Overview_260331-1316.tdms \
+    --housing M9 \
+    plot --vs_time Courants_Alimentations/Référence_A1 \
+                  Courants_Alimentations/Référence_A2
 ```
 
-Overlay PigBrother, Pupitre, and hybrid (kHz) currents for comparison:
+#### Separate subplots
 
 ```bash
 python3 -m python_magnetrun.cli \
-    ~/M9_Overview_240509-1634.tdms \
-    ~/M9_2024.05.09---16_34_03.txt \
+    M9_Overview_260331-1316.tdms \
+    --housing M9 \
+    plot --vs_time Courants_Alimentations/Référence_A1 \
+                  Courants_Alimentations/Référence_A2 \
+    --subplots
+```
+
+#### Normalise before overlaying
+
+```bash
+python3 -m python_magnetrun.cli \
+    M9_Overview_260331-1316.tdms \
+    --housing M9 \
+    plot --vs_time Courants_Alimentations/Référence_A1 \
+                  Courants_Alimentations/Référence_A2 \
+    --normalize
+```
+
+#### Override display units
+
+```bash
+python3 -m python_magnetrun.cli \
+    M9_Overview_260331-1316.tdms \
+    --housing M9 \
+    plot --vs_time Courants_Alimentations/Courant_A1 \
+    --unit Courant_A1=kiloampere
+```
+
+#### Compare PigBrother, Pupitre, and hybrid (kHz) currents
+
+```bash
+python3 -m python_magnetrun.cli \
+    M9_Overview_240509-1634.tdms \
+    M9_2024.05.09---16_34_03.txt \
     --hybrid_datadir /path/to/hybrid \
     --hybrid_date 2024-05-09 \
     --fepc_system FEPC-LNCMI \
@@ -447,7 +487,118 @@ python3 -m python_magnetrun.cli \
 > Hybrid keys are passed separately via `--vs_time_hybrid`.
 > Use `--hybrid_downsample N` to control how many kHz points are rendered (default: 50000).
 > Use `--fepc_system FEPC-AUX-LNCMI` for the auxiliary FEPC system.
-> Field name correspondence between sources is defined in [python_magnetrun/field_mappings.py](python_magnetrun/field_mappings.py).
+
+### Plotting key vs key
+
+Plot `IH` vs `UH` from a Pupitre file:
+
+```bash
+python3 -m python_magnetrun.cli \
+    "2026.03.31 - 13:22:40.txt" \
+    --housing M9 \
+    plot --key_vs_key "IH-UH"
+```
+
+Plot with **markers only** (no connecting lines), using the default `o` marker:
+
+```bash
+python3 -m python_magnetrun.cli \
+    "2026.03.31 - 13:22:40.txt" \
+    --housing M9 \
+    plot --key_vs_key "IH-UH" --no-lines
+```
+
+Plot with a custom marker **and** connecting lines:
+
+```bash
+python3 -m python_magnetrun.cli \
+    "2026.03.31 - 13:22:40.txt" \
+    --housing M9 \
+    plot --key_vs_key "IH-UH" --marker "+"
+```
+
+Plot with markers only using a specific symbol:
+
+```bash
+python3 -m python_magnetrun.cli \
+    "2026.03.31 - 13:22:40.txt" \
+    --housing M9 \
+    plot --key_vs_key "IH-UH" --marker "s" --no-lines
+```
+
+Compare PigBrother and Pupitre current vs voltage side by side:
+
+```bash
+python3 -m python_magnetrun.cli \
+    srvdata/M10_2025.01.27---*.txt \
+    pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms \
+    plot \
+    --key_vs_key IH-UH \
+    --key_vs_key Courants_Alimentations/Référence_GR1-Tensions_Aimant/Interne1
+```
+
+### Customising plot style per field
+
+Use `--field_style FIELD=STYLESPEC` (repeatable) to assign **different linestyles,
+markers, and markevery** to individual fields in a `--vs_time` overlay.
+
+**`STYLESPEC` syntax:** `[LINESTYLE][MARKER][:N]`
+
+| Part | Values | Meaning |
+|---|---|---|
+| `LINESTYLE` | `-`, `--`, `-.` | Line style; omit to suppress lines when a marker is given |
+| `MARKER` | `o`, `+`, `x`, `s`, `D`, … | Any [matplotlib marker](https://matplotlib.org/stable/gallery/lines_bars_and_markers/marker_reference.html) |
+| `:N` | integer | Draw marker every *N* data points |
+
+Examples:
+
+```bash
+# A1 with solid line only; A2 with circle markers every 10 points (no line)
+python3 -m python_magnetrun.cli \
+    M9_Overview_260331-1316.tdms --housing M9 \
+    plot --vs_time Courants_Alimentations/Référence_A1 \
+                  Courants_Alimentations/Référence_A2 \
+    --field_style "Référence_A1=-" \
+    --field_style "Référence_A2=o:10"
+
+# A1 dashed; A2 solid line with square markers every 5 points
+python3 -m python_magnetrun.cli \
+    M9_Overview_260331-1316.tdms --housing M9 \
+    plot --vs_time Courants_Alimentations/Référence_A1 \
+                  Courants_Alimentations/Référence_A2 \
+    --field_style "Référence_A1=--" \
+    --field_style "Référence_A2=-s:5"
+```
+
+The `FIELD` key in `--field_style` can be either the short channel name
+(`Référence_A2`) or the full `Group/Channel` form
+(`Courants_Alimentations/Référence_A2`).
+
+### Plot colour palette
+
+By default each field gets a **distinct colour** from the Matplotlib `tab10` palette,
+cycling when there are more fields than palette entries.
+
+Use `--same-color-per-type` to assign one fixed colour per file type instead
+(`.txt` → green, `.tdms` → red):
+
+```bash
+python3 -m python_magnetrun.cli \
+    M9_Overview_260331-1316.tdms \
+    "2026.03.31 - 13:22:40.txt" \
+    --housing M9 \
+    plot --vs_time Courants_Alimentations/Courant_GR1 \
+         --vs_time IH \
+    --same-color-per-type
+```
+
+Customise the palette via a plot-config JSON (see `magnetrun-plot-config init`):
+
+```bash
+magnetrun-plot-config init           # writes plot_config.json in the current directory
+# edit palette, colors, style …
+python3 -m python_magnetrun.cli … plot … --plot-config plot_config.json
+```
 
 ### Statistics and plateau detection
 
