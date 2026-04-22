@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 
 # Module logger
-logger = logging.getLogger("magnetrun.analysis.metrics")
+logger = logging.getLogger("python_magnetrun.analysis.metrics")
 
 
 # =============================================================================
@@ -518,7 +518,10 @@ def compute_rolling_tlcc(
         d1 = datax.iloc[t_start:t_end]
         d2 = datay.iloc[t_start:t_end]
 
-        rs = [crosscorr(d1, d2, lag, wrap=False) for lag in range(-lag_range, lag_range + 1)]
+        rs = [
+            crosscorr(d1, d2, lag, wrap=False)
+            for lag in range(-lag_range, lag_range + 1)
+        ]
         results.append(rs)
 
         t_start += step_size
@@ -731,7 +734,9 @@ def dtw_with_paa(
         from dtaidistance import dtw
         from pyts.approximation import PiecewiseAggregateApproximation
     except ImportError as e:
-        raise ImportError(f"Both pyts and dtaidistance are required. Missing: {e.name}") from e
+        raise ImportError(
+            f"Both pyts and dtaidistance are required. Missing: {e.name}"
+        ) from e
 
     series1 = np.asarray(series1).reshape(1, -1)
     series2 = np.asarray(series2).reshape(1, -1)
@@ -746,7 +751,9 @@ def dtw_with_paa(
     if dtw_window is None:
         dtw_window = window_size
 
-    distance, paths = dtw.warping_paths(series1_paa, series2_paa, window=dtw_window, psi=psi)
+    distance, paths = dtw.warping_paths(
+        series1_paa, series2_paa, window=dtw_window, psi=psi
+    )
     best_path = dtw.best_path(paths)
 
     path_length = len(best_path) if best_path else 1
@@ -793,8 +800,15 @@ def plot_tlcc(
 
     fig, ax = plt.subplots(figsize=(14, 3))
     ax.plot(result.correlations)
-    ax.axvline(np.ceil(len(result.correlations) / 2), color="k", linestyle="--", label="Center")
-    ax.axvline(np.argmax(result.correlations), color="r", linestyle="--", label="Peak synchrony")
+    ax.axvline(
+        np.ceil(len(result.correlations) / 2), color="k", linestyle="--", label="Center"
+    )
+    ax.axvline(
+        np.argmax(result.correlations),
+        color="r",
+        linestyle="--",
+        label="Peak synchrony",
+    )
     ax.set(
         title=f"Offset = {result.offset} frames\n{xfield} leads <> {yfield} leads",
         xlabel="Offset",
@@ -876,7 +890,9 @@ def plot_dtw_alignment(
     # Point-to-Point Comparison
     ax3 = plt.subplot2grid((2, 2), (1, 0), colspan=2)
     ax3.plot(series1, label=label1, color="blue", marker="o", markersize=3)
-    ax3.plot(series2, label=label2, color="orange", marker="x", linestyle="--", markersize=3)
+    ax3.plot(
+        series2, label=label2, color="orange", marker="x", linestyle="--", markersize=3
+    )
 
     # Draw alignment lines (subsample for clarity)
     step = max(1, len(path) // 50)

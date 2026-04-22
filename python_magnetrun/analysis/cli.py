@@ -57,11 +57,13 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import cast
 
 from natsort import natsorted
 
 from ..log_utils import (
     ProgressTracker,
+    get_logger,
     setup_logging,
     timed_operation,
 )
@@ -91,18 +93,20 @@ def main(args: list[str] | None = None) -> int:
     parsed_args = parse_arguments(args)
 
     # Setup logging
-    logger = setup_logging(
+    setup_logging(
         debug=parsed_args.debug,
         log_file=parsed_args.log_file,
         json_file=parsed_args.json_log,
         use_colors=not parsed_args.no_color,
         quiet=parsed_args.quiet,
     )
+    logger = get_logger("analysis.cli")
 
     logger.info("Starting magnetrun analysis")
-    logger.debug(f"Arguments: {parsed_args}")
+    logger.info(f"Arguments: {parsed_args}")
     logger.debug(f"input_file: {parsed_args.input_file}")  # noqa: F823
 
+    housing = parsed_args.housing
     try:
         from .config import get_housing_config
         from .metrics import (
@@ -121,8 +125,11 @@ def main(args: list[str] | None = None) -> int:
 
         # Expand glob patterns and search data directories for bare filenames.
         datadir = {".tdms": str(config.pigbrother_datadir)}
-        input_files = natsorted(
-            expand_input_files(parsed_args.input_file, datadir, parsed_args.housing)
+        input_files = cast(
+            list[str],
+            natsorted(
+                expand_input_files(parsed_args.input_file, datadir, parsed_args.housing)
+            ),
         )
         logger.debug(f"input_files: {input_files}")
         logger.info(f"Processing {len(input_files)} input files")
@@ -142,32 +149,48 @@ def main(args: list[str] | None = None) -> int:
         for input_file in input_files:
             with timed_operation(f"Processing {Path(input_file).name}", logger):
                 try:
-                    record = process_overview_file(input_file, config)
+                    record = process_overview_file(
+                        input_file, config, dry_run=parsed_args.dry_run
+                    )
                     print_record_summary(record)
 
                     results.append(record)
                     logger.info(
-                        f"Processed {record.filename}: site={record.site}, duration={record.duration:.1f}s, has_pupitre={record.has_data('pupitre')}"
+                        f"Processed {record.filename}: housing={record.housing}, duration={record.duration:.1f}s,"
+                        f" has_pupitre={record.has_data('pupitre')}"
+                        f" has_incidents={record.has_data('incidents')}"
+                        f" has_hybrid={record.has_data('hybrid_kHz')}"
+                        f" has_hybrid_incidents={record.has_data('hybrid_trigger')}"
                     )
 
                     # Skip further processing if dry run
-                    if config.dry_run:
+                    if parsed_args.dry_run:
                         continue
 
-                    # Get site config for channel mappings
+                    # Get housing config for channel mappings
+                    housing = (
+                        Path(input_file).name.split("_")[0]
+                        if housing == "notdefined"
+                        else housing
+                    )
+                    print(f"Determined housing: {housing} from filename: {input_file}")
+
                     # instead get_housing_config from input_file
                     from .config import AnalysisConfig
-                    site_config = get_housing_config(record.site)
-                    analysis_cfg = AnalysisConfig.for_housing(record.site)
+
+                    housing_config = get_housing_config(housing)
+                    analysis_cfg = AnalysisConfig.for_housing(housing)
                     channel_map = analysis_cfg.channels
 
                     # Build setpoint→actual and setpoint→pupitre dicts from ChannelMapping.
                     channels_dict = channel_map.to_dict()
                     pupitre_dict = {
-                        record.site: {
-                            channel_map.get_setpoint_channel(g): site_config.reference_gr1_current
-                            if g == "GR1"
-                            else site_config.reference_gr2_current
+                        record.housing: {
+                            channel_map.get_setpoint_channel(g): (
+                                housing_config.reference_gr1_current
+                                if g == "GR1"
+                                else housing_config.reference_gr2_current
+                            )
                             for g in channel_map.groups()
                         }
                     }
@@ -188,7 +211,10 @@ def main(args: list[str] | None = None) -> int:
                     logger.info(f"df_archive: {df_archive.head()}")
 
                     # Determine keys to analyze: all setpoint channels
-                    keys = [channel_map.get_setpoint_channel(g) for g in channel_map.groups()]
+                    keys = [
+                        channel_map.get_setpoint_channel(g)
+                        for g in channel_map.groups()
+                    ]
 
                     # Process each key
                     for key in keys:
@@ -196,7 +222,7 @@ def main(args: list[str] | None = None) -> int:
                             logger.warning(f"Key {key} not found in overview data")
                             continue
 
-                        pupitre_key = pupitre_dict[record.site].get(key)
+                        pupitre_key = pupitre_dict[record.housing].get(key)
 
                         # === PLOTTING ===
                         if parsed_args.show or parsed_args.save:
@@ -207,7 +233,9 @@ def main(args: list[str] | None = None) -> int:
                                     downsample_pct = estimate_downsample_percent(
                                         len(df_overview), target_points=10000
                                     )
-                                    logger.info(f"Auto-downsampling to {downsample_pct:.1f}% for plotting")
+                                    logger.info(
+                                        f"Auto-downsampling to {downsample_pct:.1f}% for plotting"
+                                    )
 
                                 # Determine output path
                                 output_path = None
@@ -234,7 +262,7 @@ def main(args: list[str] | None = None) -> int:
                                     df_incidents=df_incidents,
                                     channels_dict=channels_dict,
                                     pupitre_dict=pupitre_dict,
-                                    site=record.site,
+                                    housing=record.housing,
                                     tkey=parsed_args.tkey,
                                     key=key,
                                     title=record.filename,
@@ -262,12 +290,15 @@ def main(args: list[str] | None = None) -> int:
                                 ):
                                     # Get aligned time series
                                     # Use overview as reference
-                                    series1 = df_overview[key].values
 
                                     # Resample pupitre to match overview length
                                     import numpy as np
 
-                                    pupitre_values = df_pupitre[pupitre_key].values
+                                    series1 = np.asarray(df_overview[key], dtype=float)
+
+                                    pupitre_values = np.asarray(
+                                        df_pupitre[pupitre_key], dtype=float
+                                    )
                                     if len(pupitre_values) != len(series1):
                                         # Simple resampling by interpolation
                                         x_orig = np.linspace(0, 1, len(pupitre_values))
@@ -285,14 +316,14 @@ def main(args: list[str] | None = None) -> int:
 
                                     logger.info(
                                         f"Metrics for {key} vs {pupitre_key}: "
-                                        f"Euclidean={euclidean.value:.4f}, MAPE={mape.value:.2f}%, Correlation={correlation.value:.4f}"
+                                        f"Euclidean={euclidean:.4f}, MAPE={mape:.2f}%, Correlation={correlation:.4f}"
                                     )
 
                                     # Store in record
                                     record.metrics[key] = {
-                                        "euclidean": euclidean.value,
-                                        "mape": mape.value,
-                                        "correlation": correlation.value,
+                                        "euclidean": euclidean,
+                                        "mape": mape,
+                                        "correlation": correlation,
                                     }
 
                                     # DTW (can be slow for large datasets)
@@ -304,14 +335,20 @@ def main(args: list[str] | None = None) -> int:
                                         # print(dtw_result.path)               # The warping path
                                         # print(dtw_result.normalized_distance) # Normalized by length
                                         # print(dtw_result.similarity_score)    # Distance per path step
-                                        logger.info(f"DTW distance for {key}: {dtw_result.similarity_score:.4f}")
+                                        logger.info(
+                                            f"DTW distance for {key}: {dtw_result.similarity_score:.4f}"
+                                        )
                                         record.metrics[key][
                                             "dtw"
                                         ] = dtw_result.similarity_score
                                     else:
-                                        logger.info(f"Skipping DTW for {key} (dataset too large: {len(series1)} points)")
+                                        logger.info(
+                                            f"Skipping DTW for {key} (dataset too large: {len(series1)} points)"
+                                        )
                             else:
-                                logger.warning(f"Pupitre key {pupitre_key} not found for distance metrics")
+                                logger.warning(
+                                    f"Pupitre key {pupitre_key} not found for distance metrics"
+                                )
 
                 except (OSError, ValueError, KeyError, RuntimeError) as e:
                     logger.error(f"Failed to process {input_file}: {e}")
@@ -339,7 +376,11 @@ def main(args: list[str] | None = None) -> int:
                             f"  {key}: Euclidean={metrics.get('euclidean', 0):.4f}, "
                             f"MAPE={metrics.get('mape', 0):.2f}%, "
                             f"Corr={metrics.get('correlation', 0):.4f}"
-                            + (f", DTW={metrics['dtw']:.4f}" if "dtw" in metrics else "")
+                            + (
+                                f", DTW={metrics['dtw']:.4f}"
+                                if "dtw" in metrics
+                                else ""
+                            )
                         )
 
         return 0 if failed == 0 else 1

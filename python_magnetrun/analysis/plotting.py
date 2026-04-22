@@ -49,7 +49,7 @@ from python_magnetrun.plotting.style import (  # noqa: F401
 )
 
 # Module logger
-logger = logging.getLogger("magnetrun.analysis.plotting")
+logger = logging.getLogger("python_magnetrun.analysis.plotting")
 
 
 # =============================================================================
@@ -106,7 +106,9 @@ def downsample_for_plot(
     n_keep = max(1, int(n * percent / 100.0))
     step = max(1, n // n_keep)
 
-    logger.debug(f"Downsampling: {n} -> {len(x[::step])} points ({percent:.1f}%, step={step})")
+    logger.debug(
+        f"Downsampling: {n} -> {len(x[::step])} points ({percent:.1f}%, step={step})"
+    )
 
     return x[::step], y[::step]
 
@@ -232,7 +234,7 @@ def plot_data(
     df_incidents: dict[str, list[pd.DataFrame]] | None,
     channels_dict: dict[str, str],
     pupitre_dict: dict[str, dict[str, str]],
-    site: str,
+    housing: str,
     tkey: str,
     key: str,
     title: str,
@@ -265,9 +267,9 @@ def plot_data(
     channels_dict : dict
         Mapping from key names to channel names
     pupitre_dict : dict
-        Site-specific mapping for pupitre channels
-    site : str
-        Site identifier (e.g., "M9")
+        Housing-specific mapping for pupitre channels
+    housing : str
+        Housing identifier (e.g., "M9")
     tkey : str
         Time column name (e.g., "t" or "timestamp")
     key : str
@@ -371,10 +373,10 @@ def plot_data(
     # Plot pupitre data
     if not df_pupitre.empty:
         print(
-            f"site={site}, key={key}, pupitre_dict={pupitre_dict}, df.columns={df_pupitre.columns.tolist()}",
+            f"housing={housing}, key={key}, pupitre_dict={pupitre_dict}, df.columns={df_pupitre.columns.tolist()}",
             flush=True,
         )
-        pupitre_key = pupitre_dict[site][key]
+        pupitre_key = pupitre_dict[housing][key]
         plot_series(
             df_pupitre, tkey, pupitre_key, colors.pupitre, f"Pupitre: {pupitre_key}"
         )
@@ -402,7 +404,7 @@ def plot_data(
                     "idx": i,
                     "tkey": tkey,
                     "df": idf,
-                    "pupitre": (df_pupitre, pupitre_dict.get(site, {}).get(key)),
+                    "pupitre": (df_pupitre, pupitre_dict.get(housing, {}).get(key)),
                     "archive": (df_archive, channels_dict.get(key)),
                 }
                 manager.add(fig, 0, t_mid, label, detail)
@@ -436,7 +438,6 @@ def plot_data(
         return None
 
     return fig
-
 
 
 def plot_comparison(
@@ -490,13 +491,13 @@ def plot_comparison(
     fig, ax = plt.subplots(figsize=style.figsize)
 
     # Plot first series
-    x1, y1 = df1[x_col].values, df1[y_col1].values
+    x1, y1 = df1[x_col].to_numpy(), df1[y_col1].to_numpy()
     if downsample_percent < 100.0:
         x1, y1 = downsample_for_plot(x1, y1, downsample_percent)
     ax.plot(x1, y1, label=label1, color="blue")
 
     # Plot second series
-    x2, y2 = df2[x_col].values, df2[y_col2].values
+    x2, y2 = df2[x_col].to_numpy(), df2[y_col2].to_numpy()
     if downsample_percent < 100.0:
         x2, y2 = downsample_for_plot(x2, y2, downsample_percent)
     ax.plot(x2, y2, label=label2, color="red", alpha=0.7)
@@ -643,10 +644,10 @@ def plot_time_series(
 
     fig, ax = plt.subplots(figsize=style.figsize)
 
-    x = df[x_col].values
+    x = df[x_col].to_numpy()
 
     for y_col in y_cols:
-        y = df[y_col].values
+        y = df[y_col].to_numpy()
 
         if normalize:
             y_min, y_max = y.min(), y.max()

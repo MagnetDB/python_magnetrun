@@ -62,7 +62,7 @@ __all__ = [
 ]
 
 # Module logger
-logger = logging.getLogger("magnetrun.analysis.config")
+logger = logging.getLogger("python_magnetrun.analysis.config")
 
 
 # =============================================================================

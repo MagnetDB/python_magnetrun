@@ -51,7 +51,7 @@ import pandas as pd
 from .config import LAG_THRESHOLD_RATIO
 
 # Module logger
-logger = logging.getLogger("magnetrun.analysis.synchronization")
+logger = logging.getLogger("python_magnetrun.analysis.synchronization")
 
 
 # =============================================================================
@@ -196,9 +196,13 @@ def synchronize_data(
     new_t0 = df[timestamp_col].iloc[0]
     if time_col in df.columns:
         df.drop([time_col], axis=1, inplace=True)
-    df[time_col] = df.apply(lambda row: (row[timestamp_col] - new_t0).total_seconds(), axis=1)
+    df[time_col] = df.apply(
+        lambda row: (row[timestamp_col] - new_t0).total_seconds(), axis=1
+    )
 
-    logger.debug(f"Synchronized data: shift={timeshift.total_seconds():.3f} s, source_t0={source_t0}, target_t0={target_t0}")
+    logger.debug(
+        f"Synchronized data: shift={timeshift.total_seconds():.3f} s, source_t0={source_t0}, target_t0={target_t0}"
+    )
 
     return timeshift, df
 
@@ -338,7 +342,9 @@ def compute_lag(
 
     # Determine range for ts2
     if istart2 is None and iend2 is None:
-        pstart = ts2_resampled.index.get_indexer([pd.Timestamp(otstart)], method="nearest")
+        pstart = ts2_resampled.index.get_indexer(
+            [pd.Timestamp(otstart)], method="nearest"
+        )
         pend = ts2_resampled.index.get_indexer([pd.Timestamp(otend)], method="nearest")
         ptstart = ts2_resampled.index[pstart[0]]
         ptend = ts2_resampled.index[pend[0]]
@@ -346,7 +352,9 @@ def compute_lag(
         ts2_idx = ts2.index.to_list()
         ptstart = ts2_idx[istart2] if istart2 else ts2_idx[0]
         ptend = ts2_idx[iend2] if iend2 is not None else ts2_idx[-1]
-        pstart = ts2_resampled.index.get_indexer([pd.Timestamp(ptstart)], method="nearest")
+        pstart = ts2_resampled.index.get_indexer(
+            [pd.Timestamp(ptstart)], method="nearest"
+        )
         pend = ts2_resampled.index.get_indexer([pd.Timestamp(ptend)], method="nearest")
         ptstart = ts2_resampled.index[pstart[0]]
         ptend = ts2_resampled.index[pend[0]]
@@ -564,10 +572,14 @@ def compute_regime_score(
 
     if reference_regime == regime:
         # Compare value ranges
-        score = abs(abs(value[1] - value[0]) - abs(reference_value[1] - reference_value[0]))
+        score = abs(
+            abs(value[1] - value[0]) - abs(reference_value[1] - reference_value[0])
+        )
 
         # Compare durations
-        tscore = abs(abs(time[1] - time[0]) - abs(reference_time[1] - reference_time[0]))
+        tscore = abs(
+            abs(time[1] - time[0]) - abs(reference_time[1] - reference_time[0])
+        )
 
         # Compute lags
         start_lag = time[0] - reference_time[0]
@@ -686,7 +698,9 @@ def check_lag_reliability(
     is_reliable = start_ratio < threshold_ratio and end_ratio < threshold_ratio
 
     if not is_reliable:
-        logger.warning(f"Lag may be unreliable: start_ratio={start_ratio:.2f}, end_ratio={end_ratio:.2f} (threshold={threshold_ratio:.2f})")
+        logger.warning(
+            f"Lag may be unreliable: start_ratio={start_ratio:.2f}, end_ratio={end_ratio:.2f} (threshold={threshold_ratio:.2f})"
+        )
 
     return is_reliable
 
@@ -746,7 +760,9 @@ def add_time_column(
     if time_col in df.columns:
         df.drop([time_col], axis=1, inplace=True)
 
-    df[time_col] = df.apply(lambda row: (row[timestamp_col] - reference_t0).total_seconds(), axis=1)
+    df[time_col] = df.apply(
+        lambda row: (row[timestamp_col] - reference_t0).total_seconds(), axis=1
+    )
 
     return df
 

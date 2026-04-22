@@ -28,7 +28,7 @@ Example usage::
     )
 
     # Access results
-    print(f"Site: {record.site}, Duration: {record.duration}")
+    print(f"Housing: {record.housing}, Duration: {record.duration}")
     print(f"Signatures: {list(record.signatures.keys())}")
 """
 
@@ -45,6 +45,7 @@ import pandas as pd
 from ..utils.downsampling import DownsampleConfig  # noqa: F401 — available for callers
 from .config import (
     DEFAULT_DATA_DIR,
+    DEFAULT_HYBRID_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
     HOUSING_CONFIGS,
     SAMPLING_RATE_ARCHIVE,
@@ -65,7 +66,7 @@ from .synchronization import (
 )
 
 # Module logger
-logger = logging.getLogger("magnetrun.analysis.processing")
+logger = logging.getLogger("python_magnetrun.analysis.processing")
 
 
 # =============================================================================
@@ -82,6 +83,8 @@ class ProcessingConfig:
         Directory containing pupitre data files
     pigbrother_datadir : str
         Directory containing pigbrother data files
+    hybrid_datadir : str
+        Base directory for hybrid data (kHz/rms/trigger/vprocess); used for M8 only
     group : str
         TDMS group name for current channels
     tkey : str
@@ -110,6 +113,7 @@ class ProcessingConfig:
 
     pupitre_datadir: str = DEFAULT_DATA_DIR
     pigbrother_datadir: str = DEFAULT_PIGBROTHER_DATA_DIR
+    hybrid_datadir: str = DEFAULT_HYBRID_DATA_DIR
     group: str = "Courants_Alimentations"
     tkey: str = "t"
     synchronize: bool = True
@@ -136,8 +140,8 @@ class OverviewRecord:
     ----------
     filename : str
         Base filename (without extension)
-    site : str
-        Site identifier (M8, M9, M10)
+    housing : str
+        Housing identifier (M8, M9, M10)
     mode : str
         Measurement mode
     t0 : datetime
@@ -157,7 +161,7 @@ class OverviewRecord:
     """
 
     filename: str
-    site: str
+    housing: str
     mode: str = ""
     t0: datetime | None = None
     duration: float = 0.0
@@ -174,6 +178,10 @@ class OverviewRecord:
             "default": [],
             "trigger": [],
             "spike": [],
+            "hybrid_kHz": pd.DataFrame(),
+            "hybrid_rms": pd.DataFrame(),
+            "hybrid_vprocess": pd.DataFrame(),
+            "hybrid_trigger": [],
         }
     )
 
@@ -200,12 +208,30 @@ class OverviewRecord:
         """Get pupitre DataFrame."""
         return self.data.get("pupitre", pd.DataFrame())
 
+    def get_hybrid_kHz(self) -> pd.DataFrame:
+        """Get hybrid kHz DataFrame."""
+        return self.data.get("hybrid_kHz", pd.DataFrame())
+
+    def get_hybrid_rms(self) -> pd.DataFrame:
+        """Get hybrid RMS DataFrame."""
+        return self.data.get("hybrid_rms", pd.DataFrame())
+
+    def get_hybrid_vprocess(self) -> pd.DataFrame:
+        """Get hybrid voltage-process DataFrame."""
+        return self.data.get("hybrid_vprocess", pd.DataFrame())
+
     def get_incidents(self) -> dict[str, list[pd.DataFrame]]:
         """Get incidents as dict of DataFrames."""
         return {
             "default": self.data.get("default", []),
             "trigger": self.data.get("trigger", []),
             "spike": self.data.get("spike", []),
+        }
+
+    def get_hybrid_incidents(self) -> dict[str, list[pd.DataFrame]]:
+        """Get hybrid incidents as dict of DataFrames."""
+        return {
+            "hybrid_trigger": self.data.get("hybrid_trigger", []),
         }
 
     def has_data(self, source: str) -> bool:
@@ -227,8 +253,8 @@ class ProcessingResult:
     ----------
     records : Dict[str, OverviewRecord]
         Processed records keyed by filename
-    site : str
-        Site identifier
+    housing : str
+        Housing identifier
     keys : List[str]
         Current keys processed (e.g., ['Courant_GR1', 'Courant_GR2'])
     errors : List[str]
@@ -236,7 +262,7 @@ class ProcessingResult:
     """
 
     records: dict[str, OverviewRecord] = field(default_factory=dict)
-    site: str = ""
+    housing: str = ""
     keys: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
@@ -325,8 +351,8 @@ def load_overview_data(
     ----------
     record : OverviewRecord
         Record to load data into
-    site_config : HousingConfig
-        Site configuration
+    housing_config : HousingConfig
+        Housing configuration
     group : str
         TDMS group name
     keys : List[str]
@@ -344,7 +370,7 @@ def load_overview_data(
 
     df_list = load_data(
         record.sources.overview,
-        record.site,
+        record.housing,
         "",  # insert placeholder
         group,
         keys,
@@ -362,7 +388,7 @@ def load_overview_data(
 
 def load_archive_data(
     record: OverviewRecord,
-    site_config: HousingConfig,
+    housing_config: HousingConfig,
     group: str,
     keys: list[str],
 ) -> pd.DataFrame:
@@ -373,8 +399,8 @@ def load_archive_data(
     ----------
     record : OverviewRecord
         Record to load data into
-    site_config : HousingConfig
-        Site configuration
+    housing_config : HousingConfig
+        Housing configuration
     group : str
         TDMS group name
     keys : List[str]
@@ -392,7 +418,7 @@ def load_archive_data(
     print("record.sources.archive:", record.sources.archive)
     df_list = load_data(
         record.sources.archive,
-        record.site,
+        record.housing,
         "",
         group,
         keys,
@@ -410,7 +436,7 @@ def load_archive_data(
 
 def load_pupitre_data(
     record: OverviewRecord,
-    site_config: HousingConfig,
+    housing_config: HousingConfig,
     group: str,
     keys: list[str],
     extra_keys: list[str] | None = None,
@@ -422,8 +448,8 @@ def load_pupitre_data(
     ----------
     record : OverviewRecord
         Record to load data into
-    site_config : HousingConfig
-        Site configuration
+    housing_config : HousingConfig
+        Housing configuration
     group : str
         TDMS group name
     keys : List[str]
@@ -444,18 +470,18 @@ def load_pupitre_data(
         f"Loading pupitre data: {len(record.sources.pupitre)} files, group={group}, keys={keys}, extra_keys={extra_keys}"
     )
     # Map keys to pupitre channel names using helper
-    pupitre_keys = _get_pupitre_group(site_config, group) or []
+    pupitre_keys = _get_pupitre_group(housing_config, group) or []
     print(f"pupitre_keys={pupitre_keys} from group={group}", flush=True)
 
     print(f"Mapping keys to pupitre channels for keys={keys}", flush=True)
     for key in keys:
-        pupitre_channel = _get_pupitre_channel(site_config, key)
+        pupitre_channel = _get_pupitre_channel(housing_config, key)
         print(f"pupitre_channel={pupitre_channel}, key={key}", flush=True)
         if pupitre_channel:
             pupitre_keys.append(pupitre_channel)
 
     # Add flow parameter keys
-    pupitre_keys += _get_pupitre_flow(site_config) or []
+    pupitre_keys += _get_pupitre_flow(housing_config) or []
     print(f"Added flow keys, pupitre_keys={pupitre_keys}", flush=True)
 
     # Add extra keys
@@ -470,7 +496,7 @@ def load_pupitre_data(
 
     df_list = load_data(
         record.sources.pupitre,
-        record.site,
+        record.housing,
         "",
         group,
         pupitre_keys,
@@ -485,7 +511,7 @@ def load_pupitre_data(
 
 def load_incidents_data(
     record: OverviewRecord,
-    site_config: HousingConfig,
+    housing_config: HousingConfig,
     group: str,
     keys: list[str],
     reference_t0: datetime,
@@ -497,8 +523,8 @@ def load_incidents_data(
     ----------
     record : OverviewRecord
         Record to load data into
-    site_config : HousingConfig
-        Site configuration
+    housing_config : HousingConfig
+        Housing configuration
     group : str
         TDMS group name
     keys : List[str]
@@ -526,7 +552,7 @@ def load_incidents_data(
 
         logger.info(f"Loading {incident_type} data: {len(files)} files")
 
-        df_list = load_data(files, record.site, "", group, keys)
+        df_list = load_data(files, record.housing, "", group, keys)
 
         # Add time column to each incident DataFrame
         for df in df_list:
@@ -548,7 +574,8 @@ def load_incidents_data(
 def process_overview_file(
     overview_file: str,
     config: ProcessingConfig,
-    site_config: HousingConfig | None = None,
+    housing_config: HousingConfig | None = None,
+    dry_run: bool = False,
 ) -> OverviewRecord:
     """
     Process a single overview file with all associated data.
@@ -563,8 +590,8 @@ def process_overview_file(
         Path to overview TDMS file
     config : ProcessingConfig
         Processing configuration
-    site_config : HousingConfig, optional
-        Site-specific configuration (auto-detected if not provided)
+    housing_config : HousingConfig, optional
+        Housing-specific configuration (auto-detected if not provided)
 
     Returns
     -------
@@ -579,30 +606,30 @@ def process_overview_file(
     ... )
     >>> print(f"Duration: {record.duration} s")
     """
-    # Extract site and filename info
+    # Extract housing and filename info
     dirname = os.path.dirname(overview_file)
     basename = os.path.basename(overview_file)
     filename = basename.replace(".tdms", "")
     parts = filename.split("_")
-    site = parts[0]
+    housing = parts[0]
     mode = parts[1] if len(parts) > 1 else "Overview"
 
     logger.info(
-        f"Processing overview file: {filename} (dirname={dirname}, site={site}, mode={mode})"
+        f"Processing overview file: {filename} (dirname={dirname}, housing={housing}, mode={mode})"
     )
 
-    # Get site configuration
-    if site_config is None:
-        if site not in HOUSING_CONFIGS:
+    # Get housing configuration
+    if housing_config is None:
+        if housing not in HOUSING_CONFIGS:
             raise ValueError(
-                f"Unknown site: {site}. Available: {list(HOUSING_CONFIGS.keys())}"
+                f"Unknown housing: {housing}. Available: {list(HOUSING_CONFIGS.keys())}"
             )
-        site_config = HOUSING_CONFIGS[site]
+        housing_config = HOUSING_CONFIGS[housing]
 
     # Create record
     record = OverviewRecord(
         filename=filename,
-        site=site,
+        housing=housing,
         mode=mode,
     )
 
@@ -610,16 +637,20 @@ def process_overview_file(
     discovery = FileDiscovery(
         pigbrother_datadir=config.pigbrother_datadir,
         pigbrother_runlog_dir=os.path.dirname(overview_file) or None,
+        hybrid_datadir=config.hybrid_datadir if housing == "M8" else None,
     )
 
     # Use the new `discover` API which returns a FileSet
     # tdms is loaded at this point
-    record.sources = discovery.discover(overview_file, site=site)
+    record.sources = discovery.discover(overview_file, housing=housing, dry_run=dry_run)
 
     logger.info(
         f"Discovered files - archive: {len(record.sources.archive)}, "
         f"pupitre: {len(record.sources.pupitre)}, "
-        f"incidents: {len(record.sources.default) + len(record.sources.trigger) + len(record.sources.spike)}"
+        f"incidents: {len(record.sources.default) + len(record.sources.trigger) + len(record.sources.spike)}, "
+        f"hybrid_kHz: {len(record.sources.hybrid_kHz)}, "
+        f"hybrid_rms: {len(record.sources.hybrid_rms)}, "
+        f"hybrid_vprocess: {len(record.sources.hybrid_vprocess)}"
     )
 
     if config.dry_run:
@@ -658,7 +689,7 @@ def process_overview_file(
 
     # Load archive data
     if record.sources.archive:
-        df_archive = load_archive_data(record, site_config, config.group, keys)
+        df_archive = load_archive_data(record, housing_config, config.group, keys)
         if not df_archive.empty:
             at0 = df_archive["timestamp"].iloc[0]
             t_offset = compute_time_offset(SAMPLING_RATE_ARCHIVE)
@@ -670,10 +701,10 @@ def process_overview_file(
 
     # Load pupitre data
     if record.sources.pupitre:
-        print(f"site_config: {site_config}")
+        print(f"housing_config: {housing_config}")
         print(f"config.group: {config.group}")
         print(f"keys: {keys}")
-        df_pupitre = load_pupitre_data(record, site_config, config.group, keys)
+        df_pupitre = load_pupitre_data(record, housing_config, config.group, keys)
         if not df_pupitre.empty:
             # t is already computed by addTime(); timestamp was rebuilt in load_df
             # Extract pupitre parameters
@@ -696,16 +727,16 @@ def process_overview_file(
             else record.t0
         )
         incidents = load_incidents_data(
-            record, site_config, config.group, keys, reference_t0
+            record, housing_config, config.group, keys, reference_t0
         )
         record.data.update(incidents)
 
     # Extract signatures for each key
-    _extract_signatures(record, site_config, keys, config)
+    _extract_signatures(record, housing_config, keys, config)
 
     # Compute lag if requested
     if config.compute_lag and record.has_data("pupitre"):
-        _compute_lag_correlation(record, site_config, keys, config)
+        _compute_lag_correlation(record, housing_config, keys, config)
 
     logger.info(f"Processing complete for {filename}")
 
@@ -715,6 +746,7 @@ def process_overview_file(
 def process_experiment(
     overview_files: list[str],
     config: ProcessingConfig,
+    dry_run: bool = False,
 ) -> ProcessingResult:
     """
     Process multiple overview files for an experiment.
@@ -738,14 +770,14 @@ def process_experiment(
     # Sort files naturally
     sorted_files = natsorted(overview_files)
 
-    # Determine site from first file
+    # Determine housing from first file
     if sorted_files:
         first_basename = os.path.basename(sorted_files[0])
-        result.site = first_basename.split("_")[0]
+        result.housing = first_basename.split("_")[0]
 
     for overview_file in sorted_files:
         try:
-            record = process_overview_file(overview_file, config)
+            record = process_overview_file(overview_file, config, dry_run=dry_run)
             result.records[record.filename] = record
 
             # Track keys from first successful record
@@ -774,45 +806,48 @@ def process_experiment(
 # =============================================================================
 
 
-def _get_pupitre_channel(site_config: HousingConfig, key: str) -> str | None:
+def _get_pupitre_channel(housing_config: HousingConfig, key: str) -> str | None:
     """Get pupitre channel name for a key."""
     if key == "Courant_GR1":
-        return site_config.reference_gr1_current
+        return housing_config.reference_gr1_current
     elif key == "Courant_GR2":
-        return site_config.reference_gr2_current
+        return housing_config.reference_gr2_current
     return None
 
 
-def _get_pupitre_group(site_config: HousingConfig, group: str) -> list[str] | None:
+def _get_pupitre_group(housing_config: HousingConfig, group: str) -> list[str] | None:
     """Get pupitre list of keys for a group."""
     keys = []
     if group == "Courants_Alimentations":
-        if site_config.reference_gr1_current:
-            keys.append(site_config.reference_gr1_current)
-        if site_config.reference_gr2_current:
-            keys.append(site_config.reference_gr2_current)
+        if housing_config.reference_gr1_current:
+            keys.append(housing_config.reference_gr1_current)
+        if housing_config.reference_gr2_current:
+            keys.append(housing_config.reference_gr2_current)
     elif group == "Tensions_Aimants":
-        if site_config.voltage_channels_gr1 and site_config.voltage_channels_gr2:
-            keys = site_config.voltage_channels_gr1 + site_config.voltage_channels_gr2
+        if housing_config.voltage_channels_gr1 and housing_config.voltage_channels_gr2:
+            keys = (
+                housing_config.voltage_channels_gr1
+                + housing_config.voltage_channels_gr2
+            )
 
     return keys if keys else None
 
 
-def _get_pupitre_flow(site_config: HousingConfig) -> list[str] | None:
+def _get_pupitre_flow(housing_config: HousingConfig) -> list[str] | None:
     """Get pupitre keys for flow."""
     keys = []
-    if site_config.reference_gr1_flow:
-        keys.append(site_config.reference_gr1_flow)
-    if site_config.reference_gr2_flow:
-        keys.append(site_config.reference_gr2_flow)
-    if site_config.reference_gr1_rpm:
-        keys.append(site_config.reference_gr1_rpm)
-    if site_config.reference_gr2_rpm:
-        keys.append(site_config.reference_gr2_rpm)
-    if site_config.reference_gr1_pin:
-        keys.append(site_config.reference_gr1_pin)
-    if site_config.reference_gr2_pin:
-        keys.append(site_config.reference_gr2_pin)
+    if housing_config.reference_gr1_flow:
+        keys.append(housing_config.reference_gr1_flow)
+    if housing_config.reference_gr2_flow:
+        keys.append(housing_config.reference_gr2_flow)
+    if housing_config.reference_gr1_rpm:
+        keys.append(housing_config.reference_gr1_rpm)
+    if housing_config.reference_gr2_rpm:
+        keys.append(housing_config.reference_gr2_rpm)
+    if housing_config.reference_gr1_pin:
+        keys.append(housing_config.reference_gr1_pin)
+    if housing_config.reference_gr2_pin:
+        keys.append(housing_config.reference_gr2_pin)
     return keys if keys else None
 
 
@@ -840,7 +875,7 @@ def _synchronize_pupitre(record: OverviewRecord, config: ProcessingConfig) -> No
 
 def _extract_signatures(
     record: OverviewRecord,
-    site_config: HousingConfig,
+    housing_config: HousingConfig,
     keys: list[str],
     config: ProcessingConfig,
 ) -> None:
@@ -865,7 +900,7 @@ def _extract_signatures(
 
 def _compute_lag_correlation(
     record: OverviewRecord,
-    site_config: HousingConfig,
+    housing_config: HousingConfig,
     keys: list[str],
     config: ProcessingConfig,
 ) -> None:
@@ -876,7 +911,7 @@ def _compute_lag_correlation(
     for key in keys:
         # Get channel mappings using helper functions
         overview_key = _get_archive_channel(key)
-        pupitre_key = _get_pupitre_channel(site_config, key)
+        pupitre_key = _get_pupitre_channel(housing_config, key)
 
         if not pupitre_key:
             continue
@@ -980,13 +1015,17 @@ def summarize_record(record: OverviewRecord) -> dict[str, Any]:
     """
     return {
         "filename": record.filename,
-        "site": record.site,
+        "housing": record.housing,
         "mode": record.mode,
         "t0": str(record.t0) if record.t0 else None,
         "duration": record.duration,
         "has_overview": record.has_data("overview"),
         "has_archive": record.has_data("archive"),
         "has_pupitre": record.has_data("pupitre"),
+        "has_hybrid_kHz": record.has_data("hybrid_kHz"),
+        "has_hybrid_rms": record.has_data("hybrid_rms"),
+        "has_hybrid_vprocess": record.has_data("hybrid_vprocess"),
+        "n_hybrid_incidents": len(record.data.get("hybrid_trigger", [])),
         "n_default": len(record.data.get("default", [])),
         "n_trigger": len(record.data.get("trigger", [])),
         "n_spike": len(record.data.get("spike", [])),
@@ -1001,25 +1040,31 @@ def print_record_summary(record: OverviewRecord) -> None:
     """Print a formatted summary of a record."""
     summary = summarize_record(record)
 
-    logger.info("=" * 60)
-    logger.info(f"Overview Record: {summary['filename']}")
-    logger.info("=" * 60)
-    logger.info(f"Site: {summary['site']}, Mode: {summary['mode']}")
-    logger.info(f"Start time: {summary['t0']}")
-    logger.info(f"Duration: {summary['duration']:.1f} s")
-    logger.info("Data sources:")
-    logger.info(f"  - Overview: {'yes' if summary['has_overview'] else 'no'}")
-    logger.info(f"  - Archive: {'yes' if summary['has_archive'] else 'no'}")
-    logger.info(f"  - Pupitre: {'yes' if summary['has_pupitre'] else 'no'}")
-    logger.info(
+    print("=" * 60)
+    print(f"Overview Record: {summary['filename']}")
+    print("=" * 60)
+    print(f"Housing: {summary['housing']}, Mode: {summary['mode']}")
+    print(f"Start time: {summary['t0']}")
+    print(f"Duration: {summary['duration']:.1f} s")
+    print("Data sources:")
+    print(f"  - Overview: {'yes' if summary['has_overview'] else 'no'}")
+    print(f"  - Archive: {'yes' if summary['has_archive'] else 'no'}")
+    print(f"  - Pupitre: {'yes' if summary['has_pupitre'] else 'no'}")
+    print(f"  - Hybrid kHz: {'yes' if summary['has_hybrid_kHz'] else 'no'}")
+    print(f"  - Hybrid RMS: {'yes' if summary['has_hybrid_rms'] else 'no'}")
+    print(f"  - Hybrid Vprocess: {'yes' if summary['has_hybrid_vprocess'] else 'no'}")
+
+    print(
         f"  - Incidents: {summary['n_default']} default, {summary['n_trigger']} trigger, {summary['n_spike']} spike"
     )
-    logger.info(f"Signatures: {', '.join(summary['signatures']) or 'None'}")
+    print(f"  - Hybrid Incidents: {summary['n_hybrid_incidents']} hybrid_trigger")
+
+    print(f"Signatures: {', '.join(summary['signatures']) or 'None'}")
 
     if summary["sync_info"]:
-        logger.info("Sync info:")
+        print("Sync info:")
         for key, value in summary["sync_info"].items():
-            logger.info(f"  - {key}: {value}")
+            print(f"  - {key}: {value}")
 
-    logger.info(f"Pupitre params: teb={summary['teb']:.2f}, BP={summary['BP']:.2f}")
-    logger.info("=" * 60)
+    print(f"Pupitre params: teb={summary['teb']:.2f}, BP={summary['BP']:.2f}")
+    print("=" * 60, flush=True)
