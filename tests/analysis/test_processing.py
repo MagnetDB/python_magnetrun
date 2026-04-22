@@ -65,19 +65,19 @@ class TestOverviewRecord:
         """Test basic record creation."""
         record = OverviewRecord(
             filename="M9_Overview_241106-091500",
-            site="M9",
+            housing="M9",
             mode="Overview",
         )
 
         assert record.filename == "M9_Overview_241106-091500"
-        assert record.site == "M9"
+        assert record.housing == "M9"
         assert record.mode == "Overview"
         assert record.t0 is None
         assert record.duration == 0.0
 
     def test_data_defaults(self):
         """Test default data structures."""
-        record = OverviewRecord(filename="test", site="M9")
+        record = OverviewRecord(filename="test", housing="M9")
 
         assert "overview" in record.data
         assert "archive" in record.data
@@ -91,7 +91,7 @@ class TestOverviewRecord:
 
     def test_has_data_empty(self):
         """Test has_data with empty data."""
-        record = OverviewRecord(filename="test", site="M9")
+        record = OverviewRecord(filename="test", housing="M9")
 
         assert record.has_data("overview") is False
         assert record.has_data("archive") is False
@@ -99,7 +99,7 @@ class TestOverviewRecord:
 
     def test_has_data_with_data(self):
         """Test has_data with actual data."""
-        record = OverviewRecord(filename="test", site="M9")
+        record = OverviewRecord(filename="test", housing="M9")
 
         # Add overview data
         record.data["overview"] = pd.DataFrame(
@@ -117,7 +117,7 @@ class TestOverviewRecord:
 
     def test_get_overview(self):
         """Test get_overview method."""
-        record = OverviewRecord(filename="test", site="M9")
+        record = OverviewRecord(filename="test", housing="M9")
 
         df = pd.DataFrame({"t": [0, 1], "I": [10, 20]})
         record.data["overview"] = df
@@ -127,7 +127,7 @@ class TestOverviewRecord:
 
     def test_get_incidents(self):
         """Test get_incidents method."""
-        record = OverviewRecord(filename="test", site="M9")
+        record = OverviewRecord(filename="test", housing="M9")
 
         record.data["default"] = [pd.DataFrame({"t": [0]})]
         record.data["trigger"] = [pd.DataFrame({"t": [1]}), pd.DataFrame({"t": [2]})]
@@ -147,7 +147,7 @@ class TestProcessingResult:
         result = ProcessingResult()
 
         assert result.records == {}
-        assert result.site == ""
+        assert result.housing == ""
         assert result.keys == []
         assert result.errors == []
 
@@ -156,16 +156,16 @@ class TestProcessingResult:
         result = ProcessingResult()
         assert len(result) == 0
 
-        result.records["file1"] = OverviewRecord(filename="file1", site="M9")
+        result.records["file1"] = OverviewRecord(filename="file1", housing="M9")
         assert len(result) == 1
 
-        result.records["file2"] = OverviewRecord(filename="file2", site="M9")
+        result.records["file2"] = OverviewRecord(filename="file2", housing="M9")
         assert len(result) == 2
 
     def test_get_record(self):
         """Test get_record method."""
         result = ProcessingResult()
-        record = OverviewRecord(filename="file1", site="M9")
+        record = OverviewRecord(filename="file1", housing="M9")
         result.records["file1"] = record
 
         assert result.get_record("file1") is record
@@ -255,12 +255,12 @@ class TestSummarizeRecord:
 
     def test_empty_record(self):
         """Test summarizing empty record."""
-        record = OverviewRecord(filename="test", site="M9")
+        record = OverviewRecord(filename="test", housing="M9")
 
         summary = summarize_record(record)
 
         assert summary["filename"] == "test"
-        assert summary["site"] == "M9"
+        assert summary["housing"] == "M9"
         assert summary["has_overview"] is False
         assert summary["has_archive"] is False
         assert summary["n_default"] == 0
@@ -269,7 +269,7 @@ class TestSummarizeRecord:
         """Test summarizing record with data."""
         record = OverviewRecord(
             filename="M9_Overview_test",
-            site="M9",
+            housing="M9",
             mode="Overview",
             duration=3600.0,
             teb=25.5,
@@ -304,7 +304,7 @@ class TestCreateOverviewDict:
 
         record = OverviewRecord(
             filename="test_file",
-            site="M9",
+            housing="M9",
             mode="Overview",
         )
         record.sources = FileSet(
@@ -334,7 +334,7 @@ class TestIntegration:
         # Create record
         record = OverviewRecord(
             filename="M9_Overview_241106-091500",
-            site="M9",
+            housing="M9",
             mode="Overview",
         )
 
@@ -371,7 +371,7 @@ class TestIntegration:
         assert summary["duration"] == 0.0  # Not set directly
 
         # Create result
-        result = ProcessingResult(site="M9")
+        result = ProcessingResult(housing="M9")
         result.records[record.filename] = record
 
         # Convert to legacy format

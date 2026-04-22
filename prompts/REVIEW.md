@@ -167,6 +167,9 @@ Either add it to a `hybrid` extras group or document the soft requirement explic
 | Cross-domain comparison (`DataLoader` extension, Phase A1–A3) | Done — A0–A3 complete |
 | Downsampling refactoring (`DownsampleConfig`, shared module) | Done — see `downsampling-refactoring.plan.md` |
 | Plotting refactoring (`plotting/` subpackage, backend protocol, JS path) | Done — see `plotting-refactoring.plan.md` |
+| `analysis/` internal refactoring (data loading, downsampling adoption, channel mapping, function decomposition) | Needs work — see `analysis-subpackage-refactoring.plan.md` |
+| `hybrid/` internal refactoring (outlier dedup, `OutlierConfig`, `signal_processing.py`) | Needs work — see `hybrid-subpackage-refactoring.plan.md` |
+| Pipeline redesign: polars npTDMS, narwhals in `MagnetRun`, no-double-load pipeline | Planned — see `mrun-cache-implementation.plan.md` (3 phases; Phase 1 independent) |
 
 The core abstractions are well-conceived — the ABC, the defs system, and `HousingConfig` are solid
 foundations. All major structural issues are now resolved: housing config consolidation, `MagnetData`
@@ -175,8 +178,9 @@ divergence (external callers cleaned up), Protocol unification (`DataLoader` onl
 convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC), downsampling refactoring
 (`DownsampleConfig`, shared `utils/downsampling.py`, `tsdownsample` extras), and plotting
 refactoring (subpackage, backends, label/legend uniformization). Remaining work in priority order:
-(10) `HybridData` timestamp support (out of current scope); (11) cross-domain Phases B–G
-(`ComparisonSession`, adapters, CLI — depends on 10); (12) editor backup file.
+(10) `analysis/` internal refactoring; (11) `HybridData` timestamp support (out of current scope,
+requires analysis Phase 6 first); (12) `hybrid/` internal refactoring; (13) editor backup file;
+(14) cross-domain Phases B–G (`ComparisonSession`, adapters, CLI — depends on 11).
 
 ---
 
@@ -276,13 +280,47 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
    shared `format_label()` utility, consistent `ax.set_*` API across all backends.
    Full plan: **[`prompts/plotting-refactoring.plan.md`](plotting-refactoring.plan.md)**.
 
-10. **`HybridData` timestamp support** *(effort: M, out of current scope)* — tracked in
+10. **`analysis/` internal refactoring** *(effort: ~5–7 d)* — tracked in
+    **[`prompts/analysis-subpackage-refactoring.plan.md`](analysis-subpackage-refactoring.plan.md)**.
+    Key integration points with this document:
+    - Phase 2 (downsampling unification) completes adoption of the already-done `DownsampleConfig` work (item 8 above) inside `analysis/plotting.py`.
+    - Phase 4 (channel mapping) moves the last housing-lookup helpers out of `processing.py` into `HousingConfig`, completing item 1 above.
+    - **Phase 6 (`add_time_columns` in `utils/timestamps.py`) is a prerequisite for item 11 below** — the shared utility is needed by `HybridData.addTime()`.
+    - Items still open in this document not covered by the plan: `analysis/__init__.py` flat export (Minor 9) and CLI consolidation (Minor 10).
+    - **Must be coordinated with item 10b below** — both touch `loaders.py`; run as a single pass.
+
+10b. **Pipeline redesign: polars/narwhals/no-double-load** *(effort: XL, multi-phase)* — tracked in
+    **[`prompts/mrun-cache-implementation.plan.md`](mrun-cache-implementation.plan.md)**.
+    Four phases, each independently testable. Package is **usable today** without any phase
+    implemented — the double-load is a performance issue only.
+
+    | Phase | Task | Dependency |
+    |-------|------|------------|
+    | 1+2b-tdms | Custom npTDMS (polars) + `TdmsMagnetData` internal migration | **Must land together** — polars npTDMS breaks pandas-specific internals |
+    | 2 | `nw.from_native()` wrap in `PandasMagnetData.getData()` only | Phase 1+2b-tdms |
+    | 3 | Pipeline restructure: `select_files()` returns `(path, MagnetRun)` pairs | Phase 2; merge with item 10 `analysis/` refactoring |
+    | 2b-pandas | Full internal migration of `PandasMagnetData` internals; rename class | Long-term; after Phase 3; incremental method-by-method |
+
+    Cross-cutting sequencing:
+    ```
+    Phase 1+2b-tdms  →  Phase 2  →  Phase 2 + item 10 (single pass)  →  Phase 3  →  item 14 Phases D–E  →  Phase 2b-pandas
+    ```
+
+11. **`HybridData` timestamp support** *(effort: M, out of current scope)* — tracked in
     **[`prompts/hybriddata-timestamp-plan.md`](hybriddata-timestamp-plan.md)**:
     add `start_timestamp`, `end_timestamp`, `_infer_timestamps()`, `addTime()`,
     `getStartDate()`, `getDuration()` to `HybridData`. Required before `HybridRun` can
     participate as a source in `ComparisonSession` (Phase E).
+    **Prerequisite**: `analysis/` Phase 6 (`add_time_columns` utility) should land first.
 
-11. **Cross-domain comparison — Phases B–G** *(effort: XL)* — depends on item 10.
+12. **`hybrid/` internal refactoring** *(effort: ~10–14 h)* — tracked in
+    **[`prompts/hybrid-subpackage-refactoring.plan.md`](hybrid-subpackage-refactoring.plan.md)**.
+    Key integration points:
+    - Phase 4 (`OutlierConfig` dataclass) follows the same design decision as `DownsampleConfig` (item 8 above).
+    - Phases 1–3 and 5 are self-contained; no dependency on other open items.
+    - Does **not** address `HybridData` timestamp support (item 11 above), which remains separate.
+
+14. **Cross-domain comparison — Phases B–G** *(effort: XL)* — depends on item 11.
 
     | Phase | Task |
     |---|---|

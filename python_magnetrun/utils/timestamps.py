@@ -7,6 +7,8 @@ parse_tdms_filename(filename)       → datetime | None
 parse_filename_timestamp(filename)  → datetime | None   (dispatches on extension)
 parse_wf_start_time(groups)         → datetime | None   (from TDMS channel properties)
 seconds_since_midnight(dt)          → float
+
+Timezone conversion helpers have moved to :mod:`python_magnetrun.utils.timezone`.
 """
 
 from __future__ import annotations
@@ -14,8 +16,6 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
-
-import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +75,7 @@ def parse_tdms_filename(filename: str) -> datetime | None:
         date_str, time_str = timestamp_part.split("-", 1)
     except ValueError:
         logger.warning(
-            f"parse_tdms_filename: cannot split timestamp {timestamp_part} in {filename}",
-            timestamp_part,
-            filename,
+            f"parse_tdms_filename: cannot split timestamp {timestamp_part} in {filename}"
         )
         return None
     # Try HHMMSS (6-char time), fall back to HHMM (4-char time).
@@ -152,60 +150,3 @@ def seconds_since_midnight(dt: datetime) -> float:
     return float(dt.hour * 3600 + dt.minute * 60 + dt.second)
 
 
-def convert_to_timestamp_aware(
-    date_str: str,
-    time_str: str,
-    date_format: str = "%y%m%d",
-    time_format: str = "%H%M",
-    time_zone: str = "Europe/Paris",
-) -> tuple:
-    """Convert date and time strings to a UTC timestamp, handling the input time zone.
-
-    :param date_str: Date string (e.g., '230718')
-    :param time_str: Time string (e.g., '1506')
-    :param date_format: Format string for the date part (e.g., '%y%m%d')
-    :param time_format: Format string for the time part (e.g., '%H%M')
-    :param time_zone: The time zone of the input date/time (e.g., 'Europe/Paris')
-    :return: A tuple (UTC timestamp as float, UTC formatted datetime string).
-    """
-    date_time_str = date_str + time_str
-    date_time_format = date_format + time_format
-    naive_dt = datetime.strptime(date_time_str, date_time_format)
-
-    tz = pytz.timezone(time_zone)
-    aware_dt_local = tz.localize(naive_dt)
-    aware_dt_utc = aware_dt_local.astimezone(pytz.utc)
-
-    timestamp = aware_dt_utc.timestamp()
-    formatted_date_time_utc = aware_dt_utc.strftime("%Y-%m-%dT%H:%M:%S")
-
-    return (timestamp, formatted_date_time_utc)
-
-
-def convert_to_timestamp(
-    date_str: str,
-    time_str: str,
-    date_format: str = "%y%m%d",
-    time_format: str = "%H%M",
-) -> tuple:
-    """Convert date and time strings to a naive local timestamp.
-
-    Examples of format pairs:
-
-    * TDMS files:    date_format="%y%m%d",  time_format="%H%M%S"
-    * Pupitre files: date_format="%Y%m%d",  time_format="%H:%M:%S"
-
-    :param date_str: Date string.
-    :param time_str: Time string.
-    :param date_format: strptime format for the date part.
-    :param time_format: strptime format for the time part.
-    :return: A tuple (local timestamp as float, formatted datetime string).
-    """
-    date_time_str = date_str + time_str
-    date_time_format = date_format + time_format
-    date_time_obj = datetime.strptime(date_time_str, date_time_format)
-
-    timestamp = date_time_obj.timestamp()
-    formatted_date_time = date_time_obj.strftime("%Y-%m-%d %H:%M:%S")
-
-    return (timestamp, formatted_date_time)

@@ -13,7 +13,7 @@ Example::
     from python_magnetrun.hybrid.data_protocol import DataLoader, load_and_compare
 
     # Both MagnetRun and HybridRun implement DataLoader protocol
-    mrun: DataLoader = MagnetRun.fromtdms(site, insert, file)
+    mrun: DataLoader = MagnetRun.fromtdms(housing, site, file)
     hrun: DataLoader = HybridRun.fromdir(base_dir, date_str)
 
     # Generic function that works with any DataLoader
@@ -220,7 +220,11 @@ def get_data_info(loader: DataLoader) -> DataInfo:
     if loader_type == "MagnetRun":
         mdata = loader.getMData() if hasattr(loader, "getMData") else None
         if mdata:
-            source_type = DataSourceType.TDMS if mdata.Type == DataType.TDMS else DataSourceType.PUPITRE
+            source_type = (
+                DataSourceType.TDMS
+                if mdata.Type == DataType.TDMS
+                else DataSourceType.PUPITRE
+            )
             filename = mdata.FileName
         else:
             source_type = DataSourceType.UNKNOWN

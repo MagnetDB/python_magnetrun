@@ -197,6 +197,59 @@ def create_hybrid_parser() -> argparse.ArgumentParser:
     return parser
 
 
+DOWNSAMPLE_METHODS = ("none", "stride", "minmax", "minmax_lttb", "lttb")
+"""Valid downsampling method names for ``--downsample-method``."""
+
+
+def create_downsampling_parser() -> argparse.ArgumentParser:
+    """Create parser with downsampling arguments.
+
+    ``--downsample-method`` selects the algorithm (``none`` disables all
+    downsampling, which is the default).  ``--downsample-params`` accepts a
+    JSON object whose keys are forwarded as keyword arguments to
+    :class:`~python_magnetrun.utils.downsampling.DownsampleConfig`.
+
+    Supported ``--downsample-params`` keys:
+
+    * ``n_out`` *(int)*: target number of output points (default: 10 000).
+    * ``bucket_size`` *(int)*: only used by the ``minmax`` method.
+
+    Examples::
+
+        --downsample-method stride --downsample-params '{"n_out": 5000}'
+        --downsample-method minmax_lttb
+        --downsample-method minmax --downsample-params '{"n_out": 8000, "bucket_size": 50}'
+
+    :return: ArgumentParser with downsampling arguments
+    :rtype: argparse.ArgumentParser
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--downsample-method",
+        choices=DOWNSAMPLE_METHODS,
+        default="none",
+        metavar="METHOD",
+        help=(
+            "downsampling algorithm applied before plotting: "
+            "none (disabled, default), stride, minmax, minmax_lttb, lttb. "
+            "minmax_lttb and lttb require the tsdownsample package."
+        ),
+    )
+    parser.add_argument(
+        "--downsample-params",
+        type=str,
+        default=None,
+        metavar="JSON",
+        help=(
+            "JSON object of method-specific parameters. "
+            "Supported keys: n_out (int, default 10000), "
+            "bucket_size (int, minmax only). "
+            "Example: '{\"n_out\": 5000}'"
+        ),
+    )
+    return parser
+
+
 def create_common_smoothing_parser() -> argparse.ArgumentParser:
     """Create parser with common smoothing arguments.
 
@@ -260,7 +313,7 @@ def create_base_parser(
         default="notdefined",
     )
     parser.add_argument(
-        "--insert", help="specify an insert (ex: M25032101_0)", default="notdefined"
+        "--insert", help="specify an insert (ex: M25032101)", default="notdefined"
     )
     parser.add_argument(
         "--housing", help="specify a housing (ex. M8, M9,...)", default="notdefined"
@@ -319,7 +372,9 @@ def create_analysis_parser() -> argparse.ArgumentParser:
     managed_plots_parser = create_managed_plots_parser()
 
     parser = argparse.ArgumentParser(parents=[base_parser, managed_plots_parser])
-    parser.add_argument("--runlogs", nargs="+", help="enter run-log files from ACQ_ENET")
+    parser.add_argument(
+        "--runlogs", nargs="+", help="enter run-log files from ACQ_ENET"
+    )
     parser.add_argument(
         "--runlog_datadir",
         help=(

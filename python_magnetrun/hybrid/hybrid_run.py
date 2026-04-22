@@ -22,7 +22,7 @@ Example usage:
     data_ds = hrun.getData("kHz/FEPC-LNCMI/I_H1", downsample=10000)
 
     # Compare with MagnetRun
-    mrun = MagnetRun.fromtdms(site, insert, tdms_file)
+    mrun = MagnetRun.fromtdms(housing, site, tdms_file)
     # Both have similar interfaces for getData(), getKeys(), etc.
 """
 
@@ -37,7 +37,11 @@ import numpy as np
 import pandas as pd
 
 # Local imports
-from ..utils.downsampling import DownsampleConfig, downsample_arrays, downsample_dataframe
+from ..utils.downsampling import (
+    DownsampleConfig,
+    downsample_arrays,
+    downsample_dataframe,
+)
 from .hybrid_data import HybridData
 
 # Setup logger
@@ -836,7 +840,9 @@ class HybridRun:
         """
         # Get hybrid data
         ds_config = (
-            DownsampleConfig(n_out=downsample) if isinstance(downsample, int) else downsample
+            DownsampleConfig(n_out=downsample)
+            if isinstance(downsample, int)
+            else downsample
         )
         h_data, h_time = self.getData(hybrid_key, downsample=ds_config)
 

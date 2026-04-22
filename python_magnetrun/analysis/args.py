@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
-from ..cli_args import create_base_parser
+from ..cli_args import create_base_parser, create_downsampling_parser
 from .config import (
     DEFAULT_BINS,
     DEFAULT_LEVELS,
@@ -23,10 +24,11 @@ def create_argument_parser() -> argparse.ArgumentParser:
         Configured argument parser
     """
     base_parser = create_base_parser([".tdms"])
+    downsample_parser = create_downsampling_parser()
     parser = argparse.ArgumentParser(
         description="Analyze magnetrun data from TDMS and pupitre files",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        parents=[base_parser],
+        parents=[base_parser, downsample_parser],
         epilog="""
 Examples:
   %(prog)s M9_Overview_*.tdms --show
@@ -108,13 +110,6 @@ Examples:
         metavar="N",
         help="Number of levels for piecewise fitting",
     )
-    param_group.add_argument(
-        "--downsample",
-        type=float,
-        default=100.0,
-        metavar="PERCENT",
-        help="Percentage of data points to plot (1-100)",
-    )
 
     # Output options
     output_group = parser.add_argument_group("Output options")
@@ -134,7 +129,7 @@ Examples:
     log_group.add_argument(
         "--debug",
         action="store_true",
-        help="Enable debug output",
+        help="Enable debug output (shorthand for --log-level DEBUG)",
     )
     log_group.add_argument(
         "--quiet",
@@ -155,6 +150,46 @@ Examples:
     )
 
     return parser
+
+
+def args_to_downsample_config(args: argparse.Namespace):
+    """
+    Build a DownsampleConfig from parsed downsampling CLI arguments.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Must have ``downsample_method`` and optionally ``downsample_params``.
+
+    Returns
+    -------
+    DownsampleConfig or None
+        ``None`` when ``--downsample-method none`` (the default).
+
+    Raises
+    ------
+    argparse.ArgumentTypeError
+        When ``--downsample-params`` is not valid JSON.
+    """
+    from ..utils.downsampling import DownsampleConfig
+
+    method = getattr(args, "downsample_method", "none")
+    if method == "none":
+        return None
+
+    params_str = getattr(args, "downsample_params", None)
+    params: dict = {}
+    if params_str:
+        try:
+            params = json.loads(params_str)
+        except json.JSONDecodeError as exc:
+            raise argparse.ArgumentTypeError(
+                f"--downsample-params is not valid JSON: {exc}"
+            ) from exc
+
+    n_out: int = int(params.get("n_out", 10_000))
+    bucket_size: int | None = params.get("bucket_size", None)
+    return DownsampleConfig(n_out=n_out, method=method, bucket_size=bucket_size)
 
 
 def parse_arguments(args: list[str] | None = None) -> argparse.Namespace:
@@ -204,5 +239,5 @@ def args_to_processing_config(args: argparse.Namespace):
         debug=args.debug,
         show=args.show,
         save=args.save,
-        downsample_percent=args.downsample,
+        downsample_config=args_to_downsample_config(args),
     )

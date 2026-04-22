@@ -94,12 +94,12 @@ class TestFileMetadata:
         """Test basic metadata creation."""
         meta = FileMetadata(
             filepath="/data/M9_Overview_241106-1643.tdms",
-            site="M9",
+            housing="M9",
             mode="Overview",
             start_time="2024-11-06 16:43:00",
             end_time="2024-11-06 17:43:00",
         )
-        assert meta.site == "M9"
+        assert meta.housing == "M9"
         assert meta.mode == "Overview"
 
     def test_filename_property(self):
@@ -341,7 +341,9 @@ class TestFileDiscovery:
 
     def test_init_custom_dirs(self):
         """Custom directories should be set."""
-        fd = FileDiscovery(pupitre_datadir="/custom/pupitre", pigbrother_runlog_dir="/custom/logs")
+        fd = FileDiscovery(
+            pupitre_datadir="/custom/pupitre", pigbrother_runlog_dir="/custom/logs"
+        )
         assert str(fd.pupitre_datadir) == "/custom/pupitre"
         assert str(fd.pigbrother_runlog_dir) == "/custom/logs"
 
@@ -359,7 +361,11 @@ class TestIntegration:
     def test_file_discovery_workflow(self, mock_extract, mock_glob):
         """Test complete discovery workflow with mocks."""
         # Setup mocks
-        mock_extract.return_value = ("2024-11-06 16:43:00", "2024-11-06 17:43:00", False)
+        mock_extract.return_value = (
+            "2024-11-06 16:43:00",
+            "2024-11-06 17:43:00",
+            False,
+        )
         mock_glob.return_value = []  # No files found
 
         fd = FileDiscovery(pupitre_datadir="/data")

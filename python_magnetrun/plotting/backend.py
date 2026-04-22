@@ -69,10 +69,11 @@ class PlottingBackend(Protocol):
         fig: Any,
         ax_idx: int,
         t: float,
+        f: float,
         label: str,
         detail: dict | None = None,
     ) -> None:
-        """Add a clickable annotation at time *t* on the *ax_idx*-th axes."""
+        """Add a clickable annotation at (t, f) on the *ax_idx*-th axes."""
         ...
 
     def save(self, fig: Any, path: Path, *, dpi: int = 300) -> None:

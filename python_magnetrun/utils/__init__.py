@@ -1,10 +1,18 @@
 from .downsampling import DownsampleConfig, downsample_arrays, downsample_dataframe
+from .files import SUPPORTED_EXTENSIONS, get_extension
 from .timestamps import (
     TXT_TIMESTAMP_FORMATS,
     parse_filename_timestamp,
     parse_tdms_filename,
     parse_txt_filename,
     seconds_since_midnight,
+)
+from .timezone import (
+    ensure_utc_naive,
+    local_to_utc_naive,
+    series_local_to_utc_naive,
+    series_utc_to_local_naive,
+    timerange_to_utc,
 )
 from .validation import (
     FileFormatError,
@@ -21,12 +29,19 @@ __all__ = [
     "DownsampleConfig",
     "downsample_arrays",
     "downsample_dataframe",
+    "SUPPORTED_EXTENSIONS",
+    "get_extension",
     "TXT_TIMESTAMP_FORMATS",
     "FileFormatError",
     "parse_filename_timestamp",
     "parse_tdms_filename",
     "parse_txt_filename",
     "seconds_since_midnight",
+    "ensure_utc_naive",
+    "local_to_utc_naive",
+    "series_local_to_utc_naive",
+    "series_utc_to_local_naive",
+    "timerange_to_utc",
     "validate_csv_format",
     "validate_fepc_binary_format",
     "validate_file_exists",

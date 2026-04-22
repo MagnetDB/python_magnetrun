@@ -270,11 +270,22 @@ def _plot_vs_time_backend(
     """
     from collections import defaultdict
 
+    from ..plotting.utils import resolve_legend_labels
+
     items = args.vs_time
     title = _plot_title(input_files, items)
     output_json = getattr(args, "json", False)
     same_color_per_type: bool = getattr(args, "same_color_per_type", False)
     display_units = _parse_display_units(getattr(args, "unit", None))
+
+    # Pre-compute disambiguated labels from the first file's FieldMeta, identical
+    # to the matplotlib path: JSON label > symbol_suffix > field name.
+    _all_keys: list[str] = list(
+        dict.fromkeys(k for ext_args in items for k in ext_args)
+    )
+    _first_mdata = inputs[input_files[0]]["data"].getMData()
+    _field_metas = {k: _first_mdata.getFieldMeta(k) for k in _all_keys}
+    _resolved_labels = resolve_legend_labels(_all_keys, _field_metas)
 
     # Per-extension-type accumulators (preserving insertion order via ext_order).
     ext_order: list[str] = []
@@ -351,12 +362,30 @@ def _plot_vs_time_backend(
         src_color = cfg.colors.get_file_color(i, f_extension, same_color_per_type)
         basename = os.path.basename(file).replace(f_extension, "")
 
+        # Map raw col_names → resolved display labels (clash-aware) with unit suffix
+        display_labels = [
+            f"{_resolved_labels.get(raw_key, col)} [{unit_str}]"
+            for raw_key, col, unit_str in zip(
+                plot_args, col_names, field_unit_strs, strict=True
+            )
+        ]
+
         if len(input_files) > 1:
-            rename = {old: f"{basename}: {old}" for old in col_names}
+            rename = {
+                old: f"{basename}: {lbl}"
+                for old, lbl in zip(col_names, display_labels, strict=True)
+            }
             df = df.rename(columns=rename)
             field_names = list(rename.values())
         else:
-            field_names = col_names
+            rename = {
+                old: lbl
+                for old, lbl in zip(col_names, display_labels, strict=True)
+                if old != lbl
+            }
+            if rename:
+                df = df.rename(columns=rename)
+            field_names = display_labels
 
         slice_df = df[["t"] + field_names].copy()
         slice_df.attrs.clear()  # pint cross-registry ValueError in pd.concat
@@ -555,6 +584,8 @@ def plot_vs_time(input_files, inputs, extensions, args):
     # ---- matplotlib overlay path (legacy direct implementation) ----------------
     import matplotlib.pyplot as plt
 
+    from ..plotting.utils import resolve_legend_labels
+
     items = args.vs_time
     logger.debug(f"items={items}")
     title = _plot_title(input_files, items)
@@ -565,9 +596,22 @@ def plot_vs_time(input_files, inputs, extensions, args):
     legends = []
     t0 = []
     symbol, unit = None, None
+
+    # Pre-compute disambiguated legend labels using the first file's FieldMeta.
+    # resolve_legend_labels handles: JSON label > symbol_suffix > field name,
+    # so fields without a label get proper suffix disambiguation rather than
+    # falling back to the bare physics symbol.
+    _all_keys: list[str] = list(
+        dict.fromkeys(k for ext_args in items for k in ext_args)
+    )
+    _first_mdata = inputs[input_files[0]]["data"].getMData()
+    _field_metas = {k: _first_mdata.getFieldMeta(k) for k in _all_keys}
+    _resolved_labels = resolve_legend_labels(_all_keys, _field_metas)
     seen_units: set[str] = set()
-    field_units: dict[str, str] = {}       # short key → unit_str, for mixed-unit hint
-    field_pint_units: dict[str, Any] = {}  # short key → pint unit, for dimensionality check
+    field_units: dict[str, str] = {}  # short key → unit_str, for mixed-unit hint
+    field_pint_units: dict[str, Any] = (
+        {}
+    )  # short key → pint unit, for dimensionality check
     f_extension = ""
     file = ""
     key = ""
@@ -590,7 +634,9 @@ def plot_vs_time(input_files, inputs, extensions, args):
         for key in plot_args:
             try:
                 (symbol, unit) = mdata.getUnitKey(key)
-                logger.debug(f"legend: file={os.path.basename(file)!r} key={key!r} symbol={symbol!r} unit={unit!r}")
+                logger.debug(
+                    f"legend: file={os.path.basename(file)!r} key={key!r} symbol={symbol!r} unit={unit!r}"
+                )
                 mdata.plotData(
                     x="t",
                     y=key,
@@ -605,7 +651,11 @@ def plot_vs_time(input_files, inputs, extensions, args):
                 field_units.setdefault(short_key, unit_str)
                 field_pint_units.setdefault(short_key, unit)
                 basename = os.path.basename(file).replace(f_extension, "")
-                entry = f"{basename}: {symbol} [{unit_str}]"
+                field_label = _resolved_labels.get(key, short_key)
+                multi_file = len(input_files) > 1
+                entry = (
+                    f"{basename}: {field_label}" if multi_file else field_label
+                ) + f" [{unit_str}]"
                 logger.debug(f"legend: appending {entry!r}")
                 legends.append(entry)
                 if args.normalize:
@@ -643,7 +693,9 @@ def plot_vs_time(input_files, inputs, extensions, args):
                 try:
                     unit_info = hrun.getMData().getUnitKey(key)
                     if len(unit_info) == 2:
-                        h_unit_str = f"{unit_info[1]:~P}" if unit_info[1] is not None else "?"
+                        h_unit_str = (
+                            f"{unit_info[1]:~P}" if unit_info[1] is not None else "?"
+                        )
                         seen_units.add(h_unit_str)
                         if symbol is None:
                             symbol, unit = unit_info
@@ -670,17 +722,25 @@ def plot_vs_time(input_files, inputs, extensions, args):
         if len(dims) <= 1:
             target = next(iter(seen_units))
             hint = " ".join(f"--unit {k}={target}" for k in field_units)
-            logger.warning(f"Mixed units on overlay ({unit_summary}) — ylabel suppressed. To align units add: {hint}")
+            logger.warning(
+                f"Mixed units on overlay ({unit_summary}) — ylabel suppressed. To align units add: {hint}"
+            )
         else:
-            logger.warning(f"Incompatible dimensions on overlay ({unit_summary}) — ylabel suppressed. Consider adding --normalize to compare shapes.")
+            logger.warning(
+                f"Incompatible dimensions on overlay ({unit_summary}) — ylabel suppressed. Consider adding --normalize to compare shapes."
+            )
     logger.debug(f"legend: final list ({len(legends)} entries): {legends}")
     if len(legends) > 1:
         handles, auto_labels = my_ax.get_legend_handles_labels()
-        logger.debug(f"legend: axes has {len(handles)} handles, auto_labels={auto_labels}")
+        logger.debug(
+            f"legend: axes has {len(handles)} handles, auto_labels={auto_labels}"
+        )
         for handle, label in zip(handles, legends, strict=False):
             handle.set_label(label)
         leg = my_ax.legend(loc=cfg.style.legend_loc)
-        logger.debug(f"legend: leg={leg}, visible={leg.get_visible() if leg is not None else 'N/A'}")
+        logger.debug(
+            f"legend: leg={leg}, visible={leg.get_visible() if leg is not None else 'N/A'}"
+        )
     try:
         (t_symbol, t_unit) = inputs[input_files[0]]["data"].getMData().getUnitKey("t")
         my_ax.set_xlabel(f"{t_symbol} [{t_unit:~P}]")

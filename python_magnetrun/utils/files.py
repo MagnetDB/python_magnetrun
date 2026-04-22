@@ -7,10 +7,16 @@ import numpy as np
 import pandas as pd
 from natsort import natsorted
 
-from ..MagnetRun import MagnetRun
 from .timestamps import parse_filename_timestamp
 
 logger = logging.getLogger(__name__)
+
+SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".tdms", ".txt", ".csv"})
+
+
+def get_extension(path: str) -> str:
+    """Return the lower-cased file extension of *path* (e.g. ``".tdms"``)."""
+    return os.path.splitext(path)[-1].lower()
 
 
 def expand_input_files(
@@ -71,31 +77,54 @@ def expand_input_files(
             base_datadir = datadir[extension]
             if base_datadir:
                 if extension == ".tdms":
-                    # Special handling: extract site and mode from filename.
+                    # Special handling: extract housing and mode from filename.
                     # Mode maps to a subdirectory (e.g. Overview→Overview,
                     # Archive→Fichiers_Archives, …).
                     parts = os.path.basename(pattern).split("_")
                     if len(parts) >= 2:
-                        site = parts[0]
+                        housing_from_file = parts[0]
                         mode = parts[1]
                         mode_dir = _TDMS_MODE_DIRS.get(mode, mode)
                         candidates.append(
-                            os.path.join(base_datadir, site, mode_dir, pattern)
+                            os.path.join(
+                                base_datadir, housing_from_file, mode_dir, pattern
+                            )
                         )
+                        if (
+                            housing_from_file != housing
+                            and housing
+                            and housing not in ("notdefined", "")
+                        ):
+                            logger.warning(
+                                f"Housing mismatch for pattern '{pattern}': "
+                                f"extracted '{housing_from_file}' vs provided '{housing}'"
+                            )
                     else:
                         candidates.append(os.path.join(base_datadir, pattern))
                 else:
-                    # For .txt pupitre files: try base_datadir, then base_datadir/<site>
-                    # where site is extracted from the filename (e.g. M10 from M10_…).
+                    # For .txt pupitre files: try base_datadir, then base_datadir/<housing>
+                    # where housing is extracted from the filename (e.g. M10 from M10_…).
                     candidates.append(os.path.join(base_datadir, pattern))
                     basename = os.path.basename(pattern)
                     if basename.startswith("M") and "_" in basename:
-                        site_from_name = basename.split("_")[0]
+                        housing_from_name = basename.split("_")[0]
                         candidates.append(
-                            os.path.join(base_datadir, site_from_name, pattern)
+                            os.path.join(base_datadir, housing_from_name, pattern)
                         )
-                    if housing and housing not in ("notdefined", ""):
-                        candidates.append(os.path.join(base_datadir, housing, pattern))
+                        if (
+                            housing_from_name != housing
+                            and housing
+                            and housing not in ("notdefined", "")
+                        ):
+                            logger.warning(
+                                f"Housing mismatch for pattern '{pattern}': "
+                                f"extracted '{housing_from_name}' vs provided '{housing}'"
+                            )
+                    else:
+                        if housing and housing not in ("notdefined", ""):
+                            candidates.append(
+                                os.path.join(base_datadir, housing, pattern)
+                            )
 
         logger.debug(f"candidates: {candidates}")
 
@@ -136,6 +165,8 @@ def extract_data(
     :return: Tuple of (start_timestamp, end_timestamp, skip_flag) as formatted strings
     :rtype: tuple
     """
+    from ..MagnetRun import MagnetRun  # lazy import to avoid circular dependency
+
     skip = False
     extension = os.path.splitext(file)[-1]
 
@@ -181,15 +212,15 @@ def extract_data(
     return (start_ftimestamp, end_ftimestamp, skip)
 
 
-def find_files(args, file, site, date, time):
+def find_files(args, file, housing, date, time):
     """Generate file filter patterns for different data types.
 
     :param args: Command line arguments containing data directory paths
     :type args: argparse.Namespace
     :param file: Overview file path used as reference
     :type file: str
-    :param site: Site identifier (e.g., M8, M9, M10)
-    :type site: str
+    :param housing: Housing identifier (e.g., M8, M9, M10)
+    :type housing: str
     :param date: Date string in YYMMDD format
     :type date: str
     :param time: Time string in HHMM format
@@ -197,9 +228,9 @@ def find_files(args, file, site, date, time):
     :return: Tuple of filter patterns (pupitre, archive, default, trigger, spike)
     :rtype: tuple
     """
-    logger.debug(f"find_files: file={file}, site={site}")
+    logger.debug(f"find_files: file={file}, housing={housing}")
 
-    pupitre_datadir = f"{args.pupitre_datadir}/{site}"
+    pupitre_datadir = f"{args.pupitre_datadir}/{housing}"
     pupitre_filter = f"{pupitre_datadir}/20{date[0:2]}.{date[2:4]}.{date[4:]}*.txt"
     logger.debug(f"find_files: pupitre_datadir: {pupitre_datadir}")
     logger.debug(f"find_files: pupitre_filter: {pupitre_filter}")
@@ -227,13 +258,13 @@ def find_files(args, file, site, date, time):
     return pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter
 
 
-def select_files(files: list, site: str, start: str, end: str):
+def select_files(files: list, housing: str, start: str, end: str):
     """Select files that fall within a specified time range.
 
     :param files: List of file paths to filter
     :type files: list
-    :param site: Site identifier (e.g., M8, M9, M10)
-    :type site: str
+    :param housing: Housing identifier (e.g., M8, M9, M10)
+    :type housing: str
     :param start: Start timestamp in format '%Y-%m-%d %H:%M:%S'
     :type start: str
     :param end: End timestamp in format '%Y-%m-%d %H:%M:%S'
@@ -255,7 +286,7 @@ def select_files(files: list, site: str, start: str, end: str):
 
         # extra treatment for pupitre in case pupitre ends before end_time but starts before start_time
         if extension == ".txt":
-            res = extract_data(file, site=site, insert=None, key=None)
+            res = extract_data(file, housing=housing, site=None, key=None)
             start_time_file = datetime.strptime(res[0], tformat)
             end_time_file = datetime.strptime(res[1], tformat)
 
@@ -269,7 +300,7 @@ def select_files(files: list, site: str, start: str, end: str):
                 logger.debug(f"tdms included into txt file: {file}")
 
         if datetime.strptime(start_ftimestamp, tformat) >= start_time:
-            res = extract_data(file, site=site, insert=None, key=None)
+            res = extract_data(file, housing=housing, site=None, key=None)
             start_time_file = datetime.strptime(res[0], tformat)
             end_time_file = datetime.strptime(res[1], tformat)
             # print(
@@ -288,15 +319,15 @@ def select_files(files: list, site: str, start: str, end: str):
     return selected
 
 
-def load_df(file, site, insert, group, keys) -> tuple:
+def load_df(file, housing, site, group, keys) -> tuple:
     """Load data from a file into a pandas DataFrame.
 
     :param file: Path to the data file (.txt or .tdms)
     :type file: str
-    :param site: Site identifier (e.g., M8, M9, M10)
+    :param housing: Housing identifier (e.g., M8, M9, M10)
+    :type housing: str
+    :param site: Site identifier
     :type site: str
-    :param insert: Insert identifier
-    :type insert: str
     :param group: Data group name for TDMS files
     :type group: str
     :param keys: List of data keys to extract
@@ -304,13 +335,15 @@ def load_df(file, site, insert, group, keys) -> tuple:
     :return: Tuple of (DataFrame with data, start timestamp)
     :rtype: tuple
     """
+    from ..MagnetRun import MagnetRun  # lazy import to avoid circular dependency
+
     extension = os.path.splitext(file)[-1]
 
     df = pd.DataFrame()
     t0 = None
     match extension:
         case ".txt":
-            mrun = MagnetRun.fromtxt(site, insert, file)
+            mrun = MagnetRun.fromtxt(housing, site, file)
             mdata = mrun.getMData()
             t0 = mdata.start_timestamp
             df = pd.DataFrame(mdata.getData(["t"] + keys))
@@ -318,7 +351,7 @@ def load_df(file, site, insert, group, keys) -> tuple:
             if t0 is not None:
                 df["timestamp"] = pd.Timestamp(t0) + pd.to_timedelta(df["t"], unit="s")
         case ".tdms":
-            mrun = MagnetRun.fromtdms(site, insert, file)
+            mrun = MagnetRun.fromtdms(housing, site, file)
             mdata = mrun.getMData()
             if keys[0] not in mdata.Groups[group]:
                 logger.warning(
@@ -343,15 +376,15 @@ def load_df(file, site, insert, group, keys) -> tuple:
     return df, t0
 
 
-def load_data(files, site, insert, group, keys) -> list[pd.DataFrame]:
+def load_data(files, housing, site, group, keys) -> list[pd.DataFrame]:
     """Load data from multiple files into a list of DataFrames.
 
     :param files: List of file paths to load
     :type files: list
-    :param site: Site identifier (e.g., M8, M9, M10)
+    :param housing: Housing identifier (e.g., M8, M9, M10)
+    :type housing: str
+    :param site: Site identifier
     :type site: str
-    :param insert: Insert identifier
-    :type insert: str
     :param group: Data group name for TDMS files
     :type group: str
     :param keys: List of data keys to extract
@@ -361,7 +394,7 @@ def load_data(files, site, insert, group, keys) -> list[pd.DataFrame]:
     """
     df_ = []
     for file in files:
-        df, t0 = load_df(file, site, insert, group, keys)
+        df, t0 = load_df(file, housing, site, group, keys)
         if not df.empty:
             df_.append(df)
     return df_

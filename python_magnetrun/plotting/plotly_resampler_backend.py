@@ -132,18 +132,49 @@ class PlotlyResamplerBackend:
         fig: Any,
         ax_idx: int,
         t: float,
+        f: float,
         label: str,
         detail: dict | None = None,
     ) -> None:
         _require_resampler()
-        hover = str(detail) if detail else label
-        fig.add_vline(
+        # Build hover text from simple scalar/string detail entries only.
+        if detail:
+            parts = [
+                f"{k}: {v}"
+                for k, v in detail.items()
+                if isinstance(v, str | int | float)
+            ]
+            hover = "<br>".join(parts) if parts else label
+        else:
+            hover = label
+        # Marker at (t, f)
+        fig.add_trace(
+            go.Scatter(
+                x=[t],
+                y=[f],
+                mode="markers",
+                marker=dict(color="yellow", size=10, symbol="circle",
+                            line=dict(color="black", width=1)),
+                name=label,
+                showlegend=False,
+                hovertext=hover,
+                hovertemplate="%{hovertext}<extra></extra>",
+            ),
+            row=ax_idx + 1,
+            col=1,
+        )
+        # Text annotation with arrow
+        fig.add_annotation(
             x=t,
-            line_dash="dash",
-            line_color="gray",
-            opacity=0.6,
-            annotation_text=label,
-            annotation_hovertext=hover,
+            y=f,
+            text=label,
+            showarrow=True,
+            arrowhead=2,
+            ax=20,
+            ay=-30,
+            bgcolor="rgba(255,255,0,0.7)",
+            bordercolor="gray",
+            borderwidth=1,
             row=ax_idx + 1,
             col=1,
         )

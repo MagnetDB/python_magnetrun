@@ -47,6 +47,7 @@ from python_magnetrun.plotting.style import (  # noqa: F401
     PlotColors,
     PlotStyle,
 )
+from python_magnetrun.utils.downsampling import DownsampleConfig, downsample_arrays
 
 # Module logger
 logger = logging.getLogger("python_magnetrun.analysis.plotting")
@@ -242,7 +243,7 @@ def plot_data(
     show: bool = False,
     save: bool = False,
     output_path: str | None = None,
-    downsample_percent: float = 100.0,
+    downsample_config: DownsampleConfig | None = None,
     style: PlotStyle | None = None,
     colors: PlotColors | None = None,
     interactive: bool = True,
@@ -284,9 +285,9 @@ def plot_data(
         Save plot to file
     output_path : str, optional
         Output file path (auto-generated if not provided)
-    downsample_percent : float, optional
-        Percentage of data to plot (0-100). Default is 100 (no downsampling).
-        Use lower values for large datasets.
+    downsample_config : DownsampleConfig or None, optional
+        Downsampling configuration (method + n_out + bucket_size).
+        ``None`` disables downsampling (default).
     style : PlotStyle, optional
         Plot style configuration
     colors : PlotColors, optional
@@ -306,12 +307,12 @@ def plot_data(
     ...     channels_dict, pupitre_dict, "M9",
     ...     tkey="t", key="Courant_GR1",
     ...     title="M9_Overview_241106", msg="(synchronized)",
-    ...     downsample_percent=10.0,  # Plot only 10% of points
+    ...     downsample_config=DownsampleConfig(n_out=10000, method="minmax_lttb"),
     ...     show=True,
     ... )
     """
     logger.info(
-        f"Plotting data for key '{key}' vs tkey={tkey} with downsample_percent={downsample_percent:.1f}%"
+        f"Plotting data for key '{key}' vs tkey={tkey} with downsample_config={downsample_config!r}"
     )
 
     style = style or DEFAULT_STYLE
@@ -329,8 +330,8 @@ def plot_data(
         x = df[x_col].values
         y = df[y_col].values
 
-        if downsample_percent < 100.0:
-            x, y = downsample_for_plot(x, y, downsample_percent)
+        if downsample_config is not None:
+            y, x = downsample_arrays(y, x, downsample_config)
 
         if marker:
             ax.plot(
@@ -372,9 +373,9 @@ def plot_data(
 
     # Plot pupitre data
     if not df_pupitre.empty:
-        print(
-            f"housing={housing}, key={key}, pupitre_dict={pupitre_dict}, df.columns={df_pupitre.columns.tolist()}",
-            flush=True,
+        logger.info(
+            f"housing={housing}, key={key}, pupitre_dict={pupitre_dict}, "
+            f"df.columns={df_pupitre.columns.tolist()}"
         )
         pupitre_key = pupitre_dict[housing][key]
         plot_series(
@@ -398,7 +399,9 @@ def plot_data(
                 if incident_key not in idf.columns:
                     continue
 
-                label = rf"{itype} \#{i + 1}"
+                f_mid = idf[incident_key].median()
+
+                label = rf"{itype} #{i + 1}"
                 detail = {
                     "anomaly": label,
                     "idx": i,
@@ -407,7 +410,7 @@ def plot_data(
                     "pupitre": (df_pupitre, pupitre_dict.get(housing, {}).get(key)),
                     "archive": (df_archive, channels_dict.get(key)),
                 }
-                manager.add(fig, 0, t_mid, label, detail)
+                manager.add(fig, 0, t_mid, f_mid, label, detail)
 
         manager.connect(fig)
 

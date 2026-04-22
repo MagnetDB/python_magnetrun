@@ -1,4 +1,4 @@
-"""Tests for python_magnetrun.utils.timestamps.
+"""Tests for python_magnetrun.utils.timestamps and utils.timezone.
 
 Covers:
   - parse_txt_filename   — three date/time formats + housing prefix
@@ -6,22 +6,32 @@ Covers:
   - parse_filename_timestamp — extension-based dispatch
   - parse_wf_start_time  — extraction from TDMS Groups dict
   - seconds_since_midnight
-  - convert_to_timestamp_aware
-  - convert_to_timestamp
+  - local_to_utc_naive
+  - ensure_utc_naive
+  - series_local_to_utc_naive
+  - series_utc_to_local_naive
+  - timerange_to_utc
 """
 
 from datetime import datetime
 
 import numpy as np
+import pandas as pd
+import pytz
 
 from python_magnetrun.utils.timestamps import (
-    convert_to_timestamp,
-    convert_to_timestamp_aware,
     parse_filename_timestamp,
     parse_tdms_filename,
     parse_txt_filename,
     parse_wf_start_time,
     seconds_since_midnight,
+)
+from python_magnetrun.utils.timezone import (
+    ensure_utc_naive,
+    local_to_utc_naive,
+    series_local_to_utc_naive,
+    series_utc_to_local_naive,
+    timerange_to_utc,
 )
 
 # ---------------------------------------------------------------------------
@@ -74,7 +84,6 @@ class TestParseTdmsFilename:
         assert parse_tdms_filename("bad.tdms") is None
 
     def test_missing_hyphen_in_timestamp_returns_none(self) -> None:
-        # No '-' between date and time → cannot split
         assert parse_tdms_filename("M9_Overview_231506.tdms") is None
 
 
@@ -142,35 +151,164 @@ class TestSecondsSinceMidnight:
 
 
 # ---------------------------------------------------------------------------
-# convert_to_timestamp_aware  (UTC-aware)
+# local_to_utc_naive
+# ---------------------------------------------------------------------------
+
+# Paris CEST (UTC+2) in July 2023: 15:06 local → 13:06 UTC
+_PARIS_LOCAL = datetime(2023, 7, 18, 15, 6, 0)
+_PARIS_UTC = datetime(2023, 7, 18, 13, 6, 0)
+
+# Paris CET (UTC+1) in January: 10:00 local → 09:00 UTC
+_PARIS_LOCAL_WIN = datetime(2023, 1, 18, 10, 0, 0)
+_PARIS_UTC_WIN = datetime(2023, 1, 18, 9, 0, 0)
+
+
+class TestLocalToUtcNaive:
+    def test_naive_datetime_summer(self) -> None:
+        result = local_to_utc_naive(_PARIS_LOCAL)
+        assert result == _PARIS_UTC
+        assert result.tzinfo is None
+
+    def test_naive_datetime_winter(self) -> None:
+        result = local_to_utc_naive(_PARIS_LOCAL_WIN)
+        assert result == _PARIS_UTC_WIN
+        assert result.tzinfo is None
+
+    def test_naive_pd_timestamp(self) -> None:
+        result = local_to_utc_naive(pd.Timestamp(_PARIS_LOCAL))
+        assert result == _PARIS_UTC
+
+    def test_aware_input_not_relocalized(self) -> None:
+        # An already UTC-aware timestamp should be passed through unchanged.
+        aware = pd.Timestamp("2023-07-18T13:06:00", tz="UTC")
+        result = local_to_utc_naive(aware)
+        assert result == _PARIS_UTC
+        assert result.tzinfo is None
+
+    def test_result_is_datetime(self) -> None:
+        assert isinstance(local_to_utc_naive(_PARIS_LOCAL), datetime)
+
+
+# ---------------------------------------------------------------------------
+# ensure_utc_naive
 # ---------------------------------------------------------------------------
 
 
-class TestConvertToTimestampAware:
-    def test_utc_string(self) -> None:
-        # Paris CEST in July = UTC+2; 15:06 local → 13:06 UTC
-        _, s = convert_to_timestamp_aware("230718", "1506")
-        assert s == "2023-07-18T13:06:00"
+class TestEnsureUtcNaive:
+    def test_naive_assumed_utc(self) -> None:
+        naive = datetime(2024, 3, 10, 8, 0, 0)
+        result = ensure_utc_naive(naive)
+        assert result == naive
+        assert result.tzinfo is None
 
-    def test_returns_two_tuple(self) -> None:
-        result = convert_to_timestamp_aware("230718", "1506")
-        assert isinstance(result, tuple) and len(result) == 2
+    def test_utc_aware_stripped(self) -> None:
+        aware = pd.Timestamp("2024-03-10T08:00:00", tz="UTC")
+        result = ensure_utc_naive(aware)
+        assert result == datetime(2024, 3, 10, 8, 0, 0)
+        assert result.tzinfo is None
 
-    def test_timestamp_is_float(self) -> None:
-        ts, _ = convert_to_timestamp_aware("230718", "1506")
-        assert isinstance(ts, float)
+    def test_other_tz_converted_to_utc(self) -> None:
+        # CET (UTC+1) 09:00 → UTC 08:00
+        tz = pytz.timezone("Europe/Paris")
+        aware = tz.localize(datetime(2024, 1, 10, 9, 0, 0))
+        result = ensure_utc_naive(aware)
+        assert result == datetime(2024, 1, 10, 8, 0, 0)
+        assert result.tzinfo is None
+
+    def test_result_is_datetime(self) -> None:
+        assert isinstance(ensure_utc_naive(datetime(2024, 1, 1)), datetime)
 
 
 # ---------------------------------------------------------------------------
-# convert_to_timestamp  (naive local)
+# series_local_to_utc_naive
 # ---------------------------------------------------------------------------
 
 
-class TestConvertToTimestamp:
-    def test_formatted_string(self) -> None:
-        _, s = convert_to_timestamp("230718", "1506")
-        assert s == "2023-07-18 15:06:00"
+class TestSeriesLocalToUtcNaive:
+    def _make_series(self, *datetimes) -> pd.Series:
+        return pd.Series(pd.to_datetime(list(datetimes)))
 
-    def test_returns_two_tuple(self) -> None:
-        result = convert_to_timestamp("230718", "1506")
-        assert isinstance(result, tuple) and len(result) == 2
+    def test_summer_offset(self) -> None:
+        s = self._make_series(_PARIS_LOCAL)
+        result = series_local_to_utc_naive(s)
+        assert result.iloc[0] == pd.Timestamp(_PARIS_UTC)
+        assert result.dt.tz is None
+
+    def test_winter_offset(self) -> None:
+        s = self._make_series(_PARIS_LOCAL_WIN)
+        result = series_local_to_utc_naive(s)
+        assert result.iloc[0] == pd.Timestamp(_PARIS_UTC_WIN)
+
+    def test_multiple_values(self) -> None:
+        s = self._make_series(_PARIS_LOCAL, _PARIS_LOCAL_WIN)
+        result = series_local_to_utc_naive(s)
+        assert result.iloc[0] == pd.Timestamp(_PARIS_UTC)
+        assert result.iloc[1] == pd.Timestamp(_PARIS_UTC_WIN)
+
+    def test_result_is_naive(self) -> None:
+        s = self._make_series(_PARIS_LOCAL)
+        assert series_local_to_utc_naive(s).dt.tz is None
+
+
+# ---------------------------------------------------------------------------
+# series_utc_to_local_naive
+# ---------------------------------------------------------------------------
+
+
+class TestSeriesUtcToLocalNaive:
+    def _make_series(self, *datetimes) -> pd.Series:
+        return pd.Series(pd.to_datetime(list(datetimes)))
+
+    def test_summer_offset_reversed(self) -> None:
+        s = self._make_series(_PARIS_UTC)
+        result = series_utc_to_local_naive(s)
+        assert result.iloc[0] == pd.Timestamp(_PARIS_LOCAL)
+        assert result.dt.tz is None
+
+    def test_winter_offset_reversed(self) -> None:
+        s = self._make_series(_PARIS_UTC_WIN)
+        result = series_utc_to_local_naive(s)
+        assert result.iloc[0] == pd.Timestamp(_PARIS_LOCAL_WIN)
+
+    def test_roundtrip(self) -> None:
+        s = self._make_series(_PARIS_LOCAL, _PARIS_LOCAL_WIN)
+        utc = series_local_to_utc_naive(s)
+        local = series_utc_to_local_naive(utc)
+        assert local.iloc[0] == pd.Timestamp(_PARIS_LOCAL)
+        assert local.iloc[1] == pd.Timestamp(_PARIS_LOCAL_WIN)
+
+    def test_result_is_naive(self) -> None:
+        s = self._make_series(_PARIS_UTC)
+        assert series_utc_to_local_naive(s).dt.tz is None
+
+
+# ---------------------------------------------------------------------------
+# timerange_to_utc
+# ---------------------------------------------------------------------------
+
+
+class TestTimerangeToUtc:
+    def test_summer_boundaries(self) -> None:
+        # Paris CEST (UTC+2): 15:06 → 13:06 UTC, 16:00 → 14:00 UTC
+        t_start, t_end = timerange_to_utc(
+            "2023-07-18 15:06:00;2023-07-18 16:00:00"
+        )
+        assert t_start == pd.Timestamp("2023-07-18 13:06:00")
+        assert t_end == pd.Timestamp("2023-07-18 14:00:00")
+
+    def test_winter_boundaries(self) -> None:
+        # Paris CET (UTC+1): 10:00 → 09:00 UTC, 11:30 → 10:30 UTC
+        t_start, t_end = timerange_to_utc(
+            "2023-01-18 10:00:00;2023-01-18 11:30:00"
+        )
+        assert t_start == pd.Timestamp("2023-01-18 09:00:00")
+        assert t_end == pd.Timestamp("2023-01-18 10:30:00")
+
+    def test_returns_naive_timestamps(self) -> None:
+        t_start, t_end = timerange_to_utc("2023-07-18 15:06:00;2023-07-18 16:00:00")
+        assert t_start.tzinfo is None
+        assert t_end.tzinfo is None
+
+    def test_start_before_end(self) -> None:
+        t_start, t_end = timerange_to_utc("2023-07-18 15:06:00;2023-07-18 16:00:00")
+        assert t_start < t_end

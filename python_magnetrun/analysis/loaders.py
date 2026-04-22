@@ -36,10 +36,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 from natsort import natsorted
 
+from ..magnetdata_base import DataType
 from ..runlogs.pigbrother import PIGBROTHER_LOG_FILENAME
 from .config import (
     DEFAULT_DATA_DIR,
@@ -606,13 +606,13 @@ def select_files(
             file_end_time = datetime.strptime(file_end, TIMESTAMP_FORMAT)
 
             # Check if file time range is within selection range
-            logger.info(
+            logger.debug(
                 f"File {file} within the selection range ?"
                 f"\n (start_time={start_time}, end_time={end_time}),"
                 f"\n (file_start_time={file_start_time}, file_end_time={file_end_time})"
             )
             if file_start_time < end_time and file_end_time > start_time:
-                logger.info(f"Selected file: {file}")
+                logger.debug(f"Selected file: {file}")
                 selected.append(file)
 
         except (OSError, ValueError, RuntimeError) as e:
@@ -678,46 +678,34 @@ def load_df(
             mdata = mrun.getMData()
             logger.debug(f"load_df --pupitre -- {file}: mdata keys={mdata.getKeys()}")
             t0 = mdata.start_timestamp
-            selected_keys = ["t"]
+            selected_keys = ["t", "timestamp"]
             if keys is not None:
                 selected_keys += keys
             logger.debug(f"load_df: selected_keys={selected_keys}")
             df = pd.DataFrame(mdata.getData(selected_keys))
-            # Rebuild absolute timestamp from start_timestamp + t (needed for synchronization)
-            if t0 is not None:
-                df["timestamp"] = pd.Timestamp(t0) + pd.to_timedelta(df["t"], unit="s")
 
         elif extension == ".tdms":
             mrun = MagnetRun.fromtdms(housing, site, file)
             mdata = mrun.getMData()
+            logger.debug(f"load_df --tdms -- {file}: mdata keys={mdata.getKeys()}")
 
             # Load data
             channels = list(mdata.getData(group).keys())
-            logger.debug(f"load_df: channels={channels}")
+            logger.debug(f"channels={channels}")
             df = mdata.getTdmsData(group, keys)
 
             # Check if first key exists
             first_key = channels[0] if keys is None or not keys else keys[0]
             logger.debug(f"first_key: {first_key}")
             if keys is not None and keys and keys[0] not in mdata.Groups.get(group, {}):
-                logger.debug(
-                    f"load_df: {group}/{keys[0]} not found in {mdata.FileName}"
-                )
+                logger.debug(f"{group}/{keys[0]} not found in {mdata.FileName}")
                 return df, t0
 
-            # Get timing information
-            t0 = mdata.Groups[group][first_key]["wf_start_time"]
-            dt = mdata.Groups[group][first_key]["wf_increment"]
-            t_offset = mdata.Groups[group][first_key]["wf_start_offset"]
-
-            logger.debug(f"{file}: t0={t0}, dt={dt}, t_offset={t_offset}")
-
-            # Add timestamp column
-            df["timestamp"] = [
-                np.datetime64(t0).astype(datetime)
-                + timedelta(seconds=i * dt + t_offset)
-                for i in df.index.to_list()
-            ]
+            # Use t and timestamp already computed by prepareData → addTime()
+            t0 = mdata.start_timestamp
+            logger.debug(f"{file}: t0={t0}")
+            df["t"] = mdata.Data[group]["t"]
+            df["timestamp"] = mdata.Data[group]["timestamp"]
         else:
             logger.warning(f"Unsupported file extension: {extension}")
 
@@ -802,6 +790,88 @@ def merge_data(df_list: list[pd.DataFrame]) -> pd.DataFrame:
 
     if len(df_list) == 1:
         return df_list[0]
+
+    return pd.concat(df_list, ignore_index=True)
+
+
+def load_files_data(
+    files: list[str],
+    housing: str,
+    group: str,
+    keys: list[str] | None,
+) -> pd.DataFrame:
+    """
+    Load and merge a list of data files into a single DataFrame with a
+    continuous ``t`` column.
+
+    Each file is loaded via :func:`~python_magnetrun.MagnetRun.load_mrun`.
+    The ``t`` column of every file is shifted so it is relative to the first
+    file's ``start_timestamp``, giving a monotonically increasing time axis
+    across file boundaries after concatenation.
+
+    For TDMS files the key list is qualified with the group name
+    (``"group/key"``) so that :meth:`~TdmsMagnetData.getData` can resolve the
+    correct channels.  For text-backed files plain key names are used.
+
+    Parameters
+    ----------
+    files : list of str
+        Paths to the data files (mixed extensions are supported).
+    housing : str
+        Housing identifier forwarded to :func:`load_mrun`.
+    group : str
+        TDMS group name used to qualify channel keys for ``.tdms`` files.
+    keys : list of str, optional
+        Channel names to extract.  ``t`` and ``timestamp`` are always
+        included automatically.
+
+    Returns
+    -------
+    pd.DataFrame
+        Concatenated DataFrame with columns ``t``, ``timestamp``, and all
+        requested channels.  Returns an empty DataFrame when no file could
+        be loaded.
+    """
+    from python_magnetrun.MagnetRun import load_mrun
+
+    if not files:
+        return pd.DataFrame()
+
+    first_t0: pd.Timestamp | None = None
+    df_list: list[pd.DataFrame] = []
+
+    for file in files:
+        try:
+            mrun = load_mrun(file, housing=housing)
+            mdata = mrun.getMData()
+            t0_file = mdata.start_timestamp
+
+            if first_t0 is None:
+                first_t0 = pd.Timestamp(t0_file) if t0_file is not None else None
+
+            shift = (
+                (pd.Timestamp(t0_file) - first_t0).total_seconds()
+                if first_t0 is not None and t0_file is not None
+                else 0.0
+            )
+
+            # Dispatch on data type rather than file extension.
+            if mdata.Type == DataType.TDMS:
+                df = pd.DataFrame(mdata.getTdmsData(group=group, channel=None))
+            else:
+                desired = (keys or []) + ["t", "timestamp"]
+                df = pd.DataFrame(mdata.getData(desired))
+
+            df["t"] = df["t"] + shift
+
+            df_list.append(df)
+            logger.debug(f"{file} t0={t0_file}, shift={shift:.3f}s, rows={len(df)}")
+
+        except (OSError, ValueError, RuntimeError, KeyError) as e:
+            logger.error(f"load_files_data: failed to load {file}: {e}")
+
+    if not df_list:
+        return pd.DataFrame()
 
     return pd.concat(df_list, ignore_index=True)
 

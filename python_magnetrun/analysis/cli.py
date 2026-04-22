@@ -93,12 +93,24 @@ def main(args: list[str] | None = None) -> int:
     parsed_args = parse_arguments(args)
 
     # Setup logging
+    # --debug and --quiet take precedence over --log-level when explicitly used,
+    # but --log-level overrides the default "WARNING" from the base parser.
+    if parsed_args.debug:
+        _log_level = "DEBUG"
+        _quiet = False
+    elif parsed_args.quiet:
+        _log_level = "WARNING"
+        _quiet = True
+    else:
+        _log_level = parsed_args.log_level  # may be "WARNING" (default) or user-set
+        _quiet = False
     setup_logging(
-        debug=parsed_args.debug,
+        level=_log_level,
+        debug=False,
         log_file=parsed_args.log_file,
         json_file=parsed_args.json_log,
         use_colors=not parsed_args.no_color,
-        quiet=parsed_args.quiet,
+        quiet=_quiet,
     )
     logger = get_logger("analysis.cli")
 
@@ -115,10 +127,7 @@ def main(args: list[str] | None = None) -> int:
             calc_mape,
             compute_dtw_distance,
         )
-        from .plotting import (
-            estimate_downsample_percent,
-            plot_data,
-        )
+        from .plotting import plot_data
 
         # Convert args to processing config
         config = args_to_processing_config(parsed_args)
@@ -173,7 +182,9 @@ def main(args: list[str] | None = None) -> int:
                         if housing == "notdefined"
                         else housing
                     )
-                    print(f"Determined housing: {housing} from filename: {input_file}")
+                    logger.info(
+                        f"Determined housing: {housing} from filename: {input_file}"
+                    )
 
                     # instead get_housing_config from input_file
                     from .config import AnalysisConfig
@@ -197,16 +208,16 @@ def main(args: list[str] | None = None) -> int:
 
                     # Get DataFrames
                     df_overview = record.get_overview()
-                    print(f"df_overview columns: {df_overview.columns.tolist()}")
+                    logger.info(f"df_overview columns: {df_overview.columns.tolist()}")
                     df_archive = record.get_archive()
-                    print(f"df_archive columns: {df_archive.columns.tolist()}")
+                    logger.info(f"df_archive columns: {df_archive.columns.tolist()}")
                     df_pupitre = record.get_pupitre()
-                    print(f"df_pupitre columns: {df_pupitre.columns.tolist()}")
+                    logger.info(f"df_pupitre columns: {df_pupitre.columns.tolist()}")
                     df_incidents = record.get_incidents()
                     for key, _dfs in df_incidents.items():
-                        print(f"df_incidents[{key}]:")
+                        logger.info(f"df_incidents[{key}]:")
                         for _df in _dfs:
-                            print(f"columns: {_df.columns.tolist()}")
+                            logger.info(f"columns: {_df.columns.tolist()}")
                     logger.info("get database done")
                     logger.info(f"df_archive: {df_archive.head()}")
 
@@ -221,21 +232,17 @@ def main(args: list[str] | None = None) -> int:
                         if key not in df_overview.columns:
                             logger.warning(f"Key {key} not found in overview data")
                             continue
-
+                        logger.info(f"processing key: {key}")
                         pupitre_key = pupitre_dict[record.housing].get(key)
 
                         # === PLOTTING ===
                         if parsed_args.show or parsed_args.save:
-                            with timed_operation(f"Plotting {key}", logger):
-                                # Estimate downsampling if not specified
-                                downsample_pct = parsed_args.downsample
-                                if downsample_pct == 100.0 and len(df_overview) > 10000:
-                                    downsample_pct = estimate_downsample_percent(
-                                        len(df_overview), target_points=10000
-                                    )
-                                    logger.info(
-                                        f"Auto-downsampling to {downsample_pct:.1f}% for plotting"
-                                    )
+                            with timed_operation(
+                                f"Plotting {key}, synchronize={config.synchronize}, downsample={config.downsample_config!r}",
+                                logger,
+                            ):
+                                # Use downsampling config from processing config
+                                downsample_cfg = config.downsample_config
 
                                 # Determine output path
                                 output_path = None
@@ -272,7 +279,7 @@ def main(args: list[str] | None = None) -> int:
                                     output_path=(
                                         str(output_path) if output_path else None
                                     ),
-                                    downsample_percent=downsample_pct,
+                                    downsample_config=downsample_cfg,
                                 )
 
                                 if output_path:

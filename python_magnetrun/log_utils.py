@@ -23,11 +23,11 @@ from typing import Any
 ROOT_LOGGER_NAME = "python_magnetrun"
 
 # Standard format: timestamp + module name + level + message
-DEFAULT_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+DEFAULT_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(funcName)s:%(lineno)d | %(message)s"
 DEFAULT_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 # Compact format for console (no timestamp)
-COMPACT_FORMAT = "%(levelname)-8s | %(message)s"
+COMPACT_FORMAT = "%(levelname)-8s | %(funcName)s:%(lineno)d | %(message)s"
 
 # Detailed format for file logging
 DETAILED_FORMAT = (

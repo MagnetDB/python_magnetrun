@@ -145,23 +145,27 @@ def main():
         logger.error("so far only txt file support is implemented")
         sys.exit(0)
 
-    insert = "tutut"  # shall be an id from magnetdb
-    housing = None
+    site = "tutut"  # shall be an id from magnetdb
+    housing = args.housing if args.housing is not None else "notdefined"
     filename = os.path.basename(args.input_file)
     result = filename.startswith("M")
     if result:
         try:
             index = filename.index("_")
             housing = filename[0:index]
-            logger.info(f"site detected: {housing}")
+            logger.info(
+                f"housing detected: {housing}  -- overwrite args.housing={args.housing}"
+            )
         except ValueError:
-            logger.warning("no site detected - use args.site argument instead")
+            logger.warning(
+                "no housing detected - use args.housing={args.housing} argument instead"
+            )
 
     match f_extension:
         case ".txt":
-            mrun = MagnetRun.fromtxt(housing, insert, args.input_file)
+            mrun = MagnetRun.fromtxt(housing, site, args.input_file)
         case ".tdms":
-            mrun = MagnetRun.fromtdms(housing, insert, args.input_file)
+            mrun = MagnetRun.fromtdms(housing, site, args.input_file)
         case _:
             raise RuntimeError(
                 f"so far file with extension in {supported_formats} are implemented"

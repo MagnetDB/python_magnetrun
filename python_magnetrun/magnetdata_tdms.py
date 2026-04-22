@@ -12,9 +12,15 @@ if TYPE_CHECKING:
     from .utils.downsampling import DownsampleConfig
 
 import pandas as pd
+import pytz
 
 from .magnetdata_base import DataType, MagnetDataBase
 from .utils.timestamps import parse_filename_timestamp
+from .utils.timezone import (
+    local_to_utc_naive,
+    series_utc_to_local_naive,
+    timerange_to_utc,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,20 +57,12 @@ class TdmsMagnetData(MagnetDataBase):
         # Convert to naive UTC datetime — wf_start_time is already UTC-aware;
         # filename-derived timestamps are local and need tz_localize first.
         if self.start_timestamp is not None or self.end_timestamp is not None:
-            import pytz
-
-            tz = pytz.timezone(time_zone)
-
-            def _to_utc_naive(ts_in: pd.Timestamp) -> datetime:
-                ts = pd.Timestamp(ts_in)
-                if ts.tzinfo is None:
-                    ts = ts.tz_localize(tz)
-                return ts.tz_convert(pytz.utc).to_pydatetime().replace(tzinfo=None)
-
             if self.start_timestamp is not None:
-                self.start_timestamp = _to_utc_naive(self.start_timestamp)
+                self.start_timestamp = local_to_utc_naive(
+                    self.start_timestamp, time_zone
+                )
             if self.end_timestamp is not None:
-                self.end_timestamp = _to_utc_naive(self.end_timestamp)
+                self.end_timestamp = local_to_utc_naive(self.end_timestamp, time_zone)
 
     def _validate_start_timestamp(self) -> None:
         """Refine ``start_timestamp`` using TDMS ``wf_start_time`` channel properties.
@@ -127,8 +125,6 @@ class TdmsMagnetData(MagnetDataBase):
         # All groups agree — overwrite start_timestamp with the accurate UTC value.
         # wf_start_time from LabVIEW TDMS is UTC; attach UTC tzinfo so the
         # conversion step in __init__ can distinguish it from a local filename timestamp.
-        import pytz
-
         ref_utc = (
             reference if reference.tzinfo is not None else pytz.utc.localize(reference)
         )
@@ -295,6 +291,9 @@ class TdmsMagnetData(MagnetDataBase):
             if key.endswith("/t"):
                 self.units[key] = ("t", ureg.second)
                 continue
+            elif key.endswith("/timestamp"):
+                self.units[key] = ("time", None)
+                continue
             try:
                 pint_unit = ureg.parse_expression(unit_str)
                 self.units[key] = (key.split("/")[-1], pint_unit)
@@ -315,9 +314,14 @@ class TdmsMagnetData(MagnetDataBase):
                     (group, channel) = entry.split("/")
                     if channel == "t":
                         self.units[entry] = ("t", ureg.second)
-                        continue
+                    elif channel == "timestamp":
+                        self.units[entry] = ("time", None)
+                    continue
                 pig = self.PigBrotherUnits(group)
                 if pig:
+                    logger.debug(
+                        f"Units: overwrite {entry!r} with PigBrotherUnits {pig}"
+                    )
                     self.units[entry] = pig
 
         if debug:
@@ -455,7 +459,11 @@ class TdmsMagnetData(MagnetDataBase):
 
             first_key = list(self.Groups[group].keys())[0]
             first_props = self.Groups[group][first_key]
-            unit_str = unit if isinstance(unit, str) else (unit[0] if isinstance(unit, tuple) and unit else "")
+            unit_str = (
+                unit
+                if isinstance(unit, str)
+                else (unit[0] if isinstance(unit, tuple) and unit else "")
+            )
             self.Groups[group][channel] = {
                 "wf_increment": first_props["wf_increment"],
                 "wf_start_time": first_props.get("wf_start_time"),
@@ -566,7 +574,7 @@ class TdmsMagnetData(MagnetDataBase):
             )
 
         groups_to_process = [group] if group is not None else list(self.Data.keys())
-        print(f"addTdmsTime: groups_to_process={groups_to_process}", flush=True)
+        logger.debug(f"addTdmsTime: groups_to_process={groups_to_process}")
 
         for gname in groups_to_process:
             if gname == "Infos":
@@ -730,8 +738,6 @@ class TdmsMagnetData(MagnetDataBase):
             )
 
             if timezone is not None:
-                import pytz
-
                 tz = pytz.timezone(timezone)
                 self.Data[gname]["timestamp"] = (
                     self.Data[gname]["timestamp"]
@@ -776,23 +782,8 @@ class TdmsMagnetData(MagnetDataBase):
             raise RuntimeError(
                 f"{self.__class__.__name__}.extractTimeData: call addTime() before extractTimeData()"
             )
-        trange = timerange.split(";")
-        logger.debug(f"Select data from {trange[0]} to {trange[1]}")
-        import pytz
-
-        tz = pytz.timezone(time_zone)
-        t_start = (
-            pd.Timestamp(trange[0])
-            .tz_localize(tz)
-            .tz_convert(pytz.utc)
-            .tz_localize(None)
-        )
-        t_end = (
-            pd.Timestamp(trange[1])
-            .tz_localize(tz)
-            .tz_convert(pytz.utc)
-            .tz_localize(None)
-        )
+        logger.debug(f"Select data from {timerange}")
+        t_start, t_end = timerange_to_utc(timerange, time_zone)
         return self.Data[group][
             self.Data[group]["timestamp"].between(t_start, t_end, inclusive="both")
         ]
@@ -853,15 +844,7 @@ class TdmsMagnetData(MagnetDataBase):
 
         # Convert naive UTC timestamp → naive local time for display
         if xchannel == "timestamp":
-            import pytz
-
-            tz = pytz.timezone(time_zone)
-            df["timestamp"] = (
-                df["timestamp"]
-                .dt.tz_localize(pytz.utc)
-                .dt.tz_convert(tz)
-                .dt.tz_localize(None)  # naive local for clean axis labels
-            )
+            df["timestamp"] = series_utc_to_local_naive(df["timestamp"], time_zone)
 
         kwargs: dict = {
             "x": xchannel,

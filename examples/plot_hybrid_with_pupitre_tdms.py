@@ -31,7 +31,7 @@ from python_magnetrun.hybrid.utils import (
     normalize_signal,
 )
 from python_magnetrun.log_utils import get_logger, setup_logging
-from python_magnetrun.MagnetRun import MagnetRun
+from python_magnetrun.MagnetRun import MagnetRun, load_mrun
 from python_magnetrun.utils.timestamps import (
     parse_tdms_filename,
     parse_txt_filename,
@@ -238,49 +238,17 @@ def t0_from_tdms_filename(filename: str) -> float:
 def load_pupitre_data(
     pupitre_file: str | Path, housing: str, insert: str = "Unknown"
 ) -> MagnetRun:
-    """
-    Load pupitre data from a text file.
-
-    Parameters
-    ----------
-    pupitre_file : str or Path
-        Path to pupitre txt file
-    housing : str
-        Housing name (M9, M10, etc.)
-    insert : str
-        Insert name
-
-    Returns
-    -------
-    MagnetRun
-        MagnetRun object containing the pupitre data
-    """
+    """Load pupitre data from a text file."""
     logger.info(f"Loading pupitre data from: {pupitre_file}")
-    return MagnetRun.fromtxt(housing, insert, str(pupitre_file))
+    return load_mrun(str(pupitre_file), housing=housing, site=insert)
 
 
 def load_tdms_data(
     tdms_file: str | Path, housing: str, insert: str = "Unknown"
 ) -> MagnetRun:
-    """
-    Load TDMS data from a pigbrother Overview file.
-
-    Parameters
-    ----------
-    tdms_file : str or Path
-        Path to TDMS overview file
-    housing : str
-        Housing name (M9, M10, etc.)
-    insert : str
-        Insert name
-
-    Returns
-    -------
-    MagnetRun
-        MagnetRun object containing the TDMS data
-    """
+    """Load TDMS data from a pigbrother Overview file."""
     logger.info(f"Loading TDMS data from: {tdms_file}")
-    return MagnetRun.fromtdms(housing, insert, str(tdms_file))
+    return load_mrun(str(tdms_file), housing=housing, site=insert)
 
 
 def plot_comparison(

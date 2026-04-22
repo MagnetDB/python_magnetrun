@@ -51,10 +51,11 @@ class AnnotationManager:
         fig: Any,
         ax_idx: int,
         t: float,
+        f: float,
         label: str,
         detail: dict | None = None,
     ) -> None:
-        """Add one annotation.
+        """Add one annotation at (t, f).
 
         For the matplotlib backend, also stores *detail* metadata so that the
         pick handler (wired via :meth:`connect`) can open a detail sub-figure.
@@ -63,9 +64,9 @@ class AnnotationManager:
         from .matplotlib_backend import MatplotlibBackend
 
         if isinstance(self._backend, MatplotlibBackend):
-            self._add_mpl(fig, ax_idx, t, label, detail)
+            self._add_mpl(fig, ax_idx, t, f, label, detail)
         else:
-            self._backend.add_annotation(fig, ax_idx, t, label, detail)
+            self._backend.add_annotation(fig, ax_idx, t, f, label, detail)
 
     def connect(self, fig: Any) -> None:
         """Wire up interactive events.
@@ -106,19 +107,20 @@ class AnnotationManager:
         fig: Any,
         ax_idx: int,
         t: float,
+        f: float,
         label: str,
         detail: dict | None,
     ) -> None:
-
+        """Add an annotation at (t, f) to a matplotlib figure, and store *detail* metadata."""
         from .matplotlib_backend import MatplotlibBackend
 
         ax = MatplotlibBackend._get_ax(fig, ax_idx)
 
-        (point,) = ax.plot(t, ax.get_ylim()[1] if ax.get_ylim()[1] != 0 else 1.0, "yo", markersize=8)
+        (point,) = ax.plot(t, f, "yo", markersize=8)
 
         annot = ax.annotate(
             label,
-            xy=(t, ax.get_ylim()[1] if ax.get_ylim()[1] != 0 else 1.0),
+            xy=(t, f),
             xytext=(10, 10),
             textcoords="offset points",
             bbox=dict(boxstyle="round,pad=0.5", fc=self._colors.incident, alpha=0.7),

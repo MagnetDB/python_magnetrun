@@ -100,7 +100,7 @@ class MatplotlibBackend:
             handles, labels = ax.get_legend_handles_labels()
             if labels:
                 ax.legend()
-        if axes and xlabel:
+        if axes and xlabel and not axes[-1].get_xlabel():
             axes[-1].set_xlabel(xlabel)
 
     def show(self, fig: Any) -> None:

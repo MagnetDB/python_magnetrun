@@ -11,6 +11,7 @@ from .magnetdata_base import DataType, MagnetDataBase
 from .magnetdata_pandas import PandasMagnetData
 from .runetl import prepareData
 from .utils.downsampling import DownsampleConfig
+from .utils.timezone import ensure_utc_naive, local_to_utc_naive
 
 logger = logging.getLogger(__name__)
 
@@ -97,11 +98,7 @@ class MagnetRun:
         ts = pd.Timestamp(data.Groups[group][channel]["wf_start_time"])
         wf_start_offset = data.Groups[group][channel].get("wf_start_offset", 0.0)
         # wf_start_time is UTC; normalise to naive UTC regardless of tzinfo.
-        import pytz
-
-        if ts.tzinfo is None:
-            ts = ts.tz_localize(pytz.utc)
-        start_time = ts.tz_convert(pytz.utc).to_pydatetime().replace(tzinfo=None)
+        start_time = ensure_utc_naive(ts)
         logger.debug(
             f"magnetrun.fromtdms: start_time={start_time} (naive UTC), "
             f"wf_start_offset={wf_start_offset} s (already in t values, not added to StartTime)"
@@ -126,7 +123,7 @@ class MagnetRun:
         # with open(filename, "r") as f:
         # insert = f.readline().split()[-1]
         data = load_magnetdata(filename)
-        logger.debug(f"MagnetRun/from_txt: data={data}")
+        # logger.debug(f"MagnetRun/from_txt: data={data}")
         res = data.getStartDate()
         logger.debug(f"MagnetRun.from_txt: getStartDate={res}")
         prepareData(data, housing)
@@ -139,11 +136,8 @@ class MagnetRun:
         # Combine start_date (YYYY.MM.DD) and start_time (HH:MM:SS) into datetime.
         # The timestamp from pupitre data is local time; convert to naive UTC so it
         # is directly comparable with timestamps from pigbrother (.tdms) files.
-        import pytz
-
         start_t = datetime.strptime(f"{start_date} {start_time}", "%Y.%m.%d %H:%M:%S")
-        tz = pytz.timezone(time_zone)
-        start_t = tz.localize(start_t).astimezone(pytz.utc).replace(tzinfo=None)
+        start_t = local_to_utc_naive(start_t, time_zone)
         logger.debug(f"MagnetRun/from_txt: start_t={start_t} (naive UTC)")
         return cls(housing, site, data, start_time=start_t)
 
@@ -156,7 +150,7 @@ class MagnetRun:
     @classmethod
     def fromStringIO(cls, housing: str, site: str, name: str) -> "MagnetRun":
         """create from a stringIO"""
-        # print(f'MagnetRun/fromStringIO: housing={housing}, site={site}')
+        logger.info(f"MagnetRun/fromStringIO: housing={housing}, site={site}")
         from io import StringIO
 
         insert = "Unknown"
@@ -170,7 +164,9 @@ class MagnetRun:
             if not site.startswith(insert):
                 logger.debug(f"MagnetRun:fromStringIO: site={site}, insert={insert}")
             data = PandasMagnetData.fromStringIO(name)
-            # print(f'data keys({len(data.getKeys())}): {data.getKeys()}')
+            logger.debug(
+                f"MagnetRun:fromStringIO: data keys({len(data.getKeys())}): {data.getKeys()}"
+            )
             prepareData(data, housing)
 
         except (ValueError, KeyError, AttributeError, IndexError) as e:

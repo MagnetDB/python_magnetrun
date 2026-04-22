@@ -201,11 +201,11 @@ class MagnetDataBase(ABC):
         field_defs: dict = load_defs(json_file)
 
         for key, defn in field_defs.items():
-            if key.startswith("_"):  # skip comment keys
+            if key.startswith("_") or key not in self.Keys:  # skip comment keys
                 continue
-            if key not in self.Keys:
-                logger.debug(f"load_units_from_json: {key!r} not in Keys, skipping")
-                continue
+            # if key not in self.Keys:
+            #    logger.debug(f"load_units_from_json: {key!r} not in Keys, skipping")
+            #    continue
             symbol: str = defn["symbol"]
             unit_str: str | None = defn.get("unit")
             if unit_str is None:
@@ -223,9 +223,13 @@ class MagnetDataBase(ABC):
             label: str = defn.get("label", "")
             description: str = defn.get("description", "")
             self.units[key] = (symbol, pint_unit)
-            self.field_meta[key] = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
+            self.field_meta[key] = FieldMeta(
+                symbol=symbol, unit=pint_unit, label=label, description=description
+            )
             if debug:
-                logger.debug(f"load_units_from_json: {key} → symbol={symbol}, unit={pint_unit}, label={label!r}")
+                logger.debug(
+                    f"load_units_from_json: {key} → symbol={symbol}, unit={pint_unit}, label={label!r}"
+                )
 
     def getType(self) -> DataType:
         """Return the data-type discriminator."""
@@ -279,7 +283,9 @@ class MagnetDataBase(ABC):
         label: str = "",
         description: str = "",
     ) -> None:
-        raise NotImplementedError(f"{self.__class__.__name__}.computeData not implemented")
+        raise NotImplementedError(
+            f"{self.__class__.__name__}.computeData not implemented"
+        )
 
     def saveData(self, keys: list[str], filename: str) -> int:  # noqa: N802
         raise NotImplementedError(f"{self.__class__.__name__}.saveData not implemented")
@@ -332,7 +338,9 @@ class MagnetDataBase(ABC):
 
     # Convenience
 
-    def extractDataThreshold(self, key: str, threshold: float) -> pd.DataFrame:  # noqa: N802
+    def extractDataThreshold(
+        self, key: str, threshold: float
+    ) -> pd.DataFrame:  # noqa: N802
         raise NotImplementedError(
             f"{self.__class__.__name__}.extractDataThreshold not implemented"
         )
@@ -340,4 +348,6 @@ class MagnetDataBase(ABC):
     def extractTimeData(  # noqa: N802
         self, timerange: str, group: str | None = None, time_zone: str = "Europe/Paris"
     ) -> pd.DataFrame:
-        raise NotImplementedError(f"{self.__class__.__name__}.extractTimeData not implemented")
+        raise NotImplementedError(
+            f"{self.__class__.__name__}.extractTimeData not implemented"
+        )

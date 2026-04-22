@@ -17,6 +17,12 @@ from natsort import natsorted
 
 from .magnetdata_base import DataType, MagnetDataBase
 from .utils.timestamps import parse_filename_timestamp
+from .utils.timezone import (
+    local_to_utc_naive,
+    series_local_to_utc_naive,
+    series_utc_to_local_naive,
+    timerange_to_utc,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,16 +63,7 @@ class PandasMagnetData(MagnetDataBase):
         # Convert to UTC — use self.start_timestamp (may have been overridden by
         # _validate_start_timestamp with a value from the Date/Time data columns).
         if self.start_timestamp is not None:
-            import pytz
-
-            tz = pytz.timezone(time_zone)
-            self.start_timestamp = (
-                pd.Timestamp(self.start_timestamp)
-                .tz_localize(tz)
-                .tz_convert(pytz.utc)
-                .to_pydatetime()
-                .replace(tzinfo=None)
-            )
+            self.start_timestamp = local_to_utc_naive(self.start_timestamp, time_zone)
 
     # --- abstract property -------------------------------------------
 
@@ -107,7 +104,9 @@ class PandasMagnetData(MagnetDataBase):
         if downsample is not None and len(df) > downsample.n_out:
             time_col = "t" if "t" in df.columns else df.columns[0]
             value_cols = [c for c in df.columns if c != time_col]
-            df = downsample_dataframe(df, time_col=time_col, value_cols=value_cols, config=downsample)
+            df = downsample_dataframe(
+                df, time_col=time_col, value_cols=value_cols, config=downsample
+            )
 
         # Attach unit metadata so plotting functions can label axes correctly.
         # Uses a per-key try/except because Units() may not have been called yet.
@@ -155,38 +154,38 @@ class PandasMagnetData(MagnetDataBase):
                     f"Units: no JSON definition for key '{key}', applying legacy pattern matching"
                 )
 
-            # Legacy pattern matching fallback (kept for backward compatibility)
-            # TO be switched off
-            if key in ("Date", "Time"):
-                pass  # non-physical metadata columns — no unit needed
-            elif key == "timestamp":
-                self.units[key] = ("time", None)
-            elif key == "t":
-                self.units[key] = ("t", ureg.second)
-            elif key == "Field":
-                self.units[key] = ("B", ureg.tesla)
-            elif key.startswith("I"):
-                self.units[key] = ("I", ureg.ampere)
-            elif key.startswith("U"):
-                self.units[key] = ("U", ureg.volt)
-            elif key.startswith("T") or key == "teb" or key == "tsb":
-                self.units[key] = ("T", ureg.degC)
-            elif key.startswith("Rpm"):
-                self.units[key] = ("Rpm", ureg.rpm)
-            elif key.startswith("DR"):
-                self.units[key] = ("%", ureg.percent)
-            elif key.startswith("Flo"):
-                self.units[key] = ("Q", ureg.liter / ureg.second)
-            elif key == "debitbrut":
-                self.units[key] = ("Q", ureg.meter**3 / ureg.hour)
-            elif key.startswith("HP") or key.startswith("BP"):
-                self.units[key] = ("P", ureg.bar)
-            elif key == "Pmagnet" or key == "Ptot" or key.startswith("Power"):
-                self.units[key] = ("Power", ureg.megawatt)
-            elif key == "Q":
-                self.units[key] = ("Preac", ureg.megavar)
-            else:
-                logger.warning(f"Units: no unit defined for key '{key}' — skipping")
+                # Legacy pattern matching fallback (kept for backward compatibility)
+                # TO be switched off
+                if key in ("Date", "Time"):
+                    pass  # non-physical metadata columns — no unit needed
+                elif key == "timestamp":
+                    self.units[key] = ("time", None)
+                elif key == "t":
+                    self.units[key] = ("t", ureg.second)
+                elif key == "Field":
+                    self.units[key] = ("B", ureg.tesla)
+                elif key.startswith("I"):
+                    self.units[key] = ("I", ureg.ampere)
+                elif key.startswith("U"):
+                    self.units[key] = ("U", ureg.volt)
+                elif key.startswith("T") or key == "teb" or key == "tsb":
+                    self.units[key] = ("T", ureg.degC)
+                elif key.startswith("Rpm"):
+                    self.units[key] = ("Rpm", ureg.rpm)
+                elif key.startswith("DR"):
+                    self.units[key] = ("%", ureg.percent)
+                elif key.startswith("Flo"):
+                    self.units[key] = ("Q", ureg.liter / ureg.second)
+                elif key == "debitbrut":
+                    self.units[key] = ("Q", ureg.meter**3 / ureg.hour)
+                elif key.startswith("HP") or key.startswith("BP"):
+                    self.units[key] = ("P", ureg.bar)
+                elif key == "Pmagnet" or key == "Ptot" or key.startswith("Power"):
+                    self.units[key] = ("Power", ureg.megawatt)
+                elif key == "Q":
+                    self.units[key] = ("Preac", ureg.megavar)
+                else:
+                    logger.warning(f"Units: no unit defined for key '{key}' — skipping")
 
         if debug:
             logger.debug(f"Units: {self.Keys}")
@@ -408,14 +407,18 @@ class PandasMagnetData(MagnetDataBase):
             if isinstance(unit, tuple) and len(unit) == 2:
                 symbol, pint_unit = unit
                 self.units[key] = (symbol, pint_unit)
-                self.field_meta[key] = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
+                self.field_meta[key] = FieldMeta(
+                    symbol=symbol, unit=pint_unit, label=label, description=description
+                )
             elif isinstance(unit, str) and unit:
                 try:
                     ureg = _make_ureg()
                     parsed = ureg.parse_expression(unit)
                     pint_unit = parsed.units if hasattr(parsed, "units") else parsed
                     self.units[key] = (key, pint_unit)
-                    self.field_meta[key] = FieldMeta(symbol=key, unit=pint_unit, label=label, description=description)
+                    self.field_meta[key] = FieldMeta(
+                        symbol=key, unit=pint_unit, label=label, description=description
+                    )
                 except (ValueError, UndefinedUnitError):
                     self.Units(debug)
             else:
@@ -449,14 +452,18 @@ class PandasMagnetData(MagnetDataBase):
         if isinstance(unit, tuple) and len(unit) == 2:
             symbol, pint_unit = unit
             self.units[key] = (symbol, pint_unit)
-            self.field_meta[key] = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
+            self.field_meta[key] = FieldMeta(
+                symbol=symbol, unit=pint_unit, label=label, description=description
+            )
         elif isinstance(unit, str) and unit:
             try:
                 ureg = _make_ureg()
                 parsed = ureg.parse_expression(unit)
                 pint_unit = parsed.units if hasattr(parsed, "units") else parsed
                 self.units[key] = (key, pint_unit)
-                self.field_meta[key] = FieldMeta(symbol=key, unit=pint_unit, label=label, description=description)
+                self.field_meta[key] = FieldMeta(
+                    symbol=key, unit=pint_unit, label=label, description=description
+                )
             except (ValueError, UndefinedUnitError):
                 self.Units(debug)
         else:
@@ -530,15 +537,9 @@ class PandasMagnetData(MagnetDataBase):
         t0 = self.Data["_timestamp"].iloc[0]
         self.Data["t"] = (self.Data["_timestamp"] - t0).dt.total_seconds()
 
-        # Convert local → UTC → naive UTC
-        import pytz
-
-        tz = pytz.timezone(time_zone)
-        self.Data["timestamp"] = (
-            self.Data["_timestamp"]
-            .dt.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
-            .dt.tz_convert(pytz.utc)
-            .dt.tz_localize(None)  # strip tzinfo → naive UTC
+        # Convert local → naive UTC
+        self.Data["timestamp"] = series_local_to_utc_naive(
+            self.Data["_timestamp"], time_zone
         )
 
         self.Data.drop(["Date", "Time", "_timestamp"], axis=1, inplace=True)
@@ -620,14 +621,11 @@ class PandasMagnetData(MagnetDataBase):
             raise RuntimeError(
                 f"{self.__class__.__name__}.extractTimeData: call addTime() before extractTimeData()"
             )
-        trange = timerange.split(";")
-        logger.debug(f"Select data from {trange[0]} to {trange[1]}")
-        import pytz
-
-        tz = pytz.timezone(time_zone)
-        t_start = pd.Timestamp(trange[0]).tz_localize(tz).tz_convert(pytz.utc).tz_localize(None)
-        t_end = pd.Timestamp(trange[1]).tz_localize(tz).tz_convert(pytz.utc).tz_localize(None)
-        return self.Data[self.Data["timestamp"].between(t_start, t_end, inclusive="both")]
+        logger.debug(f"Select data from {timerange}")
+        t_start, t_end = timerange_to_utc(timerange, time_zone)
+        return self.Data[
+            self.Data["timestamp"].between(t_start, t_end, inclusive="both")
+        ]
 
     # --- persist / display -------------------------------------------
 
@@ -664,22 +662,13 @@ class PandasMagnetData(MagnetDataBase):
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {y} key (valid keys: {self.Keys})"
             )
 
-        assert isinstance(self.Data, pd.DataFrame)
         (ysymbol, yunit) = self.getUnitKey(y)
 
         df = self.Data.copy()
 
         # Convert UTC timestamp → naive local time for display
         if x == "timestamp":
-            import pytz
-
-            tz = pytz.timezone(time_zone)
-            df["timestamp"] = (
-                df["timestamp"]
-                .dt.tz_localize(pytz.utc)
-                .dt.tz_convert(tz)
-                .dt.tz_localize(None)  # naive local for clean axis labels
-            )
+            df["timestamp"] = series_utc_to_local_naive(df["timestamp"], time_zone)
 
         kwargs: dict = {"x": x, "y": y, "ax": ax, "alpha": alpha, "grid": False}
         if color is not None:
@@ -695,10 +684,16 @@ class PandasMagnetData(MagnetDataBase):
         df.plot(**kwargs)
 
         if yunit is not None:
+            logger.info(
+                f"ysymbol={ysymbol}, yunit={yunit:~P}, labeling y-axis accordingly"
+            )
             plt.ylabel(f"{ysymbol} [{yunit:~P}]")
 
         (xsymbol, xunit) = self.getUnitKey(x)
         if xunit is not None:
+            logger.info(
+                f"plotData: xsymbol={xsymbol}, xunit={xunit:~P}, labeling x-axis accordingly"
+            )
             plt.xlabel(f"{xsymbol} [{xunit:~P}]")
 
     def stats(self, key: str | None = None) -> pd.DataFrame | None:
