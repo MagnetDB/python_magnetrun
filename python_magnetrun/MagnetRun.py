@@ -15,6 +15,39 @@ from .utils.downsampling import DownsampleConfig
 logger = logging.getLogger(__name__)
 
 
+def load_mrun(
+    filename: str,
+    housing: str = "unknown",
+    site: str = "",
+    time_zone: str = "Europe/Paris",
+    **kwargs,
+) -> "MagnetRun":
+    """Load a MagnetRun from a file, dispatching on extension.
+
+    - ``.tdms`` → :meth:`MagnetRun.fromtdms`
+    - ``.txt``  → :meth:`MagnetRun.fromtxt`
+    - ``.csv``  → :meth:`MagnetRun.fromcsv`
+
+    :param filename: path to the data file
+    :param housing: housing name (default ``"unknown"``)
+    :param site: site name
+    :param time_zone: local timezone for timestamp conversion (txt/tdms)
+    :param kwargs: extra keyword arguments forwarded to the underlying classmethod
+    :raises ValueError: if the file extension is not recognised
+    """
+    import os
+
+    ext = os.path.splitext(filename)[-1].lower()
+    if ext == ".tdms":
+        return MagnetRun.fromtdms(housing, site, filename, time_zone=time_zone)
+    elif ext == ".txt":
+        return MagnetRun.fromtxt(housing, site, filename, time_zone=time_zone, **kwargs)
+    elif ext == ".csv":
+        return MagnetRun.fromcsv(housing, site, filename)
+    else:
+        raise ValueError(f"load_mrun: unsupported file extension {ext!r}")
+
+
 class MagnetRun:
     """
     Magnet Run
