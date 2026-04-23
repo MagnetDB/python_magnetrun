@@ -304,6 +304,8 @@ def _plot_vs_time_backend(
 
     from ..plotting.utils import resolve_legend_labels
 
+    logger.info(f"plot_vs_time: input_files={input_files}, backend={backend_name}")
+
     items = args.vs_time
     title = _plot_title(input_files, items)
     output_json = getattr(args, "json", False)
