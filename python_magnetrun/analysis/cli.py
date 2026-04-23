@@ -238,11 +238,11 @@ def main(args: list[str] | None = None) -> int:
                         # === PLOTTING ===
                         if parsed_args.show or parsed_args.save:
                             with timed_operation(
-                                f"Plotting {key}, synchronize={config.synchronize}, downsample={config.downsample_config!r}",
+                                f"Plotting {key}, synchronize={config.synchronize}, downsample={config.downsample_percent!r}",
                                 logger,
                             ):
-                                # Use downsampling config from processing config
-                                downsample_cfg = config.downsample_config
+                                # Use downsampling percent from processing config
+                                downsample_pct = config.downsample_percent
 
                                 # Determine output path
                                 output_path = None
@@ -279,7 +279,7 @@ def main(args: list[str] | None = None) -> int:
                                     output_path=(
                                         str(output_path) if output_path else None
                                     ),
-                                    downsample_config=downsample_cfg,
+                                    downsample_percent=downsample_pct,
                                 )
 
                                 if output_path:

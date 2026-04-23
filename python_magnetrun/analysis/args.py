@@ -86,6 +86,13 @@ Examples:
         action="store_true",
         help="Discover files but don't load/process data",
     )
+    proc_group.add_argument(
+        "--downsample",
+        type=float,
+        default=100.0,
+        metavar="PERCENT",
+        help="Percentage of data points to keep when plotting (0-100, default: 100)",
+    )
 
     # Analysis parameters
     param_group = parser.add_argument_group("Analysis parameters")
@@ -239,5 +246,5 @@ def args_to_processing_config(args: argparse.Namespace):
         debug=args.debug,
         show=args.show,
         save=args.save,
-        downsample_config=args_to_downsample_config(args),
+        downsample_percent=getattr(args, "downsample", 100.0),
     )

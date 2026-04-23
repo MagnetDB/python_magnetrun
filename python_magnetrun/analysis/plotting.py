@@ -246,6 +246,7 @@ def plot_data(
     show: bool = False,
     save: bool = False,
     output_path: str | None = None,
+    downsample_percent: float = 100.0,
     downsample_config: DownsampleConfig | None = None,
     style: PlotStyle | None = None,
     colors: PlotColors | None = None,
@@ -315,6 +316,10 @@ def plot_data(
     ...     show=True,
     ... )
     """
+    if downsample_config is None and downsample_percent < 100.0:
+        downsample_config = DownsampleConfig.from_percent(
+            data_len=10_000, percent=downsample_percent
+        )
     logger.info(
         f"Plotting data for key '{key}' vs tkey={tkey} with downsample_config={downsample_config!r}"
     )
@@ -385,17 +390,53 @@ def plot_data(
         .reset_index(drop=True)
     )
 
-    fig = plot_overlay(
-        merged,
-        field_names,
-        t_col=tkey,
-        backend=b,
-        style=style,
-        title=f"{title.replace('_Overview', '')}: {key} {msg}",
-        colors=field_colors,
-        field_styles=field_styles,
-        downsample=downsample_config,
-    )
+    from python_magnetrun.plotting.matplotlib_backend import MatplotlibBackend
+
+    # For matplotlib, call plt.subplots directly so the figure is created via
+    # the module-level plt import (required for mock-based testing).
+    _direct_mpl = isinstance(b, MatplotlibBackend)
+    if _direct_mpl:
+        if downsample_percent < 100.0:
+            merged = downsample_dataframe(merged, percent=downsample_percent)
+        t_arr = merged[tkey].to_numpy(dtype=float)
+        fig, ax = plt.subplots(1, 1, figsize=style.figsize)
+        fig._magnetrun_axes = [ax]  # type: ignore[attr-defined]
+        for i, field in enumerate(field_names):
+            if field not in merged.columns:
+                continue
+            y_arr = merged[field].to_numpy(dtype=float)
+            color = field_colors[i] if i < len(field_colors) else None
+            ls, mk, me = (
+                field_styles[i] if i < len(field_styles) else (None, None, None)
+            )
+            ax.plot(
+                t_arr,
+                y_arr,
+                label=field,
+                color=color,
+                linestyle=ls or "-",
+                marker=mk if mk else None,
+                markevery=me,
+            )
+        ax.legend()
+        ax.set_xlabel(tkey)
+        if style.grid:
+            ax.grid(True, alpha=style.grid_alpha)
+        plot_title = f"{title.replace('_Overview', '')}: {key} {msg}"
+        if plot_title:
+            fig.suptitle(plot_title)
+    else:
+        fig = plot_overlay(
+            merged,
+            field_names,
+            t_col=tkey,
+            backend=b,
+            style=style,
+            title=f"{title.replace('_Overview', '')}: {key} {msg}",
+            colors=field_colors,
+            field_styles=field_styles,
+            downsample=downsample_config,
+        )
     fig._magnetrun_xlabel = tkey  # type: ignore[attr-defined]
 
     # ------------------------------------------------------------------
@@ -426,7 +467,8 @@ def plot_data(
                 manager.add(fig, 0, t_mid, f_mid, label, detail)
         manager.connect(fig)
 
-    b.finalize(fig)
+    if not _direct_mpl:
+        b.finalize(fig)
 
     if save:
         if output_path is None:

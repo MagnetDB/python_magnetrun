@@ -105,8 +105,9 @@ class ProcessingConfig:
         Show plots interactively
     save : bool
         Save plots to files
-    downsample_config : DownsampleConfig or None
-        Downsampling configuration for plots, or ``None`` to disable downsampling.
+    downsample_percent : float
+        Percentage of data points to keep when plotting (0–100). 100 disables
+        downsampling (default).
     """
 
     pupitre_datadir: str = DEFAULT_DATA_DIR
@@ -123,7 +124,7 @@ class ProcessingConfig:
     debug: bool = False
     show: bool = False
     save: bool = False
-    downsample_config: DownsampleConfig | None = None
+    downsample_percent: float = 100.0
 
 
 @dataclass
