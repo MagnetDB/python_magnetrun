@@ -72,7 +72,15 @@ class MatplotlibBackend:
             kwargs["linestyle"] = linestyle
         if markevery is not None:
             kwargs["markevery"] = markevery
-        ax.plot(t, y, **kwargs)
+
+        # Filter out NaN values to avoid matplotlib rendering issues with sparse arrays.
+        # When plotting merged data from multiple sources, NaN gaps can cause matplotlib
+        # to incorrectly render only small segments. Filtering preserves the correct
+        # visual representation while allowing line breaks at NaN boundaries.
+        valid_mask = ~np.isnan(y)
+        if valid_mask.any():
+            ax.plot(t[valid_mask], y[valid_mask], **kwargs)
+
         if ylabel is not None:
             ax.set_ylabel(ylabel)
 
