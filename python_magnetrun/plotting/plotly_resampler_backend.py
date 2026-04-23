@@ -107,6 +107,9 @@ class PlotlyResamplerBackend:
         normalize: bool = False,
         color: str | None = None,
         ylabel: str | None = None,
+        marker: str | None = None,
+        linestyle: str | None = None,
+        markevery: int | None = None,
     ) -> None:
         _require_resampler()
         if normalize:
@@ -115,14 +118,48 @@ class PlotlyResamplerBackend:
                 abs_max = 1.0
             y = y / abs_max
             label = f"{label}  (max={abs_max:.3g})"
+
+        has_markers = marker is not None
+        no_lines = linestyle is not None and linestyle.lower() == "none"
+        if has_markers and no_lines:
+            mode = "markers"
+        elif has_markers:
+            mode = "lines+markers"
+        else:
+            mode = "lines"
+
         scatter_kwargs: dict[str, Any] = {
             "x": t,
             "y": y,
             "name": label,
-            "mode": "lines",
+            "mode": mode,
         }
+        line_dict: dict[str, Any] = {}
         if color is not None:
-            scatter_kwargs["line"] = {"color": color}
+            line_dict["color"] = color
+        if linestyle is not None and not no_lines:
+            _dash_map = {"-": "solid", "--": "dash", "-.": "dashdot", ":": "dot"}
+            line_dict["dash"] = _dash_map.get(linestyle, linestyle)
+        if line_dict:
+            scatter_kwargs["line"] = line_dict
+        if has_markers:
+            _symbol_map = {
+                "o": "circle",
+                "+": "cross",
+                "x": "x",
+                "s": "square",
+                "D": "diamond",
+                "^": "triangle-up",
+                "v": "triangle-down",
+                "<": "triangle-left",
+                ">": "triangle-right",
+                "*": "star",
+            }
+            marker_dict: dict[str, Any] = {"symbol": _symbol_map.get(marker, marker)}
+            if color is not None:
+                marker_dict["color"] = color
+            scatter_kwargs["marker"] = marker_dict
+        # plotly-resampler handles downsampling internally; markevery is ignored
         fig.add_trace(go.Scatter(**scatter_kwargs), row=ax_idx + 1, col=1)
         if ylabel is not None:
             fig.update_yaxes(title_text=ylabel, row=ax_idx + 1, col=1)
@@ -153,8 +190,12 @@ class PlotlyResamplerBackend:
                 x=[t],
                 y=[f],
                 mode="markers",
-                marker=dict(color="yellow", size=10, symbol="circle",
-                            line=dict(color="black", width=1)),
+                marker=dict(
+                    color="yellow",
+                    size=10,
+                    symbol="circle",
+                    line=dict(color="black", width=1),
+                ),
                 name=label,
                 showlegend=False,
                 hovertext=hover,

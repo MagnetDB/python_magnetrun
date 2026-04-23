@@ -574,6 +574,41 @@ The `FIELD` key in `--field_style` can be either the short channel name
 (`Référence_A2`) or the full `Group/Channel` form
 (`Courants_Alimentations/Référence_A2`).
 
+The same `--field_style` options work with the **Plotly backend** (and
+`--subplots` / `--normalize`).  Matplotlib marker names are translated
+automatically: `o` → `circle`, `s` → `square`, `D` → `diamond`, `^` →
+`triangle-up`, etc.  Linestyles map to Plotly dashes: `-` → `solid`, `--` →
+`dash`, `-.` → `dashdot`, `:` → `dot`.  When `markevery` is used with Plotly
+the data is sub-sampled before rendering since Plotly has no native equivalent.
+
+```bash
+# Plotly overlay – A1 dashed, A2 solid line + circle markers every 20 points
+python3 -m python_magnetrun.cli \
+    M9_Overview_260331-1316.tdms --housing M9 \
+    plot --vs_time Courants_Alimentations/Référence_A1 \
+                  Courants_Alimentations/Référence_A2 \
+    --backend plotly \
+    --field_style "Référence_A1=--" \
+    --field_style "Référence_A2=-o:20"
+
+# Plotly stacked subplots – markers only (no line) on one field
+python3 -m python_magnetrun.cli \
+    M9_Overview_260331-1316.tdms --housing M9 \
+    plot --vs_time Courants_Alimentations/Référence_A1 \
+                  Courants_Alimentations/Référence_A2 \
+    --backend plotly --subplots \
+    --field_style "Référence_A2=o:50"
+
+# Plotly with normalisation – combined with per-field style
+python3 -m python_magnetrun.cli \
+    M9_Overview_260331-1316.tdms --housing M9 \
+    plot --vs_time Courants_Alimentations/Référence_A1 \
+                  Courants_Alimentations/Référence_A2 \
+    --backend plotly --normalize \
+    --field_style "Référence_A1=-." \
+    --field_style "Référence_A2=-s:10"
+```
+
 ### Plot colour palette
 
 By default each field gets a **distinct colour** from the Matplotlib `tab10` palette,

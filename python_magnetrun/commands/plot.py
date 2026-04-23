@@ -335,6 +335,7 @@ def _plot_vs_time_backend(
     output_json = getattr(args, "json", False)
     same_color_per_type: bool = getattr(args, "same_color_per_type", False)
     display_units = _parse_display_units(getattr(args, "unit", None))
+    field_styles = _parse_field_styles(getattr(args, "field_style", None))
 
     # Pre-compute disambiguated labels from the first file's FieldMeta, identical
     # to the matplotlib path: JSON label > symbol_suffix > field name.
@@ -352,6 +353,9 @@ def _plot_vs_time_backend(
     ext_colors: dict[str, list[str]] = defaultdict(list)
     ext_origins: dict[str, list[str]] = defaultdict(list)
     ext_units: dict[str, list[str]] = defaultdict(list)
+    ext_styles: dict[str, list[tuple]] = defaultdict(
+        list
+    )  # (linestyle, marker, markevery)
     t0: list = []
 
     for i, file in enumerate(input_files):
@@ -455,6 +459,13 @@ def _plot_vs_time_backend(
         ext_colors[f_extension].extend([src_color] * len(field_names))
         ext_origins[f_extension].extend(col_names)
         ext_units[f_extension].extend(field_unit_strs)
+        for _orig_key in col_names:
+            _short = _orig_key.split("/")[-1] if "/" in _orig_key else _orig_key
+            _fs = field_styles.get(_orig_key) or field_styles.get(_short)
+            if _fs:
+                ext_styles[f_extension].append(_fs)
+            else:
+                ext_styles[f_extension].append((None, None, None))
 
     # Hybrid data gets its own group so it is never mixed with other types.
     vs_time_hybrid = getattr(args, "vs_time_hybrid", None)
@@ -479,6 +490,9 @@ def _plot_vs_time_backend(
                 ext_colors[h_ext].append(cfg.colors.overview)
                 ext_origins[h_ext].append(key)
                 ext_units[h_ext].append("?")
+                _short_h = key.split("/")[-1] if "/" in key else key
+                _fs_h = field_styles.get(key) or field_styles.get(_short_h)
+                ext_styles[h_ext].append(_fs_h if _fs_h else (None, None, None))
             except (KeyError, ValueError, RuntimeError) as e:
                 logger.error(f"key: {key} not found in hybrid data: {e}")
 
@@ -503,6 +517,7 @@ def _plot_vs_time_backend(
                 "colors": list(ext_colors[ext]),
                 "origins": list(ext_origins[ext]),
                 "units": list(ext_units[ext]),
+                "styles": list(ext_styles[ext]),
             }
         )
 
@@ -558,8 +573,8 @@ def _plot_vs_time_backend(
         for g in groups:
             c = g["combined"]
             t = c["t"].to_numpy(dtype=float)
-            for fname, color, orig in zip(
-                g["fields"], g["colors"], g["origins"], strict=True
+            for fname, color, orig, fstyle in zip(
+                g["fields"], g["colors"], g["origins"], g["styles"], strict=True
             ):
                 if fname not in c.columns:
                     ax_idx += 1
@@ -571,6 +586,7 @@ def _plot_vs_time_backend(
                     f"use_subplots field {orig} from {fname} with color {color} and ylabel {ylabel}",
                     flush=True,
                 )
+                _fs_linestyle, _fs_marker, _fs_markevery = fstyle
                 b.add_series(
                     fig,
                     ax_idx,
@@ -580,6 +596,9 @@ def _plot_vs_time_backend(
                     normalize=normalize,
                     color=color,
                     ylabel=ylabel,
+                    marker=_fs_marker,
+                    linestyle=_fs_linestyle,
+                    markevery=_fs_markevery,
                 )
                 ax_idx += 1
     else:
@@ -587,8 +606,8 @@ def _plot_vs_time_backend(
         for g in groups:
             c = g["combined"]
             t = c["t"].to_numpy(dtype=float)
-            for fname, color, orig in zip(
-                g["fields"], g["colors"], g["origins"], strict=True
+            for fname, color, orig, fstyle in zip(
+                g["fields"], g["colors"], g["origins"], g["styles"], strict=True
             ):
                 if fname not in c.columns:
                     continue
@@ -599,7 +618,7 @@ def _plot_vs_time_backend(
                     f"overlay field {orig} from {fname} with color {color} and ylabel {ylabel}",
                     flush=True,
                 )
-
+                _fs_linestyle, _fs_marker, _fs_markevery = fstyle
                 b.add_series(
                     fig,
                     0,
@@ -609,6 +628,9 @@ def _plot_vs_time_backend(
                     normalize=normalize,
                     color=color,
                     ylabel=ylabel,
+                    marker=_fs_marker,
+                    linestyle=_fs_linestyle,
+                    markevery=_fs_markevery,
                 )
 
     if title and hasattr(fig, "update_layout"):

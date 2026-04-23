@@ -33,9 +33,7 @@ class MatplotlibBackend:
         """
         s = style or PlotStyle()
         width, height_per = s.figsize
-        fig, axes = plt.subplots(
-            n, 1, sharex=share_x, figsize=(width, height_per * n)
-        )
+        fig, axes = plt.subplots(n, 1, sharex=share_x, figsize=(width, height_per * n))
         ax_list = [axes] if n == 1 else list(axes)
         fig._magnetrun_axes = ax_list
         if s.grid:
@@ -54,6 +52,9 @@ class MatplotlibBackend:
         normalize: bool = False,
         color: str | None = None,
         ylabel: str | None = None,
+        marker: str | None = None,
+        linestyle: str | None = None,
+        markevery: int | None = None,
     ) -> None:
         ax = self._get_ax(fig, ax_idx)
         if normalize:
@@ -65,6 +66,12 @@ class MatplotlibBackend:
         kwargs: dict[str, Any] = {"label": label}
         if color is not None:
             kwargs["color"] = color
+        if marker is not None:
+            kwargs["marker"] = marker
+        if linestyle is not None:
+            kwargs["linestyle"] = linestyle
+        if markevery is not None:
+            kwargs["markevery"] = markevery
         ax.plot(t, y, **kwargs)
         if ylabel is not None:
             ax.set_ylabel(ylabel)

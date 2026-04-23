@@ -56,6 +56,9 @@ class PlottingBackend(Protocol):
         normalize: bool = False,
         color: str | None = None,
         ylabel: str | None = None,
+        marker: str | None = None,
+        linestyle: str | None = None,
+        markevery: int | None = None,
     ) -> None:
         """Plot *(t, y)* on the *ax_idx*-th axes.
 

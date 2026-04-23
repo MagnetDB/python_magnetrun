@@ -62,7 +62,9 @@ class PlotlyBackend:
         )
         if s.grid:
             fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor="rgba(0,0,0,0.1)")
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor=f"rgba(0,0,0,{s.grid_alpha})")
+            fig.update_yaxes(
+                showgrid=True, gridwidth=1, gridcolor=f"rgba(0,0,0,{s.grid_alpha})"
+            )
         else:
             fig.update_xaxes(showgrid=False)
             fig.update_yaxes(showgrid=False)
@@ -79,6 +81,9 @@ class PlotlyBackend:
         normalize: bool = False,
         color: str | None = None,
         ylabel: str | None = None,
+        marker: str | None = None,
+        linestyle: str | None = None,
+        markevery: int | None = None,
     ) -> None:
         _require_plotly()
         if normalize:
@@ -87,14 +92,78 @@ class PlotlyBackend:
                 abs_max = 1.0
             y = y / abs_max
             label = f"{label}  (max={abs_max:.3g})"
+
+        # Determine Plotly mode from linestyle/marker
+        has_markers = marker is not None
+        no_lines = linestyle is not None and linestyle.lower() == "none"
+        if has_markers and no_lines:
+            mode = "markers"
+        elif has_markers:
+            mode = "lines+markers"
+        else:
+            mode = "lines"
+
+        # Apply markevery by sub-sampling the marker positions
+        if has_markers and markevery is not None and markevery > 1:
+            mask = np.zeros(len(t), dtype=bool)
+            mask[::markevery] = True
+            t_mk = t[mask]
+            y_mk = y[mask]
+        else:
+            t_mk, y_mk = t, y
+
         scatter_kwargs: dict[str, Any] = {
-            "x": t,
-            "y": y,
+            "x": t_mk if has_markers else t,
+            "y": y_mk if has_markers else y,
             "name": label,
-            "mode": "lines",
+            "mode": mode,
         }
+
+        # Build line dict
+        line_dict: dict[str, Any] = {}
         if color is not None:
-            scatter_kwargs["line"] = {"color": color}
+            line_dict["color"] = color
+        if linestyle is not None and not no_lines:
+            _dash_map = {"-": "solid", "--": "dash", "-.": "dashdot", ":": "dot"}
+            line_dict["dash"] = _dash_map.get(linestyle, linestyle)
+        if line_dict:
+            scatter_kwargs["line"] = line_dict
+
+        # Build marker dict
+        if has_markers:
+            _symbol_map = {
+                "o": "circle",
+                "+": "cross",
+                "x": "x",
+                "s": "square",
+                "D": "diamond",
+                "^": "triangle-up",
+                "v": "triangle-down",
+                "<": "triangle-left",
+                ">": "triangle-right",
+                "*": "star",
+            }
+            marker_dict: dict[str, Any] = {"symbol": _symbol_map.get(marker, marker)}
+            if color is not None:
+                marker_dict["color"] = color
+            scatter_kwargs["marker"] = marker_dict
+
+            if markevery is not None and markevery > 1 and not no_lines:
+                # Overlay a separate line trace for the full series, markers only on sampled points
+                line_trace: dict[str, Any] = {
+                    "x": t,
+                    "y": y,
+                    "name": label,
+                    "mode": "lines",
+                    "showlegend": False,
+                }
+                if line_dict:
+                    line_trace["line"] = line_dict
+                fig.add_trace(go.Scatter(**line_trace), row=ax_idx + 1, col=1)
+                scatter_kwargs["mode"] = "markers"
+                scatter_kwargs["x"] = t_mk
+                scatter_kwargs["y"] = y_mk
+
         fig.add_trace(go.Scatter(**scatter_kwargs), row=ax_idx + 1, col=1)
         if ylabel is not None:
             fig.update_yaxes(title_text=ylabel, row=ax_idx + 1, col=1)
@@ -125,8 +194,12 @@ class PlotlyBackend:
                 x=[t],
                 y=[f],
                 mode="markers",
-                marker=dict(color="yellow", size=10, symbol="circle",
-                            line=dict(color="black", width=1)),
+                marker=dict(
+                    color="yellow",
+                    size=10,
+                    symbol="circle",
+                    line=dict(color="black", width=1),
+                ),
                 name=label,
                 showlegend=False,
                 hovertext=hover,
@@ -154,7 +227,11 @@ class PlotlyBackend:
     def finalize(self, fig: Any, *, xlabel: str = "t [s]") -> None:
         """Add x-axis label to the bottom row."""
         _require_plotly()
-        n_rows = fig._get_subplot_rows_columns()[0][-1] if hasattr(fig, "_get_subplot_rows_columns") else 1
+        n_rows = (
+            fig._get_subplot_rows_columns()[0][-1]
+            if hasattr(fig, "_get_subplot_rows_columns")
+            else 1
+        )
         fig.update_xaxes(title_text=xlabel, row=n_rows, col=1)
 
     def save(self, fig: Any, path: Path, *, dpi: int = 300) -> None:
