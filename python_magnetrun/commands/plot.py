@@ -1,11 +1,9 @@
 """Plot commands: visualise MagnetRun data."""
 
-import contextlib
 import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -15,6 +13,7 @@ from ..magnetdata_base import DataType
 from ..MagnetRun import MagnetRun
 from ..plotting.backend import get_backend
 from ..plotting.style import PlotConfig, load_plot_config
+from ..plotting.timeseries import plot_overlay, plot_subplots, plot_xy
 from ..utils.downsampling import DownsampleConfig
 
 logger = logging.getLogger(__name__)
@@ -291,40 +290,15 @@ def _plot_title(input_files: list[str], items) -> str:
     return "-".join(_flatten(items))
 
 
-def _collect_hybrid(
-    inputs, args, t0: list, dfs: list, all_fields: list, all_colors: list, cfg
-) -> None:
-    """Append hybrid data as extra columns into *dfs*/*all_fields*/*all_colors*."""
-    vs_time_hybrid = getattr(args, "vs_time_hybrid", None)
-    if not vs_time_hybrid or "hybrid" not in inputs:
-        return
-    hrun: HybridRun = inputs["hybrid"]["data"]
-    time_offset = (hrun.StartTime - t0[0]).total_seconds() if t0 else 0.0
-    logger.info(f"hybrid time offset: {time_offset} s")
-    for key in vs_time_hybrid:
-        try:
-            data, time = hrun.getData(
-                key, downsample=DownsampleConfig(n_out=args.hybrid_downsample)
-            )
-            data = np.asarray(data, dtype=float)
-            time = np.asarray(time, dtype=float) + time_offset
-            col_name = f"{args.fepc_system}:{args.hybrid_date}: {key}"
-            dfs.append(pd.DataFrame({"t": time, col_name: data}))
-            all_fields.append(col_name)
-            all_colors.append(cfg.colors.overview)
-        except (KeyError, ValueError, RuntimeError) as e:
-            logger.error(f"key: {key} not found in hybrid data: {e}")
-
-
 def _plot_vs_time_backend(
     input_files, inputs, extensions, args, cfg, backend_name: str
 ) -> None:
-    """plot_vs_time implementation for non-matplotlib backends.
+    """Core implementation of plot_vs_time, used for all backends.
 
     Data is grouped by file-extension type (pupitre .txt vs pigbrother .tdms)
-    so that each group is concatenated only with files of the same type.
-    This preserves dense, NaN-free t-series within each group instead of
-    creating a sparse interleaved mega-DataFrame.
+    so that each group is concatenated only within its type. Groups are then
+    merged into one DataFrame for plot_subplots/plot_overlay; cross-group
+    columns are NaN which both matplotlib and plotly render as line gaps.
     """
     from collections import defaultdict
 
@@ -510,6 +484,10 @@ def _plot_vs_time_backend(
             .sort_values("t")
             .reset_index(drop=True)
         )
+        logger.debug(
+            f"ext={ext}: combined df columns: {c.columns.tolist()} -- ext_fields: {ext_fields[ext]}"
+        )
+        logger.debug(f"ext={ext}: combined df head:\n{c.head()}")
         groups.append(
             {
                 "combined": c,
@@ -563,80 +541,49 @@ def _plot_vs_time_backend(
         normalize = False  # already pre-normalised
 
     all_fields = [f for g in groups for f in g["fields"]]
+    all_colors = [c for g in groups for c in g["colors"]]
+    all_styles = [s for g in groups for s in g["styles"]]
 
-    # Plot using the backend directly — each group provides its own dense t array,
-    # so no cross-type NaN interleaving occurs.
-    n_series = len(all_fields)
-    if use_subplots:
-        fig = b.subplots(n_series, share_x=True, style=cfg.style)
-        ax_idx = 0
-        for g in groups:
-            c = g["combined"]
-            t = c["t"].to_numpy(dtype=float)
-            for fname, color, orig, fstyle in zip(
-                g["fields"], g["colors"], g["origins"], g["styles"], strict=True
-            ):
-                if fname not in c.columns:
-                    ax_idx += 1
-                    continue
-                y = c[fname].to_numpy(dtype=float)
-                tgt = display_units.get(orig) if display_units else None
-                ylabel = f"{orig} [{tgt}]" if tgt else fname
-                print(
-                    f"use_subplots field {orig} from {fname} with color {color} and ylabel {ylabel}",
-                    flush=True,
-                )
-                _fs_linestyle, _fs_marker, _fs_markevery = fstyle
-                b.add_series(
-                    fig,
-                    ax_idx,
-                    t,
-                    y,
-                    label=fname,
-                    normalize=normalize,
-                    color=color,
-                    ylabel=ylabel,
-                    marker=_fs_marker,
-                    linestyle=_fs_linestyle,
-                    markevery=_fs_markevery,
-                )
-                ax_idx += 1
-    else:
-        fig = b.subplots(1, share_x=False, style=cfg.style)
-        for g in groups:
-            c = g["combined"]
-            t = c["t"].to_numpy(dtype=float)
-            for fname, color, orig, fstyle in zip(
-                g["fields"], g["colors"], g["origins"], g["styles"], strict=True
-            ):
-                if fname not in c.columns:
-                    continue
-                y = c[fname].to_numpy(dtype=float)
-                tgt = display_units.get(orig) if display_units else None
-                ylabel = f"{orig} [{tgt}]" if tgt else None
-                print(
-                    f"overlay field {orig} from {fname} with color {color} and ylabel {ylabel}",
-                    flush=True,
-                )
-                _fs_linestyle, _fs_marker, _fs_markevery = fstyle
-                b.add_series(
-                    fig,
-                    0,
-                    t,
-                    y,
-                    label=fname,
-                    normalize=normalize,
-                    color=color,
-                    ylabel=ylabel,
-                    marker=_fs_marker,
-                    linestyle=_fs_linestyle,
-                    markevery=_fs_markevery,
-                )
+    # Merge all groups into one DataFrame. Each group contributes its own
+    # dense t-series; columns absent in a group become NaN, which matplotlib
+    # and plotly both render as line gaps — visually correct for data from
+    # different sources with non-overlapping time ranges.
+    merged_df = (
+        pd.concat([g["combined"] for g in groups], ignore_index=True)
+        .sort_values("t", kind="stable")
+        .reset_index(drop=True)
+    )
+    logger.debug(
+        f"merged_df columns: {merged_df.columns.tolist()} -- all_fields: {all_fields}"
+    )
+    logger.debug(f"merged_df:\n{merged_df.head()}")
 
-    if title and hasattr(fig, "update_layout"):
-        fig.update_layout(title_text=title)
-    elif title:
-        fig.suptitle(title)
+    # Warn when overlaying fields whose units differ across groups.
+    if not use_subplots:
+        all_units_flat = [u for g in groups for u in g["units"]]
+        unique_units = {u for u in all_units_flat if u != "?"}
+        if len(unique_units) > 1:
+            field_unit_info = ", ".join(
+                f"{f!r} [{u}]"
+                for g in groups
+                for f, u in zip(g["fields"], g["units"], strict=True)
+            )
+            logger.warning(
+                "Overlaying fields with different units: %s — consider using --subplots or --normalize",
+                field_unit_info,
+            )
+
+    _plot_fn = plot_subplots if use_subplots else plot_overlay
+    fig = _plot_fn(
+        merged_df,
+        all_fields,
+        backend=b,
+        style=cfg.style,
+        title=title,
+        colors=all_colors,
+        field_styles=all_styles,
+        normalize=normalize,
+    )
 
     b.finalize(fig)
 
@@ -653,289 +600,122 @@ def plot_vs_time(input_files, inputs, extensions, args):
     """Plot data versus time for selected keys."""
     cfg = _resolve_plot_config(args)
     backend_name = getattr(args, "backend", "matplotlib")
-
-    use_subplots = getattr(args, "subplots", False)
-    display_units = _parse_display_units(getattr(args, "unit", None))
-    normalize = getattr(args, "normalize", False)
-    if backend_name != "matplotlib" or use_subplots or display_units or normalize:
-        _plot_vs_time_backend(input_files, inputs, extensions, args, cfg, backend_name)
-        return
-
-    # ---- matplotlib overlay path (legacy direct implementation) ----------------
-    import matplotlib.pyplot as plt
-
-    from ..plotting.utils import resolve_legend_labels
-
-    items = args.vs_time
-    logger.debug(f"items={items}")
-    title = _plot_title(input_files, items)
-
-    fig, my_ax = plt.subplots(figsize=cfg.style.figsize)
-
-    same_color_per_type: bool = getattr(args, "same_color_per_type", False)
-    legends = []
-    t0 = []
-    symbol, unit = None, None
-    key_color_idx = 0  # global counter for palette cycling across all files+keys
-    field_styles = _parse_field_styles(getattr(args, "field_style", None))
-
-    # Pre-compute disambiguated legend labels using the first file's FieldMeta.
-    # resolve_legend_labels handles: JSON label > symbol_suffix > field name,
-    # so fields without a label get proper suffix disambiguation rather than
-    # falling back to the bare physics symbol.
-    _all_keys: list[str] = list(
-        dict.fromkeys(k for ext_args in items for k in ext_args)
-    )
-    _first_mdata = inputs[input_files[0]]["data"].getMData()
-    _field_metas = {k: _first_mdata.getFieldMeta(k) for k in _all_keys}
-    _resolved_labels = resolve_legend_labels(_all_keys, _field_metas)
-    seen_units: set[str] = set()
-    field_units: dict[str, str] = {}  # short key → unit_str, for mixed-unit hint
-    field_pint_units: dict[str, Any] = (
-        {}
-    )  # short key → pint unit, for dimensionality check
-    f_extension = ""
-    file = ""
-    key = ""
-    for i, file in enumerate(input_files):
-        f_extension = os.path.splitext(file)[-1]
-        plot_args = items[list(extensions.keys()).index(f_extension)]
-        logger.debug(
-            f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}"
-        )
-        mrun: MagnetRun = inputs[file]["data"]
-        t0.append(mrun.StartTime)
-        mdata = mrun.getMData()
-        delta_t = 0.0
-        if i >= 1:
-            delta_t = (mrun.StartTime - t0[0]).total_seconds()
-            logger.info(f"align time axis: delta_t={delta_t} s")
-            mdata.shiftTime(delta_t)
-
-        src_color = cfg.colors.get_file_color(i, f_extension, same_color_per_type)
-        for key in plot_args:
-            if not same_color_per_type:
-                src_color = cfg.colors.palette[key_color_idx % len(cfg.colors.palette)]
-            try:
-                (symbol, unit) = mdata.getUnitKey(key)
-                logger.debug(
-                    f"legend: file={os.path.basename(file)!r} key={key!r} symbol={symbol!r} unit={unit!r}"
-                )
-                short_key = key.split("/")[-1] if "/" in key else key
-                _fs = field_styles.get(key) or field_styles.get(short_key)
-                _fs_linestyle, _fs_marker, _fs_markevery = (
-                    _fs if _fs else (None, None, None)
-                )
-                mdata.plotData(
-                    x="t",
-                    y=key,
-                    ax=my_ax,
-                    normalize=args.normalize,
-                    offset=delta_t,
-                    color=src_color,
-                    marker=_fs_marker,
-                    linestyle=_fs_linestyle,
-                    markevery=_fs_markevery,
-                )
-                unit_str = f"{unit:~P}" if unit is not None else "?"
-                seen_units.add(unit_str)
-                field_units.setdefault(short_key, unit_str)
-                field_pint_units.setdefault(short_key, unit)
-                basename = os.path.basename(file).replace(f_extension, "")
-                field_label = _resolved_labels.get(key, short_key)
-                multi_file = len(input_files) > 1
-                entry = (
-                    f"{basename}: {field_label}" if multi_file else field_label
-                ) + f" [{unit_str}]"
-                logger.debug(f"legend: appending {entry!r}")
-                legends.append(entry)
-                if args.normalize:
-                    legends[
-                        -1
-                    ] += f" max={float(mdata.getData([key]).max().iloc[0]):.3f} [{unit_str}]"
-            except RuntimeError as e:
-                logger.error(f"key: {key} not found in {file}: {e}")
-                logger.info(f"available keys: {mdata.getKeys()}")
-                continue
-            finally:
-                key_color_idx += 1
-        logger.debug(f"legend: after file {os.path.basename(file)!r}: {legends}")
-
-    # -- Hybrid data (matplotlib path) --
-    vs_time_hybrid = getattr(args, "vs_time_hybrid", None)
-    if vs_time_hybrid and "hybrid" in inputs:
-        hrun: HybridRun = inputs["hybrid"]["data"]
-        time_offset = (hrun.StartTime - t0[0]).total_seconds() if t0 else 0.0
-        for key in vs_time_hybrid:
-            try:
-                data, time = hrun.getData(
-                    key, downsample=DownsampleConfig(n_out=args.hybrid_downsample)
-                )
-                data = np.asarray(data, dtype=float)
-                time = np.asarray(time, dtype=float)
-                data_max = float(data.max())
-                if args.normalize:
-                    data = (data - float(data.min())) / (data_max - float(data.min()))
-                my_ax.plot(time + time_offset, data, alpha=0.7, linewidth=0.5)
-                label = f"{args.fepc_system}:{args.hybrid_date}: {key}"
-                legends.append(label)
-                if args.normalize:
-                    unit_info = hrun.getMData().getUnitKey(key)
-                    unit_str = f" [{unit_info[1]:~P}]" if len(unit_info) == 2 else ""
-                    legends[-1] += f" max={data_max:.3f} [{unit_str}]"
-                try:
-                    unit_info = hrun.getMData().getUnitKey(key)
-                    if len(unit_info) == 2:
-                        h_unit_str = (
-                            f"{unit_info[1]:~P}" if unit_info[1] is not None else "?"
-                        )
-                        seen_units.add(h_unit_str)
-                        if symbol is None:
-                            symbol, unit = unit_info
-                except (KeyError, RuntimeError):
-                    pass
-            except (KeyError, ValueError, RuntimeError) as e:
-                logger.error(f"key: {key} not found in hybrid data: {e}")
-
-    # Re-apply grid after all df.plot() calls (pandas resets it internally)
-    if cfg.style.grid:
-        my_ax.grid(True, alpha=cfg.style.grid_alpha)
-
-    if args.normalize:
-        my_ax.set_ylabel("normalized")
-    elif symbol is not None and unit is not None and len(seen_units) == 1:
-        my_ax.set_ylabel(f"{symbol} [{unit:~P}]")
-    elif len(seen_units) > 1:
-        dims: set[str] = set()
-        for pu in field_pint_units.values():
-            if pu is not None:
-                with contextlib.suppress(AttributeError, TypeError):
-                    dims.add(str(pu.dimensionality))
-        unit_summary = ", ".join(f"{k} [{v}]" for k, v in field_units.items())
-        if len(dims) <= 1:
-            target = next(iter(seen_units))
-            hint = " ".join(f"--unit {k}={target}" for k in field_units)
-            logger.warning(
-                f"Mixed units on overlay ({unit_summary}) — ylabel suppressed. To align units add: {hint}"
-            )
-        else:
-            logger.warning(
-                f"Incompatible dimensions on overlay ({unit_summary}) — ylabel suppressed. Consider adding --normalize to compare shapes."
-            )
-    logger.debug(f"legend: final list ({len(legends)} entries): {legends}")
-    if len(legends) > 1:
-        handles, auto_labels = my_ax.get_legend_handles_labels()
-        logger.debug(
-            f"legend: axes has {len(handles)} handles, auto_labels={auto_labels}"
-        )
-        for handle, label in zip(handles, legends, strict=False):
-            handle.set_label(label)
-        leg = my_ax.legend(loc=cfg.style.legend_loc)
-        logger.debug(
-            f"legend: leg={leg}, visible={leg.get_visible() if leg is not None else 'N/A'}"
-        )
-    try:
-        (t_symbol, t_unit) = inputs[input_files[0]]["data"].getMData().getUnitKey("t")
-        my_ax.set_xlabel(f"{t_symbol} [{t_unit:~P}]")
-    except (KeyError, RuntimeError):
-        my_ax.set_xlabel("t [s]")
-    my_ax.set_title(title, fontsize=cfg.style.title_fontsize)
-    my_ax.tick_params(labelsize=cfg.style.label_fontsize)
-
-    b = get_backend("matplotlib")
-    fields = list(_flatten(args.vs_time)) if args.vs_time else []
-    _handle_output(fig, args, b, input_files, fields, "matplotlib", dpi=cfg.style.dpi)
-    plt.close()
+    _plot_vs_time_backend(input_files, inputs, extensions, args, cfg, backend_name)
 
 
 def plot_key_vs_key(input_files, inputs, extensions, args):
-    """Plot key versus key pairs.
-
-    :param input_files: List of input file paths
-    :type input_files: list
-    :param inputs: Dictionary containing MagnetRun data for each file
-    :type inputs: dict
-    :param extensions: Dictionary mapping file extensions to indices
-    :type extensions: dict
-    :param args: Parsed command line arguments
-    :type args: argparse.Namespace
-    """
-    backend_name = getattr(args, "backend", "matplotlib")
-    if backend_name != "matplotlib":
-        logger.error(
-            f"plot_key_vs_key does not yet support backend={backend_name!r}; "
-            "use --backend matplotlib (or omit --backend)."
-        )
-        return
-
-    import matplotlib.pyplot as plt
-
+    """Plot key versus key pairs."""
     cfg = _resolve_plot_config(args)
-    fig, my_ax = plt.subplots(figsize=cfg.style.figsize)
+    backend_name = getattr(args, "backend", "matplotlib")
+    b = get_backend(backend_name)
 
-    items = args.key_vs_key
-    file = ""
-    f_extension = ""
     title = os.path.basename(input_files[0])
     if len(input_files) > 1:
-        klabels = list(_flatten(items))
-        title = f"{'-'.join(klabels)}"
+        klabels = list(_flatten(args.key_vs_key))
+        title = "-".join(klabels)
 
-    legends = []
-    # Resolve marker / linestyle from CLI args
     no_lines: bool = getattr(args, "no_lines", False)
     marker: str | None = getattr(args, "marker", None)
     if no_lines and marker is None:
         marker = "o"
     linestyle: str | None = "none" if no_lines else None
 
-    # split pairs in key1, key2
-    print(f"key_vs_key={args.key_vs_key}", flush=True)
-    print(f"extensions={extensions}", flush=True)
-    pairs = args.key_vs_key
-    for file in input_files:
+    field_styles = _parse_field_styles(getattr(args, "field_style", None))
+
+    pairs: list[tuple[str, str]] = []
+    labels: list[str] = []
+    colors: list[str] = []
+    dfs: list[pd.DataFrame] = []
+    per_styles: list[tuple[str | None, str | None, int | None]] = []
+    x_axis_labels: list[str] = []
+    y_axis_labels: list[str] = []
+
+    for i, file in enumerate(input_files):
         f_extension = os.path.splitext(file)[-1]
         basename = os.path.basename(file).replace(f_extension, "")
-        plot_args = pairs[list(extensions.keys()).index(f_extension)]
+        plot_args = args.key_vs_key[list(extensions.keys()).index(f_extension)]
         logger.debug(
             f"field: {file}, plot_args: {plot_args}, f_extension:{f_extension}"
         )
         mrun: MagnetRun = inputs[file]["data"]
         mdata = mrun.getMData()
+        color = cfg.colors.get_file_color(i, f_extension, False)
 
-        for pair in plot_args:
-            items = pair.split("-")
-            if len(items) != 2:
-                raise RuntimeError(f"invalid pair of keys:{pair}")
-            key1 = items[0]
-            key2 = items[1]
-            print(f"plotting {key1} vs {key2} from {file}", flush=True)
+        for pair_spec in plot_args:
+            parts = pair_spec.split("-")
+            if len(parts) != 2:
+                raise RuntimeError(f"invalid pair of keys: {pair_spec!r}")
+            key1, key2 = parts
+            logger.debug(f"extracting {key1} vs {key2} from {file}")
             try:
-                mdata.plotData(
-                    x=key1,
-                    y=key2,
-                    ax=my_ax,
-                    marker=marker,
-                    linestyle=linestyle,
-                )
-                legends.append(f"{basename}: {key1} vs {key2}")
-            except RuntimeError as e:
-                logger.error(f"pair {pair!r}: key not found in {file}: {e}")
+                if mdata.getType() != DataType.TDMS:
+                    df_pair = mdata.getData([key1, key2])
+                    col1, col2 = key1, key2
+                else:
+                    df_pair = mdata.extractData([key1, key2])
+                    col1 = key1.split("/")[-1] if "/" in key1 else key1
+                    col2 = key2.split("/")[-1] if "/" in key2 else key2
+            except (RuntimeError, KeyError) as e:
+                logger.error(f"pair {pair_spec!r}: key not found in {file}: {e}")
                 logger.info(f"available keys: {mdata.getKeys()}")
                 continue
 
-    # Re-apply grid after all df.plot() calls (pandas resets it internally)
-    if cfg.style.grid:
-        my_ax.grid(True, alpha=cfg.style.grid_alpha)
+            if len(input_files) > 1:
+                new_col1, new_col2 = f"{basename}: {col1}", f"{basename}: {col2}"
+                df_pair = df_pair.rename(columns={col1: new_col1, col2: new_col2})
+                col1, col2 = new_col1, new_col2
 
-    if len(legends) > 1:
-        my_ax.legend(labels=legends, loc=cfg.style.legend_loc)
-    my_ax.set_title(title, fontsize=cfg.style.title_fontsize)
-    my_ax.tick_params(labelsize=cfg.style.label_fontsize)
+            dfs.append(df_pair[[col1, col2]])
+            pairs.append((col1, col2))
+            lbl = (
+                f"{basename}: {key1} vs {key2}"
+                if len(input_files) > 1
+                else f"{key1} vs {key2}"
+            )
+            labels.append(lbl)
+            colors.append(color)
+            # Look up field_style by the original y-key (key2) or its short form.
+            y_short = key2.split("/")[-1] if "/" in key2 else key2
+            _fs = field_styles.get(key2) or field_styles.get(y_short)
+            per_styles.append(_fs if _fs else (None, None, None))
 
-    kv_fields = list(_flatten(args.key_vs_key)) if args.key_vs_key else []
-    b_mpl = get_backend("matplotlib")
-    _handle_output(
-        fig, args, b_mpl, input_files, kv_fields, "matplotlib", dpi=cfg.style.dpi
+            # Build "symbol [unit]" axis labels from field metadata.
+            for orig_key, axis_label_list in (
+                (key1, x_axis_labels),
+                (key2, y_axis_labels),
+            ):
+                try:
+                    sym, unit = mdata.getUnitKey(orig_key)
+                    short = orig_key.split("/")[-1] if "/" in orig_key else orig_key
+                    name = sym if sym else short
+                    lbl_str = f"{name} [{unit:~P}]" if unit is not None else name
+                except (RuntimeError, KeyError):
+                    lbl_str = orig_key.split("/")[-1] if "/" in orig_key else orig_key
+                if lbl_str not in axis_label_list:
+                    axis_label_list.append(lbl_str)
+
+    if not pairs:
+        logger.warning("plot_key_vs_key: no data to plot")
+        return
+
+    merged_df = pd.concat(dfs, axis=1)
+    fig = plot_xy(
+        merged_df,
+        pairs,
+        labels=labels,
+        backend=b,
+        style=cfg.style,
+        title=title,
+        colors=colors,
+        marker=marker,
+        linestyle=linestyle,
+        field_styles=per_styles if field_styles else None,
+        xlabel=", ".join(x_axis_labels) if x_axis_labels else None,
+        ylabel=", ".join(y_axis_labels) if y_axis_labels else None,
     )
-    plt.close()
+
+    b.finalize(fig)
+    kv_fields = list(_flatten(args.key_vs_key)) if args.key_vs_key else []
+    _handle_output(
+        fig, args, b, input_files, kv_fields, backend_name, dpi=cfg.style.dpi
+    )

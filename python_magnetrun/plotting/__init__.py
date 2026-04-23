@@ -37,7 +37,7 @@ from .style import (
     load_plot_config,
     save_plot_config,
 )
-from .timeseries import plot_overlay, plot_subplots
+from .timeseries import plot_overlay, plot_subplots, plot_xy
 from .utils import format_axis_label, format_legend_label, resolve_legend_labels
 
 __all__ = [
@@ -49,6 +49,7 @@ __all__ = [
     "get_backend",
     "plot_subplots",
     "plot_overlay",
+    "plot_xy",
     "AnnotationManager",
     "PlotConfig",
     "load_plot_config",

@@ -34,6 +34,7 @@ Example usage::
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import matplotlib
@@ -41,13 +42,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from python_magnetrun.plotting.backend import PlottingBackend, get_backend
 from python_magnetrun.plotting.style import (  # noqa: F401
     DEFAULT_COLORS,
     DEFAULT_STYLE,
     PlotColors,
     PlotStyle,
 )
-from python_magnetrun.utils.downsampling import DownsampleConfig, downsample_arrays
+from python_magnetrun.plotting.timeseries import plot_overlay
+from python_magnetrun.utils.downsampling import DownsampleConfig
 
 # Module logger
 logger = logging.getLogger("python_magnetrun.analysis.plotting")
@@ -247,6 +250,7 @@ def plot_data(
     style: PlotStyle | None = None,
     colors: PlotColors | None = None,
     interactive: bool = True,
+    backend: PlottingBackend | None = None,
 ) -> Any | None:
     """
     Plot data from multiple sources with optional downsampling.
@@ -317,90 +321,99 @@ def plot_data(
 
     style = style or DEFAULT_STYLE
     colors = colors or DEFAULT_COLORS
+    b = get_backend(backend)
 
-    # Create figure
-    fig, ax = plt.subplots(figsize=style.figsize)
-    legends = []
+    # ------------------------------------------------------------------
+    # Build one merged DataFrame: one row per sample, NaN where a source
+    # has no value at that timestamp.  plot_overlay handles NaN as gaps.
+    # ------------------------------------------------------------------
+    dfs_to_concat: list[pd.DataFrame] = []
+    field_names: list[str] = []
+    field_colors: list[str] = []
+    field_styles: list[tuple] = []
 
-    # Helper to downsample and plot
-    def plot_series(df, x_col, y_col, color, label, marker=None, alpha=1.0):
-        if df is None or df.empty:
-            return
-
-        x = df[x_col].values
-        y = df[y_col].values
-
-        if downsample_config is not None:
-            y, x = downsample_arrays(y, x, downsample_config)
-
-        if marker:
-            ax.plot(
-                x,
-                y,
-                color=color,
-                marker=marker,
-                alpha=alpha,
-                markersize=3,
-                linestyle="-",
-            )
-        else:
-            ax.plot(x, y, color=color, alpha=alpha)
-        legends.append(label)
-
-    # Plot overview data
     if not df_overview.empty:
-        plot_series(df_overview, tkey, key, colors.overview, f"Overview: {key}")
-        plot_series(
-            df_overview,
-            tkey,
-            channels_dict[key],
-            colors.overview,
-            f"Overview: {channels_dict[key]}",
-            marker=".",
-            alpha=0.7,
-        )
+        ov_rename: dict[str, str] = {}
+        if key in df_overview.columns:
+            col = f"Overview: {key}"
+            ov_rename[key] = col
+            field_names.append(col)
+            field_colors.append(colors.overview)
+            field_styles.append((None, None, None))
+        ov_ch = channels_dict.get(key)
+        if ov_ch and ov_ch in df_overview.columns:
+            col = f"Overview: {ov_ch}"
+            ov_rename[ov_ch] = col
+            field_names.append(col)
+            field_colors.append(colors.overview)
+            field_styles.append((None, ".", None))  # small markers distinguish source
+        if ov_rename:
+            ov_cols = [tkey] + list(ov_rename.keys())
+            dfs_to_concat.append(df_overview[ov_cols].rename(columns=ov_rename))
 
-    # Plot archive data
     if not df_archive.empty:
-        plot_series(
-            df_archive,
-            tkey,
-            channels_dict[key],
-            colors.archive,
-            f"Archive: {channels_dict[key]}",
-            alpha=0.5,
-        )
+        ar_ch = channels_dict.get(key)
+        if ar_ch and ar_ch in df_archive.columns:
+            col = f"Archive: {ar_ch}"
+            dfs_to_concat.append(df_archive[[tkey, ar_ch]].rename(columns={ar_ch: col}))
+            field_names.append(col)
+            field_colors.append(colors.archive)
+            field_styles.append(("--", None, None))  # dashed to distinguish
 
-    # Plot pupitre data
     if not df_pupitre.empty:
         logger.info(
             f"housing={housing}, key={key}, pupitre_dict={pupitre_dict}, "
             f"df.columns={df_pupitre.columns.tolist()}"
         )
-        pupitre_key = pupitre_dict[housing][key]
-        plot_series(
-            df_pupitre, tkey, pupitre_key, colors.pupitre, f"Pupitre: {pupitre_key}"
-        )
+        pu_ch = pupitre_dict.get(housing, {}).get(key)
+        if pu_ch and pu_ch in df_pupitre.columns:
+            col = f"Pupitre: {pu_ch}"
+            dfs_to_concat.append(df_pupitre[[tkey, pu_ch]].rename(columns={pu_ch: col}))
+            field_names.append(col)
+            field_colors.append(colors.pupitre)
+            field_styles.append(("-.", None, None))  # dash-dot for pupitre
 
-    # Plot incidents via AnnotationManager
+    if not field_names:
+        logger.warning(
+            "plot_data: no data columns found for key %r — nothing to plot", key
+        )
+        return None
+
+    merged = (
+        pd.concat(dfs_to_concat, ignore_index=True)
+        .sort_values(tkey, kind="stable")
+        .reset_index(drop=True)
+    )
+
+    fig = plot_overlay(
+        merged,
+        field_names,
+        t_col=tkey,
+        backend=b,
+        style=style,
+        title=f"{title.replace('_Overview', '')}: {key} {msg}",
+        colors=field_colors,
+        field_styles=field_styles,
+        downsample=downsample_config,
+    )
+    fig._magnetrun_xlabel = tkey  # type: ignore[attr-defined]
+
+    # ------------------------------------------------------------------
+    # Incident annotations (backend-agnostic via AnnotationManager)
+    # ------------------------------------------------------------------
     if df_incidents is not None and interactive:
         from python_magnetrun.plotting.annotations import AnnotationManager
-        from python_magnetrun.plotting.matplotlib_backend import MatplotlibBackend
 
-        manager = AnnotationManager(MatplotlibBackend(), style=style, colors=colors)
-
+        manager = AnnotationManager(b, style=style, colors=colors)
         for itype, incident_list in df_incidents.items():
             for i, idf in enumerate(incident_list):
                 if idf.empty:
                     continue
-
                 t_mid = idf[tkey].median()
                 incident_key = channels_dict.get(key, key)
                 if incident_key not in idf.columns:
                     continue
-
                 f_mid = idf[incident_key].median()
-
                 label = rf"{itype} #{i + 1}"
                 detail = {
                     "anomaly": label,
@@ -411,33 +424,19 @@ def plot_data(
                     "archive": (df_archive, channels_dict.get(key)),
                 }
                 manager.add(fig, 0, t_mid, f_mid, label, detail)
-
         manager.connect(fig)
 
-    # Finalize plot
-    ax.legend(labels=legends, loc=style.legend_loc)
-    ax.set_title(
-        f"{title.replace('_Overview', '')}: {key} {msg}", fontsize=style.title_fontsize
-    )
-    ax.set_xlabel(tkey, fontsize=style.label_fontsize)
+    b.finalize(fig)
 
-    if style.grid:
-        ax.grid(True, alpha=style.grid_alpha)
-
-    plt.tight_layout()
-
-    # Save if requested
     if save:
         if output_path is None:
-            # Auto-generate filename
-            label, igroup = key.split("_") if "_" in key else (key, "")
+            _lbl, igroup = key.split("_") if "_" in key else (key, "")
             output_path = f"{title.replace('_Overview', '')}-{igroup}.png"
-        plt.savefig(output_path, dpi=style.dpi)
+        b.save(fig, Path(output_path), dpi=style.dpi)
         logger.info(f"Saved plot to {output_path}")
 
     if show:
-        plt.show()
-        plt.close()
+        b.show(fig)
         return None
 
     return fig
@@ -457,6 +456,7 @@ def plot_comparison(
     save: bool = False,
     output_path: str | None = None,
     style: PlotStyle | None = None,
+    backend: str | PlottingBackend = "matplotlib",
 ) -> Any | None:
     """
     Plot comparison between two DataFrames.
@@ -474,7 +474,7 @@ def plot_comparison(
     title : str
         Plot title
     downsample_percent : float
-        Percentage of data to plot
+        Percentage of data to plot (converted to DownsampleConfig internally)
     show : bool
         Display plot
     save : bool
@@ -483,43 +483,50 @@ def plot_comparison(
         Output file path
     style : PlotStyle, optional
         Plot style configuration
+    backend : str or PlottingBackend, optional
+        Backend name or instance (default: ``"matplotlib"``).
 
     Returns
     -------
     Figure or None
     """
-
     style = style or DEFAULT_STYLE
+    b = get_backend(backend)
 
-    fig, ax = plt.subplots(figsize=style.figsize)
-
-    # Plot first series
-    x1, y1 = df1[x_col].to_numpy(), df1[y_col1].to_numpy()
+    ds_config: DownsampleConfig | None = None
     if downsample_percent < 100.0:
-        x1, y1 = downsample_for_plot(x1, y1, downsample_percent)
-    ax.plot(x1, y1, label=label1, color="blue")
+        n_points = max(len(df1), len(df2))
+        ds_config = DownsampleConfig(
+            n_out=max(100, int(n_points * downsample_percent / 100.0))
+        )
 
-    # Plot second series
-    x2, y2 = df2[x_col].to_numpy(), df2[y_col2].to_numpy()
-    if downsample_percent < 100.0:
-        x2, y2 = downsample_for_plot(x2, y2, downsample_percent)
-    ax.plot(x2, y2, label=label2, color="red", alpha=0.7)
+    # Rename y columns to their legend labels, concat along the shared x axis.
+    s1 = df1[[x_col, y_col1]].rename(columns={y_col1: label1})
+    s2 = df2[[x_col, y_col2]].rename(columns={y_col2: label2})
+    merged = (
+        pd.concat([s1, s2], ignore_index=True)
+        .sort_values(x_col, kind="stable")
+        .reset_index(drop=True)
+    )
 
-    ax.set_xlabel(x_col)
-    ax.set_title(title)
-    ax.legend()
-
-    if style.grid:
-        ax.grid(True, alpha=style.grid_alpha)
-
-    plt.tight_layout()
+    fig = plot_overlay(
+        merged,
+        [label1, label2],
+        t_col=x_col,
+        backend=b,
+        style=style,
+        title=title,
+        colors=["blue", "red"],
+        downsample=ds_config,
+    )
+    fig._magnetrun_xlabel = x_col  # type: ignore[attr-defined]
+    b.finalize(fig)
 
     if save and output_path:
-        plt.savefig(output_path, dpi=style.dpi)
+        b.save(fig, Path(output_path), dpi=style.dpi)
 
     if show:
-        plt.show()
-        plt.close()
+        b.show(fig)
         return None
 
     return fig
@@ -608,6 +615,7 @@ def plot_time_series(
     save: bool = False,
     output_path: str | None = None,
     style: PlotStyle | None = None,
+    backend: str | PlottingBackend = "matplotlib",
 ) -> Any | None:
     """
     Plot one or more time series from a DataFrame.
@@ -623,7 +631,7 @@ def plot_time_series(
     title : str
         Plot title
     downsample_percent : float
-        Percentage of data to plot
+        Percentage of data to plot (converted to DownsampleConfig internally)
     normalize : bool
         Normalize each series to [0, 1]
     show : bool
@@ -634,52 +642,43 @@ def plot_time_series(
         Output file path
     style : PlotStyle, optional
         Plot style configuration
+    backend : str or PlottingBackend, optional
+        Backend name or instance (default: ``"matplotlib"``).
 
     Returns
     -------
     Figure or None
     """
-
     style = style or DEFAULT_STYLE
+    b = get_backend(backend)
 
     if isinstance(y_cols, str):
         y_cols = [y_cols]
 
-    fig, ax = plt.subplots(figsize=style.figsize)
+    ds_config: DownsampleConfig | None = None
+    if downsample_percent < 100.0:
+        ds_config = DownsampleConfig(
+            n_out=max(100, int(len(df) * downsample_percent / 100.0))
+        )
 
-    x = df[x_col].to_numpy()
-
-    for y_col in y_cols:
-        y = df[y_col].to_numpy()
-
-        if normalize:
-            y_min, y_max = y.min(), y.max()
-            if y_max - y_min > 0:
-                y = (y - y_min) / (y_max - y_min)
-
-        if downsample_percent < 100.0:
-            x_plot, y_plot = downsample_for_plot(x, y, downsample_percent)
-        else:
-            x_plot, y_plot = x, y
-
-        ax.plot(x_plot, y_plot, label=y_col)
-
-    ax.set_xlabel(x_col)
-    ax.set_ylabel("Normalized" if normalize else "Value")
-    ax.set_title(title)
-    ax.legend()
-
-    if style.grid:
-        ax.grid(True, alpha=style.grid_alpha)
-
-    plt.tight_layout()
+    fig = plot_overlay(
+        df,
+        list(y_cols),
+        t_col=x_col,
+        backend=b,
+        style=style,
+        title=title,
+        normalize=normalize,
+        downsample=ds_config,
+    )
+    fig._magnetrun_xlabel = x_col  # type: ignore[attr-defined]
+    b.finalize(fig)
 
     if save and output_path:
-        plt.savefig(output_path, dpi=style.dpi)
+        b.save(fig, Path(output_path), dpi=style.dpi)
 
     if show:
-        plt.show()
-        plt.close()
+        b.show(fig)
         return None
 
     return fig

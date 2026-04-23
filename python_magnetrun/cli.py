@@ -1,5 +1,6 @@
 """Main module."""
 
+import argparse
 import logging
 import os
 import sys
@@ -29,20 +30,76 @@ from .utils.files import expand_input_files
 matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
 
-# Setup logger
-logger = logging.getLogger(__name__)
+# Setup logger — must NOT use __name__ here because when this module is
+# executed as `python -m python_magnetrun.cli`, __name__ == "__main__" which
+# is outside the "python_magnetrun.*" hierarchy and therefore bypasses the
+# handler configured by setup_logging().
+logger = logging.getLogger("python_magnetrun.cli")
+
+
+def _normalize_argv(argv: list[str], parser: "argparse.ArgumentParser") -> list[str]:
+    """Move main-parser options before positional file arguments.
+
+    Argparse fails when global options appear *between* the input files and
+    the subcommand name (e.g. ``file1 file2 --housing M9 plot …``).  The
+    ``nargs="+"`` positional only gets the tokens in the segment before the
+    first option, so the second file ends up being parsed as the subcommand.
+
+    This function reorders the tokens so all options the *main* parser knows
+    about come first, leaving files and the subcommand (with its own options)
+    in the original relative order.
+    """
+    import argparse as _ap
+
+    def _values_consumed(action: "_ap.Action") -> int:
+        if isinstance(
+            action,
+            _ap._StoreTrueAction
+            | _ap._StoreFalseAction
+            | _ap._StoreConstAction
+            | _ap._CountAction,
+        ):
+            return 0
+        if action.nargs is None:
+            return 1
+        if isinstance(action.nargs, int):
+            return action.nargs
+        return 0  # *, +, ? — not a fixed count
+
+    global_args: list[str] = []
+    rest: list[str] = []
+    i = 0
+    while i < len(argv):
+        token = argv[i]
+        if token == "--":
+            # Everything after '--' is positional; stop reordering.
+            rest.extend(argv[i:])
+            break
+        opt_key = token.split("=", 1)[0] if "=" in token else token
+        if opt_key in parser._option_string_actions:
+            action = parser._option_string_actions[opt_key]
+            global_args.append(token)
+            if "=" not in token:
+                n = _values_consumed(action)
+                for _ in range(n):
+                    i += 1
+                    if i < len(argv):
+                        global_args.append(argv[i])
+        else:
+            rest.append(token)
+        i += 1
+    return global_args + rest
 
 
 def main():
     from .args import create_argument_parser, get_datadir_mapping
 
     parser = create_argument_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(_normalize_argv(sys.argv[1:], parser))
 
     # Configure logging level
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
     setup_logging(level=log_level, log_file=args.log_file if args.log_file else None)
-    logger.setLevel(log_level)
 
     logger.debug(f"args: {args}")
 

@@ -12,8 +12,9 @@ import pandas as pd
 from sympy import Symbol
 from tabulate import tabulate
 
+from .plotting.backend import get_backend
+from .plotting.timeseries import plot_xy
 from .processing.fit import find_eqn, fit
-from .utils.plots import plot_df
 
 logger = logging.getLogger(__name__)
 
@@ -51,16 +52,22 @@ def stats(
         print(f"df: nrows={df.shape[0]}, results: nrows={result.shape[0]}")
         print(f"result max: {result[Ikey].max()}")
 
-    plot_df(
-        filename,
+    from pathlib import Path
+
+    b = get_backend("matplotlib")
+    fig = plot_xy(
         df,
-        key1=Ikey,
-        key2=Okey,
-        fit=None,
-        show=show,
-        debug=debug,
-        wd=wd,
+        [(Ikey, Okey)],
+        backend=b,
+        title=f"{filename}: {Okey}({Ikey})",
+        marker="o",
+        linestyle="none",
     )
+    b.finalize(fig, xlabel=Ikey)
+    if show:
+        b.show(fig)
+    else:
+        b.save(fig, Path(wd) / f"{filename}-{Ikey}_vs_{Okey}.png")
 
     if debug:
         stats = result[Okey].describe(include="all")
@@ -185,7 +192,9 @@ def compute(
     x = _df[Ikey].to_numpy()
     y = _df[RpmKey].to_numpy()
     for segment in [1, 2]:
-        my_pwlf, eqns = pwlf_fit(Ikey, x, RpmKey, y, degree=2, segment=segment, show=True)
+        my_pwlf, eqns = pwlf_fit(
+            Ikey, x, RpmKey, y, degree=2, segment=segment, show=True
+        )
         # TODO if error ?my_pwlf.standard_errors()? on brkpoints is big, try with 1 segment
         final_y = eqns[0].evalf(subs={Symbol("x"): x[-1]})
         if abs(final_y - y[-1]) <= 10:
@@ -197,8 +206,12 @@ def compute(
         print(f"new_Imax: {Imax} ->{my_pwlf.fit_breaks[1]}")
         Imax = my_pwlf.fit_breaks[1]
 
-    print(f"new Vp0={flow_params['Vp0']['value']} -> {eqns[0].evalf(subs={Symbol('x'): 0})}")
-    print(f"new Vpmax={flow_params['Vpmax']['value']} -> {eqns[0].evalf(subs={Symbol('x'): Imax})}")
+    print(
+        f"new Vp0={flow_params['Vp0']['value']} -> {eqns[0].evalf(subs={Symbol('x'): 0})}"
+    )
+    print(
+        f"new Vpmax={flow_params['Vpmax']['value']} -> {eqns[0].evalf(subs={Symbol('x'): Imax})}"
+    )
     params = [
         float(eqns[0].evalf(subs={Symbol("x"): Imax})),
         float(eqns[0].evalf(subs={Symbol("x"): 0})),

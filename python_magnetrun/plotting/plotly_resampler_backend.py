@@ -164,6 +164,31 @@ class PlotlyResamplerBackend:
         if ylabel is not None:
             fig.update_yaxes(title_text=ylabel, row=ax_idx + 1, col=1)
 
+    def add_scatter(
+        self,
+        fig: Any,
+        ax_idx: int,
+        t: np.ndarray,
+        y: np.ndarray,
+        label: str,
+        *,
+        color: str = "red",
+        size: int = 10,
+        alpha: float = 0.7,
+    ) -> None:
+        _require_resampler()
+        fig.add_trace(
+            go.Scatter(
+                x=t,
+                y=y,
+                mode="markers",
+                marker=dict(color=color, size=size, opacity=alpha),
+                name=label,
+            ),
+            row=ax_idx + 1,
+            col=1,
+        )
+
     def add_annotation(
         self,
         fig: Any,
@@ -219,6 +244,17 @@ class PlotlyResamplerBackend:
             row=ax_idx + 1,
             col=1,
         )
+
+    def finalize(self, fig: Any, *, xlabel: str = "t [s]") -> None:
+        """Add x-axis label to the bottom row."""
+        _require_resampler()
+        _xlabel = getattr(fig, "_magnetrun_xlabel", xlabel)
+        n_rows = (
+            fig._get_subplot_rows_columns()[0][-1]
+            if hasattr(fig, "_get_subplot_rows_columns")
+            else 1
+        )
+        fig.update_xaxes(title_text=_xlabel, row=n_rows, col=1)
 
     def save(self, fig: Any, path: Path, *, dpi: int = 300) -> None:
         raise NotImplementedError(

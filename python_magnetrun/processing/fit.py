@@ -1,10 +1,12 @@
 import logging
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from scipy import optimize
 
-from ..utils.plots import plot_df
+from ..plotting.backend import get_backend
+from ..plotting.timeseries import plot_xy
 
 logger = logging.getLogger(__name__)
 
@@ -36,19 +38,23 @@ def fit(
 
     logger.info(f"Fit: {Ostring}({Ikey}) ")
     logger.info(f"\tparams: {params}")
-    # print(f"\tcovariance: {params_covariance}")
     logger.info(f"\tstderr: {np.sqrt(np.diag(params_covariance))}")
 
-    plot_df(
-        filename,
-        df,
-        key1=Ikey,
-        key2=Okey,
-        fit=(x_data, [fit_function(x, params[0], params[1]) for x in x_data]),
-        show=show,
-        debug=debug,
-        wd=wd,
+    b = get_backend("matplotlib")
+    fig = plot_xy(
+        df, [(Ikey, Okey)],
+        backend=b,
+        title=f"{filename}: {Okey}({Ikey})",
+        marker="o",
+        linestyle="none",
     )
+    fit_y = np.array([fit_function(x, params[0], params[1]) for x in x_data])
+    b.add_series(fig, 0, x_data, fit_y, label="fit", color="red", linestyle="--")
+    b.finalize(fig, xlabel=Ikey)
+    if show:
+        b.show(fig)
+    else:
+        b.save(fig, Path(wd) / f"{filename}-{Ikey}_vs_{Okey}.png")
 
     return (params, params_covariance)
 

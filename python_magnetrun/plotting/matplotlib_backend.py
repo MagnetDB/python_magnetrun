@@ -76,11 +76,27 @@ class MatplotlibBackend:
         if ylabel is not None:
             ax.set_ylabel(ylabel)
 
+    def add_scatter(
+        self,
+        fig: Any,
+        ax_idx: int,
+        t: np.ndarray,
+        y: np.ndarray,
+        label: str,
+        *,
+        color: str = "red",
+        size: int = 10,
+        alpha: float = 0.7,
+    ) -> None:
+        ax = self._get_ax(fig, ax_idx)
+        ax.scatter(t, y, c=color, s=size, alpha=alpha, label=label, zorder=5)
+
     def add_annotation(
         self,
         fig: Any,
         ax_idx: int,
         t: float,
+        f: float,
         label: str,
         detail: dict | None = None,
     ) -> None:
@@ -88,7 +104,7 @@ class MatplotlibBackend:
         ax.axvline(t, linestyle="--", color="gray", alpha=0.6)
         ax.annotate(
             label,
-            xy=(t, ax.get_ylim()[1]),
+            xy=(t, f),
             xytext=(5, -15),
             textcoords="offset points",
             fontsize=8,
@@ -107,8 +123,10 @@ class MatplotlibBackend:
             handles, labels = ax.get_legend_handles_labels()
             if labels:
                 ax.legend()
-        if axes and xlabel and not axes[-1].get_xlabel():
-            axes[-1].set_xlabel(xlabel)
+        # plot_xy() stores a custom xlabel on the figure; honour it over the default.
+        _xlabel = getattr(fig, "_magnetrun_xlabel", xlabel)
+        if axes and _xlabel and not axes[-1].get_xlabel():
+            axes[-1].set_xlabel(_xlabel)
 
     def show(self, fig: Any) -> None:
         self.finalize(fig)

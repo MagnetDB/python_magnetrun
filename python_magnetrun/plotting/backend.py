@@ -67,6 +67,25 @@ class PlottingBackend(Protocol):
         """
         ...
 
+    def add_scatter(
+        self,
+        fig: Any,
+        ax_idx: int,
+        t: np.ndarray,
+        y: np.ndarray,
+        label: str,
+        *,
+        color: str = "red",
+        size: int = 10,
+        alpha: float = 0.7,
+    ) -> None:
+        """Overlay scatter points on the *ax_idx*-th axes.
+
+        Used primarily for outlier highlighting: plot the outlier points as
+        a separate scatter series on top of the main line.
+        """
+        ...
+
     def add_annotation(
         self,
         fig: Any,

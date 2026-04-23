@@ -537,6 +537,30 @@ python3 -m python_magnetrun.cli \
     --key_vs_key Courants_Alimentations/Référence_GR1-Tensions_Aimant/Interne1
 ```
 
+Use `--field_style` to control marker and line style per series.  The `FIELD`
+key is the **y-column** of the pair (the part after `-` in `X-Y`):
+
+```bash
+# IH-UH plotted as circle markers only (no connecting line)
+python3 -m python_magnetrun.cli \
+    "2026.03.31 - 13:22:40.txt" \
+    --housing M9 \
+    plot \
+    --key_vs_key "IH-UH" \
+    --field_style "UH=o"
+
+# Two pairs from different files – first pair square markers every 20 points,
+# second pair dashed line
+python3 -m python_magnetrun.cli \
+    srvdata/M10_2025.01.27---*.txt \
+    pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms \
+    plot \
+    --key_vs_key IH-UH \
+    --key_vs_key Courants_Alimentations/Référence_A2-Tensions_Aimant/Interne1 \
+    --field_style "UH=-s:20" \
+    --field_style "Interne1=--"
+```
+
 ### Customising plot style per field
 
 Use `--field_style FIELD=STYLESPEC` (repeatable) to assign **different linestyles,
@@ -1124,6 +1148,9 @@ See [BREAKING_CHANGES.md](BREAKING_CHANGES.md) for the full migration guide.
 
 **Fix**
 - [X] Fix time data in Hybrid kHz files
+- [ ] Fix python_magnetrun/cli.py input_args
+- [ ] Fix python_magnetrun/cli.py plot with multiple files
+- [ ] Plot_xy: raise an exception when trying to plot pairs that have different units
 
 **Finish**
 - [ ] hybrid data loading and unified interface

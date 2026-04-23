@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["plot_subplots", "plot_overlay"]
+__all__ = ["plot_subplots", "plot_overlay", "plot_xy"]
 
 
 def _resolve_backend(backend: str | PlottingBackend) -> PlottingBackend:
@@ -170,6 +170,7 @@ def plot_subplots(
     style: PlotStyle | None = None,
     title: str = "",
     colors: list[str] | None = None,
+    field_styles: list[tuple[str | None, str | None, int | None]] | None = None,
 ) -> Any:
     """Plot *N* fields as stacked subplots sharing a common time axis.
 
@@ -200,7 +201,13 @@ def plot_subplots(
     title:
         Optional figure title (set on the first subplot / suptitle).
     colors:
-        Optional list of colours, one per field.
+        Optional per-series colour list.
+    field_styles:
+        Optional per-series style list of ``(linestyle, marker, markevery)``
+        tuples.  Use ``None`` inside a tuple to leave that attribute at the
+        backend default.  Example::
+
+            field_styles=[("-", "o", 10), ("--", None, None)]
 
     Returns
     -------
@@ -235,8 +242,13 @@ def plot_subplots(
             continue
         y, symbol = resolved.get(field, (df[field].to_numpy(dtype=float), field))
         color = colors[i] if colors and i < len(colors) else None
+        ls, mk, me = field_styles[i] if field_styles and i < len(field_styles) else (None, None, None)
         ylabel = f"{field} [{symbol}]" if symbol != field else field
-        b.add_series(fig, i, t, y, label=field, normalize=normalize, color=color, ylabel=ylabel)
+        b.add_series(
+            fig, i, t, y, label=field, normalize=normalize,
+            color=color, ylabel=ylabel,
+            linestyle=ls, marker=mk, markevery=me,
+        )
 
     if title and hasattr(fig, "update_layout"):
         fig.update_layout(title_text=title)
@@ -258,6 +270,7 @@ def plot_overlay(
     style: PlotStyle | None = None,
     title: str = "",
     colors: list[str] | None = None,
+    field_styles: list[tuple[str | None, str | None, int | None]] | None = None,
 ) -> Any:
     """Plot *N* fields on a single axes (overlay).
 
@@ -301,7 +314,11 @@ def plot_overlay(
     title:
         Optional figure title.
     colors:
-        Optional per-field colour list.
+        Optional per-series colour list.
+    field_styles:
+        Optional per-series style list of ``(linestyle, marker, markevery)``
+        tuples.  Use ``None`` inside a tuple to leave that attribute at the
+        backend default.
 
     Returns
     -------
@@ -349,6 +366,7 @@ def plot_overlay(
             continue
         y, symbol = resolved.get(field, (df[field].to_numpy(dtype=float), field))
         color = colors[i] if colors and i < len(colors) else None
+        ls, mk, me = field_styles[i] if field_styles and i < len(field_styles) else (None, None, None)
 
         # Build legend label according to unit/normalize rules.
         unit_in_legend = mixed_units and symbol != field
@@ -369,7 +387,126 @@ def plot_overlay(
 
         # Pass ylabel only for the first series (sets it once on the axes).
         ylabel = shared_ylabel if i == 0 else None
-        b.add_series(fig, 0, t, y, label=label, normalize=do_normalize, color=color, ylabel=ylabel)
+        b.add_series(
+            fig, 0, t, y, label=label, normalize=do_normalize,
+            color=color, ylabel=ylabel,
+            linestyle=ls, marker=mk, markevery=me,
+        )
+
+    if title and hasattr(fig, "update_layout"):
+        fig.update_layout(title_text=title)
+    elif title:
+        fig.suptitle(title)
+
+    return fig
+
+
+def plot_xy(
+    data: pd.DataFrame,
+    pairs: list[tuple[str, str]],
+    *,
+    labels: list[str] | None = None,
+    backend: str | PlottingBackend = "matplotlib",
+    style: PlotStyle | None = None,
+    title: str = "",
+    colors: list[str] | None = None,
+    marker: str | None = None,
+    linestyle: str | None = None,
+    field_styles: list[tuple[str | None, str | None, int | None]] | None = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+) -> Any:
+    """Plot arbitrary (x, y) column pairs on a single axes.
+
+    Unlike :func:`plot_subplots` / :func:`plot_overlay`, the x-axis is not
+    assumed to be time.  Each entry in *pairs* names ``(x_col, y_col)``
+    columns from *data*; all pairs share the same axes.  NaN values in
+    either column of a pair are dropped before plotting.
+
+    Parameters
+    ----------
+    data:
+        DataFrame containing all x and y columns referenced in *pairs*.
+    pairs:
+        List of ``(x_col, y_col)`` tuples plotted as separate series.
+    labels:
+        Per-series legend labels.  Defaults to ``"y_col vs x_col"``.
+    backend:
+        Backend name or instance.
+    style:
+        ``PlotStyle`` configuration.
+    title:
+        Optional figure title.
+    colors:
+        Optional per-series colour list.
+    marker:
+        Marker style applied to all series (overridden per-series by *field_styles*).
+    linestyle:
+        Line style applied to all series (overridden per-series by *field_styles*).
+    field_styles:
+        Optional per-series ``(linestyle, marker, markevery)`` tuples, in the
+        same order as *pairs*.  ``None`` entries fall back to the global
+        *marker* / *linestyle* values.
+    xlabel:
+        Explicit x-axis label (e.g. ``"I [A]"``)  Defaults to the unique
+        x-column names joined by ", ".
+    ylabel:
+        Explicit y-axis label (e.g. ``"U [V]"``)  Defaults to the first
+        y-column name.
+
+    Returns
+    -------
+    Any
+        Opaque figure handle.  Call ``backend.save(fig, path)`` or
+        ``backend.show(fig)`` to output it.
+    """
+    if not pairs:
+        raise ValueError("pairs must not be empty")
+
+    b = _resolve_backend(backend)
+    fig = b.subplots(1, share_x=False, style=style)
+
+    # Determine x-axis label from the set of unique x columns (fallback).
+    x_cols_seen = list(dict.fromkeys(xc for xc, _ in pairs))
+    _xlabel = xlabel if xlabel is not None else (", ".join(x_cols_seen) if x_cols_seen else "")
+
+    for i, (x_col, y_col) in enumerate(pairs):
+        if x_col not in data.columns:
+            logger.warning("Column %r not found in DataFrame — skipping pair", x_col)
+            continue
+        if y_col not in data.columns:
+            logger.warning("Column %r not found in DataFrame — skipping pair", y_col)
+            continue
+
+        # Drop rows where either coordinate is NaN so scatter/line is clean.
+        pair_df = data[[x_col, y_col]].dropna()
+        x = pair_df[x_col].to_numpy(dtype=float)
+        y = pair_df[y_col].to_numpy(dtype=float)
+
+        label = labels[i] if labels and i < len(labels) else f"{y_col} vs {x_col}"
+        color = colors[i] if colors and i < len(colors) else None
+        # Use explicit ylabel if provided, otherwise fall back to the y-column name.
+        _ylabel_series = (ylabel if ylabel is not None else y_col) if i == 0 else None
+
+        # Per-series style overrides the global marker/linestyle.
+        _fs = field_styles[i] if field_styles and i < len(field_styles) else (None, None, None)
+        _ls = _fs[0] if _fs[0] is not None else linestyle
+        _mk = _fs[1] if _fs[1] is not None else marker
+        _me = _fs[2]
+
+        b.add_series(
+            fig, 0, x, y,
+            label=label,
+            normalize=False,
+            color=color,
+            ylabel=_ylabel_series,
+            marker=_mk,
+            linestyle=_ls,
+            markevery=_me,
+        )
+
+    # Store xlabel so finalize() uses it instead of the default "t [s]".
+    fig._magnetrun_xlabel = _xlabel  # type: ignore[attr-defined]
 
     if title and hasattr(fig, "update_layout"):
         fig.update_layout(title_text=title)

@@ -19,7 +19,7 @@ class TestAnnotationManagerMatplotlib:
         b, fig = self._make_fig()
         mgr = AnnotationManager(b)
         detail = {"idx": 0, "anomaly": "spike #1", "tkey": "t", "df": pd.DataFrame()}
-        mgr.add(fig, 0, t=5.0, label="spike #1", detail=detail)
+        mgr.add(fig, 0, t=5.0, f=1.0, label="spike #1", detail=detail)
         assert len(mgr._mpl_annotation_dict) == 1
 
     def test_connect_without_annotations_is_noop(self):
@@ -31,7 +31,7 @@ class TestAnnotationManagerMatplotlib:
         b, fig = self._make_fig()
         mgr = AnnotationManager(b)
         detail = {"idx": 0, "anomaly": "ev", "tkey": "t", "df": pd.DataFrame()}
-        mgr.add(fig, 0, t=1.0, label="ev", detail=detail)
+        mgr.add(fig, 0, t=1.0, f=1.0, label="ev", detail=detail)
         mgr.connect(fig)  # should not raise
 
 
@@ -43,7 +43,7 @@ class TestAnnotationManagerPlotly:
         b = PlotlyBackend()
         fig = b.subplots(1)
         mgr = AnnotationManager(b)
-        mgr.add(fig, 0, t=3.0, label="event", detail={"info": "test"})
+        mgr.add(fig, 0, t=3.0, f=0.0, label="event", detail={"info": "test"})
         # vline should be added as a shape/annotation
         assert len(fig.layout.shapes) > 0 or len(fig.layout.annotations) >= 0
 
