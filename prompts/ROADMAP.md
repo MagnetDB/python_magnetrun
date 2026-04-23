@@ -1,216 +1,316 @@
 # Development Roadmap — python_magnetrun
 
-*Created: 2026-03-23*
+*Updated: 2026-04-23*
 
-Priorities, in order:
-1. **Correctness & reliability** — the package must work properly
-2. **Unified plotting** — pupitre vs pigbrother vs hybrid data on the same graph or side by side
-3. **Code readability & maintenance**
+This document outlines strategic priorities and upcoming work. For detailed implementation status, see [CHECK_IMPLEMENTATION.md](CHECK_IMPLEMENTATION.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
 ---
 
-## Priority 1 — Package Correctness & Reliability
+## Current State
 
-### Phase 1A: Stop the bleeding (1–2 weeks)
+**Package Status:** Production-ready for core use cases ✅
 
-| Task | File(s) | Why |
-|------|---------|-----|
-| Fix 5 bare `except:` clauses | `utils/plots.py`, `utils/txt2csv.py`, `requests/cli.py`, `hybrid/trigger/plot_trigger_data.py`, `hybrid/vprocess/test.py` | Silently swallows `SystemExit` / `KeyboardInterrupt`, hides real bugs |
-| Add file-format validation before parsing | `analysis/loaders.py`, `magnetdata.py` | Prevents confusing errors deep in TDMS/TXT parsing |
-| Replace `print()` with `logger.*` | Whole codebase (1466 occurrences) | Cannot suppress output in library usage; masks real log messages |
-| Migrate file paths to `pathlib.Path` | All modules using string path concatenation | Prevents path bugs and OS-specific issues |
-
-### Phase 1B: Test infrastructure (2–4 weeks)
-
-| Task | Details |
-|------|---------|
-| Add meaningful assertions to `tests/test_python_magnetrun.py` | Currently 0 assertions — completely hollow |
-| Unit tests for `magnetdata.py` | Cover `fromtdms`, `fromtxt`, `getData`, column renaming |
-| Unit tests for `processing/` modules | `smoothers`, `trends`, `peaks`, `stats` — pure functions, easy to test |
-| Integration test for each CLI entry point | Smoke-test that each exits 0 with sample data |
-| Add CI pipeline (GitHub Actions) | Run `ruff` + `pytest` on every push; fail on regression |
-
-### Phase 1C: Deprecate dead code (1 week)
-
-| Task | File(s) |
-|------|---------|
-| Remove or formally deprecate `prepareData_legacy()` | `MagnetRun.py` |
-| Remove placeholder CLI code | `requests/cli.py` ("Replace this message...") |
-| Clean up WIP example scripts or clearly mark as WIP | `examples/` |
+**Major Achievements (2026 Q1-Q2):**
+- ✅ Housing config consolidation (`HousingConfig` single source of truth)
+- ✅ Factory pattern (`load_magnetdata` replacing shim)
+- ✅ Protocol unification (`DataLoader` protocol, Phase 2A complete)
+- ✅ Timestamp convention (naive UTC across all loaders)
+- ✅ Downsampling refactoring (`DownsampleConfig` + shared utilities)
+- ✅ Plotting refactoring (backend abstraction + 3 implementations)
+- ✅ File validation infrastructure (integrated throughout)
+- ✅ Logging infrastructure (`log_utils.py` + structured logging)
+- ✅ Test coverage (validation, analysis, processing, CLI smoke tests)
 
 ---
 
-## Priority 2 — Unified Multi-Source Plotting
+## Strategic Priorities
 
-**Current state:** `analysis/plotting.plot_data()` already overlays Overview + Archive + Pupitre
-on shared axes with downsampling and incident markers.
-**Gap:** Hybrid data (kHz/RMS) is completely excluded from this infrastructure.
+### Priority 1: Stability & Quality (Ongoing)
+**Goal:** Package must work reliably in production
 
-### Phase 2A: Unified data interface (2–3 weeks)
+### Priority 2: Unified Multi-Source Plotting
+**Goal:** Display pupitre + pigbrother + hybrid data on shared axes or side-by-side comparison
 
-A `DataProvider` protocol is already sketched in `hybrid/hybrid_run.py` but not enforced.
-Formalize it as the common contract for all data sources:
+### Priority 3: Code Maintainability
+**Goal:** Sustainable long-term development with clear architecture
 
-```python
-# python_magnetrun/protocol.py
-from typing import Protocol
-import pandas as pd
-import numpy as np
+---
 
-class DataProvider(Protocol):
-    def getData(self, key: str, downsample: int | None = None) -> pd.DataFrame | tuple[np.ndarray, np.ndarray]: ...
-    def getKeys(self) -> list[str]: ...
-    def getType(self) -> int: ...         # 0=pupitre, 1=tdms_overview, 2=tdms_archive, 3=hybrid
-    def getTimeBase(self) -> str: ...     # "timestamp" | "seconds_from_day" | "index"
-```
+## Active Work Streams
 
-Verify that `MagnetRun` and `HybridRun` both satisfy the protocol.
-This is the critical dependency — all subsequent Phase 2 work builds on it.
+### Stream 1: Production Stability (High Priority)
 
-### Phase 2B: Time alignment layer (1–2 weeks)
+**Known Issues:**
+1. **Multiple-file `vs_time` regression** *(commits 86c45c6/76351f3)*
+   - Plot timing issues with multiple input files
+   - **Action:** Investigate and fix
+   - **Effort:** ~1-2 days
 
-| Problem | Location | Fix |
-|---------|----------|-----|
-| TDMS uses `wf_start_time` metadata | `magnetdata.py:1311–1317` | Expose via common `get_time_range()` method |
-| kHz/RMS uses seconds-from-day-start | `hybrid/hybrid_data.py` | Convert to UTC timestamp on load |
-| Pupitre uses pandas `DatetimeIndex` | `magnetdata.py` | Already correct; use as reference time base |
+2. **CI/CD Pipeline** *(planned)*
+   - Add `.github/workflows/ci.yml`
+   - Run `ruff` + `pytest` on every push
+   - Eventually add `mypy` when type hints are complete
+   - **Effort:** ~2-4 hours
 
-Deliver a utility: `align_to_common_time(sources: list[DataProvider]) -> dict[str, pd.DataFrame]`
-that returns all sources resampled/interpolated to a shared time axis.
+3. **Complete logging migration**
+   - Infrastructure in place; ~100-200 `print()` calls remain
+   - **Action:** Convert to `logger.*` calls opportunistically
+   - **Effort:** Ongoing background work
 
-### Phase 2C: Extend `plot_data()` to include hybrid (2–3 weeks)
+---
 
-Extend `analysis/plotting.plot_data()` with hybrid support:
+### Stream 2: Unified Plotting (Medium Priority)
 
+**Phase 2A: Unified Data Interface** ✅ **COMPLETE**
+- `DataLoader` protocol defined
+- `MagnetRun` and `HybridRun` both satisfy protocol
+- `get_time_range()` and `getDomain()` implemented
+
+**Phase 2B: Time Alignment Layer** 🔶 **PARTIAL**
+
+Current gaps:
+- kHz/RMS uses seconds-from-day-start → needs UTC timestamp conversion on load
+- Need `align_to_common_time(sources: list[DataLoader])` utility for multi-source sync
+
+**Effort:** ~1-2 weeks
+
+**Phase 2C: Extend `plot_data()` for Hybrid** ⬜ **PLANNED**
+
+Extend `analysis/plotting.plot_data()` with:
 ```python
 def plot_data(
     ...
-    df_hybrid: HybridRun | None = None,          # NEW
-    hybrid_channels: list[str] | None = None,    # NEW — logical channel names
+    df_hybrid: HybridRun | None = None,
+    hybrid_channels: list[str] | None = None,
     ...
 )
 ```
 
-Internally:
-- Detect `getType() == 3`
-- Call `getData(key, downsample=N)` and unpack `(array, time)` tuple
-- Apply time alignment from Phase 2B
-- Plot on shared axes with consistent color scheme (`PlotColors`)
+**Depends on:** Phase 2B completion
+**Effort:** ~2-3 weeks
 
-### Phase 2D: Side-by-side comparison view (1–2 weeks)
+**Phase 2D: Side-by-Side Comparison** ⬜ **PLANNED**
 
-Extend the existing `plot_comparison()` in `analysis/plotting.py` to accept
-a list of `DataProvider` objects and auto-generate a grid of subplots:
-- One column per source
-- Shared time axis (linked zoom/pan)
-- Same logical channel per row
+Extend `plot_comparison()` to accept `list[DataLoader]`:
+- Auto-generate subplot grid (source × channel)
+- Shared/linked time axis
+- Consistent styling across sources
 
-```python
-def plot_comparison(
-    sources: list[DataProvider],
-    channels: list[str],           # logical channel names
-    title: str = "",
-    figsize: tuple | None = None,
-) -> plt.Figure: ...
-```
+**Depends on:** Phase 2C
+**Effort:** ~1-2 weeks
 
-### Phase 2E: Channel auto-mapping (1–2 weeks)
+**Phase 2E: Channel Auto-Mapping** 🔶 **PARTIAL**
 
-Currently callers must pass `channels_dict` and `pupitre_dict` manually.
-Build a registry in `analysis/config.py`:
-
+Build `CHANNEL_ALIASES` registry:
 ```python
 CHANNEL_ALIASES: dict[str, list[str]] = {
     "IH":     ["Courant_GR1", "I_H1", "I_GR1"],
     "FlowH":  ["Debit_GR1", "flow_GR1"],
-    "TinH":   ["Tin_GR1", "T_in_H1"],
     # ...
 }
 ```
 
-Auto-discover mappings at load time so callers only specify the logical channel name.
-Add fuzzy fallback for channels not yet in the registry.
+Current: Structured `ChannelMapping` exists; needs fuzzy fallback
+**Effort:** ~1-2 weeks
 
 ---
 
-## Priority 3 — Code Readability & Maintenance
+### Stream 3: Internal Refactoring (Lower Priority)
 
-### Phase 3A: Break up the monoliths (3–4 weeks)
+**3.1 `analysis/` Subpackage Refactoring**
+- Break up monolithic functions
+- Move channel mapping to `HousingConfig`
+- Adopt downsampling in `analysis/plotting.py`
+- **See:** [analysis-subpackage-refactoring.plan.md](analysis-subpackage-refactoring.plan.md)
+- **Effort:** ~5-7 days
 
-| File | Current size | Proposed split |
-|------|-------------|----------------|
-| `magnetdata.py` | 1500 lines, 50+ methods | `magnetdata/io.py` (TDMS/TXT loading), `magnetdata/transform.py` (column ops, units), `magnetdata/query.py` (getData, getStats, getKeys) |
-| `python_magnetrun.py` | 1300 lines | `cli.py` (argparse only), `commands/plot.py`, `commands/stats.py`, `commands/convert.py`, etc. |
+**3.2 `hybrid/` Subpackage Refactoring**
+- Deduplicate outlier removal code
+- Create `OutlierConfig` dataclass
+- Extract `signal_processing.py` utility module
+- **See:** [hybrid-subpackage-refactoring.plan.md](hybrid-subpackage-refactoring.plan.md)
+- **Effort:** ~10-14 hours
 
-Public API must remain unchanged — refactor is internal only.
+**3.3 CLI Consolidation**
+- `processing/cli.py` and `analysis/cli.py` don't use `commands/` pattern
+- Migrate to unified CLI structure
+- **Effort:** ~3-5 days
 
-### Phase 3B: Complete type hints (ongoing)
-
-- **Immediately:** 100% type hints on all new/modified code
-- **Backfill:** public APIs of `magnetdata.py`, `MagnetRun.py`, `analysis/plotting.py`
-- **Tooling:** enable `mypy` in CI starting from `analysis/` (already cleanest), expand incrementally
-- Use `|` union syntax (PEP 604) consistently; remove `Optional[X]` and `Union[X, Y]`
-
-### Phase 3C: Centralize configuration (1–2 weeks)
-
-- Move magic numbers (energy balance thresholds, flow params, sampling rates)
-  into `analysis/config.py` with named constants
-- Consider `pydantic.BaseSettings` for site-specific config (M8, M9, M10)
-  to get validation and documentation for free
-
-### Phase 3D: Add `ruff` + `mypy` pre-commit hooks (1 day)
-
-```toml
-# pyproject.toml additions
-
-[tool.ruff]
-select = ["E", "F", "UP", "B", "SIM", "I"]
-
-[tool.mypy]
-python_version = "3.11"
-disallow_untyped_defs = true
-# Start lenient; tighten over time:
-# strict = true
-```
-
-```yaml
-# .pre-commit-config.yaml
-repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.0
-    hooks:
-      - id: ruff
-        args: [--fix]
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.9.0
-    hooks:
-      - id: mypy
-```
+**3.4 `analysis/__init__.py` Namespace**
+- 80+ names exported flat
+- Split into `analysis.metrics`, `analysis.plot` sub-namespaces
+- **Effort:** ~1 day
 
 ---
 
-## Suggested Timeline
+### Stream 4: Advanced Features (Future)
 
-```
-Month 1    │ Phase 1A + 1C  — bare excepts, print→logging, dead code removal
-Month 2    │ Phase 1B        — test infrastructure, CI pipeline
-Month 3    │ Phase 2A + 2B  — DataProvider protocol, time alignment layer
-Month 4    │ Phase 2C + 2D  — extend plot_data(), side-by-side comparison
-Month 5    │ Phase 2E + 3A  — channel auto-mapping, split monoliths
-Month 6+   │ Phase 3B + 3C + 3D — type hints, config, pre-commit hooks
-```
+**4.1 `HybridData` Timestamp Support**
+- Add `start_timestamp`, `end_timestamp`, `addTime()` to `HybridData`
+- Required before `HybridRun` can participate in `ComparisonSession`
+- **Prerequisite:** `analysis/` Phase 6 (`add_time_columns` utility)
+- **See:** [hybriddata-timestamp-plan.md](hybriddata-timestamp-plan.md)
+- **Effort:** ~0.5 days
 
-**Parallelization notes:**
-- Phases 1A and 1C can be split across contributors immediately
-- Phase 2A (DataProvider protocol) is the critical path blocker for all of Phase 2
-- Phase 3B (type hints) can run in parallel with anything else as a background effort
+**4.2 Cross-Domain Comparison (Phases D-G)**
+- Phase B-C (adapters): ✅ Done
+- Phase D: Extend `*-defs.json` with simulation/bfield aliases
+- Phase E: `ComparisonSession` implementation
+- Phase F: `magnetrun-compare` CLI
+- Phase G: Comprehensive tests
+- **Depends on:** HybridData timestamp support
+- **See:** [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
+- **Effort:** ~2-3 weeks
+
+**4.3 Pipeline Redesign (polars/narwhals)**
+- Custom npTDMS with polars backend
+- narwhals wrapping for framework-agnostic API
+- Eliminate double-load performance issue
+- **See:** [mrun-cache-implementation.plan.md](mrun-cache-implementation.plan.md)
+- **Effort:** XL (multi-phase, ~4-6 weeks)
+- **Note:** Package fully functional without this; performance optimization only
+
+**4.4 HoloViews Plotting Migration** *(optional alternative)*
+- Replace 3-backend system with HoloViews + Panel + datashader
+- Simplifies downsampling integration
+- Better interactive plotting
+- **See:** [holoviews-migration.plan.md](holoviews-migration.plan.md)
+- **Effort:** ~8 days
+- **Trade-off:** Replaces existing stable plotting system
 
 ---
 
-## Quick Wins (do these first, any contributor)
+## Quick Wins (Do These First)
 
-1. Fix the 5 bare `except:` clauses — 30 minutes of work, immediate reliability gain
-2. Add `ruff` pre-commit hook — 1 hour, enforces consistency from day one
-3. Add assertions to `test_python_magnetrun.py` — makes CI meaningful immediately
-4. Remove the placeholder text in `requests/cli.py`
-5. Add `pathlib.Path` to any file you touch (opportunistic migration)
+Priority items that provide immediate value with minimal effort:
+
+| Task | Effort | Impact | Status |
+|------|--------|--------|--------|
+| Fix bare `except:` clauses | 30 min | High reliability gain | ✅ Done |
+| Add `ruff` pre-commit hook | 1 hour | Enforces consistency | ✅ Done |
+| File validation infrastructure | 4 hours | Early error detection | ✅ Done |
+| Add assertions to `test_python_magnetrun.py` | 30 min | Makes CI meaningful | ⬜ Open |
+| Remove `pigbrother-defs.json~` | 5 min | Clean repository | ⬜ Open |
+| Add `*.json~` to `.gitignore` | 2 min | Prevent future backups | ⬜ Open |
+| Remove placeholder in `requests/cli.py` | 5 min | Polish | ⬜ Open |
+| Enable `mypy` pre-commit hook | 1 hour | Type checking in CI | ⬜ Open |
+| Add CI pipeline | 2 hours | Automated testing | ⬜ Open |
+
+---
+
+## Suggested Timeline (Next 6 Months)
+
+```
+Month 1 (May 2026)
+├─ Fix multiple-file vs_time regression
+├─ Add CI/CD pipeline
+├─ Quick wins (test assertions, cleanup)
+└─ Phase 2B: Time alignment layer (start)
+
+Month 2 (June 2026)
+├─ Phase 2B: Time alignment layer (complete)
+├─ Phase 2C: Extend plot_data() for hybrid (start)
+└─ Logging migration (ongoing)
+
+Month 3 (July 2026)
+├─ Phase 2C: Extend plot_data() for hybrid (complete)
+├─ Phase 2D: Side-by-side comparison (start)
+└─ Enable mypy, type hints backfill (background)
+
+Month 4 (August 2026)
+├─ Phase 2D: Side-by-side comparison (complete)
+├─ Phase 2E: Channel auto-mapping
+└─ analysis/ internal refactoring (start)
+
+Month 5 (September 2026)
+├─ analysis/ internal refactoring (complete)
+├─ hybrid/ internal refactoring
+└─ HybridData timestamp support
+
+Month 6+ (October 2026+)
+├─ Cross-domain Phases D-G
+├─ CLI consolidation
+├─ Optional: HoloViews migration OR pipeline redesign
+└─ Type hints backfill complete, mypy strict mode
+```
+
+**Parallelization opportunities:**
+- Logging migration runs continuously as background work
+- Type hints backfill happens opportunistically during other changes
+- Quick wins can be tackled independently by any contributor
+- Stream 3 (internal refactoring) work can proceed in parallel with Stream 2 (unified plotting)
+
+---
+
+## Dependencies & Sequencing
+
+```mermaid
+graph TD
+    A[Phase 2B: Time Alignment] --> B[Phase 2C: Hybrid Plotting]
+    B --> C[Phase 2D: Comparison View]
+
+    D[analysis/ Phase 6: Timestamps] --> E[HybridData Timestamp Support]
+    E --> F[Cross-Domain Phase D-G]
+
+    G[CI Pipeline] -.-> H[mypy Enabled]
+    H -.-> I[Type Hints Complete]
+
+    J[Quick Wins] -.independent.-> A
+    K[Stream 3: Refactoring] -.parallel.-> A
+```
+
+**Critical Path:** Phase 2B → 2C → 2D (unified plotting)
+**Long Pole:** analysis/ Phase 6 blocks HybridData timestamps
+**Independent:** Quick wins, logging migration, CLI consolidation, type hints
+
+---
+
+## Success Criteria
+
+**By End of Q2 2026:**
+- [ ] CI/CD pipeline running on all PRs
+- [ ] Multiple-file plotting regression fixed
+- [ ] Quick wins completed
+
+**By End of Q3 2026:**
+- [ ] Phase 2B-D complete (unified multi-source plotting)
+- [ ] Logging migration >90% complete
+- [ ] mypy enabled in CI
+
+**By End of Q4 2026:**
+- [ ] HybridData timestamp support complete
+- [ ] Cross-domain comparison Phases D-G complete
+- [ ] analysis/ and hybrid/ refactoring complete
+- [ ] 100% type hints on public APIs
+
+---
+
+## Out of Scope (Deferred)
+
+The following items are recognized but explicitly deferred:
+
+1. **Pipeline redesign (polars/narwhals)** — performance optimization; current implementation is functional
+2. **HoloViews migration** — optional alternative to stable existing plotting system
+3. **Separation of `python_magnetcooling`** — already a separate submodule; further work tracked separately
+
+---
+
+## Related Documentation
+
+- **[CHECK_IMPLEMENTATION.md](CHECK_IMPLEMENTATION.md)** — Detailed task tracking and current status
+- **[REVIEW.md](REVIEW.md)** — Architecture review and resolved issues
+- **[CODE_REVIEW.md](CODE_REVIEW.md)** — Code quality guidelines
+- **Plan files:** `*-plan.md`, `*-prompt.md` — Detailed implementation plans for specific features
+
+---
+
+## Contributing
+
+When working on roadmap items:
+
+1. Check [CHECK_IMPLEMENTATION.md](CHECK_IMPLEMENTATION.md) for current status
+2. Read the relevant plan file for detailed requirements
+3. Update both docs when completing phases
+4. Keep [REVIEW.md](REVIEW.md) in sync with architectural changes
+
+**Quick start for new contributors:** Start with "Quick Wins" section above.

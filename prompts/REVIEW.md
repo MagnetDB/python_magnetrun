@@ -1,6 +1,6 @@
 # Package Review: `python_magnetrun`
 
-Date: 2026-04-21 (updated)
+Date: 2026-04-23 (updated)
 
 ---
 
@@ -15,15 +15,17 @@ python_magnetrun/
 ├── MagnetRun.py             # Session container
 ├── runetl.py                # ETL helpers
 ├── field_defs.py / housing_config.py  # Config layer
-├── cli.py / cli_args.py / args.py  # CLI entry points
+├── cli.py                   # CLI entry point (renamed from python_magnetrun.py)
+├── cli_args.py / args.py    # CLI argument parsing
 ├── commands/                # Modular CLI subcommands
 ├── analysis/                # Analysis pipeline
 ├── hybrid/                  # FEPC kHz/RMS/Trigger data
 ├── processing/              # Signal processing
+├── plotting/                # Plotting backends & utilities
 ├── utils/ / runlogs/ / requests/ / configAlims/
 ```
 
-Overall the layering is sensible: ABC → implementations → session wrapper → CLI. But there are several coherence and implementation issues worth addressing.
+Overall the layering is sensible: ABC → implementations → session wrapper → CLI. Major structural issues have been resolved. The package is production-ready for core use cases.
 
 ---
 
@@ -66,8 +68,8 @@ has been replaced by `load_magnetdata(filename, defs_file)` which dispatches on 
 
 **3. `runetl.prepareData_legacy` hardcodes housing logic** *(done)*
 
-`prepareData_legacy` has been removed. `prepareData` is the only ETL entry point and is driven
-entirely by `HousingConfig`. `MagnetRun.fromtxt` calls it directly.
+`prepareData_legacy` has been removed entirely. `prepareData` is the only ETL entry point and is driven
+entirely by `HousingConfig`. `MagnetRun.fromtxt` and `MagnetRun.fromtdms` both call it directly.
 
 ---
 
@@ -96,10 +98,12 @@ accesses `.Data` directly. The `pd.DataFrame | dict` union type annotation remai
 `magnetdata_base.py:103` as an internal documentation detail; all external access goes through
 `getData()`. `Data` is effectively a private implementation detail of each subclass.
 
-**8. Two conflicting Protocol definitions for the `MagnetRun`/`HybridRun` interface** *(done)*
+**8. Two conflicting Protocol definitions for the `MagnetRun`/`HybridRun` interface** *(done — Phase 2A complete)*
 
 `DataProvider` has been removed from `hybrid/hybrid_run.py`. `DataLoader` in
-`hybrid/data_protocol.py` is now the single protocol definition.
+`hybrid/data_protocol.py` is now the single protocol definition. Both `MagnetRun` and `HybridRun`
+satisfy the `DataLoader` protocol with `get_time_range()` and `getDomain()` methods implemented.
+Cross-domain comparison Phase A0–A3 is complete.
 
 ---
 
@@ -110,26 +114,25 @@ accesses `.Data` directly. The `pd.DataFrame | dict` union type annotation remai
 The hardcoded `default="/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install"` has been
 removed from `cli_args.py`. The argument now defaults to `None` or an environment variable lookup.
 
-**9. `analysis/__init__.py` exports 80+ names flat**
+**9. `analysis/__init__.py` exports 80+ names flat** *(minor — open)*
 
 The `analysis/` subpackage feels monolithic. Config, loaders, synchronization, metrics, and
 plotting are all dumped into one namespace. Splitting into explicit sub-namespaces (e.g.,
 `analysis.metrics`, `analysis.plot`) would improve discoverability.
 
-**10. `processing/cli.py` and `analysis/cli.py` are independent CLIs**
+**10. `processing/cli.py` and `analysis/cli.py` are independent CLIs** *(minor — open)*
 
 They do not participate in the `commands/` subpackage pattern used by `cli.py`. Two parallel
 mini-CLI systems with different argument conventions exist side by side.
 
-**11. Editor backup file in the package**
+**11. Editor backup file in the package** *(trivial — open)*
 
 `python_magnetrun/pigbrother-defs.json~` could be accidentally included in sdist/wheel builds.
 Add it to `.gitignore` and remove it from the repository.
 
-**12. `tsdownsample` is an undeclared dependency**
+**12. `tsdownsample` is an undeclared dependency** *(done)*
 
-Used in `hybrid/hybrid_run.py` behind a `try/except ImportError`, but absent from `pyproject.toml`.
-Either add it to a `hybrid` extras group or document the soft requirement explicitly.
+Now added to `pyproject.toml` as a `hybrid` extras dependency.
 
 ---
 
@@ -139,8 +142,8 @@ Either add it to a `hybrid` extras group or document the soft requirement explic
 |---|---|---|
 | Protocol for `MagnetRun`/`HybridRun` interface | `DataProvider` in `hybrid_run.py`, `DataLoader` in `data_protocol.py` | Done |
 | `Référence_GR → Courant_GR` mapping | `config.py ChannelMapping` + `analysis/cli.py:162-165` | Done — cli.py now uses `channel_map.to_dict()` |
-| Plot logic | `commands/plot.py`, legacy `viewcsv.py` | Needs work |
-| Argument parsing for smoothing/logging | `cli_args.py` builders vs. `processing/cli.py` inline argparse | Needs work |
+| Plot logic | `commands/plot.py`, legacy `viewcsv.py` | Refactored — `plotting/` subpackage created |
+| Argument parsing for smoothing/logging | `cli_args.py` builders vs. `processing/cli.py` inline argparse | Needs consolidation |
 
 ---
 
@@ -163,27 +166,33 @@ Either add it to a `hybrid` extras group or document the soft requirement explic
 | Hardcoded default path in `cli_args.py` | Done |
 | Protocol duplication (`DataProvider` / `DataLoader`) | Done |
 | Timestamp convention (Pandas + TDMS) | Done |
-| `HybridData` timestamp support | Pending (out of current scope) |
-| Cross-domain comparison (`DataLoader` extension, Phase A1–A3) | Done — A0–A3 complete |
+| `HybridData` timestamp support | Pending (requires analysis Phase 6) |
+| Cross-domain comparison (`DataLoader` extension, Phase A0–A3) | Done |
+| Cross-domain comparison (Phases D–G: `ComparisonSession`, adapters, CLI) | Pending (Phases B–C done) |
 | Downsampling refactoring (`DownsampleConfig`, shared module) | Done — see `downsampling-refactoring.plan.md` |
-| Plotting refactoring (`plotting/` subpackage, backend protocol, JS path) | Done — or replace with HoloViews migration (~8 d); see `holoviews-migration.plan.md` |
-| `analysis/` internal refactoring (data loading, downsampling adoption, channel mapping, function decomposition) | Needs work — see `analysis-subpackage-refactoring.plan.md` |
-| `hybrid/` internal refactoring (outlier dedup, `OutlierConfig`, `signal_processing.py`) | Needs work — see `hybrid-subpackage-refactoring.plan.md` |
-| Pipeline redesign: polars npTDMS, narwhals in `MagnetRun`, no-double-load pipeline | Planned — see `mrun-cache-implementation.plan.md` (3 phases; Phase 1 independent) |
+| Plotting refactoring (`plotting/` subpackage, backend protocol) | Done — see `plotting-refactoring.plan.md` or `holoviews-migration.plan.md` for alternative |
+| `analysis/` internal refactoring (data loading, channel mapping, decomposition) | Pending — see `analysis-subpackage-refactoring.plan.md` |
+| `hybrid/` internal refactoring (outlier dedup, `OutlierConfig`, signal processing) | Pending — see `hybrid-subpackage-refactoring.plan.md` |
+| Pipeline redesign: polars npTDMS, narwhals, no-double-load pipeline | Planned — see `mrun-cache-implementation.plan.md` (3 phases; Phase 1 independent) |
+| File validation infrastructure | Done — `utils/validation.py` committed and integrated |
+| Logging infrastructure | Done — `log_utils.py` in place; `print()` migration ongoing |
 
 The core abstractions are well-conceived — the ABC, the defs system, and `HousingConfig` are solid
 foundations. All major structural issues are now resolved: housing config consolidation, `MagnetData`
 shim replacement, `getUnitKey` fix, `saveData` delegation, hardcoded-path removal, `Data` type
-divergence (external callers cleaned up), Protocol unification (`DataLoader` only), timestamp
-convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC), downsampling refactoring
-(`DownsampleConfig`, shared `utils/downsampling.py`, `tsdownsample` extras), and plotting
-refactoring (subpackage, backends, label/legend uniformization). An alternative HoloViews-based
-plotting system (~8 d) would replace the current three-backend implementation with
-`hv.extension()` + Panel + datashader and subsume `analysis/` downsampling Phase 2.
-Remaining work in priority order: (9b/optional) HoloViews migration; (10) `analysis/`
-internal refactoring; (11) `HybridData` timestamp support (out of current scope, requires
-analysis Phase 6 first); (12) `hybrid/` internal refactoring; (13) editor backup file;
-(14) cross-domain Phases B–G (`ComparisonSession`, adapters, CLI — depends on 11).
+divergence (external callers cleaned up), Protocol unification (`DataLoader` only, Phase 2A complete),
+timestamp convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC), downsampling
+refactoring (`DownsampleConfig`, shared `utils/downsampling.py`, `tsdownsample` extras), plotting
+refactoring (subpackage, backends, label/legend uniformization), and file validation infrastructure
+(committed and integrated). An optional HoloViews-based plotting system (~8 d) would replace the
+current three-backend implementation with `hv.extension()` + Panel + datashader and subsume
+`analysis/` downsampling Phase 2.
+
+**Package is production-ready for core use cases.** Remaining work in priority order: 
+(1) known regressions (multiple-file plotting); (2) CI/CD pipeline; (3) logging migration completion;
+(4) `analysis/` internal refactoring; (5) `hybrid/` internal refactoring; (6) `HybridData` timestamp
+support (requires analysis Phase 6); (7) cross-domain Phases D–G (`ComparisonSession`, CLI);
+(8) optional HoloViews migration; (9) pipeline redesign (polars/narwhals).
 
 ---
 
