@@ -756,6 +756,69 @@ python3 -m python_magnetrun.analysis.cli input.tdms \
 
 ## Python API
 
+### Loading data
+
+The `load_mrun()` function provides a convenient unified interface for loading any supported file type with automatic file resolution.
+
+**Simple filename (auto-resolves to standard data directories):**
+
+```python
+from python_magnetrun.MagnetRun import load_mrun
+
+# Just provide the filename - it searches automatically!
+mrun = load_mrun('2026.03.31 - 13:22:40.txt', housing='M9')
+print(f"Loaded: {mrun.MagnetData.FileName}")
+print(f"StartTime: {mrun.StartTime}")
+```
+
+**How auto-resolution works:**
+
+When `auto_resolve=True` (the default), `load_mrun()` searches for files in priority order:
+
+1. Current working directory
+2. Extension-specific data directory (e.g., `/mnt/LNCMIG-Data/records/srv-data-install/` for `.txt`)
+3. Extension-specific data directory + housing subdirectory (e.g., `.../srv-data-install/M9/`)
+
+This uses the same resolution logic as the CLI, so scripts and CLI commands find files consistently.
+
+**Full path (backwards compatible):**
+
+```python
+# Still works with absolute paths
+mrun = load_mrun('/mnt/LNCMIG-Data/records/srv-data-install/M9/2026.03.31 - 13:22:40.txt')
+```
+
+**Disable auto-resolution:**
+
+```python
+# Only check current directory (raises FileNotFoundError if not found)
+mrun = load_mrun('file.txt', auto_resolve=False)
+```
+
+**Supports all file types:**
+
+```python
+# TDMS files
+mrun = load_mrun('M9_Overview_260331-1316.tdms', housing='M9')
+
+# CSV files
+mrun = load_mrun('data.csv', housing='M9')
+```
+
+**Environment variable overrides:**
+
+Customize data directories via environment variables (see [Mounting Data Directories](#mounting-data-directories)):
+
+```bash
+export MAGNETRUN_PUPITRE_DATA_DIR="/custom/path/to/pupitre"
+export MAGNETRUN_PIGBROTHER_DATA_DIR="/custom/path/to/pigbrother"
+```
+
+```python
+# Now load_mrun() searches your custom directories automatically
+mrun = load_mrun('2026.03.31 - 13:22:40.txt', housing='M9')
+```
+
 ### Configuration
 
 ```python
@@ -772,7 +835,9 @@ print(config.housing.reference_gr2_current)   # "IB"
 threshold = config.thresholds.get("Courant_GR1")
 ```
 
-### Loading data
+### Lower-level data loading APIs
+
+For more control over the loading process, use the underlying `load_magnetdata()` and format-specific methods:
 
 **Single Pupitre file (`.txt`):**
 

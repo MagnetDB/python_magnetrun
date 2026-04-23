@@ -21,6 +21,7 @@ def load_mrun(
     housing: str = "unknown",
     site: str = "",
     time_zone: str = "Europe/Paris",
+    auto_resolve: bool = True,
     **kwargs,
 ) -> "MagnetRun":
     """Load a MagnetRun from a file, dispatching on extension.
@@ -29,22 +30,60 @@ def load_mrun(
     - ``.txt``  → :meth:`MagnetRun.fromtxt`
     - ``.csv``  → :meth:`MagnetRun.fromcsv`
 
-    :param filename: path to the data file
+    :param filename: path to the data file (can be a simple filename or full path)
     :param housing: housing name (default ``"unknown"``)
     :param site: site name
     :param time_zone: local timezone for timestamp conversion (txt/tdms)
+    :param auto_resolve: when True, automatically search in standard data directories
+        if the file is not found at the given path. Uses the same resolution logic
+        as the CLI (searches current dir, then extension-specific data dirs, then
+        data_dir/housing). Default: True.
     :param kwargs: extra keyword arguments forwarded to the underlying classmethod
     :raises ValueError: if the file extension is not recognised
+    :raises FileNotFoundError: if the file cannot be found
     """
     import os
 
-    ext = os.path.splitext(filename)[-1].lower()
+    resolved_filename = filename
+
+    # If file doesn't exist and auto_resolve is enabled, try standard data directories
+    if auto_resolve and not os.path.exists(filename):
+        from .data_dirs import PIGBROTHER_DATA_DIR, PUPITRE_DATA_DIR
+        from .utils.files import expand_input_files
+
+        logger.debug(
+            f"load_mrun: file '{filename}' not found, attempting auto-resolution"
+        )
+
+        datadir = {
+            ".tdms": PIGBROTHER_DATA_DIR,
+            ".txt": PUPITRE_DATA_DIR,
+        }
+
+        # Use housing from filename if not provided
+        resolve_housing = housing if housing and housing != "unknown" else None
+
+        resolved = expand_input_files([filename], datadir, housing=resolve_housing)
+
+        if not resolved:
+            raise FileNotFoundError(
+                f"load_mrun: file not found: {filename}\n"
+                f"  Searched: current directory, {datadir.get(os.path.splitext(filename)[-1], 'N/A')}"
+                f"{f', {datadir.get(os.path.splitext(filename)[-1])}/{resolve_housing}' if resolve_housing else ''}"
+            )
+
+        resolved_filename = resolved[0]
+        logger.info(f"load_mrun: resolved '{filename}' → '{resolved_filename}'")
+
+    ext = os.path.splitext(resolved_filename)[-1].lower()
     if ext == ".tdms":
-        return MagnetRun.fromtdms(housing, site, filename, time_zone=time_zone)
+        return MagnetRun.fromtdms(housing, site, resolved_filename, time_zone=time_zone)
     elif ext == ".txt":
-        return MagnetRun.fromtxt(housing, site, filename, time_zone=time_zone, **kwargs)
+        return MagnetRun.fromtxt(
+            housing, site, resolved_filename, time_zone=time_zone, **kwargs
+        )
     elif ext == ".csv":
-        return MagnetRun.fromcsv(housing, site, filename)
+        return MagnetRun.fromcsv(housing, site, resolved_filename)
     else:
         raise ValueError(f"load_mrun: unsupported file extension {ext!r}")
 
