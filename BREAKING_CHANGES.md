@@ -1,3 +1,5 @@
+> This file is superseded by [CHANGELOG.md](CHANGELOG.md).
+
 # Breaking Changes — v0.3.0
 
 ## Timestamp convention unified: all `timestamp` columns now store naive UTC

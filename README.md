@@ -31,8 +31,7 @@ Python `MagnetRun` contains utilities to view and analyze Magnet runs from LNCMI
 - [ETL and Pipelines](#etl-and-pipelines)
 - [Object Storage (RustFS)](#object-storage-rustfs)
 - [Running Tests](#running-tests)
-- [Breaking Changes](#breaking-changes)
-- [To-do](#to-do)
+- [Changelog](CHANGELOG.md)
 - [Credits](#credits)
 
 ---
@@ -242,30 +241,30 @@ cp /path/to/my-pupitre-defs.json ~/.config/magnetrun/pupitre-defs.json
 # All subsequent calls to load_defs("pupitre-defs.json") will use your copy.
 ```
 
-Manage defs files with the `magnetrun-field-defs` CLI (bare names work after
+Manage defs files with the `magnetrun-config field` CLI (bare names work after
 installation — no need to specify the full path to the bundled file):
 
 ```bash
 # List all field definitions (including aliases)
-magnetrun-field-defs pupitre-defs.json list
+magnetrun-config field pupitre-defs.json list
 
 # Add a new field
-magnetrun-field-defs pupitre-defs.json add NewSensor I ampere \
+magnetrun-config field pupitre-defs.json add NewSensor I ampere \
     --description "New coil current"
 
 # Update an existing field
-magnetrun-field-defs pupitre-defs.json update Field \
+magnetrun-config field pupitre-defs.json update Field \
     --symbol Bz --description "Axial field"
 
 # Add a cross-format alias
-magnetrun-field-defs pupitre-defs.json alias-add Idcct1 hybrid \
+magnetrun-config field pupitre-defs.json alias-add Idcct1 hybrid \
     "FEPC-AUX-LNCMI/ALIM1_J1"
 
 # Show aliases for one field
-magnetrun-field-defs pupitre-defs.json alias-show Idcct1
+magnetrun-config field pupitre-defs.json alias-show Idcct1
 
 # Build a cross-reference index across all three formats
-magnetrun-field-defs pupitre-defs.json crossref \
+magnetrun-config field pupitre-defs.json crossref \
     --format pupitre=pupitre-defs.json \
     --format pigbrother=pigbrother-defs.json \
     --format hybrid=hybrid-defs.json
@@ -324,27 +323,27 @@ To persist a customized config for a housing, copy it to the user config dir:
 
 ```bash
 # Start from the bundled template
-magnetrun-housing-config M9-housing-config.json create M9 --from-builtin M9
+magnetrun-config housing M9-housing-config.json create M9 --from-builtin M9
 
 # Copy to user config dir so get_housing_config("M9") picks it up automatically
 cp M9-housing-config.json ~/.config/magnetrun/M9-housing-config.json
 
 # Edit in place
-magnetrun-housing-config ~/.config/magnetrun/M9-housing-config.json update \
+magnetrun-config housing ~/.config/magnetrun/M9-housing-config.json update \
     --gr1-current IB --gr2-current IH
 ```
 
-Manage with the `magnetrun-housing-config` CLI:
+Manage with the `magnetrun-config housing` CLI:
 
 ```bash
 # Show a housing config
-magnetrun-housing-config M9-housing-config.json show
+magnetrun-config housing M9-housing-config.json show
 
 # Create a new housing config initialised from M9 defaults
-magnetrun-housing-config M11-housing-config.json create M11 --from-builtin M9
+magnetrun-config housing M11-housing-config.json create M11 --from-builtin M9
 
 # Update role fields in place
-magnetrun-housing-config M9-housing-config.json update \
+magnetrun-config housing M9-housing-config.json update \
     --gr1-current IB --gr2-current IH
 ```
 
@@ -668,10 +667,10 @@ python3 -m python_magnetrun.cli \
     --same-color-per-type
 ```
 
-Customise the palette via a plot-config JSON (see `magnetrun-plot-config init`):
+Customise the palette via a plot-config JSON (see `magnetrun-config plot init`):
 
 ```bash
-magnetrun-plot-config init           # writes plot_config.json in the current directory
+magnetrun-config plot init           # writes plot_config.json in the current directory
 # edit palette, colors, style …
 python3 -m python_magnetrun.cli … plot … --plot-config plot_config.json
 ```
@@ -1196,94 +1195,7 @@ pytest --on-demand tests/test-tin.py
 
 ---
 
-## Breaking Changes
-
-### v0.3.0 — Timestamp convention unified to naive UTC
-
-`timestamp` columns in all `MagnetData` classes are now stored as **naive UTC**.
-Previously `PandasMagnetData` stored local time, which silently broke comparisons with
-TDMS/hybrid timestamps.
-
-| Class | Before (≤ 0.2.x) | After (≥ 0.3.0) |
-|---|---|---|
-| `PandasMagnetData.Data["timestamp"]` | naive local time | naive UTC |
-| `TdmsMagnetData.Data[group]["timestamp"]` | naive UTC | naive UTC (unchanged) |
-
-**`extractTimeData` timerange format changed:**
-
-```python
-# Old (≤ 0.2.x)
-md.extractTimeData("09:53:00;10:00:00")
-
-# New (≥ 0.3.0)
-md.extractTimeData("2025-11-05 09:53:00;2025-11-05 10:00:00")
-```
-
-`TdmsMagnetData.addTime()` is now eager: it populates all groups in one call (no need
-to call `addTdmsTimestamp()` separately).
-
-See [BREAKING_CHANGES.md](BREAKING_CHANGES.md) for the full migration guide.
-
----
-
-## To-do
-
-**Fix**
-- [X] Fix time data in Hybrid kHz files
-- [X] Fix python_magnetrun/cli.py input_args
-- [X] Fix python_magnetrun/cli.py plot with multiple files
-- [X] Plot_xy: raise an exception when trying to plot pairs that have different units
-- [ ] Fix python_magnetrun/analysis/plotting.py remove downsample_percent handling
-- [ ] Fix analysis -- no pupitre nor Reference displayed -- check also with plotly backend
-- [ ] Add demo use of downsampling in the analysis CLI
-
-**Finish**
-- [ ] hybrid data loading and unified interface
-- [ ] hybrid data validation and comparison with Pupitre/PigBrother
-- [X] `HybridData` timestamp unification (follow-up to v0.3.0)
-
-**Refactor:**
-- [X] Split argparse options into separate Python files
-- [X] Add an example / a test for each subcommand in `python_magnetrun`
-- [X] Rework `MagnetData` into base + pandas + tdms classes
-- [ ] Store stats (plateaus, duration) in a DataFrame, CSV, or database
-- [X] Refactor plot functions to use a common interface and support multiple backends (Matplotlib, Plotly, Seaborn)
-- [ ] Refactor `analysis` module to separate synchronization, metrics, and visualization into distinct classes/functions
-- [ ] Add hybrid data support to `analysis` module (e.g. synchronization with Pupitre/PigBrother, distance metrics)
-
-**Docs:**
-- [X] Docs for aggregate
-- [X] Add a note to mount PigBrother data
-- [X] Add note to mount Pupitre data if applicable
-- [X] Document ETL, waterflow, and thermal pipeline modules
-
-**CI/CD:**
-- [X] Add code coverage with `pytest-cov` (generates `coverage.xml`)
-- [X] Upload coverage reports to [Codecov](https://codecov.io/gh/MagnetDB/python_magnetrun) via `codecov/codecov-action@v5`
-- [ ] Authorize the `MagnetDB/python_magnetrun` repository on [codecov.io](https://codecov.io) (sign in with GitHub) to activate the badge
-
-**Units:**
-- [ ] Use python_magnetunits for unit conversions and dimensional analysis in formulas (e.g. power, busbar losses)
-
-**Dashboard:**
-- [ ] Streamlit and Panel dashboards via `rustfs/` object storage integration
-- [ ] Add Marimo notebooks equivalents
-- [ ] Add standalone voila dashboard for non-technical users — along with a Dockerfile for easy deployment
-
-**Features:**
-- [X] ETL functions to clean and normalise Pupitre data (`runetl`)
-- [X] Waterflow and thermal pipeline modules
-- [X] Rewrite `txt2csv` to use methods in `utils` and `plots`
-- [ ] Check `addData` complex formulas (involving `freesteam` / `iapws`) — with `pyparsing`?
-- [ ] Export data to `great_tables`, `tabular`, `rich` or `csv2md`
-- [ ] Add support for Origin files (`liborigin` / Python bindings)
-- [ ] For `select`, support multiple field criteria
-- [ ] Cross-lag correlations
-- [ ] Forecast Teb from historical data
-- [ ] Check independent variables (Ih, Teb, Qbrut) on plateau experiments
-- [ ] Link with magnet user DB (`xdds.csv`)
-- [ ] Classification of field profiles
-- [ ] Link with `magnettools`/`hifimagnet` for R(i) and L(i)
+See [CHANGELOG.md](CHANGELOG.md) for breaking changes and the to-do list.
 
 ---
 
