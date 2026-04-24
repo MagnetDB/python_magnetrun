@@ -478,7 +478,7 @@ def plot_comparison(
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    plt.tight_layout()
+    fig.tight_layout()
     return fig, ax
 
 

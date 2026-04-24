@@ -9,6 +9,7 @@ import argparse
 import sys
 from pathlib import Path
 
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -46,7 +47,7 @@ def plot_variables(filepath, variable_names, output_file=None, same_plot=False):
         # Single plot with multiple y-axes if needed
         fig, ax1 = plt.subplots(figsize=(12, 6))
 
-        colors = plt.cm.tab10(np.linspace(0, 1, len(valid_vars)))
+        colors = cm.tab10(np.linspace(0, 1, len(valid_vars)))
 
         for i, var in enumerate(valid_vars):
             if i == 0:
@@ -97,10 +98,10 @@ def plot_variables(filepath, variable_names, output_file=None, same_plot=False):
                 bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
             )
 
-    plt.tight_layout()
+    fig.tight_layout()
 
     if output_file:
-        plt.savefig(output_file, dpi=150, bbox_inches="tight")
+        fig.savefig(output_file, dpi=150, bbox_inches="tight")
         print(f"Plot saved to: {output_file}")
     else:
         plt.show()
@@ -126,10 +127,10 @@ def main():
         help="Variable names to plot",
     )
     parser.add_argument(
-        "-o",
-        "--output",
+        "--save",
         type=str,
         default=None,
+        metavar="FILE",
         help="Output filename for saving the plot (e.g., output.png)",
     )
     parser.add_argument(
@@ -141,7 +142,7 @@ def main():
     args = parser.parse_args()
 
     try:
-        plot_variables(args.file, args.variables, args.output, args.same_plot)
+        plot_variables(args.file, args.variables, args.save, args.same_plot)
     except (OSError, ValueError, RuntimeError) as e:
         print(f"Error: {e}")
         import traceback

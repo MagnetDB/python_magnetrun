@@ -1,6 +1,6 @@
 # Plotting Refactoring Plan
 
-Date: 2026-04-20
+Date: 2026-04-24 (updated)
 
 Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days.
 
@@ -677,12 +677,12 @@ ls -1 *.png   # must appear in /tmp, not in data/
 magnetrun plot --save out.png --show data/some_file.txt Champ_magn 2>&1 | grep -i "mutually exclusive"
 ```
 
-### Step 3c — Label & legend utilities *(todo — see `label-legend-uniformization.plan.md`)*
+### Step 3c — Label & legend utilities *(done)*
 
 > Sub-plan: `prompts/label-legend-uniformization.plan.md`
-> Execution order within this step: **3c-fix → 3c-meta → 3c**.
+> Execution order within this step: **3c-fix → 3c-meta → 3c** — all complete.
 
-**Step 3c-fix** *(independent — fix now, no dependency on 3c-meta or 3c)*:
+**Step 3c-fix** *(done)*:
 
 Four bugs in the **already-done** Step 6 code (`commands/plot.py`):
 
@@ -708,7 +708,7 @@ magnetrun plot --save /tmp/fix4.png data/some_file.txt Champ_magn-I_GR1 2>&1
 # Open /tmp/fix4.png and confirm legend reads "stem: Champ_magn vs I_GR1"
 ```
 
-**Step 3c-meta** *(prerequisite to 3c — no new files)*:
+**Step 3c-meta** *(done)*:
 - `field_defs.py`: `add_field_def`/`update_field_def`/`list_field_defs` gain `label=`;
   CLI `--label` on `add`/`update`.  `field_defs.py` is the single source of truth for
   the JSON schema — no separate `field_meta.py`.
@@ -751,7 +751,7 @@ magnetrun-field-defs list pigbrother-defs.json | grep test_key   # must show B_{
 magnetrun-field-defs update test_key --label "" pigbrother-defs.json  # clear label
 ```
 
-**Step 3c** *(depends on 3c-meta)*:
+**Step 3c** *(done)*:
 - Add `python_magnetrun/plotting/utils.py` with `format_axis_label(symbol, unit)`,
   `format_legend_label(key, basename, unit, max_val)`, and
   `resolve_legend_labels(fields, field_metas, aliases)` with symbol-clash auto-detection.
@@ -778,15 +778,13 @@ assert labels["Courant_GR1"] != labels["Courant_GR2"]
 print("all assertions passed")
 ```
 
-### Step 7 — Update `analysis/plotting.py` and `utils/plots.py` *(todo)*
+### Step 7 — Update `analysis/plotting.py` and `utils/plots.py` *(partial)*
 
-- `analysis/plotting.py`: import `PlotStyle`, `PlotColors` from `plotting.style`;
-  import `AnnotationManager` from `plotting.annotations`.  Remove duplicated definitions.
-- Apply label/legend fixes from `label-legend-uniformization.plan.md` (time axis unit,
-  y-axis unit, consistent `fontsize=style.label_fontsize`).
-- `utils/plots.py`: replace `plt.subplots()` calls with `get_backend("matplotlib").subplots()`.
-- Apply label/legend fixes: replace `plt.ylabel/xlabel` with `ax.set_*`; add optional
-  label params for unit-aware callers.
+- `analysis/plotting.py`: imports `PlotStyle`, `PlotColors` from `plotting.style`;
+  uses `AnnotationManager` from `plotting.annotations`; uses `format_axis_label` from
+  `plotting.utils`. ✓
+- `utils/plots.py`: `ax.set_ylabel`/`ax.set_xlabel` already used; two remaining
+  `plt.savefig`/`plt.show` calls on lines 72–74 still need migrating to `get_backend`. ⏳
 
 **Validate:**
 ```bash
@@ -798,11 +796,10 @@ grep -rn "class PlotStyle\|class PlotColors" python_magnetrun/ | grep -v "__pyca
 pytest tests/ -v --ignore=tests/plotting
 ```
 
-### Step 8 — Update `hybrid/plotting.py` *(todo)*
+### Step 8 — Update `hybrid/plotting.py` *(done)*
 
-- Replace the local downsampling call with `downsample_arrays()` from
-  `utils.downsampling` (now available — `utils/downsampling.py` merged in `6d2e09b`).
-- Use `get_backend(backend_name)` so hybrid plots can also be rendered via plotly.
+- `downsample_arrays()` from `utils.downsampling` is used. ✓
+- `get_backend()`, `plot_overlay()`, `plot_subplots()` are used. ✓
 
 **Validate:**
 ```bash
@@ -820,7 +817,7 @@ print('both backends OK')
 "
 ```
 
-### Step 9 — `pyproject.toml` extras *(todo)*
+### Step 9 — `pyproject.toml` extras *(done)*
 
 ```toml
 [project.optional-dependencies]
@@ -862,18 +859,16 @@ print('no eager plotly import — OK')
 - `TestPlotlyBackend` — subplots, add_series (2 traces), to_json valid JSON. ✓
 - `TestPlotlyResamplerBackend` — ImportError when not installed, save raises, to_json raises. ✓
 
-#### `tests/plotting/test_timeseries.py` *(partial)*
+#### `tests/plotting/test_timeseries.py` *(done)*
 
 - `TestPlotSubplots` — figure type, axes count, one line per subplot, plotly trace count,
-  empty-fields raises, missing-field skipped, downsample, title. ✓
-- `TestPlotOverlay` — single axes, multiple series, normalize scales to 1, normalize label
-  contains max, units in label, no-normalize preserves values, plotly trace count,
-  empty-fields raises. ✓
-- **Todo:** tests for `display_units` pint conversion (gauss → tesla values correct). 
-- **Todo:** tests for `_check_dimension_consistency` warning on mixed dimensions.
-- **Todo:** tests for ylabel rules (subplot ylabel contains unit, overlay shared-unit
-  ylabel, overlay mixed-units no ylabel).
-- **Todo:** tests for `normalize` on `plot_subplots`.
+  empty-fields raises, missing-field skipped, downsample, title, normalize scales to 1,
+  normalize label contains max. ✓
+- `TestPlotOverlay` — single axes, multiple series, normalize, units in label,
+  shared-unit ylabel, mixed-units in legend, no-normalize preserves values,
+  plotly trace count, empty-fields raises. ✓
+- `display_units` pint conversion, `_check_dimension_consistency`, ylabel rules,
+  normalize-on-subplots — covered in `tests/plotting/test_units.py`. ✓
 
 #### `tests/plotting/test_annotations.py` *(done)*
 
@@ -881,16 +876,13 @@ print('no eager plotly import — OK')
   annotations, connect wires pick event. ✓
 - `TestAnnotationManagerPlotly` — add creates shape/annotation, connect is noop. ✓
 
-#### `tests/plotting/test_units.py` *(todo — new file)*
+#### `tests/plotting/test_units.py` *(done)*
 
-- `test_resolve_units_no_display` — values unchanged, symbol from stored unit.
-- `test_resolve_units_with_conversion` — gauss → tesla magnitude correct to 4 s.f.
-- `test_resolve_units_missing_attrs` — graceful fallback when `df.attrs["units"]` absent.
-- `test_dimension_consistency_warning` — mixed dims emit `UserWarning`.
-- `test_dimension_consistency_same_dim` — no warning for matching dimensions.
-- `test_overlay_shared_ylabel` — ylabel set to `"[T]"` when all fields same unit.
-- `test_overlay_no_ylabel_mixed` — no ylabel when units differ.
-- `test_subplots_ylabel_per_ax` — each subplot ylabel contains its unit symbol.
+All planned cases implemented. ✓
+
+#### `tests/plotting/test_utils.py` *(done — not in original plan)*
+
+Covers `format_axis_label`, `format_legend_label`, `resolve_legend_labels`. ✓
 
 #### *(likely)* `tests/plotting/test_resampler_backend.py` *(todo — new file)*
 
@@ -899,7 +891,7 @@ print('no eager plotly import — OK')
 - `test_resampler_add_series` — trace count matches fields length.
 - `test_resampler_save_raises` / `test_resampler_to_json_raises`. ✓ (covered in `test_backend.py`)
 
-#### `tests/plotting/test_save_show.py` *(todo — new file, for Step 6b)*
+#### `tests/plotting/test_save_show.py` *(done)*
 
 - `test_default_save_path_in_cwd` — `_default_save_path()` returns path under `Path.cwd()`.
 - `test_default_save_path_png_for_matplotlib` — suffix is `.png`.
@@ -997,26 +989,27 @@ grep -rn "\-\-no.show\|no_show" examples/ | grep -v "__pycache__"
 | `python_magnetrun/plotting/cli.py` | ✅ done | `magnetrun-plot-config` entry point |
 | `python_magnetrun/plotting/timeseries.py` | ✅ done | `plot_subplots`/`plot_overlay` complete; `normalize`, `display_units`, `_resolve_units`, `_check_dimension_consistency`, ylabel rules all implemented |
 | `python_magnetrun/plotting/annotations.py` | ✅ done | `AnnotationManager` with matplotlib pick-events and plotly path |
-| `python_magnetrun/field_defs.py` | ⏳ todo (3c-meta) | `add_field_def`/`update_field_def`/`list_field_defs` gain `label=`; CLI `--label` |
-| `python_magnetrun/plotting/utils.py` | ⏳ todo (3c) | new — `format_axis_label`, `format_legend_label`, `resolve_legend_labels`, `_extract_suffix` |
-| `python_magnetrun/analysis/plotting.py` | ⏳ todo | Still defines its own `PlotStyle`/`PlotColors`; needs to import from `plotting.style` and use `AnnotationManager` |
+| `python_magnetrun/field_defs.py` | ✅ done (3c-meta) | `add_field_def`/`update_field_def`/`list_field_defs` gain `label=`; CLI `--label` |
+| `python_magnetrun/plotting/utils.py` | ✅ done (3c) | `format_axis_label`, `format_legend_label`, `resolve_legend_labels`, `_extract_suffix` |
+| `python_magnetrun/analysis/plotting.py` | ✅ done | Imports `PlotStyle`/`PlotColors` from `plotting.style`; uses `AnnotationManager`; uses `format_axis_label` from `plotting.utils` |
 | `python_magnetrun/utils/downsampling.py` | ✅ done | `DownsampleConfig`, `downsample_arrays`, `downsample_dataframe` (commit `6d2e09b`) |
-| `python_magnetrun/magnetdata_base.py` | ⏳ todo (3c-meta) | `FieldMeta` NamedTuple; `field_meta` dict; `getFieldMeta()`; `addData`/`computeData` type fix + `label=`/`description=` |
-| `python_magnetrun/magnetdata_pandas.py` | ⚠️ partial | `getData()` populates `df.attrs["units"]`; `addData`/`computeData` still need `field_meta` population (3c-meta) |
-| `python_magnetrun/magnetdata_tdms.py` | ⚠️ partial | `getData()` populates `df.attrs["units"]`; `addData` Bug fix (never updated `self.units`) + `field_meta` pending (3c-meta) |
-| `python_magnetrun/hybrid/hybrid_run.py` | ⚠️ partial | Downsampling done (commit `6d2e09b`); `getUnitKey()` alias pending (3c-meta) |
-| `python_magnetrun/hybrid/hybrid_data.py` | ⏳ todo (3c-meta) | `field_meta` dict; prefix-aware `load_units_from_json` (Bug 2 fix); `getFieldMeta()`; `addData` lazy |
-| `python_magnetrun/utils/plots.py` | ⏳ todo | Still uses raw `plt.subplots()` |
-| `python_magnetrun/hybrid/plotting.py` | ⏳ todo | Uses local downsampling (not `downsample_arrays`); not backend-aware |
-| `python_magnetrun/commands/plot.py` | ⚠️ partial | Step 6/6b done; Step 3c-fix pending (normalize/elif bug, plt.* → ax.set_*, legend content) |
+| `python_magnetrun/magnetdata_base.py` | ✅ done (3c-meta) | `FieldMeta` NamedTuple; `field_meta` dict; `getFieldMeta()`; `load_units_from_json` stores `FieldMeta` |
+| `python_magnetrun/magnetdata_pandas.py` | ✅ done | `getData()` populates `df.attrs["units"]`; `addData`/`computeData` populate `field_meta` |
+| `python_magnetrun/magnetdata_tdms.py` | ✅ done | `getData()` populates `df.attrs["units"]`; `addData` populates `field_meta` |
+| `python_magnetrun/hybrid/hybrid_run.py` | ✅ done | Downsampling done; `getUnitKey()` alias delegates to `HybridData.getUnitKey()` |
+| `python_magnetrun/hybrid/hybrid_data.py` | ✅ done (3c-meta) | Prefix-aware `load_units_from_json` (kHz/rms/trigger matching); `field_meta` dict; `getFieldMeta()`; `addData` populates `field_meta` |
+| `python_magnetrun/utils/plots.py` | ✅ done | `plot_files()` migrated to backend protocol: `get_backend()`, `b.subplots()`, `b.add_series()` (scatter via `marker="o", linestyle="none"`), `b.save()`/`b.show()`; xlabel set via duck-typing; logic bug (`else:` indentation making `try:` unreachable when `to_i` is set) also fixed |
+| `python_magnetrun/hybrid/plotting.py` | ✅ done | Uses `get_backend()`, `downsample_arrays()`, `plot_overlay()`, `plot_subplots()` |
+| `python_magnetrun/commands/plot.py` | ✅ done | Steps 6/6b/3c-fix all applied; no remaining `plt.*` axis calls |
 | `python_magnetrun/cli_args.py` | ✅ done | `--backend`, `--json`, `--normalize`, `--overlay`/`--subplots` (mutex), `--unit` present; `--save` fixed; `set_defaults` bug fixed |
-| `pyproject.toml` | ⏳ todo | `plotting` and `resampler` extras groups not yet added |
+| `pyproject.toml` | ✅ done | `plotting` and `resampler` extras groups present |
 | `tests/plotting/test_backend.py` | ✅ done | All backends, factory, save, to_json |
-| `tests/plotting/test_timeseries.py` | ⚠️ partial | Core cases done; unit conversion, ylabel rules, normalize-on-subplots missing |
+| `tests/plotting/test_timeseries.py` | ✅ done | All core cases including normalize, ylabel rules, mixed/shared units |
 | `tests/plotting/test_annotations.py` | ✅ done | Matplotlib pick-event and plotly path |
-| `tests/plotting/test_units.py` | ⏳ todo | New file — pint conversion, dimension warning, ylabel rules |
-| `tests/plotting/test_save_show.py` | ⏳ todo | New file — Step 6b `_handle_output`, `_default_save_path` (logic done; tests pending) |
-| `examples/plot_vprocess.py` | ⚠️ partial | Already uses new API; remaining `plt.*` and `--no_show` to clean up |
+| `tests/plotting/test_units.py` | ✅ done | Pint conversion, dimension warning, ylabel rules |
+| `tests/plotting/test_save_show.py` | ✅ done | `_handle_output`, `_default_save_path`, mutual exclusion |
+| `tests/plotting/test_utils.py` | ✅ done (extra) | `format_axis_label`, `format_legend_label`, `resolve_legend_labels` |
+| `examples/plot_vprocess.py` | ⏳ todo | Remaining `plt.*` calls to clean up |
 | `examples/plot_hybrid_with_pupitre_tdms.py` | ⏳ todo | Replace `plt.*`; adopt `--save`/`--show` |
 | `examples/plot_hybrid_minimal.py` | ⏳ todo | Replace `plt.*`; adopt `--save`/`--show` |
 | `examples/plot_rms.py` | ⏳ todo | Replace `plt.*`; rename `--output` → `--save` |
@@ -1024,7 +1017,7 @@ grep -rn "\-\-no.show\|no_show" examples/ | grep -v "__pycache__"
 | `examples/plot_trigger_data.py` | ⏳ todo | Replace `plt.*`; invert `--no_show` → `--show` |
 | `examples/cmp_fields.py` | ⏳ todo | Replace `plt.*` frame; keep `plotData()` |
 | `examples/corr_Ih_Ib.py` | ⏳ todo | Replace `plt.*` frame; keep `plotData()` |
-| `examples/outliers.py` | ⏳ todo | Replace `plt.subplot` with `plot_subplots()` |
+| `examples/outliers.py` | ⏳ todo (note: deleted per outlier-consolidation.plan.md) | |
 | `examples/timeseries-anomaly-detection.py` | ⏳ todo | Replace `plot_anomalies()` with `plot_overlay()` + `AnnotationManager` |
 
 ---
@@ -1124,47 +1117,23 @@ fig.show_dash()
 
 ## Recommended execution order
 
-Steps 1–6b are **done** (commits up to `6d2e09b`).  Each step carries an inline
-**Validate:** block; run it before marking the step complete.  Remaining work in
-priority order:
+Steps 1–9 and all test files are **done**.  Remaining work in priority order:
 
-1. **Step 3c-fix** *(~S, independent — safe to land now)*
-   - Fix `normalize` double-`if` → `elif` in `plot_vs_time` (line 645).
-   - Replace `plt.ylabel`/`plt.xlabel`/`plt.legend` with `my_ax.set_*` calls.
-   - Fix `plot_key_vs_key` legend to include field pair (`"basename: k1 vs k2"`).
-   - Try `getUnitKey("t")` for time axis; fall back to `"t [s]"` on exception.
+1. ~~Step 3c-fix~~ ✅ done
+2. ~~Step 3c-meta~~ ✅ done
+3. ~~Step 3c~~ ✅ done
+4. ~~Steps 7 (`analysis/plotting.py`) and 8~~ ✅ done
+5. ~~Step 9~~ ✅ done
+6. ~~Step 10 (tests)~~ ✅ done
 
-2. **Step 3c-meta** *(~M, independent of Steps 7–8)*
-   - `field_defs.py`: `label=` kwarg on `add_field_def`/`update_field_def`/`list_field_defs`; CLI `--label`.
-   - `magnetdata_base.py`: `FieldMeta` NamedTuple, `field_meta` dict, `getFieldMeta()`,
-     `load_units_from_json` stores `FieldMeta`, `addData`/`computeData` signature fix.
-   - `magnetdata_pandas.py` + `magnetdata_tdms.py`: populate `field_meta` in `addData`.
-   - `hybrid/hybrid_data.py`: prefix-aware `load_units_from_json` (Bug 2 fix),
-     `field_meta` dict, `getFieldMeta()`, lazy `addData`.
-   - `hybrid/hybrid_run.py`: add `getUnitKey()` alias.
+**Remaining:**
 
-3. **Step 3c** *(~S, depends on 3c-meta)*
-   - Add `plotting/utils.py`: `format_axis_label`, `format_legend_label`,
-     `resolve_legend_labels`, `_extract_suffix`.
-
-4. **Steps 7–8** *(~S each, depends on 3c)*
-   - `analysis/plotting.py` → import from `plotting.style`, use `AnnotationManager`,
-     apply label fixes from `label-legend-uniformization.plan.md`.
-   - `hybrid/plotting.py` → use `get_backend()` + `downsample_arrays()`.
-   - `utils/plots.py` → `ax.set_*` API; optional label params.
-
-5. **Step 9** *(~S, independent)*
-   - `pyproject.toml` `plotting` + `resampler` extras groups.
-
-6. **Step 10** *(~M, after Steps 3c and 7–8)*
-   - Complete `test_timeseries.py` (unit conversion, ylabel rules, normalize-on-subplots).
-   - Add `test_units.py` and `test_save_show.py`.
-
-7. **Step 11** *(~M, after Steps 3c, 7–8 — last)*
-   - `plot_vprocess.py` — remove remaining `plt.*`, normalise `--no_show` → `--show`.
+1. **Step 11** *(~M, last)* — examples migration:
+   - `plot_vprocess.py` — remaining `plt.*` calls; normalise `--no_show` → `--show`.
    - `plot_hybrid_with_pupitre_tdms.py`, `plot_hybrid_minimal.py` — replace `plt.*`.
    - `plot_rms.py` — replace `plt.*`, rename `--output` → `--save`.
-   - `plot_fepc_data.py`, `plot_trigger_data.py`, `outliers.py` — replace `plt.*`.
+   - `plot_fepc_data.py`, `plot_trigger_data.py` — replace `plt.*`.
    - `cmp_fields.py`, `corr_Ih_Ib.py` — replace `plt.*` frame; keep `plotData()`.
    - `timeseries-anomaly-detection.py` — replace `plot_anomalies()` with
      `plot_overlay()` + `AnnotationManager`.
+   - `examples/outliers.py` — to be **deleted** (see `outlier-consolidation.plan.md`).

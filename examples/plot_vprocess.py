@@ -131,9 +131,11 @@ def plot_variables(
     # Format x-axis with date labels
     axes[-1].set_xlabel("Time", fontsize=10, fontweight="bold")
     axes[-1].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
-    plt.setp(axes[-1].xaxis.get_majorticklabels(), rotation=45, ha="right")
+    for tick in axes[-1].xaxis.get_majorticklabels():
+        tick.set_rotation(45)
+        tick.set_horizontalalignment("right")
 
-    plt.tight_layout()
+    fig.tight_layout()
 
     if save_path:
         b.save(fig, Path(save_path), dpi=150)
@@ -227,6 +229,7 @@ def plot_comparison(
         logger.error("Variables not found in file")
         return None, None
 
+    # 2×2 grid: time series, scatter, histograms — matplotlib-specific layout
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
     # Time series plots
@@ -235,14 +238,18 @@ def plot_comparison(
     axes[0, 0].set_title("Time Series", fontweight="bold")
     axes[0, 0].grid(True, alpha=0.3)
     axes[0, 0].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
-    plt.setp(axes[0, 0].xaxis.get_majorticklabels(), rotation=45, ha="right")
+    for tick in axes[0, 0].xaxis.get_majorticklabels():
+        tick.set_rotation(45)
+        tick.set_horizontalalignment("right")
 
     axes[1, 0].plot(df.index, df[var2], linewidth=0.8, color="orange")
     axes[1, 0].set_ylabel(var2, fontweight="bold")
     axes[1, 0].set_xlabel("Time", fontweight="bold")
     axes[1, 0].grid(True, alpha=0.3)
     axes[1, 0].xaxis.set_major_formatter(mdates.DateFormatter("%H:%M:%S"))
-    plt.setp(axes[1, 0].xaxis.get_majorticklabels(), rotation=45, ha="right")
+    for tick in axes[1, 0].xaxis.get_majorticklabels():
+        tick.set_rotation(45)
+        tick.set_horizontalalignment("right")
 
     # Scatter plot
     axes[0, 1].scatter(df[var1], df[var2], alpha=0.5, s=1)
@@ -251,14 +258,10 @@ def plot_comparison(
     axes[0, 1].set_title("Correlation", fontweight="bold")
     axes[0, 1].grid(True, alpha=0.3)
 
-    # Correlation coefficient
     corr = df[[var1, var2]].corr().iloc[0, 1]
     axes[0, 1].text(
-        0.05,
-        0.95,
-        f"r = {corr:.3f}",
-        transform=axes[0, 1].transAxes,
-        verticalalignment="top",
+        0.05, 0.95, f"r = {corr:.3f}",
+        transform=axes[0, 1].transAxes, verticalalignment="top",
         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
     )
 
@@ -271,17 +274,17 @@ def plot_comparison(
     axes[1, 1].legend()
     axes[1, 1].grid(True, alpha=0.3)
 
-    plt.suptitle(f"Comparison: {var1} vs {var2}", fontsize=14, fontweight="bold")
-    plt.tight_layout()
+    fig.suptitle(f"Comparison: {var1} vs {var2}", fontsize=14, fontweight="bold")
+    fig.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
         logger.info(f"Figure saved to: {save_path}")
 
     if show:
         plt.show()
     else:
-        plt.close()
+        plt.close(fig)
 
     return fig, axes
 
@@ -333,33 +336,30 @@ def plot_heatmap(
     # Calculate correlation
     corr_matrix = df_subset.corr()
 
-    # Plot
+    # imshow + colorbar: matplotlib-specific layout
     fig, ax = plt.subplots(figsize=(12, 10))
 
     im = ax.imshow(corr_matrix, cmap="coolwarm", vmin=-1, vmax=1, aspect="auto")
 
-    # Colorbar
-    cbar = plt.colorbar(im, ax=ax)
+    cbar = fig.colorbar(im, ax=ax)
     cbar.set_label("Correlation", rotation=270, labelpad=20)
 
-    # Labels
     ax.set_xticks(np.arange(len(available_vars)))
     ax.set_yticks(np.arange(len(available_vars)))
     ax.set_xticklabels(available_vars, rotation=45, ha="right")
     ax.set_yticklabels(available_vars)
+    ax.set_title("Variable Correlation Heatmap", fontsize=14, fontweight="bold", pad=20)
 
-    # Title
-    plt.title("Variable Correlation Heatmap", fontsize=14, fontweight="bold", pad=20)
-    plt.tight_layout()
+    fig.tight_layout()
 
     if save_path:
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
         logger.info(f"Figure saved to: {save_path}")
 
     if show:
         plt.show()
     else:
-        plt.close()
+        plt.close(fig)
 
     return fig, ax
 
@@ -510,9 +510,9 @@ Examples:
     )
     parser.add_argument("--save", "-s", help="Save figure to file")
     parser.add_argument(
-        "--no-show",
+        "--show",
         action="store_true",
-        help="Do not display plot (useful with --save)",
+        help="Display plot interactively (default when --save is not given)",
     )
     parser.add_argument(
         "--log-level",
@@ -544,6 +544,8 @@ Examples:
     filepath = filepaths[0]
     logger.info(f"Using file: {filepath}")
 
+    show = args.show or args.save is None  # default: show when not saving
+
     # Choose plot type
     if args.heatmap:
         plot_heatmap(
@@ -551,7 +553,7 @@ Examples:
             variables=args.vars,
             max_vars=args.max_vars,
             save_path=args.save,
-            show=not args.no_show,
+            show=show,
         )
 
     elif args.compare:
@@ -560,7 +562,7 @@ Examples:
             args.compare[0],
             args.compare[1],
             save_path=args.save,
-            show=not args.no_show,
+            show=show,
         )
 
     elif args.overview:
@@ -568,7 +570,7 @@ Examples:
             filepath,
             max_vars=args.max_vars,
             save_path=args.save,
-            show=not args.no_show,
+            show=show,
         )
 
     elif args.vars:
@@ -576,7 +578,7 @@ Examples:
             filepath,
             args.vars,
             save_path=args.save,
-            show=not args.no_show,
+            show=show,
             layout=args.layout,
         )
 

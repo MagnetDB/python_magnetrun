@@ -167,7 +167,7 @@ def main():
             voltage_key = VOLTAGE_MAPPING[hybrid_key]
             print(f"Loading voltage data for {voltage_key} to create mask")
             voltage_data, _ = hrun.getData(voltage_key, downsample=100000, hours=hours)
-            plt.plot(
+            ax.plot(
                 time,
                 normalize_signal(voltage_data),
                 "c-",
@@ -178,7 +178,7 @@ def main():
 
             # Apply mask to hybrid signal
             voltage_binary_mask = binarize_signal(voltage_data, method="fixed")
-            plt.plot(
+            ax.plot(
                 time,
                 voltage_binary_mask,
                 "c-",
@@ -192,7 +192,7 @@ def main():
             voltage_binary_mask_otsu = binarize_signal(
                 voltage_data, method="otsu", n_bins=2048
             )
-            plt.plot(
+            ax.plot(
                 time,
                 voltage_binary_mask_otsu,
                 "y-",
@@ -202,7 +202,7 @@ def main():
             )
 
             voltage_binary_mask_noise = binarize_signal(voltage_data, method="noise")
-            plt.plot(
+            ax.plot(
                 time,
                 voltage_binary_mask_noise,
                 "g-",
@@ -211,7 +211,7 @@ def main():
                 label=f"Hybrid voltage mask ({voltage_key}) -- noise",
             )
 
-        plt.plot(
+        ax.plot(
             time,
             normalize_signal(data),
             "b-",
@@ -295,14 +295,14 @@ def main():
     ax.legend()
     ax.grid(True, alpha=0.3)
 
-    plt.tight_layout()
+    fig.tight_layout()
     if save:
-        plt.savefig("hybrid_comparison_minimal.png", dpi=150)
+        fig.savefig("hybrid_comparison_minimal.png", dpi=150)
         print("\nPlot saved to: hybrid_comparison_minimal.png")
     else:
         plt.show()
 
-    plt.close()
+    plt.close(fig)
 
 
 if __name__ == "__main__":
