@@ -27,5 +27,12 @@
   "hybrid_formula_map": {
       "FEPC-AUX-LNCMI/ALIM2": "FEPC-AUX-LNCMI/ALIM2_J1 + FEPC-AUX-LNCMI/ALIM2_J2",
       "FEPC-AUX-LNCMI/ALIM1": "FEPC-AUX-LNCMI/ALIM1_J1 + FEPC-AUX-LNCMI/ALIM1_J2"
+  },
+  "_comment_voltage_mask": "Run-dependent — may change between experiments. Keys are bare channel paths (no kHz/ prefix).",
+  "hybrid_voltage_mask_map": {
+      "FEPC-AUX-LNCMI/ALIM1_J1": "FEPC-AUX-LNCMI/BITTER_V2",
+      "FEPC-AUX-LNCMI/ALIM1_J2": "FEPC-AUX-LNCMI/BITTER_V2",
+      "FEPC-AUX-LNCMI/ALIM2_J1": "FEPC-AUX-LNCMI/PH_V14",
+      "FEPC-AUX-LNCMI/ALIM2_J2": "FEPC-AUX-LNCMI/PH_V14"
   }
 }

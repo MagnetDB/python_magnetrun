@@ -48,10 +48,12 @@ FIELD_MAPPING = {
 }
 
 VOLTAGE_MAPPING = {
-    # NOTE: this mapping is housing-dependent and may change between runs.
-    # It is a temporary placeholder: the canonical source should be
-    # hybrid_voltage_mask_map in the per-housing config (e.g. M8-housing-config.json).
-    # See docs/Hybride.md § "Current-channel voltage masking" for details.
+    # DEPRECATED: masking is now applied transparently inside HybridRun.getData()
+    # when housing="M8" is passed to HybridRun.fromdir() and
+    # hybrid_voltage_mask_map is defined in M8-housing-config.json.
+    # This dict is kept here only for the explicit visualisation of mask signals
+    # below (voltage overlay + binarized mask plots). Remove once those plots
+    # are no longer needed.
     "kHz/FEPC-AUX-LNCMI/ALIM1_J1": "kHz/FEPC-AUX-LNCMI/BITTER_V2",
 }
 # NOTE (Hybrid data): When loading a current channel like ALIM1_J1, the raw

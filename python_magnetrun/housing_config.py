@@ -102,6 +102,7 @@ ROLE_TO_FIELD: dict[str, str] = {
     "pupitre_formula_map": "pupitre_formula_map",
     "pigbrother_formula_map": "pigbrother_formula_map",
     "hybrid_formula_map": "hybrid_formula_map",
+    "hybrid_voltage_mask_map": "hybrid_voltage_mask_map",
     "reference_gr1_voltage": "reference_gr1_voltage",
     "reference_gr2_voltage": "reference_gr2_voltage",
 }
@@ -185,6 +186,11 @@ class HousingConfig:
 
     # Hybrid (M8-only) derived current formulas; empty string = not applicable
     hybrid_formula_map: dict = field(default_factory=dict)
+
+    # Hybrid current-channel → companion voltage channel for on/off masking.
+    # Keys are bare channel paths (no "kHz/" prefix).
+    # Mapping is housing- and run-dependent — may change between experiments.
+    hybrid_voltage_mask_map: dict = field(default_factory=dict)
 
     # Target aggregate voltage field names for GR1/GR2
     reference_gr1_voltage: str = "UH"
@@ -467,6 +473,14 @@ _HYBRID_FORMULA_MAP = {
     "FEPC-AUX-LNCMI/ALIM1": ("FEPC-AUX-LNCMI/ALIM1_J1 + FEPC-AUX-LNCMI/ALIM1_J2"),
     "FEPC-AUX-LNCMI/ALIM2": ("FEPC-AUX-LNCMI/ALIM2_J1 + FEPC-AUX-LNCMI/ALIM2_J2"),
 }
+# NOTE: this mapping is run-dependent and may change between experiments.
+# Canonical source: M8-housing-config.json "hybrid_voltage_mask_map".
+_HYBRID_VOLTAGE_MASK_MAP = {
+    "FEPC-AUX-LNCMI/ALIM1_J1": "FEPC-AUX-LNCMI/BITTER_V2",
+    "FEPC-AUX-LNCMI/ALIM1_J2": "FEPC-AUX-LNCMI/BITTER_V2",
+    "FEPC-AUX-LNCMI/ALIM2_J1": "FEPC-AUX-LNCMI/PH_V14",
+    "FEPC-AUX-LNCMI/ALIM2_J2": "FEPC-AUX-LNCMI/PH_V14",
+}
 
 HOUSING_CONFIGS: dict[str, HousingConfig] = {
     "M9": HousingConfig(
@@ -541,6 +555,7 @@ HOUSING_CONFIGS: dict[str, HousingConfig] = {
         },
         pigbrother_formula_map=_PIGBROTHER_FORMULA_MAP,
         hybrid_formula_map=_HYBRID_FORMULA_MAP,
+        hybrid_voltage_mask_map=_HYBRID_VOLTAGE_MASK_MAP,
     ),
     "M10": HousingConfig(
         name="M10",

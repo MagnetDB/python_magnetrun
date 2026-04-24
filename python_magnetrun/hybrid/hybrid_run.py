@@ -584,6 +584,27 @@ class HybridRun:
                 cnv_dir=opts.cnv_dir,
             )
 
+            # Apply voltage mask when configured for this housing.
+            # The mask isolates real current by zeroing off-state samples.
+            # Mapping is housing- and run-dependent; see hybrid_voltage_mask_map
+            # in <Housing>-housing-config.json and docs/Hybride.md.
+            try:
+                from ..housing_config import get_housing_config
+                from .utils import binarize_signal
+
+                hcfg = get_housing_config(self.Housing)
+                cfg_key = f"{system}/{variable}"
+                voltage_chan = hcfg.hybrid_voltage_mask_map.get(cfg_key)
+                if voltage_chan:
+                    v_sys, v_var = voltage_chan.split("/", 1)
+                    voltage_data, _ = self.HybridData.read_khz_variable(
+                        v_sys, v_var, hours=opts.hours, apply_calib=False
+                    )
+                    data = data * binarize_signal(voltage_data)
+                    logger.debug(f"Applied voltage mask {voltage_chan!r} to {key!r}")
+            except (ValueError, KeyError):
+                pass  # housing unknown or no mask configured — proceed without
+
         elif data_type == "rms":
             if variable is None:
                 return self.HybridData.get_rms_variables(system)
