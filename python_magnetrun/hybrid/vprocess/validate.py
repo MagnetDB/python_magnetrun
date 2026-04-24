@@ -5,21 +5,18 @@ VProcess File Validation and Inspection Utility
 Utility for validating VProcess files and inspecting their contents.
 
 Usage:
-    python validate.py <filepath>
-    python validate.py <filepath> --check-data
-    python validate.py <filepath> --verbose
+    python -m python_magnetrun.hybrid.vprocess.validate <filepath>
+    python -m python_magnetrun.hybrid.vprocess.validate <filepath> --check-data
+    python -m python_magnetrun.hybrid.vprocess.validate <filepath> --verbose
 """
 
-import argparse
 import logging
-import sys
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from vprocess_reader import VProcessFileReader
 
-from ...log_utils import setup_logging
+from .vprocess_reader import VProcessFileReader
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -278,45 +275,3 @@ def validate_vprocess_file(
             traceback.print_exc()
 
     return results
-
-
-def main() -> None:
-    """Main function for command-line usage."""
-    parser = argparse.ArgumentParser(
-        description="Validate and inspect VProcess files",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python validate.py data.vprocess
-  python validate.py data.vprocess --check-data
-  python validate.py data.vprocess --check-data --quiet
-        """,
-    )
-
-    parser.add_argument("filepath", help="Path to VProcess file")
-    parser.add_argument(
-        "--check-data",
-        action="store_true",
-        help="Perform detailed data validation (slower)",
-    )
-    parser.add_argument(
-        "--quiet", "-q", action="store_true", help="Suppress detailed output"
-    )
-
-    args = parser.parse_args()
-
-    # Configure logging
-    if not args.quiet:
-        setup_logging()
-
-    # Run validation
-    results = validate_vprocess_file(
-        args.filepath, check_data=args.check_data, verbose=not args.quiet
-    )
-
-    # Exit with appropriate code
-    sys.exit(0 if results["valid"] else 1)
-
-
-if __name__ == "__main__":
-    main()

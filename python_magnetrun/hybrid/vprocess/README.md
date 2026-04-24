@@ -183,77 +183,8 @@ data = hrun.getData("vprocess/SYSTEM/VARIABLE")
 
 ## Command-Line Tools
 
-### File Validation
-
-```bash
-# Basic validation
-python validate.py data.vprocess
-
-# Full validation with data checking
-python validate.py data.vprocess --check-data
-
-# Quiet mode (only errors)
-python validate.py data.vprocess --quiet
-```
-
-### Batch Processing
-
-```bash
-# Merge all files in directory to CSV
-python batch.py --dir ./data --output merged.csv --merge
-
-# Export specific variables to HDF5
-python batch.py --dir ./data --vars TT115A TT508A --format hdf5 --merge
-
-# List common variables across all files
-python batch.py --dir ./data --list-common-vars
-
-# Analyze files and create summary
-python batch.py --dir ./data --analyze --output summary.csv
-```
-
-### Data Visualization
-
-```bash
-# Plot specific variables
-python plot_vprocess.py data.vprocess --vars TT115A TT508A
-
-# Plot overview of first 10 variables
-python plot_vprocess.py data.vprocess --overview
-
-# Compare two variables
-python plot_vprocess.py data.vprocess --compare TT115A TT508A
-
-# Create correlation heatmap
-python plot_vprocess.py data.vprocess --heatmap
-
-# Save plot without displaying
-python plot_vprocess.py data.vprocess --vars TT115A --save plot.png --no-show
-```
-
-### Unified CLI
-
-```bash
-# All operations through single interface
-python cli.py info data.vprocess
-python cli.py validate data.vprocess --check-data
-python cli.py plot data.vprocess --vars TT115A TT508A
-python cli.py batch --dir ./data --merge --output merged.csv
-python cli.py test
-```
-
-### Testing
-
-```bash
-# Run all tests with mock data
-python test.py
-
-# Create a custom mock file
-python test.py --create-mock --output test.vprocess --samples 1000
-
-# Test with specific file
-python test.py --test-file your_data.vprocess
-```
+For validation, batch processing, and the unified CLI see
+[examples/README_vprocess.md](../../../../examples/README_vprocess.md).
 
 ## File Naming Convention
 

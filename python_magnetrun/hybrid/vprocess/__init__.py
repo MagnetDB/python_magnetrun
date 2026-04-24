@@ -5,12 +5,12 @@ Provides readers and utilities for VProcess process monitoring data files.
 
 Main Components:
 - vprocess_reader: Core file reader
-- plot_vprocess: Data visualization
-- vprocess_examples: Usage examples
 - validate: File validation utility
-- batch: Batch processing
-- test: Testing utilities
-- cli: Command-line interface
+
+Example scripts (in examples/):
+- vprocess_args.py: CLI argument definitions
+- vprocess_batch.py: Batch processing
+- vprocess_cli.py: Unified command-line interface
 """
 
 from .vprocess_reader import (

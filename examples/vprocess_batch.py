@@ -5,8 +5,8 @@ VProcess Batch Processing Utility
 Process multiple VProcess files in batch mode.
 
 Usage:
-    python batch.py --dir /path/to/files --output merged.csv
-    python batch.py --dir /path/to/files --vars TT115A TT508A --format hdf5
+    python vprocess_batch.py --dir /path/to/files --output merged.csv
+    python vprocess_batch.py --dir /path/to/files --vars TT115A TT508A --format hdf5
 """
 
 import argparse
@@ -14,9 +14,9 @@ import logging
 from pathlib import Path
 
 import pandas as pd
-from vprocess_reader import VProcessFileReader, read_vprocess_file
 
-from ...log_utils import BARE_FORMAT, setup_logging
+from python_magnetrun.hybrid.vprocess import VProcessFileReader, read_vprocess_file
+from python_magnetrun.log_utils import BARE_FORMAT, setup_logging
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -262,16 +262,16 @@ def main() -> None:
         epilog="""
 Examples:
   # Merge all files in directory and export to CSV
-  python batch.py --dir ./data --output merged.csv --merge
+  python vprocess_batch.py --dir ./data --output merged.csv --merge
 
   # Export specific variables to HDF5
-  python batch.py --dir ./data --vars TT115A TT508A --format hdf5 --merge
+  python vprocess_batch.py --dir ./data --vars TT115A TT508A --format hdf5 --merge
 
   # List common variables across all files
-  python batch.py --dir ./data --list-common-vars
+  python vprocess_batch.py --dir ./data --list-common-vars
 
   # Analyze files and create summary
-  python batch.py --dir ./data --analyze --output summary.csv
+  python vprocess_batch.py --dir ./data --analyze --output summary.csv
         """,
     )
 

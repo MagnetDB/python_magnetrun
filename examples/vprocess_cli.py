@@ -5,18 +5,23 @@ VProcess Command-Line Interface
 Unified CLI for VProcess data operations.
 
 Usage:
-    python cli.py validate <file>
-    python cli.py plot <file> --vars VAR1 VAR2
-    python cli.py batch --dir <directory> --output merged.csv
-    python cli.py info <file>
+    python vprocess_cli.py validate <file>
+    python vprocess_cli.py plot <file> --vars VAR1 VAR2
+    python vprocess_cli.py batch --dir <directory> --output merged.csv
+    python vprocess_cli.py info <file>
 """
 
 import logging
 import sys
 from pathlib import Path
 
-from ...log_utils import BARE_FORMAT, setup_logging
-from .args import create_argument_parser
+from python_magnetrun.log_utils import BARE_FORMAT, setup_logging
+
+_examples_dir = str(Path(__file__).parent)
+if _examples_dir not in sys.path:
+    sys.path.insert(0, _examples_dir)
+
+from vprocess_args import create_argument_parser  # noqa: E402
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -24,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 def cmd_info(args):
     """Display file information."""
-    from .vprocess_reader import VProcessFileReader
+    from python_magnetrun.hybrid.vprocess import VProcessFileReader
 
     reader = VProcessFileReader(args.file)
     reader.parse_header()
@@ -33,7 +38,7 @@ def cmd_info(args):
 
 def cmd_validate(args):
     """Validate VProcess file."""
-    from .validate import validate_vprocess_file
+    from python_magnetrun.hybrid.vprocess.validate import validate_vprocess_file
 
     results = validate_vprocess_file(
         args.file, check_data=args.check_data, verbose=not args.quiet
@@ -44,7 +49,7 @@ def cmd_validate(args):
 
 def cmd_plot(args):
     """Plot VProcess data."""
-    from .plot_vprocess import (
+    from python_magnetrun.hybrid.vprocess.plot_vprocess import (
         plot_comparison,
         plot_heatmap,
         plot_overview,
@@ -94,7 +99,7 @@ def cmd_plot(args):
 
 def cmd_batch(args):
     """Batch process VProcess files."""
-    from .batch import (
+    from vprocess_batch import (
         analyze_batch,
         export_data,
         find_vprocess_files,
@@ -151,7 +156,7 @@ def cmd_batch(args):
 
 def cmd_test(args):
     """Run tests."""
-    from .test import create_mock_vprocess_file, run_all_tests
+    from python_magnetrun.hybrid.vprocess.test import create_mock_vprocess_file, run_all_tests
 
     if args.create_mock:
         create_mock_vprocess_file(
