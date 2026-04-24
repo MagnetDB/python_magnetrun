@@ -317,7 +317,11 @@ class PandasMagnetData(MagnetDataBase):
             + [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
             + [_key for _key in self.Keys if re.match(r"Ptot", _key)]
             + [_key for _key in self.Keys if re.match(r"Idcct\d", _key)]
-            + [_key for _key in self.Keys if re.match(r"(Supra)?Field|TotalField", _key)]
+            + [
+                _key
+                for _key in self.Keys
+                if re.match(r"(Supra)?Field|TotalField", _key)
+            ]
             + [_key for _key in self.Keys if re.match(r"TAlimout", _key)]
         )
 
@@ -325,7 +329,7 @@ class PandasMagnetData(MagnetDataBase):
             f"zero columns: {natsorted(self.Data.columns[(self.Data == 0).all()].values.tolist())}",
         )
 
-        empty_cols = [
+        empty_cols: list = [
             col
             for col in self.Data.columns[(self.Data == 0).all()].values.tolist()
             if col not in Fkeys
@@ -337,7 +341,11 @@ class PandasMagnetData(MagnetDataBase):
 
         dropped_columns = _get_duplicate_columns(self.Data)
         really_dropped_columns = natsorted(
-            [col for col in dropped_columns if not col.startswith("Ucoil") and col not in Fkeys]
+            [
+                col
+                for col in dropped_columns
+                if not col.startswith("Ucoil") and col not in Fkeys
+            ]
         )
         logger.info(
             f"duplicate columns (others than Ucoil* and Fkeys): {natsorted(really_dropped_columns)}"
