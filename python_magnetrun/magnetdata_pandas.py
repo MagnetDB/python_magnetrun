@@ -307,15 +307,19 @@ class PandasMagnetData(MagnetDataBase):
             self.Data = find_duplicates(self.Data, self.FileName, "t")
             self.Keys = self.Data.columns.values.tolist()
 
-        # Add legacy stuff for backward compatibility - to be removed in a future version
         import re
 
-        Fkeys = [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
-        Fkeys += [_key for _key in self.Keys if re.match(r"Rpm\w+", _key)]
-        Fkeys += [_key for _key in self.Keys if re.match(r"HP\w+", _key)]
-        Fkeys += [_key for _key in self.Keys if re.match(r"\w+_ref", _key)]
-        Fkeys += [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
-        Fkeys += [_key for _key in self.Keys if re.match(r"Ptot", _key)]
+        Fkeys = set(
+            [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
+            + [_key for _key in self.Keys if re.match(r"Rpm\w+", _key)]
+            + [_key for _key in self.Keys if re.match(r"HP\w+", _key)]
+            + [_key for _key in self.Keys if re.match(r"\w+_ref", _key)]
+            + [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
+            + [_key for _key in self.Keys if re.match(r"Ptot", _key)]
+            + [_key for _key in self.Keys if re.match(r"Idcct\d", _key)]
+            + [_key for _key in self.Keys if re.match(r"(Supra)?Field|TotalField", _key)]
+            + [_key for _key in self.Keys if re.match(r"TAlimout", _key)]
+        )
 
         logger.debug(
             f"zero columns: {natsorted(self.Data.columns[(self.Data == 0).all()].values.tolist())}",
@@ -324,22 +328,23 @@ class PandasMagnetData(MagnetDataBase):
         empty_cols = [
             col
             for col in self.Data.columns[(self.Data == 0).all()].values.tolist()
-            if not col.startswith("Flow") and not col.startswith("Field")
+            if col not in Fkeys
         ]
-        _empty_Ikeys = natsorted([_key for _key in empty_cols])
-        logger.info(f"empty cols: {natsorted(empty_cols)}")
-
-        _df = self.Data
+        logger.info(f"empty cols (to drop): {natsorted(empty_cols)}")
         if empty_cols:
-            _df = self.Data.drop(empty_cols, axis=1)
+            self.Data = self.Data.drop(empty_cols, axis=1)
+            self.Keys = self.Data.columns.values.tolist()
 
-        dropped_columns = _get_duplicate_columns(_df)
+        dropped_columns = _get_duplicate_columns(self.Data)
         really_dropped_columns = natsorted(
-            [col for col in dropped_columns if not col.startswith("Ucoil")]
+            [col for col in dropped_columns if not col.startswith("Ucoil") and col not in Fkeys]
         )
         logger.info(
-            f"duplicate columns (others than Ucoil*): {natsorted(really_dropped_columns)}"
+            f"duplicate columns (others than Ucoil* and Fkeys): {natsorted(really_dropped_columns)}"
         )
+        if really_dropped_columns:
+            self.Data = self.Data.drop(really_dropped_columns, axis=1)
+            self.Keys = self.Data.columns.values.tolist()
 
         return 0
 
