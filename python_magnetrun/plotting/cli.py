@@ -1,6 +1,6 @@
 """CLI for managing plot style/color configuration files.
 
-Entry point: ``magnetrun-plot-config``
+Entry point: ``magnetrun-config plot``
 
 Subcommands
 -----------
@@ -97,14 +97,9 @@ def _cmd_validate(args: argparse.Namespace) -> int:
     return 0
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="magnetrun-plot-config",
-        description="Manage magnetrun plot style/color configuration files.",
-    )
-    sub = parser.add_subparsers(dest="command", required=True)
+def _populate_plot_parser(parser: argparse.ArgumentParser) -> None:
+    sub = parser.add_subparsers(dest="plot_command", required=True)
 
-    # init
     p_init = sub.add_parser("init", help="write a default config JSON file")
     p_init.add_argument(
         "--output",
@@ -117,7 +112,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "--force", "-f", action="store_true", help="overwrite existing file"
     )
 
-    # show
     p_show = sub.add_parser("show", help="print resolved config as JSON")
     p_show.add_argument(
         "file",
@@ -127,24 +121,23 @@ def _build_parser() -> argparse.ArgumentParser:
         help="config JSON file (omit to show built-in defaults)",
     )
 
-    # validate
     p_val = sub.add_parser("validate", help="validate a config JSON file")
     p_val.add_argument("file", metavar="FILE", help="config JSON file to validate")
 
-    return parser
 
-
-def main() -> None:
-    parser = _build_parser()
-    args = parser.parse_args()
-
+def _dispatch_plot(args: argparse.Namespace) -> int:
     dispatch = {
         "init": _cmd_init,
         "show": _cmd_show,
         "validate": _cmd_validate,
     }
-    sys.exit(dispatch[args.command](args))
+    return dispatch[args.plot_command](args)
 
 
-if __name__ == "__main__":
-    main()
+def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register the 'plot' domain into a parent subparsers group."""
+    p = sub.add_parser("plot", help="Manage plot style/color configuration files")
+    _populate_plot_parser(p)
+    p.set_defaults(_domain_handler=_dispatch_plot)
+
+

@@ -48,6 +48,7 @@ Example
 
 from __future__ import annotations
 
+import argparse
 import dataclasses
 import importlib.resources
 import json
@@ -696,25 +697,16 @@ def get_housing_config(
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
-    """Entry point for the ``magnetrun-housing-config`` command."""
-    import argparse
+def _populate_housing_parser(parser: argparse.ArgumentParser) -> None:
 
-    parser = argparse.ArgumentParser(
-        prog="magnetrun-housing-config",
-        description="Manage <Housing>-housing-config.json housing configuration files.",
-    )
     parser.add_argument(
         "json_file",
         help="Path to the <Housing>-housing-config.json file",
     )
+    sub = parser.add_subparsers(dest="housing_command", required=True)
 
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    # show
     sub.add_parser("show", help="Print the configuration in the file")
 
-    # create
     p_create = sub.add_parser("create", help="Create a new housing config file")
     p_create.add_argument("housing", help="Housing name (e.g. M9)")
     p_create.add_argument(
@@ -724,7 +716,6 @@ def main() -> None:
         help="Initialise from a built-in config (e.g. --from-builtin M9)",
     )
 
-    # update
     p_upd = sub.add_parser("update", help="Update one or more role fields")
     for role in sorted(ROLE_TO_FIELD):
         p_upd.add_argument(
@@ -735,19 +726,23 @@ def main() -> None:
             help=f"New value for role '{role}'",
         )
 
-    args = parser.parse_args()
 
-    if args.command == "show":
+def _dispatch_housing(args: argparse.Namespace) -> int:
+    import sys
+
+    if args.housing_command == "show":
         cfg = load_housing_config(args.json_file)
         show_housing_config(cfg)
 
-    elif args.command == "create":
+    elif args.housing_command == "create":
+        if args.from_builtin and args.from_builtin not in HOUSING_CONFIGS:
+            print(
+                f"error: Unknown built-in housing: {args.from_builtin!r}. "
+                f"Available: {sorted(HOUSING_CONFIGS)}",
+                file=sys.stderr,
+            )
+            return 2
         if args.from_builtin:
-            if args.from_builtin not in HOUSING_CONFIGS:
-                parser.error(
-                    f"Unknown built-in housing: {args.from_builtin!r}. "
-                    f"Available: {sorted(HOUSING_CONFIGS)}"
-                )
             base = HOUSING_CONFIGS[args.from_builtin]
             cfg = dataclasses.replace(base, name=args.housing)
         else:
@@ -762,18 +757,32 @@ def main() -> None:
                 "picks it up automatically without specifying a path."
             )
 
-    elif args.command == "update":
+    elif args.housing_command == "update":
         role_overrides = {
             role: getattr(args, role)
             for role in ROLE_TO_FIELD
             if getattr(args, role) is not None
         }
         if not role_overrides:
-            parser.error("No fields to update — specify at least one --<role> option")
+            print(
+                "error: No fields to update — specify at least one --<role> option",
+                file=sys.stderr,
+            )
+            return 2
         cfg = update_housing_config(args.json_file, role_overrides)
         print(f"Updated {args.json_file}")
         show_housing_config(cfg)
 
+    return 0
 
-if __name__ == "__main__":
-    main()
+
+def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register the 'housing' domain into a parent subparsers group."""
+
+    p = sub.add_parser(
+        "housing", help="Manage <Housing>-housing-config.json files"
+    )
+    _populate_housing_parser(p)
+    p.set_defaults(_domain_handler=_dispatch_housing)
+
+

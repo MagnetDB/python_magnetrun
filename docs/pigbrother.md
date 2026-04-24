@@ -150,14 +150,14 @@ Channels whose GR role depends on housing (e.g. `Référence_GR1` → `IH` on M9
 `IB` on M8) have no alias here; those mappings live in the per-housing
 site-config files (`<Housing>-site-config.json`).
 
-Manage the file with the `magnetrun-field-defs` CLI:
+Manage the file with the `magnetrun-config field` CLI:
 
 ```bash
 # List all channels (symbols, units, aliases)
-magnetrun-field-defs python_magnetrun/pigbrother-defs.json list
+magnetrun-config field python_magnetrun/pigbrother-defs.json list
 
 # Show cross-format aliases for one channel
-magnetrun-field-defs python_magnetrun/pigbrother-defs.json alias-show \
+magnetrun-config field python_magnetrun/pigbrother-defs.json alias-show \
     "Tensions_Aimant/Interne1"
 ```
 

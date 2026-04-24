@@ -43,16 +43,16 @@ Track which README examples have been verified to work correctly.
 
 ---
 
-## Field Definitions CLI (`magnetrun-field-defs`)
+## Field Definitions CLI (`magnetrun-config field`)
 
 | # | Command | Status |
 |---|---------|--------|
-| 11 | `magnetrun-field-defs pupitre-defs.json list` | [ ] |
-| 12 | `magnetrun-field-defs pupitre-defs.json add NewSensor I ampere --description "New coil current"` | [ ] |
-| 13 | `magnetrun-field-defs pupitre-defs.json update Field --symbol Bz --description "Axial field"` | [ ] |
-| 14 | `magnetrun-field-defs pupitre-defs.json alias-add Idcct1 hybrid "FEPC-AUX-LNCMI/ALIM1_J1"` | [ ] |
-| 15 | `magnetrun-field-defs pupitre-defs.json alias-show Idcct1` | [ ] |
-| 16 | `magnetrun-field-defs pupitre-defs.json crossref --format pupitre=pupitre-defs.json --format pigbrother=pigbrother-defs.json --format hybrid=hybrid-defs.json` | [ ] |
+| 11 | `magnetrun-config field pupitre-defs.json list` | [ ] |
+| 12 | `magnetrun-config field pupitre-defs.json add NewSensor I ampere --description "New coil current"` | [ ] |
+| 13 | `magnetrun-config field pupitre-defs.json update Field --symbol Bz --description "Axial field"` | [ ] |
+| 14 | `magnetrun-config field pupitre-defs.json alias-add Idcct1 hybrid "FEPC-AUX-LNCMI/ALIM1_J1"` | [ ] |
+| 15 | `magnetrun-config field pupitre-defs.json alias-show Idcct1` | [ ] |
+| 16 | `magnetrun-config field pupitre-defs.json crossref --format pupitre=pupitre-defs.json --format pigbrother=pigbrother-defs.json --format hybrid=hybrid-defs.json` | [ ] |
 
 ---
 

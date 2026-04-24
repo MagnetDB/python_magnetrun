@@ -100,38 +100,38 @@ run_cmd 10 python3 -m python_magnetrun.cli \
     add --formula '"Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6"' --plot
 
 echo ""
-echo "--- Field Definitions CLI (magnetrun-field-defs) ---"
+echo "--- Field Definitions CLI (magnetrun-config field) ---"
 
-run_cmd 11 magnetrun-field-defs "$PKGDIR/pupitre-defs.json" list
+run_cmd 11 magnetrun-config field "$PKGDIR/pupitre-defs.json" list
 
-run_cmd 12 magnetrun-field-defs "$PKGDIR/pupitre-defs.json" \
+run_cmd 12 magnetrun-config field "$PKGDIR/pupitre-defs.json" \
     add NewSensor I ampere --description '"New coil current"'
 
-run_cmd 13 magnetrun-field-defs "$PKGDIR/pupitre-defs.json" \
+run_cmd 13 magnetrun-config field "$PKGDIR/pupitre-defs.json" \
     delete NewSensor
 
-run_cmd 14 magnetrun-field-defs "$PKGDIR/pupitre-defs.json" \
+run_cmd 14 magnetrun-config field "$PKGDIR/pupitre-defs.json" \
     update Field --symbol Bz --description '"Resistive Magnets Axial field"'
 
-run_cmd 15 magnetrun-field-defs "$PKGDIR/pupitre-defs.json" \
+run_cmd 15 magnetrun-config field "$PKGDIR/pupitre-defs.json" \
     alias-add Idcct1 hybrid "FEPC-AUX-LNCMI/ALIM1_J1"
 
-run_cmd 16 magnetrun-field-defs "$PKGDIR/pupitre-defs.json" \
+run_cmd 16 magnetrun-config field "$PKGDIR/pupitre-defs.json" \
     alias-show Idcct1
 
-run_cmd 17 magnetrun-field-defs "$PKGDIR/pupitre-defs.json" crossref \
+run_cmd 17 magnetrun-config field "$PKGDIR/pupitre-defs.json" crossref \
     --format "pupitre=$PKGDIR/pupitre-defs.json" \
     --format "pigbrother=$PKGDIR/pigbrother-defs.json" \
     --format "hybrid=$PKGDIR/hybrid-defs.json"
 
 echo ""
-echo "--- Housing Config CLI (magnetrun-housing-config) ---"
+echo "--- Housing Config CLI (magnetrun-config housing) ---"
 
-run_cmd 18 magnetrun-housing-config "$PKGDIR/M9-housing-config.json" show
+run_cmd 18 magnetrun-config housing "$PKGDIR/M9-housing-config.json" show
 
-run_cmd 19 magnetrun-housing-config M11-housing-config.json create M11 --from-builtin M9
+run_cmd 19 magnetrun-config housing M11-housing-config.json create M11 --from-builtin M9
 
-run_cmd 20 magnetrun-housing-config M11-housing-config.json update \
+run_cmd 20 magnetrun-config housing M11-housing-config.json update \
     --gr1-current IB --gr2-current IH
 
 echo ""

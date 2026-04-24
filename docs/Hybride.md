@@ -6,7 +6,7 @@
 > The old key listing in [`docs/Hybrid_keys.md`](Hybrid_keys.md) is superseded
 > by that file — do not edit it directly.
 > See the [main README](../README.md#field-definitions-and-site-configuration)
-> for management tools (`magnetrun-field-defs`).
+> for management tools (`magnetrun-config field`).
 >
 > **Site configuration:** Housing-dependent role assignments for hybrid channels
 > (e.g. which FEPC channel maps to GR1 for M8) are in

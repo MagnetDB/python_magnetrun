@@ -7,7 +7,7 @@
 > The authoritative, machine-readable source is now
 > [`python_magnetrun/hybrid-defs.json`](../python_magnetrun/hybrid-defs.json),
 > which uses the standard `{description, symbol, unit, aliases}` schema and is
-> managed via the `magnetrun-field-defs` CLI.
+> managed via the `magnetrun-config field` CLI.
 >
 > Do **not** edit this file — edit `hybrid-defs.json` instead.
 

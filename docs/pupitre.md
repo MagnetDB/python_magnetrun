@@ -107,17 +107,17 @@ Fields whose meaning depends on housing (e.g. `IH`, `IB` — which one is
 GR1 vs GR2) have no alias here; those mappings live in the per-housing
 site-config files (`<Housing>-site-config.json`).
 
-Manage the file with the `magnetrun-field-defs` CLI:
+Manage the file with the `magnetrun-config field` CLI:
 
 ```bash
 # List all fields (symbols, units, aliases)
-magnetrun-field-defs python_magnetrun/pupitre-defs.json list
+magnetrun-config field python_magnetrun/pupitre-defs.json list
 
 # Add a new field
-magnetrun-field-defs python_magnetrun/pupitre-defs.json add NewSensor I ampere
+magnetrun-config field python_magnetrun/pupitre-defs.json add NewSensor I ampere
 
 # Show cross-format aliases for one field
-magnetrun-field-defs python_magnetrun/pupitre-defs.json alias-show Idcct1
+magnetrun-config field python_magnetrun/pupitre-defs.json alias-show Idcct1
 ```
 
 See the [main README](../README.md#field-definitions-and-site-configuration)

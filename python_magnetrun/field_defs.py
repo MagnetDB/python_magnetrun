@@ -28,6 +28,7 @@ MagnetData class so they can be used from CLIs, notebooks, or any data class.
 
 from __future__ import annotations
 
+import argparse
 import importlib.resources
 import json
 import logging
@@ -430,22 +431,13 @@ def build_crossref(
 # ---------------------------------------------------------------------------
 
 
-def main() -> None:
-    """Entry point for the ``magnetrun-field-defs`` command."""
-    import argparse
+def _populate_field_parser(parser: argparse.ArgumentParser) -> None:
 
-    parser = argparse.ArgumentParser(
-        prog="magnetrun-field-defs",
-        description="Manage *-defs.json field-definition files.",
-    )
     parser.add_argument("json_file", help="Path to the *-defs.json file")
+    sub = parser.add_subparsers(dest="field_command", required=True)
 
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    # list
     sub.add_parser("list", help="Print all field definitions (including aliases)")
 
-    # add
     p_add = sub.add_parser("add", help="Add a new field entry")
     p_add.add_argument("key", help="Column/channel name")
     p_add.add_argument("symbol", help="Physical symbol (e.g. I, T, B)")
@@ -460,7 +452,6 @@ def main() -> None:
         help="Replace the entry if it already exists",
     )
 
-    # update
     p_upd = sub.add_parser(
         "update", help="Change symbol, unit, or description of a field"
     )
@@ -474,28 +465,23 @@ def main() -> None:
     p_upd.add_argument("--description", default=None, help="New description")
     p_upd.add_argument("--label", default=None, help="New plot label (pass empty string to remove)")
 
-    # delete / remove
     for _del_cmd in ("delete", "remove"):
         p_del = sub.add_parser(_del_cmd, help="Remove a field entry")
         p_del.add_argument("key", help="Field name to remove (must already exist)")
 
-    # alias-add
     p_aa = sub.add_parser("alias-add", help="Add or update a cross-format alias")
     p_aa.add_argument("key", help="Field name to annotate")
     p_aa.add_argument("format", help="Target format name (e.g. pigbrother, hybrid)")
     p_aa.add_argument("target", help="Field name in the target format (use full key)")
 
-    # alias-remove / alias-delete
     for _alias_rm_cmd in ("alias-remove", "alias-delete"):
         p_ar = sub.add_parser(_alias_rm_cmd, help="Remove a cross-format alias")
         p_ar.add_argument("key", help="Field name to modify")
         p_ar.add_argument("format", help="Alias format to remove")
 
-    # alias-show
     p_as = sub.add_parser("alias-show", help="Show aliases for a field")
     p_as.add_argument("key", help="Field name to query")
 
-    # crossref — reads multiple defs files
     p_cr = sub.add_parser(
         "crossref",
         help="Build a cross-reference index from multiple defs files",
@@ -509,12 +495,14 @@ def main() -> None:
         help='Format spec "name=path/to/defs.json" (repeat for each format)',
     )
 
-    args = parser.parse_args()
 
-    if args.command == "list":
+def _dispatch_field(args: argparse.Namespace) -> int:
+    import sys
+
+    if args.field_command == "list":
         list_field_defs(args.json_file)
 
-    elif args.command == "add":
+    elif args.field_command == "add":
         unit_val: str | None = None if args.unit.lower() == "null" else args.unit
         add_field_def(
             args.json_file,
@@ -527,7 +515,7 @@ def main() -> None:
         )
         print(f"Added {args.key!r} to {args.json_file}")
 
-    elif args.command == "update":
+    elif args.field_command == "update":
         upd_unit: str | None | object = _UNSET
         if args.unit is not _UNSET:
             upd_unit = None if str(args.unit).lower() == "null" else args.unit
@@ -541,19 +529,19 @@ def main() -> None:
         )
         print(f"Updated {args.key!r} in {args.json_file}")
 
-    elif args.command in ("delete", "remove"):
+    elif args.field_command in ("delete", "remove"):
         delete_field_def(args.json_file, args.key)
         print(f"Deleted {args.key!r} from {args.json_file}")
 
-    elif args.command == "alias-add":
+    elif args.field_command == "alias-add":
         add_alias(args.json_file, args.key, args.format, args.target)
         print(f"Alias added: {args.key!r}[{args.format!r}] = {args.target!r}")
 
-    elif args.command in ("alias-remove", "alias-delete"):
+    elif args.field_command in ("alias-remove", "alias-delete"):
         remove_alias(args.json_file, args.key, args.format)
         print(f"Alias removed: {args.key!r}[{args.format!r}]")
 
-    elif args.command == "alias-show":
+    elif args.field_command == "alias-show":
         aliases = get_aliases(args.json_file, args.key)
         if not aliases:
             print(f"{args.key!r} has no aliases")
@@ -561,11 +549,15 @@ def main() -> None:
             for fmt, target in aliases.items():
                 print(f"  {fmt}: {target}")
 
-    elif args.command == "crossref":
+    elif args.field_command == "crossref":
         defs_files: dict[str, str | Path] = {}
         for spec in args.formats:
             if "=" not in spec:
-                parser.error(f"--format must be NAME=FILE, got: {spec!r}")
+                print(
+                    f"error: --format must be NAME=FILE, got: {spec!r}",
+                    file=sys.stderr,
+                )
+                return 2
             name, path = spec.split("=", 1)
             defs_files[name] = path
         index = build_crossref(defs_files)
@@ -578,6 +570,14 @@ def main() -> None:
                 alias_str = ", ".join(f"{k}={v}" for k, v in aliases.items())
                 print(f"  {field:<{w}}  →  {alias_str}")
 
+    return 0
 
-if __name__ == "__main__":
-    main()
+
+def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
+    """Register the 'field' domain into a parent subparsers group."""
+
+    p = sub.add_parser("field", help="Manage *-defs.json field-definition files")
+    _populate_field_parser(p)
+    p.set_defaults(_domain_handler=_dispatch_field)
+
+

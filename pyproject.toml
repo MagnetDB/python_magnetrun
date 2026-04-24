@@ -99,9 +99,7 @@ hybrid-magnetrun = "python_magnetrun.hybrid.cli:main"
 magnetrun-alimconfig = "python_magnetrun.configAlims.convertxml:main"
 magnetrun-pigbrother-logparser = "python_magnetrun.tdms.log_parser:main"
 magnetrun-processing = "python_magnetrun.processing.cli:main"
-magnetrun-field-defs = "python_magnetrun.field_defs:main"
-magnetrun-housing-config = "python_magnetrun.housing_config:main"
-magnetrun-plot-config = "python_magnetrun.plotting.cli:main"
+magnetrun-config = "python_magnetrun.config_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["python_magnetrun*"]
