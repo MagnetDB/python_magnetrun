@@ -31,4 +31,9 @@ __all__ = [
     "find_vprocess_files_for_date",
 ]
 
-__version__ = "1.0.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("python_magnetrun")
+except PackageNotFoundError:
+    __version__ = "0.0.0"

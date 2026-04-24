@@ -1052,12 +1052,28 @@ class LogParser:
 
 
 def main() -> None:
-    """Demo usage with sample data."""
+    """Parse LabVIEW/DAQmx acquisition log files."""
+    import argparse
     import json
-    import sys
 
-    if len(sys.argv) > 1:
-        filepath = sys.argv[1]
+    arg_parser = argparse.ArgumentParser(
+        description="Parse LabVIEW/DAQmx acquisition system log files (AcqNet pigbrother logs)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="If no file is given, a built-in demo log is parsed.",
+    )
+    arg_parser.add_argument("input_file", nargs="?", help="path to the log file to parse")
+    arg_parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="set logging level (default: INFO)",
+    )
+    args = arg_parser.parse_args()
+
+    logging.basicConfig(level=getattr(logging, args.log_level))
+
+    if args.input_file:
+        filepath = args.input_file
         parser = LogParser(filepath).parse()
     else:
         # Demo with inline sample including defauts

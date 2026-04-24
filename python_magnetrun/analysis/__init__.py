@@ -37,6 +37,8 @@ Submodules
 - cli: Command-line interface and main entry point
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
 from .config import (
     DEFAULT_BINS,
     DEFAULT_DATA_DIR,
@@ -345,4 +347,7 @@ __all__ = [
     "cli_main",
 ]
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("python_magnetrun")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
