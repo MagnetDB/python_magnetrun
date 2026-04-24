@@ -132,7 +132,7 @@ if __name__ == "__main__":
                     f"so far file with extension in {supported_formats} are implemented"
                 )
 
-        my_ax = plt.gca()
+        fig, my_ax = plt.subplots()
         mrun.getMData().plotData(x="t", y=xkey, ax=my_ax)
         mrun.getMData().plotData(x="t", y=ykey, ax=my_ax)
 
@@ -144,13 +144,13 @@ if __name__ == "__main__":
             imagefile = imagefile.replace(dirname, args.outputdir)
             print(f"-> {imagefile}")
 
-        plt.title(f"{filename.replace(f_extension, '')}: {labels[0]}, {labels[1]}")
+        my_ax.set_title(f"{filename.replace(f_extension, '')}: {labels[0]}, {labels[1]}")
         if args.save:
             print(f"saveto: {imagefile}_vs_time.png", flush=True)
-            plt.savefig(f"{imagefile}_vs_time.png", dpi=300)
+            fig.savefig(f"{imagefile}_vs_time.png", dpi=300)
         else:
             plt.show()
-        plt.close()
+        plt.close(fig)
 
         xdata = mrun.getData(xkey)
         ydata = mrun.getData(ykey)
@@ -169,12 +169,13 @@ if __name__ == "__main__":
                     xdata.to_numpy().reshape(-1), ydata.to_numpy().reshape(-1)
                 )
 
-                plt.plot(xdata / xdata.max(), "-")
-                plt.plot(ysmoothed / ysmoothed.max(), "o")
-                plt.plot(ydata / ydata.max(), "+")
-                plt.grid()
+                fig_r, ax_r = plt.subplots()
+                ax_r.plot(xdata / xdata.max(), "-")
+                ax_r.plot(ysmoothed / ysmoothed.max(), "o")
+                ax_r.plot(ydata / ydata.max(), "+")
+                ax_r.grid()
                 plt.show()
-                plt.close()
+                plt.close(fig_r)
 
             else:
                 raise RuntimeError("range features: not impemented for tdms data")
@@ -231,21 +232,21 @@ if __name__ == "__main__":
                 flush=True,
             )
 
-            plt.figure()
-            plt.plot(x, "-")
-            plt.plot(np.roll(y, lag), "-")
-            plt.legend([xlabel, ylabel])
-            plt.xlabel("t [s]")
-            plt.grid()
-            plt.title(
+            fig_lag, ax_lag = plt.subplots()
+            ax_lag.plot(x, "-")
+            ax_lag.plot(np.roll(y, lag), "-")
+            ax_lag.legend([xlabel, ylabel])
+            ax_lag.set_xlabel("t [s]")
+            ax_lag.grid()
+            ax_lag.set_title(
                 f"{os.path.basename(file)}: {labels[0]}, {labels[1]} - cross-correlation lag={lag}"
             )
             if args.save:
                 print(f"saveto: {imagefile}_vs_lagcorrelation.png", flush=True)
-                plt.savefig(f"{imagefile}_vs_lagcorrelation.png", dpi=300)
+                fig_lag.savefig(f"{imagefile}_vs_lagcorrelation.png", dpi=300)
             else:
                 plt.show()
-            plt.close()
+            plt.close(fig_lag)
 
         if args.dtw:
             # dtw algo
@@ -256,10 +257,11 @@ if __name__ == "__main__":
                 d, paths = dtw.warping_paths(x, y, window=25, psi=2)
                 best_path = dtw.best_path(paths)
                 dtwvis.plot_warpingpaths(x, y, paths, best_path)
+                fig_dtw = plt.gcf()
                 print(f"dtw distance: {d}")
                 if args.save:
                     print(f"saveto: {imagefile}_vs_dtw.png", flush=True)
-                    plt.savefig(f"{imagefile}_vs_dtw.png", dpi=300)
+                    fig_dtw.savefig(f"{imagefile}_vs_dtw.png", dpi=300)
                 else:
                     plt.show()
             except MemoryError:
@@ -278,8 +280,9 @@ if __name__ == "__main__":
                     y_paa = paa.transform(np.array([y]))
 
                     # Show the results for the first time series
-                    plt.plot(x, "o--", ms=4, label="Original")
-                    plt.plot(
+                    fig_paa, ax_paa = plt.subplots()
+                    ax_paa.plot(x, "o--", ms=4, label="Original")
+                    ax_paa.plot(
                         np.arange(
                             window_size // 2,
                             n_timestamps + window_size // 2,
@@ -290,26 +293,27 @@ if __name__ == "__main__":
                         ms=4,
                         label="x PAA",
                     )
-                    plt.ylabel(xlabel)
-                    plt.xlabel("t [s]")
-                    plt.grid()
-                    plt.title(
+                    ax_paa.set_ylabel(xlabel)
+                    ax_paa.set_xlabel("t [s]")
+                    ax_paa.grid()
+                    ax_paa.set_title(
                         f"{os.path.basename(file)}: {labels[0]} - PiecewiseAggegateApprox (windows=125)"
                     )
                     if args.save:
                         print(f"saveto: {imagefile}_paa.png", flush=True)
-                        plt.savefig(f"{imagefile}_paa.png", dpi=300)
+                        fig_paa.savefig(f"{imagefile}_paa.png", dpi=300)
                     else:
                         plt.show()
-                    plt.close()
+                    plt.close(fig_paa)
 
                     d, paths = dtw.warping_paths(x_paa[0], y_paa[0], window=125, psi=2)
                     best_path = dtw.best_path(paths)
                     dtwvis.plot_warpingpaths(x_paa[0], y_paa[0], paths, best_path)
+                    fig_dtw_paa = plt.gcf()
                     print(f"dtw distance: {d}")
                     if args.save:
                         print(f"saveto: {imagefile}_vs_dtw-paa.png", flush=True)
-                        plt.savefig(f"{imagefile}_vs_dtw-paa.png", dpi=300)
+                        fig_dtw_paa.savefig(f"{imagefile}_vs_dtw-paa.png", dpi=300)
                     else:
                         plt.show()
                 except (ValueError, RuntimeError) as e:

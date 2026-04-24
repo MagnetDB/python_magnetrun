@@ -97,7 +97,7 @@ def plot_variable(
             bbox=dict(boxstyle="round", facecolor="lightgreen", alpha=0.5),
         )
 
-        plt.tight_layout()
+        fig.tight_layout()
 
     else:
         # Single plot (no outlier removal)
@@ -119,10 +119,10 @@ def plot_variable(
             bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
         )
 
-        plt.tight_layout()
+        fig.tight_layout()
 
     if output_file:
-        plt.savefig(output_file, dpi=150)
+        fig.savefig(output_file, dpi=150)
         print(f"\nPlot saved to: {output_file}")
 
     plt.show()

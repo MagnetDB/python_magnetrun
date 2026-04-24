@@ -146,12 +146,12 @@ def plot_trigger_variable(
         family="monospace",
     )
 
-    plt.tight_layout()
+    fig.tight_layout()
 
     # Save if requested
     if save_path:
         logger.info(f"Saving plot to {save_path}")
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
 
     # Show if requested
     if show_plot:
@@ -262,11 +262,11 @@ def plot_trigger_variables_subplots(
         family="monospace",
     )
 
-    plt.tight_layout()
+    fig.tight_layout()
 
     if save_path:
         logger.info(f"Saving plot to {save_path}")
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
 
     if show_plot:
         plt.show()
@@ -398,12 +398,12 @@ def plot_multiple_triggers(
     axes[-1].set_xlabel("Time relative to trigger (s)", fontsize=12)
     fig.suptitle(f"{variable} - {date} - All Triggers", fontsize=14, fontweight="bold")
 
-    plt.tight_layout()
+    fig.tight_layout()
 
     # Save if requested
     if save_path:
         logger.info(f"Saving plot to {save_path}")
-        plt.savefig(save_path, dpi=150, bbox_inches="tight")
+        fig.savefig(save_path, dpi=150, bbox_inches="tight")
 
     # Show if requested
     if show_plot:

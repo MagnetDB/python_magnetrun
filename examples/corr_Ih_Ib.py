@@ -143,13 +143,13 @@ if __name__ == "__main__":
 
         # y as f(x)
         if debug:
-            plt.figure()
-            plt.plot(x, y, "o")
-            plt.xlabel(xlabel)
-            plt.ylabel(ylabel)
-            plt.grid()
+            fig_d, ax_d = plt.subplots()
+            ax_d.plot(x, y, "o")
+            ax_d.set_xlabel(xlabel)
+            ax_d.set_ylabel(ylabel)
+            ax_d.grid()
             plt.show()
-            plt.close()
+            plt.close(fig_d)
 
         if args.algo == "piecewise_aggregation":
             from pyts.approximation import PiecewiseAggregateApproximation
@@ -175,9 +175,9 @@ if __name__ == "__main__":
             print(f"X_paa: {X_paa[0].shape}")
 
             # Show the results for the first time series
-            plt.figure(figsize=(6, 4))
-            plt.plot(X[0], "o--", ms=2, label="Original")
-            plt.plot(
+            fig_paa, ax_paa = plt.subplots(figsize=(6, 4))
+            ax_paa.plot(X[0], "o--", ms=2, label="Original")
+            ax_paa.plot(
                 np.arange(
                     window_size // 2, n_timestamps + window_size // 2, window_size
                 ),
@@ -196,11 +196,11 @@ if __name__ == "__main__":
                 linewidth=0.5,
             )
             """
-            plt.legend(loc="best", fontsize=10)
-            plt.xlabel(xlabel, fontsize=12)
-            plt.ylabel(ylabel, fontsize=12)
-            plt.title("Piecewise Aggregate Approximation", fontsize=16)
-            plt.grid()
+            ax_paa.legend(loc="best", fontsize=10)
+            ax_paa.set_xlabel(xlabel, fontsize=12)
+            ax_paa.set_ylabel(ylabel, fontsize=12)
+            ax_paa.set_title("Piecewise Aggregate Approximation", fontsize=16)
+            ax_paa.grid()
             plt.show()
 
             # DFT transformation
@@ -230,13 +230,13 @@ if __name__ == "__main__":
             X_irfft = np.fft.irfft(X_dft_new, n_timestamps)
 
             # Show the results for the first time series
-            plt.figure(figsize=(6, 4))
-            plt.plot(X[0], "o--", ms=4, label="Original")
-            plt.plot(X_irfft[0], "o--", ms=4, label=f"DFT - {n_coefs} coefs")
-            plt.legend(loc="best", fontsize=10)
-            plt.xlabel(xlabel, fontsize=12)
-            plt.ylabel(ylabel, fontsize=12)
-            plt.title("Discrete Fourier Transform", fontsize=16)
+            fig_dft, ax_dft = plt.subplots(figsize=(6, 4))
+            ax_dft.plot(X[0], "o--", ms=4, label="Original")
+            ax_dft.plot(X_irfft[0], "o--", ms=4, label=f"DFT - {n_coefs} coefs")
+            ax_dft.legend(loc="best", fontsize=10)
+            ax_dft.set_xlabel(xlabel, fontsize=12)
+            ax_dft.set_ylabel(ylabel, fontsize=12)
+            ax_dft.set_title("Discrete Fourier Transform", fontsize=16)
             plt.show()
 
             # SAX
@@ -260,14 +260,14 @@ if __name__ == "__main__":
             # Show the results for the first time series
             bottom_bool = np.r_[True, X_sax[0, 1:] > X_sax[0, :-1]]
 
-            plt.figure(figsize=(6, 4))
-            plt.plot(X[0], "o--", label="Original")
+            fig_sax, ax_sax = plt.subplots(figsize=(6, 4))
+            ax_sax.plot(X[0], "o--", label="Original")
             for x, y, s, bottom in zip(
                 range(n_timestamps), X[0], X_sax[0], bottom_bool, strict=False
             ):
                 va = "bottom" if bottom else "top"
-                plt.text(x, y, s, ha="center", va=va, fontsize=14, color="#ff7f0e")
-            plt.hlines(bins, 0, n_timestamps, color="g", linestyles="--", linewidth=0.5)
+                ax_sax.text(x, y, s, ha="center", va=va, fontsize=14, color="#ff7f0e")
+            ax_sax.hlines(bins, 0, n_timestamps, color="g", linestyles="--", linewidth=0.5)
             sax_legend = mlines.Line2D(
                 [],
                 [],
@@ -275,14 +275,14 @@ if __name__ == "__main__":
                 marker="*",
                 label=f"SAX - {n_bins} bins",
             )
-            first_legend = plt.legend(
+            first_legend = ax_sax.legend(
                 handles=[sax_legend], fontsize=8, loc=(0.76, 0.86)
             )
-            ax = plt.gca().add_artist(first_legend)
-            plt.legend(loc=(0.81, 0.93), fontsize=8)
-            plt.xlabel(xlabel, fontsize=12)
-            plt.ylabel(ylabel, fontsize=12)
-            plt.title("Symbolic Aggregate approXimation", fontsize=16)
+            ax_sax.add_artist(first_legend)
+            ax_sax.legend(loc=(0.81, 0.93), fontsize=8)
+            ax_sax.set_xlabel(xlabel, fontsize=12)
+            ax_sax.set_ylabel(ylabel, fontsize=12)
+            ax_sax.set_title("Symbolic Aggregate approXimation", fontsize=16)
             plt.show()
 
         # perform fit while pw_fit.summary['converged'] == True
@@ -317,18 +317,20 @@ if __name__ == "__main__":
                     pw_fit.plot_fit(color="red", linewidth=4)
                     pw_fit.plot_breakpoints()
                     pw_fit.plot_breakpoint_confidence_intervals()
+                    fig_pw = plt.gcf()
+                    ax_pw = plt.gca()
 
                     mdata = mrun.getMData()
                     (symbol, unit) = mdata.getUnitKey(xkey)
-                    plt.xlabel(f"{symbol} [{unit:~P}]")
+                    ax_pw.set_xlabel(f"{symbol} [{unit:~P}]")
 
                     (symbol, unit) = mdata.getUnitKey(ykey)
-                    plt.ylabel(f"{symbol} [{unit:~P}]")
+                    ax_pw.set_ylabel(f"{symbol} [{unit:~P}]")
 
-                    plt.title(
+                    ax_pw.set_title(
                         f"{file}: {args.ykey} vs {xkey} (breakpoints={breakpoints})"
                     )
-                    plt.grid()
+                    ax_pw.grid()
 
                     if not args.save:
                         plt.show()
@@ -338,12 +340,12 @@ if __name__ == "__main__":
                             f"saveto: {imagefilename}_{ykey}_vs_{xkey}-piecewise.png",
                             flush=True,
                         )
-                        plt.savefig(
+                        fig_pw.savefig(
                             f"{imagefilename}_{ykey}_vs_{xkey}-piecewise.png",
                             dpi=300,
                         )
 
-                    plt.close()
+                    plt.close(fig_pw)
 
                 breakpoints += 1
                 if not args.find:
@@ -362,19 +364,19 @@ if __name__ == "__main__":
             yHat = myPWLF.predict(xHat)
 
             # plot the results
-            plt.figure()
-            plt.plot(x, y, "o")
-            plt.plot(xHat, yHat, "-")
+            fig_wlf, ax_wlf = plt.subplots()
+            ax_wlf.plot(x, y, "o")
+            ax_wlf.plot(xHat, yHat, "-")
 
             mdata = mrun.getMData()
             (symbol, unit) = mdata.getUnitKey(xkey)
-            plt.xlabel(f"{symbol} [{unit:~P}]")
+            ax_wlf.set_xlabel(f"{symbol} [{unit:~P}]")
 
             (symbol, unit) = mdata.getUnitKey(ykey)
-            plt.ylabel(f"{symbol} [{unit:~P}]")
+            ax_wlf.set_ylabel(f"{symbol} [{unit:~P}]")
 
-            plt.title(f"{file}: {args.ykey} vs {xkey} (breakpoints={args.breakpoints})")
-            plt.grid()
+            ax_wlf.set_title(f"{file}: {args.ykey} vs {xkey} (breakpoints={args.breakpoints})")
+            ax_wlf.grid()
             if not args.save:
                 plt.show()
             else:
@@ -383,8 +385,8 @@ if __name__ == "__main__":
                     f"saveto: {imagefilename}_{ykey}_vs_{xkey}-pwlf.png",
                     flush=True,
                 )
-                plt.savefig(f"{imagefilename}_{ykey}_vs_{xkey}-pwlf.png", dpi=300)
-            plt.close()
+                fig_wlf.savefig(f"{imagefilename}_{ykey}_vs_{xkey}-pwlf.png", dpi=300)
+            plt.close(fig_wlf)
 
         if args.algo == "ruptures":
             import ruptures as rpt
@@ -415,8 +417,10 @@ if __name__ == "__main__":
 
             print(f"result: {len(result)} breakpoints ({result})")
             rpt.display(y, result)
-            plt.xlabel(xlabel)
-            plt.ylabel(ylabel)
+            fig_rpt = plt.gcf()
+            ax_rpt = plt.gca()
+            ax_rpt.set_xlabel(xlabel)
+            ax_rpt.set_ylabel(ylabel)
             if not args.save:
                 plt.show()
             else:
@@ -425,5 +429,5 @@ if __name__ == "__main__":
                     f"saveto: {imagefilename}_{ykey}_vs_{xkey}-kernelcpd.png",
                     flush=True,
                 )
-                plt.savefig(f"{imagefilename}_{ykey}_vs_{xkey}-kernelcpd.png", dpi=300)
-            plt.close()
+                fig_rpt.savefig(f"{imagefilename}_{ykey}_vs_{xkey}-kernelcpd.png", dpi=300)
+            plt.close(fig_rpt)
