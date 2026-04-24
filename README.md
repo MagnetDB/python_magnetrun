@@ -564,15 +564,16 @@ python3 -m python_magnetrun.cli \
 ### Customising plot style per field
 
 Use `--field_style FIELD=STYLESPEC` (repeatable) to assign **different linestyles,
-markers, and markevery** to individual fields in a `--vs_time` overlay.
+markers, markevery, and opacity** to individual fields in a `--vs_time` overlay.
 
-**`STYLESPEC` syntax:** `[LINESTYLE][MARKER][:N]`
+**`STYLESPEC` syntax:** `[LINESTYLE][MARKER][:N][@ALPHA]`
 
 | Part | Values | Meaning |
 |---|---|---|
 | `LINESTYLE` | `-`, `--`, `-.` | Line style; omit to suppress lines when a marker is given |
 | `MARKER` | `o`, `+`, `x`, `s`, `D`, … | Any [matplotlib marker](https://matplotlib.org/stable/gallery/lines_bars_and_markers/marker_reference.html) |
 | `:N` | integer | Draw marker every *N* data points |
+| `@ALPHA` | float in `[0, 1]` | Opacity (1 = fully opaque, 0 = invisible) |
 
 Examples:
 
@@ -592,6 +593,21 @@ python3 -m python_magnetrun.cli \
                   Courants_Alimentations/Référence_A2 \
     --field_style "Référence_A1=--" \
     --field_style "Référence_A2=-s:5"
+
+# A1 solid line at 50% opacity; A2 dashed at 80% opacity
+python3 -m python_magnetrun.cli \
+    M9_Overview_260331-1316.tdms --housing M9 \
+    plot --vs_time Courants_Alimentations/Référence_A1 \
+                  Courants_Alimentations/Référence_A2 \
+    --field_style "Référence_A1=-@0.5" \
+    --field_style "Référence_A2=--@0.8"
+
+# Combined: A2 solid line + circle markers every 5 points at 60% opacity
+python3 -m python_magnetrun.cli \
+    M9_Overview_260331-1316.tdms --housing M9 \
+    plot --vs_time Courants_Alimentations/Référence_A1 \
+                  Courants_Alimentations/Référence_A2 \
+    --field_style "Référence_A2=-o:5@0.6"
 ```
 
 The `FIELD` key in `--field_style` can be either the short channel name
@@ -604,15 +620,16 @@ automatically: `o` → `circle`, `s` → `square`, `D` → `diamond`, `^` →
 `triangle-up`, etc.  Linestyles map to Plotly dashes: `-` → `solid`, `--` →
 `dash`, `-.` → `dashdot`, `:` → `dot`.  When `markevery` is used with Plotly
 the data is sub-sampled before rendering since Plotly has no native equivalent.
+`@ALPHA` maps to Plotly `opacity`.
 
 ```bash
-# Plotly overlay – A1 dashed, A2 solid line + circle markers every 20 points
+# Plotly overlay – A1 dashed at 70% opacity, A2 solid line + circle markers every 20 points
 python3 -m python_magnetrun.cli \
     M9_Overview_260331-1316.tdms --housing M9 \
     plot --vs_time Courants_Alimentations/Référence_A1 \
                   Courants_Alimentations/Référence_A2 \
     --backend plotly \
-    --field_style "Référence_A1=--" \
+    --field_style "Référence_A1=--@0.7" \
     --field_style "Référence_A2=-o:20"
 
 # Plotly stacked subplots – markers only (no line) on one field
@@ -623,14 +640,14 @@ python3 -m python_magnetrun.cli \
     --backend plotly --subplots \
     --field_style "Référence_A2=o:50"
 
-# Plotly with normalisation – combined with per-field style
+# Plotly with normalisation – combined with per-field style and alpha
 python3 -m python_magnetrun.cli \
     M9_Overview_260331-1316.tdms --housing M9 \
     plot --vs_time Courants_Alimentations/Référence_A1 \
                   Courants_Alimentations/Référence_A2 \
     --backend plotly --normalize \
     --field_style "Référence_A1=-." \
-    --field_style "Référence_A2=-s:10"
+    --field_style "Référence_A2=-s:10@0.5"
 ```
 
 ### Plot colour palette
@@ -1213,9 +1230,12 @@ See [BREAKING_CHANGES.md](BREAKING_CHANGES.md) for the full migration guide.
 
 **Fix**
 - [X] Fix time data in Hybrid kHz files
-- [ ] Fix python_magnetrun/cli.py input_args
-- [ ] Fix python_magnetrun/cli.py plot with multiple files
-- [ ] Plot_xy: raise an exception when trying to plot pairs that have different units
+- [X] Fix python_magnetrun/cli.py input_args
+- [X] Fix python_magnetrun/cli.py plot with multiple files
+- [X] Plot_xy: raise an exception when trying to plot pairs that have different units
+- [ ] Fix python_magnetrun/analysis/plotting.py remove downsample_percent handling
+- [ ] Fix analysis -- no pupitre nor Reference displayed -- check also with plotly backend
+- [ ] Add demo use of downsampling in the analysis CLI
 
 **Finish**
 - [ ] hybrid data loading and unified interface

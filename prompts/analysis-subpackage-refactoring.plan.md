@@ -13,77 +13,74 @@ in priority order.
 
 ### 1.1 Remove dead code
 
-| Item | File | Lines | Action |
-|------|------|-------|--------|
-| `_get_archive_channel()` | `analysis/processing.py` | ~854–856 | Delete function, inline the one call site |
-| Placeholder `_extract_signatures()` | `analysis/processing.py` | ~883–898 | Delete or replace with `raise NotImplementedError` |
-| `ColorConfig` dataclass | `analysis/config.py` | — | Delete (never instantiated) |
-| Commented-out print blocks | `analysis/cli.py` | ~334–337 | Delete |
+| Item | File | Lines | Status | Action |
+|------|------|-------|--------|--------|
+| `_get_archive_channel()` | `analysis/processing.py` | ~825 | 🔴 Open | Delete function, inline the one call site |
+| Placeholder `_extract_signatures()` | `analysis/processing.py` | ~847 | 🔴 Open | Delete or replace with `raise NotImplementedError` |
+| `ColorConfig` dataclass | `analysis/config.py` | ~160 | 🔴 Open | Delete (never instantiated) |
+| Commented-out print blocks | `analysis/cli.py` | — | ⬜ Check | Delete if still present |
 
-### 1.2 Replace `print()` with `logger`
+### 1.2 Replace `print()` with `logger` ✅ COMPLETE
 
-Replace all ~18 bare `print()` calls so that `--quiet` / `--debug` flags work
-correctly end-to-end.
+All bare `print()` calls in `analysis/` have been migrated to structured logging.
+The `--quiet` / `--debug` flags now work correctly end-to-end.
 
-**`analysis/processing.py`** — lines approx: 418, 426, 428, 474, 476, 479, 485,
-704–706.
+### 1.3 Deduplicate time-offset calculation 🔴 OPEN
 
-**`analysis/cli.py`** — lines approx: 176, 200, 202, 204, 207, 209.
+`compute_time_offset()` in `analysis/processing.py` (line 279) is identical to
+`get_time_offset()` already in `analysis/config.py` (line 84).
 
-Pattern:
-```python
-# before
-print(f"Loaded {len(df_list)} archive DataFrames", flush=True)
-
-# after
-logger.debug("Loaded %d archive DataFrames", len(df_list))
-```
-
-### 1.3 Deduplicate time-offset calculation
-
-`compute_time_offset()` in `analysis/processing.py` (~line 280) is identical to
-`get_time_offset()` already in `analysis/config.py` (~line 84).
-
+**Action:**
 - Delete `compute_time_offset()`.
 - Replace every call site with `config.get_time_offset(rate)`.
 
-### 1.4 Centralise directory-name constants
+### 1.4 Centralise directory-name constants 🔴 OPEN
 
 The strings `"Fichiers_Archive"`, `"Fichiers_Default"`, `"Fichiers_Manuel_Trig"`,
 `"Fichiers_Spike"` are hardcoded in both `analysis/loaders.py` and
 `utils/files.py`.
 
+**Action:**
 - Add them as module-level constants in `analysis/config.py` (or a dedicated
   `analysis/constants.py`).
 - Update both files to import and use the constants.
 
 ---
 
-## Phase 2 — Unify Downsampling API (half day)
+## Phase 2 — Complete Downsampling Migration (2-3 hours)
 
-Two parallel APIs exist:
+**Status:** 🟡 PARTIAL — Infrastructure in place (commit `6d2e09b`), migration incomplete
 
-| API | Location | Style |
-|-----|----------|-------|
-| `downsample_for_plot`, `downsample_dataframe`, `downsample_minmax` | `analysis/plotting.py:58–148` | percent-based |
-| `DownsampleConfig` + helpers | `utils/downsampling.py` | config-based |
+`utils/downsampling.py` with `DownsampleConfig` was created and is now used in
+some parts of the codebase. However, the old percent-based functions in
+`analysis/plotting.py` are still present and actively used.
 
-`analysis/processing.py` already imports `DownsampleConfig` from utils, making
-the duplication visible.
+### Current State
 
-### Steps
+| API | Location | Status |
+|-----|----------|--------|
+| `DownsampleConfig` + helpers | `utils/downsampling.py` | ✅ Exists, imported in `plotting.py:53` |
+| `downsample_for_plot` | `analysis/plotting.py:62` | 🔴 Still used in tests, line 400 |
+| `downsample_dataframe` | `analysis/plotting.py:120` | 🔴 Still called at line 400 |
+| `downsample_minmax` | `analysis/plotting.py:152` | 🔴 Still exists |
 
-1. Extend `utils/downsampling.py` if any capability from `plotting.py` is
-   missing (e.g., minmax windowing).
-2. Rewrite `analysis/plotting.py` downsampling calls to use `DownsampleConfig`.
-3. Delete the three percent-based functions from `plotting.py`.
-4. Run existing tests; fix any regressions.
+### Remaining Steps
+
+1. ✅ ~~Extend `utils/downsampling.py`~~ — Already has needed capabilities
+2. 🔴 Rewrite remaining `downsample_*()` calls to use `DownsampleConfig`
+   - Main usage at `plotting.py:400`
+   - Update test files that import these functions
+3. 🔴 Delete the three percent-based functions from `plotting.py`
+4. 🔴 Update tests in `tests/analysis/test_plotting.py`
+5. 🔴 Run existing tests; fix any regressions
 
 ---
 
 ## Phase 3 — Consolidate Data Loading (1–2 days)
 
-`analysis/loaders.py` (1 158 lines) reimplements logic that already lives in
+**Status:** 🔴 OPEN
+
+`analysis/loaders.py` (1228 lines, grown from 1158) reimplements logic that already lives in
 `utils/files.py`.
 
 | Duplicated method | loaders.py approx line | utils/files.py approx line | Overlap |
@@ -114,13 +111,15 @@ already in `utils/timestamps.py` (`parse_filename_timestamp()`).
 
 ## Phase 4 — Move Channel Mapping to `HousingConfig` (half day)
 
+**Status:** 🔴 OPEN
+
 Four helper functions in `analysis/processing.py` map logical channel keys to
 physical channel names using `HousingConfig`:
 
 - `_get_pupitre_channel(cfg, key)`
 - `_get_pupitre_group(cfg, key)`
 - `_get_pupitre_flow(cfg, key)`
-- `_get_archive_channel(key)` — already deleted in Phase 1
+- `_get_archive_channel(key)` — to be deleted in Phase 1
 
 ### Steps
 
@@ -133,6 +132,10 @@ physical channel names using `HousingConfig`:
 ---
 
 ## Phase 5 — Break Down Oversized Functions (1–2 days)
+
+**Status:** 🔴 OPEN
+
+**Note:** Line numbers may have shifted; file is now 1228 lines (was 1158).
 
 ### 5.1 `discover()` in `analysis/loaders.py` (~225 lines, 5+ nesting levels)
 
@@ -150,6 +153,8 @@ Extract into:
 
 ### 5.2 `process_overview_file()` in `analysis/processing.py` (~169 lines)
 
+**Note:** File is now 1049 lines; specific line numbers may have shifted.
+
 Extract into:
 
 | New function | Responsibility |
@@ -159,6 +164,8 @@ Extract into:
 | `_extract_analysis(record, cfg)` | Compute metrics, signatures, regimes |
 
 ### 5.3 `main()` in `analysis/cli.py` (~315 lines)
+
+**Note:** File is now 404 lines total; specific line numbers may have shifted.
 
 Extract into:
 
@@ -172,6 +179,8 @@ Extract into:
 ---
 
 ## Phase 6 — Standardise Time Column Creation (half day)
+
+**Status:** 🔴 OPEN
 
 `"timestamp"` (Timestamp) and `"t"` (float seconds) columns are added inline in
 at least three places: `processing.py`, `synchronization.py`, `loaders.py`.
@@ -197,15 +206,22 @@ at least three places: `processing.py`, `synchronization.py`, `loaders.py`.
 
 ## Estimated Effort
 
-| Phase | Effort | Risk |
-|-------|--------|------|
-| 1 — Quick wins | < 2 h | Very low |
-| 2 — Downsampling | 4 h | Low |
-| 3 — Data loading | 1–2 d | Medium |
-| 4 — Channel mapping | 4 h | Low |
-| 5 — Break down functions | 1–2 d | Medium |
-| 6 — Time columns | 4 h | Low |
-| **Total** | **~5–7 days** | |
+| Phase | Effort | Risk | Status |
+|-------|--------|------|--------|
+| 1 — Quick wins | < 2 h | Very low | 🟡 Partial (1.2 done, 1.1/1.3/1.4 open) |
+| 2 — Downsampling | 2-3 h | Low | 🟡 Partial (infrastructure done, migration incomplete) |
+| 3 — Data loading | 1–2 d | Medium | 🔴 Open |
+| 4 — Channel mapping | 4 h | Low | 🔴 Open |
+| 5 — Break down functions | 1–2 d | Medium | 🔴 Open |
+| 6 — Time columns | 4 h | Low | 🔴 Open |
+| **Total** | **~5–7 days** | | **~1h done, ~4.5–6.5 days remaining** |
 
-Phases 1 and 2 can be done independently and committed immediately.
-Phases 3–6 should be done on a feature branch with incremental commits.
+**Progress Notes:**
+- Phase 1.2 (logging migration) completed across the codebase
+- Phase 2 infrastructure (DownsampleConfig) in place but old functions still used
+- File sizes have grown; line number references updated where possible
+
+**Recommended Next Steps:**
+1. Complete Phase 1 (< 2 hours): Remove dead code, deduplicate time-offset
+2. Complete Phase 2 (2-3 hours): Finish downsampling migration
+3. Phases 3–6 should be done on a feature branch with incremental commits

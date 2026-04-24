@@ -1,21 +1,20 @@
 # Code Review — python_magnetrun
 
-*Reviewed: 2026-03-23*
+*Reviewed: 2026-03-23 — Updated: 2026-04-23*
 
 ---
 
 ## Package Overview
 
-~35K lines across 91 Python files. A data analysis toolkit for magnet experimental runs,
+~36K lines across 113 Python files. A data analysis toolkit for magnet experimental runs,
 handling TDMS/CSV/TXT acquisition files, cooling circuit analysis, and signal processing.
 
 **5 CLI entry points:**
-- `python-magnetrun` → `python_magnetrun.python_magnetrun:main`
+- `python-magnetrun` → `python_magnetrun.cli:main` *(was `python_magnetrun:main`)*
 - `magnetrun-analysis` → `python_magnetrun.analysis:main`
 - `hybrid-magnetrun` → `python_magnetrun.hybrid.cli:main`
 - `srvdata-to-magnetrun` → `python_magnetrun.requests.cli:main`
 - `magnetrun-alimconfig` → `python_magnetrun.configAlims.convertxml:main`
-- `magnetrun-pigbrother-logparser` → `python_magnetrun.tdms.log_parser:main`
 
 ---
 
@@ -24,32 +23,42 @@ handling TDMS/CSV/TXT acquisition files, cooling circuit analysis, and signal pr
 ```
 python_magnetrun/
 ├── __init__.py
-├── MagnetRun.py              (~350 lines) — high-level wrapper around MagnetData
-├── magnetdata.py             (~1500 lines) — unified file I/O and data abstraction
-├── python_magnetrun.py       (~1300 lines) — CLI entry point + business logic
+├── MagnetRun.py              — high-level wrapper (satisfies DataLoader protocol)
+├── magnetdata.py             — backward-compat facade (~235 lines)
+├── magnetdata_base.py        — ABC: MagnetDataBase
+├── magnetdata_pandas.py      — PandasMagnetData + subclasses (Ensight, Feelpp, BProfile)
+├── magnetdata_tdms.py        — TdmsMagnetData
+├── cli.py                    — CLI entry point (was python_magnetrun.py)
+├── housing_config.py         — HousingConfig: single source of truth for site/sensor config
+├── log_utils.py              — structured logging utilities
+├── field_defs.py             — field definitions
 ├── signature.py              — regime/signature extraction
 ├── waterflow_pipeline.py     — hydraulic parameters for cooling circuit analysis
-├── outliers.py               — outlier detection strategies
+├── bfield/                   — NEW: B-field profile data adapter
+│   └── bfield_run.py         — BFieldRun (DataLoader protocol)
+├── simulation/               — NEW: simulation data adapters
+│   ├── simulation_run.py     — SimulationRun (DataLoader protocol)
+│   └── magnettools_reader.py — magnettools file reader (stub)
+├── plotting/                 — NEW: backend-agnostic plotting subpackage
+│   ├── backend.py            — PlottingBackend protocol
+│   ├── matplotlib_backend.py — Matplotlib implementation
+│   ├── plotly_backend.py     — Plotly implementation
+│   ├── plotly_resampler_backend.py — Plotly-Resampler implementation
+│   ├── timeseries.py         — time-series plotting utilities
+│   ├── style.py              — plot styling
+│   └── annotations.py        — annotations support
 ├── analysis/                 — comprehensive time-series analysis framework
-│   ├── cli.py                — logging, progress tracking
-│   ├── config.py             — site/channel configuration (M8, M9, M10)
-│   ├── loaders.py            — data loading from TDMS/txt/csv
+│   ├── cli.py                — CLI with logging, progress tracking (404 lines)
+│   ├── config.py             — channel/site configuration
+│   ├── loaders.py            — data loading (1228 lines)
 │   ├── synchronization.py    — time alignment utilities
 │   ├── metrics.py            — DTW, correlation, distance metrics
-│   ├── plotting.py           — multi-source visualization (915 lines)
-│   └── processing.py         — core data processing pipeline
-├── requests/                 — database/web interface
-│   ├── cli.py
-│   ├── GObject.py            — magnet component object
-│   ├── HMagnet.py            — hybrid magnet wrapper
-│   ├── MRecord.py            — magnet record
-│   ├── connect.py            — database connection
-│   ├── deserialize.py        — JSON/XML parsing
-│   └── webscrapping.py       — web data extraction
+│   ├── plotting.py           — multi-source visualization (810 lines)
+│   └── processing.py         — core data processing pipeline (1049 lines)
 ├── hybrid/                   — FEPC high-frequency acquisition systems
 │   ├── hybrid_data.py        — low-level reader (kHz/RMS/trigger), lazy loading
-│   ├── hybrid_run.py         — MagnetRun-compatible interface (~920 lines)
-│   ├── plotting.py           — hybrid-specific visualization
+│   ├── hybrid_run.py         — satisfies DataLoader protocol
+│   ├── data_protocol.py      — DataLoader protocol definition
 │   ├── kHz/                  — 1 kHz data handling
 │   ├── rms/                  — RMS data handling
 │   ├── trigger/              — trigger events
@@ -66,13 +75,17 @@ python_magnetrun/
 │   └── distance.py           — similarity metrics
 ├── utils/
 │   ├── files.py              — file expansion, data loading
-│   ├── convert.py            — unit conversion, timestamps
+│   ├── downsampling.py       — NEW: DownsampleConfig + shared downsampling utilities
+│   ├── timestamps.py         — NEW: timestamp parsing utilities
+│   ├── timezone.py           — NEW: timezone helpers
+│   ├── validation.py         — NEW: FileFormatError + format validators
+│   ├── txt2csv.py            — text to CSV conversion
 │   ├── plots.py              — basic plotting helpers
 │   ├── list.py               — list utilities
 │   ├── sequence.py           — sequence processing
 │   └── duplicates.py         — duplicate detection
-├── tdms/
-│   └── log_parser.py         — LabVIEW/pigbrother log parsing
+├── requests/                 — database/web interface
+├── tdms/                     — LabVIEW/pigbrother log parsing
 ├── configAlims/              — configuration management
 └── panels/                   — panel/dashboard plotting (underdeveloped)
 ```
@@ -81,30 +94,29 @@ python_magnetrun/
 
 ## Code Statistics
 
-| Metric | Value |
-|--------|-------|
-| Total lines of code | ~35K |
-| Python files | 91 |
-| Classes | 79 |
-| Functions | 701 |
-| Functions with type hints | ~284 (40%) |
-| Docstrings | 1190+ |
-| Try/except blocks | 392 |
-| `print()` statements | 1466 |
-| `logging` calls | 124 |
-| TODO/FIXME/BUG comments | 46 |
+| Metric | Mar 2026 | Apr 2026 | Trend |
+|--------|----------|----------|-------|
+| Total lines of code | ~35K | ~36K | +1K |
+| Python files | 91 | 113 | +22 |
+| `print()` statements | 1466 | 13 | ✅ -99% |
+| `logging` calls | 124 | 1140 | ✅ +9x |
+| Bare `except:` clauses | 5 | 0 | ✅ Fixed |
+| TODO/FIXME/BUG comments | 46 | 34 | -26% |
+| Functions with type hints | ~284 (40%) | ~40% | → Ongoing |
 
 ---
 
 ## Strengths
 
-- **Comprehensive documentation** — 1190+ docstrings with parameter descriptions
-- **Good architecture** — clear separation into `analysis/`, `processing/`, `requests/`, `hybrid/`, `utils/`
+- **Comprehensive documentation** — docstrings with parameter descriptions throughout
+- **Good architecture** — clear separation into `analysis/`, `processing/`, `requests/`, `hybrid/`, `utils/`, `plotting/`
 - **Factory methods** on `MagnetData` / `MagnetRun` for different file formats (`fromtdms`, `fromtxt`, `fromcsv`, `fromStringIO`)
 - **Modern Python** in newer modules — dataclasses, `@property`, context managers (`LogContext`, `timed_operation`)
 - **Strategy pattern** for outlier detection (IQR, LOF, Isolation Forest)
-- **Active error handling** — 392 try/except blocks
-- **`analysis/` module is exemplary** — well-typed, documented, focused
+- **Unified DataLoader protocol** — `MagnetRun`, `HybridRun`, `SimulationRun`, `BFieldRun` all satisfy one protocol
+- **Logging infrastructure** — `log_utils.py`, print→logger migration nearly complete (13 remaining)
+- **File validation** — `utils/validation.py` with `FileFormatError` integrated throughout loaders
+- **`ruff` pre-commit hook** — enforces style consistency on every commit
 
 ---
 
@@ -112,82 +124,91 @@ python_magnetrun/
 
 ### High Priority
 
-#### 1. Bare `except:` clauses (5 instances)
+#### 1. ~~Bare `except:` clauses~~ ✅ FIXED
 
-Files: `utils/plots.py`, `utils/txt2csv.py`, `requests/cli.py`,
-`hybrid/trigger/plot_trigger_data.py`, `hybrid/vprocess/test.py`
+All 5 bare except clauses removed. Replaced with specific exception types.
 
-Catches `SystemExit` and `KeyboardInterrupt`, silently swallows real errors.
-Replace with specific exception types (`ValueError`, `OSError`, etc.).
+#### 2. ~~`print()` vs `logging` imbalance~~ ✅ MOSTLY FIXED
 
-#### 2. `print()` vs `logging` imbalance
+Down from 1466 `print()` to 13 remaining; 1140 structured `logging` calls.
+Remaining 13 prints are in non-critical paths — low priority cleanup.
 
-1466 `print()` calls vs 124 `logging` calls. Debug output is not suppressible
-when the package is used as a library. Standardize on `logger.debug()` / `logger.info()`.
+#### 3. Hollow test suite 🔴 OPEN
 
-#### 3. Hollow test suite
+`tests/test_python_magnetrun.py` still has **0 assertions**. `tests/analysis/` now
+has 7 test files (loaders, metrics, plotting, processing, sync, CLI, validation).
+Most `processing/` modules still lack unit tests. Target 70%+ coverage for core modules.
 
-`tests/test_python_magnetrun.py` has **0 assertions**. Most `processing/` modules
-have no unit tests at all. Target 70%+ coverage for core modules.
+#### 4. Incomplete type hints 🔴 OPEN
 
-#### 4. Incomplete type hints
+Still ~40% coverage. Inconsistent use of `|` (PEP 604) vs `Optional[X]`.
+Target 100% for new/modified code; enable `mypy` in CI when coverage improves.
 
-Only ~40% of functions have return type hints. Inconsistent use of `|` (PEP 604)
-vs `Optional[X]`. Target 100% for new/modified code.
+#### 5. ~~Timestamp parsing duplication~~ ✅ FIXED
 
-#### 5. Timestamp parsing duplication
+Extracted to `utils/timestamps.py` and `utils/timezone.py`.
 
-Similar timestamp parsing logic repeated in 3+ locations. Extract to a single
-utility in `utils/convert.py`.
+#### 6. Multiple-file `vs_time` regression 🔴 OPEN
+
+Plot timing issues when multiple input files are used (commits 86c45c6/76351f3).
+Root cause not yet identified.
+
+#### 7. kHz/RMS timestamp not UTC 🔴 OPEN
+
+kHz/RMS data uses seconds-from-day-start rather than UTC timestamps.
+Blocks Phase 2B (time alignment) and multi-source plotting.
 
 ### Medium Priority
 
-#### 6. `magnetdata.py` — 1500-line monolith
+#### 8. ~~`magnetdata.py` — 1500-line monolith~~ ✅ FIXED
 
-~50 methods mixing file I/O, data transformation, and unit handling.
-Split into focused submodules: `magnetdata/io.py`, `magnetdata/transform.py`, `magnetdata/query.py`.
+Split into `magnetdata_base.py` (ABC), `magnetdata_pandas.py`, `magnetdata_tdms.py`.
+`magnetdata.py` is now a ~235-line backward-compat facade.
 
-#### 7. `python_magnetrun.py` — 1300-line CLI/logic mix
+#### 9. `cli.py` — still needs further splitting 🟡 PARTIAL
 
-CLI argument parsing and business logic are interleaved.
-Extract business logic to `commands/` submodules; keep `cli.py` thin.
+`python_magnetrun.py` was renamed to `cli.py` and args extracted. Business logic
+body still needs splitting into `commands/` submodules.
 
-#### 8. Legacy/active code coexistence
+#### 10. ~~Legacy/active code coexistence~~ ✅ FIXED
 
-`prepareData_legacy()` and `prepareData()` coexist in `MagnetRun.py` with no
-clear deprecation path. Remove or formally deprecate.
+`prepareData_legacy()` removed. `runetl.prepareData` now fully driven by `HousingConfig`.
 
-#### 9. Magic numbers scattered throughout
+#### 11. Magic numbers scattered throughout 🔴 OPEN
 
 Energy balance thresholds, default flow parameters, sampling rates hardcoded
 in multiple files. Centralize in `analysis/config.py`.
 
-#### 10. No input validation at file boundaries
+#### 12. ~~No input validation at file boundaries~~ ✅ FIXED
 
-Extension and format not checked before parsing in several loaders.
-Add early validation in `analysis/loaders.py` and `magnetdata.py`.
+`utils/validation.py` with `FileFormatError` integrated in all loaders.
 
 ### Low Priority
 
 - `requests/cli.py` contains a placeholder ("Replace this message...") still in place
-- File paths use string concatenation instead of `pathlib.Path`
+- File paths: ~90% migrated to `pathlib.Path`; some `os.path` usage remains
 - No lock file (`uv.lock`) for reproducible installs
-- No pre-commit hooks for `ruff` / `mypy` (both listed as dev deps but not configured)
+- No CI/CD pipeline yet (`.github/workflows/ci.yml` not created)
+- `mypy` pre-commit hook exists but not enabled
 - `panels/` directory has only 2 minimal examples; no multi-source dashboard support
 
 ---
 
 ## Data Sources & Interfaces
 
-| Source | Class | Factory | `getData()` return | Sampling |
-|--------|-------|---------|-------------------|----------|
-| Pigbrother Overview | `MagnetData` (Type=0) | `fromtdms()` | `DataFrame` | 1 Hz |
-| Pigbrother Archive | `MagnetData` (Type=1) | `fromtdms()` | `DataFrame` | 120 Hz |
-| Pupitre | `MagnetData` (Type=0) | `fromtxt()` | `DataFrame` | ~1 Hz |
-| Hybrid kHz/RMS | `HybridData` | constructor | `(array, time)` tuple | 1 kHz / variable |
+| Source | Wrapper | Factory | DataLoader? | Sampling |
+|--------|---------|---------|-------------|----------|
+| Pigbrother Overview/Archive | `MagnetRun` | `load_magnetdata()` | ✅ | 1 Hz / 120 Hz |
+| Pupitre | `MagnetRun` | `load_magnetdata()` | ✅ | ~1 Hz |
+| Hybrid kHz/RMS | `HybridRun` | `HybridRun.fromdir()` | ✅ | 1 kHz / variable |
+| Ensight / Feel++ simulation | `SimulationRun` | `from_ensight()` / `from_feelpp()` | ✅ | spatial / transient |
+| Magnetic field profile | `BFieldRun` | `from_bprofile()` | ✅ | spatial |
 
-**Key mismatch**: TDMS/Pupitre return DataFrames; Hybrid returns `(array, time)` tuples.
-A `DataProvider` protocol is defined in `hybrid/hybrid_run.py` but not enforced.
+**Protocol:** All sources satisfy `DataLoader` (defined in `hybrid/data_protocol.py`).
+`get_time_range()` and `getDomain()` are part of the protocol.
+
+**Remaining gap:** kHz/RMS `get_time_range()` uses seconds-from-day-start internally;
+needs UTC conversion before `align_to_common_time()` can be implemented.
 
 ---
 
@@ -195,14 +216,18 @@ A `DataProvider` protocol is defined in `hybrid/hybrid_run.py` but not enforced.
 
 | Capability | TDMS Overview/Archive | Pupitre | Hybrid kHz/RMS |
 |------------|----------------------|---------|----------------|
-| Individual plotting | `MagnetData.plotData()` | `MagnetData.plotData()` | `hybrid/plotting.py` |
-| Multi-variable | `utils/plots.py` | `utils/plots.py` | `hybrid/plotting.py` |
-| Same-axes overlay | `analysis/plotting.plot_data()` | `analysis/plotting.plot_data()` | **Not supported** |
-| Time alignment | Manual | Manual | Manual |
-| Channel mapping | Manual (`channels_dict`) | Manual (`pupitre_dict`) | Manual |
+| Individual plotting | `MagnetRun` + `plotting/` backends | `MagnetRun` + `plotting/` backends | `hybrid/plotting.py` |
+| Multi-variable | ✅ via `plotting/timeseries.py` | ✅ | ✅ |
+| Same-axes overlay | `analysis/plotting.plot_data()` | `analysis/plotting.plot_data()` | 🔴 Not yet |
+| Backend choice | matplotlib / plotly / plotly-resampler | same | separate |
+| Time alignment | UTC via `PandasMagnetData.addTime()` | UTC via `addTime()` | 🔴 Not UTC yet |
+| Channel mapping | `HousingConfig` | `HousingConfig` | manual |
+| Downsampling | `DownsampleConfig` | `DownsampleConfig` | `DownsampleConfig` |
 
-`analysis/plotting.plot_data()` already overlays Overview + Archive + Pupitre
-on shared axes — hybrid integration is the main gap.
+**Plotting backends** (`plotting/`): `PlottingBackend` protocol with 3 implementations —
+`MatplotlibBackend`, `PlotlyBackend`, `PlotlyResamplerBackend`. Field-style support added.
+
+**Main gap:** Hybrid kHz/RMS not yet on shared axes with pupitre/TDMS (Phase 2C, depends on UTC timestamps in 2B).
 
 ---
 
@@ -222,20 +247,32 @@ on shared axes — hybrid integration is the main gap.
 
 | Pattern | Where |
 |---------|-------|
-| Factory methods | `MagnetData.fromtdms/fromtxt`, `MagnetRun.fromtdms/fromtxt`, `HybridRun.fromdir` |
-| Properties | `Signature` class |
-| Dataclasses | `HydraulicData`, `SyncResult`, `DistanceResult`, `PlotStyle`, `PlotColors` |
+| Factory function | `load_magnetdata()` in `magnetdata.py` — replaces shim class |
+| Factory methods | `MagnetRun.fromtdms/fromtxt`, `HybridRun.fromdir`, `SimulationRun.from_*`, `BFieldRun.from_*` |
+| Protocol (formal) | `DataLoader` in `hybrid/data_protocol.py` — satisfied by all 4 run wrappers |
+| Protocol (formal) | `PlottingBackend` in `plotting/backend.py` — 3 implementations |
+| Dataclasses | `HydraulicData`, `SyncResult`, `DistanceResult`, `PlotStyle`, `PlotColors`, `DownsampleConfig` |
 | Context managers | `LogContext`, `timed_operation()` in `analysis/cli.py` |
 | Strategy | Outlier detection (IQR, LOF, Isolation Forest) |
-| Protocol (informal) | `DataProvider` in `hybrid/hybrid_run.py` |
+| Single source of truth | `HousingConfig` for site/sensor/channel configuration |
 
 ---
 
 ## Summary
 
-**python_magnetrun** is a functionally mature package for magnet experimental run analysis.
-The `analysis/` module shows the target quality level for the rest of the codebase.
-Main pain points are: consistency (print vs logging, typed vs untyped, new vs legacy patterns),
-test coverage, and lack of unified plotting across all three data sources.
-The "Pre-Alpha" label is appropriate — core workflows are production-ready,
-but the codebase needs consistency work before a 1.0 release.
+**python_magnetrun** is a production-ready package for magnet experimental run analysis.
+Significant progress since March 2026: logging migration is nearly complete, the
+magnetdata monolith has been split, a unified `DataLoader` protocol now covers all
+data sources (including new `SimulationRun` and `BFieldRun` adapters), plotting
+has been refactored into a multi-backend subpackage, and validation infrastructure
+is in place.
+
+**Main remaining pain points:**
+1. kHz/RMS UTC timestamp conversion (blocks unified multi-source plotting)
+2. Multiple-file `vs_time` regression
+3. Type hint coverage still ~40%
+4. No CI/CD pipeline
+
+The "Pre-Alpha" label has been effectively outgrown for core workflows.
+A 1.0 release is within reach once the multi-source plotting roadmap (Phases 2B–2D)
+and CI/CD are complete.

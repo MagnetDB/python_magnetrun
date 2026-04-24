@@ -1,6 +1,6 @@
 # Implementation Status — python_magnetrun
 
-*Last updated: 2026-04-23 — branch `rework_analysis` — commit `a0b00ed`*
+*Last updated: 2026-04-23 — branch `rework_analysis` — commit `fd83fe5`*
 
 This document tracks detailed implementation status and task completion. For strategic direction, see [ROADMAP.md](ROADMAP.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -108,9 +108,9 @@ HybridRun                   ← satisfies DataLoader protocol
 | kHz/RMS UTC conversion | 🔴 Open | Currently seconds-from-day-start; needs UTC on load |
 | `align_to_common_time()` utility | 🔴 Open | Multi-source time alignment helper |
 
-**Blockers:** kHz/RMS timestamp conversion  
-**Effort:** ~1-2 weeks  
-**Next Steps:** 
+**Blockers:** kHz/RMS timestamp conversion
+**Effort:** ~1-2 weeks
+**Next Steps:**
 1. Add UTC timestamp conversion to kHz/RMS loaders
 2. Implement `align_to_common_time()` in `utils/`
 3. Add tests for multi-source alignment
@@ -129,8 +129,8 @@ def plot_data(
 )
 ```
 
-**Dependencies:** Phase 2B completion  
-**Effort:** ~2-3 weeks  
+**Dependencies:** Phase 2B completion
+**Effort:** ~2-3 weeks
 **Status:** Awaiting Phase 2B
 
 #### Phase 2D: Side-by-Side Comparison 🔴 PLANNED
@@ -142,7 +142,7 @@ def plot_data(
 - Linked time axis across subplots
 - Consistent styling
 
-**Dependencies:** Phase 2C  
+**Dependencies:** Phase 2C
 **Effort:** ~1-2 weeks
 
 #### Phase 2E: Channel Auto-Mapping 🟡 PARTIAL
@@ -162,7 +162,7 @@ def plot_data(
 
 #### 3.1 `analysis/` Subpackage Refactoring 🔴 OPEN
 
-**Status:** Detailed plan exists  
+**Status:** Detailed plan exists
 **See:** [analysis-subpackage-refactoring.plan.md](analysis-subpackage-refactoring.plan.md)
 
 **Key Phases:**
@@ -173,12 +173,12 @@ def plot_data(
 5. Test coverage
 6. Timestamp utilities (`add_time_columns` — prerequisite for HybridData)
 
-**Effort:** ~5-7 days  
+**Effort:** ~5-7 days
 **Priority:** Medium
 
 #### 3.2 `hybrid/` Subpackage Refactoring 🔴 OPEN
 
-**Status:** Detailed plan exists  
+**Status:** Detailed plan exists
 **See:** [hybrid-subpackage-refactoring.plan.md](hybrid-subpackage-refactoring.plan.md)
 
 **Key Phases:**
@@ -187,7 +187,7 @@ def plot_data(
 3. `signal_processing.py` extraction
 4. Test coverage
 
-**Effort:** ~10-14 hours  
+**Effort:** ~10-14 hours
 **Priority:** Medium
 
 #### 3.3 CLI Consolidation 🔴 OPEN
@@ -197,8 +197,8 @@ def plot_data(
 - Don't use `commands/` subpackage pattern
 - Different argument conventions
 
-**Action:** Migrate to unified CLI structure  
-**Effort:** ~3-5 days  
+**Action:** Migrate to unified CLI structure
+**Effort:** ~3-5 days
 **Priority:** Low
 
 #### 3.4 `analysis/__init__.py` Namespace 🔴 OPEN
@@ -210,7 +210,7 @@ def plot_data(
 - `analysis.plot`
 - `analysis.loaders`
 
-**Effort:** ~1 day  
+**Effort:** ~1 day
 **Priority:** Low
 
 #### 3.5 Monolith Splitting ✅ MOSTLY COMPLETE
@@ -244,24 +244,24 @@ def plot_data(
 - Add `getStartDate()`, `getDuration()` methods
 - Required before `HybridRun` can participate in `ComparisonSession`
 
-**Prerequisite:** `analysis/` Phase 6 (`add_time_columns` utility)  
-**See:** [hybriddata-timestamp-plan.md](hybriddata-timestamp-plan.md)  
-**Effort:** ~0.5 days  
+**Prerequisite:** `analysis/` Phase 6 (`add_time_columns` utility)
+**See:** [hybriddata-timestamp-plan.md](hybriddata-timestamp-plan.md)
+**Effort:** ~0.5 days
 **Status:** Blocked by analysis/ Phase 6
 
 #### 4.2 Cross-Domain Comparison (Phases D-G) 🟡 PARTIAL
 
 **Phase Status:**
 - ✅ Phase A0-A3: Protocol extension (commit `de9f374`)
-- ✅ Phase B: `SimulationRun` adapter
-- ✅ Phase C: `BFieldRun` adapter
+- ✅ Phase B: `SimulationRun` adapter (commit `fd83fe5`, `simulation/simulation_run.py`)
+- ✅ Phase C: `BFieldRun` adapter (commit `fd83fe5`, `bfield/bfield_run.py`)
 - 🔴 Phase D: Extend `*-defs.json` with simulation/bfield aliases
 - 🔴 Phase E: `ComparisonSession` implementation
 - 🔴 Phase F: `magnetrun-compare` CLI
 - 🔴 Phase G: Comprehensive tests
 
-**Dependencies:** HybridData timestamp support  
-**See:** [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)  
+**Dependencies:** HybridData timestamp support
+**See:** [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
 **Effort:** ~2-3 weeks
 
 #### 4.3 Pipeline Redesign (polars/narwhals) 🔴 DEFERRED
@@ -274,8 +274,8 @@ def plot_data(
 3. Pipeline restructure
 4. Internal migration
 
-**See:** [mrun-cache-implementation.plan.md](mrun-cache-implementation.plan.md)  
-**Effort:** XL (~4-6 weeks, multi-phase)  
+**See:** [mrun-cache-implementation.plan.md](mrun-cache-implementation.plan.md)
+**Effort:** XL (~4-6 weeks, multi-phase)
 **Priority:** Low (performance optimization; package functional without it)
 
 #### 4.4 HoloViews Plotting Migration 🔴 OPTIONAL
@@ -288,8 +288,8 @@ def plot_data(
 - ❌ Replaces stable existing system
 - ❌ New dependency
 
-**See:** [holoviews-migration.plan.md](holoviews-migration.plan.md)  
-**Effort:** ~8 days  
+**See:** [holoviews-migration.plan.md](holoviews-migration.plan.md)
+**Effort:** ~8 days
 **Status:** Optional alternative path
 
 ---
