@@ -167,6 +167,10 @@ Extract into:
 
 **Note:** File is now 404 lines total; specific line numbers may have shifted.
 
+**Coordinate with `cli-consolidation.plan.md`:** adding `register(subparsers)` to
+`analysis/cli.py` (per the CLI consolidation plan) and decomposing `main()` (this
+phase) should be done in a single branch — they touch the same function.
+
 Extract into:
 
 | New function | Responsibility |

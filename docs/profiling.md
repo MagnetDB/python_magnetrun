@@ -11,14 +11,17 @@ pip install -e ".[profiling]"
 
 Best first step: generates a `.prof` file for any entry point.
 
+`python -m cProfile` expects a file path, not a console script name.
+Use `$(which ...)` to resolve the installed entry point:
+
 ```bash
 # analysis CLI
-python -m cProfile -o cli.prof magnetrun-analysis [args]
+python -m cProfile -o cli.prof $(which magnetrun-analysis) [args]
 
 # processing CLI
-python -m cProfile -o processing.prof magnetrun-processing [args]
+python -m cProfile -o processing.prof $(which magnetrun-processing) [args]
 
-# or run a script directly
+# or run a module directly (no script lookup needed)
 python -m cProfile -o out.prof -s cumulative python_magnetrun/analysis/processing.py
 ```
 
@@ -42,7 +45,7 @@ A `cli.prof` snapshot already exists in the project root.
 Lowest overhead, best for a quick overview:
 
 ```bash
-pyinstrument -o profile.html --html -- magnetrun-analysis [args]
+pyinstrument -o profile.html --html -- $(which magnetrun-analysis) [args]
 # open profile.html in a browser
 ```
 

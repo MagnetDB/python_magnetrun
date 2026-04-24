@@ -1,6 +1,6 @@
 # Package Review: `python_magnetrun`
 
-Date: 2026-04-23 (updated)
+Date: 2026-04-24 (updated)
 
 ---
 
@@ -120,15 +120,15 @@ The `analysis/` subpackage feels monolithic. Config, loaders, synchronization, m
 plotting are all dumped into one namespace. Splitting into explicit sub-namespaces (e.g.,
 `analysis.metrics`, `analysis.plot`) would improve discoverability.
 
-**10. `processing/cli.py` and `analysis/cli.py` are independent CLIs** *(minor — open)*
+**10. `processing/cli.py` and `analysis/cli.py` are independent CLIs** *(minor — planned)*
 
 They do not participate in the `commands/` subpackage pattern used by `cli.py`. Two parallel
 mini-CLI systems with different argument conventions exist side by side.
+Full plan: **[`prompts/cli-consolidation.plan.md`](cli-consolidation.plan.md)**.
 
-**11. Editor backup file in the package** *(trivial — open)*
+**11. Editor backup file in the package** *(trivial — done)*
 
-`python_magnetrun/pigbrother-defs.json~` could be accidentally included in sdist/wheel builds.
-Add it to `.gitignore` and remove it from the repository.
+`pigbrother-defs.json~` removed; `*.json~` added to `.gitignore`.
 
 **12. `tsdownsample` is an undeclared dependency** *(done)*
 
@@ -143,7 +143,8 @@ Now added to `pyproject.toml` as a `hybrid` extras dependency.
 | Protocol for `MagnetRun`/`HybridRun` interface | `DataProvider` in `hybrid_run.py`, `DataLoader` in `data_protocol.py` | Done |
 | `Référence_GR → Courant_GR` mapping | `config.py ChannelMapping` + `analysis/cli.py:162-165` | Done — cli.py now uses `channel_map.to_dict()` |
 | Plot logic | `commands/plot.py`, legacy `viewcsv.py` | Refactored — `plotting/` subpackage created |
-| Argument parsing for smoothing/logging | `cli_args.py` builders vs. `processing/cli.py` inline argparse | Needs consolidation |
+| Argument parsing for smoothing/logging | `cli_args.py` builders vs. `processing/cli.py` inline argparse | Planned — see `cli-consolidation.plan.md` |
+| Outlier detection | `hybrid/outliers.py` (canonical) + `processing/hysteresis.py::remove_outliers` (inline IQR/zscore/MAD) + `examples/outliers.py` (rolling-MAD inline) + 2 CLI-style test scripts | Planned — see `outlier-consolidation.plan.md` |
 
 ---
 
@@ -161,7 +162,8 @@ Now added to `pyproject.toml` as a `hybrid` extras dependency.
 | `PandasMagnetData.Units` dead code | Done |
 | `Units`/`getUnitKey` consistency in TDMS | Done |
 | `Data` attribute type divergence (`DataFrame` vs `dict`) | Done |
-| CLI consolidation | Needs work |
+| CLI consolidation (8 → 3 entry points, `magnetrun` dispatcher, `register()` pattern) | Planned — see `cli-consolidation.plan.md` |
+| Outlier deduplication (`hybrid/outliers.py` canonical, thin delegates, proper tests) | Planned — see `outlier-consolidation.plan.md` |
 | `saveData` abstraction in `MagnetRun` | Done |
 | Hardcoded default path in `cli_args.py` | Done |
 | Protocol duplication (`DataProvider` / `DataLoader`) | Done |
@@ -188,11 +190,15 @@ refactoring (subpackage, backends, label/legend uniformization), and file valida
 current three-backend implementation with `hv.extension()` + Panel + datashader and subsume
 `analysis/` downsampling Phase 2.
 
-**Package is production-ready for core use cases.** Remaining work in priority order: 
+**Package is production-ready for core use cases.** Remaining work in priority order:
 (1) known regressions (multiple-file plotting); (2) CI/CD pipeline; (3) logging migration completion;
-(4) `analysis/` internal refactoring; (5) `hybrid/` internal refactoring; (6) `HybridData` timestamp
-support (requires analysis Phase 6); (7) cross-domain Phases D–G (`ComparisonSession`, CLI);
-(8) optional HoloViews migration; (9) pipeline redesign (polars/narwhals).
+(4) `analysis/` internal refactoring (`analysis-subpackage-refactoring.plan.md`);
+(5) outlier deduplication (`outlier-consolidation.plan.md`);
+(6) `hybrid/` internal refactoring (`hybrid-subpackage-refactoring.plan.md`);
+(7) CLI consolidation (`cli-consolidation.plan.md`) — coordinate `analysis/cli.py` with item 4 Phase 5.3;
+(8) `HybridData` timestamp support (requires analysis Phase 6);
+(9) cross-domain Phases D–G (`ComparisonSession`, CLI);
+(10) optional HoloViews migration; (11) pipeline redesign (polars/narwhals).
 
 ---
 
@@ -331,12 +337,31 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     participate as a source in `ComparisonSession` (Phase E).
     **Prerequisite**: `analysis/` Phase 6 (`add_time_columns` utility) should land first.
 
-12. **`hybrid/` internal refactoring** *(effort: ~10–14 h)* — tracked in
+12. **Outlier deduplication** *(effort: ~4–5 h)* — tracked in
+    **[`prompts/outlier-consolidation.plan.md`](outlier-consolidation.plan.md)**.
+    Three steps: (1) delete `examples/outliers.py` (inline reimplementation, never imported);
+    (2) thin-delegate `processing/hysteresis.py::remove_outliers` to the canonical
+    `hybrid/outliers.py::detect_outliers`; (3) replace the two CLI-style anomaly test scripts
+    with a proper pytest module using synthetic data.  Self-contained, no cross-plan
+    dependencies.  **Do before item 12b** so the `OutlierConfig` work builds on a clean base.
+
+12b. **`hybrid/` internal refactoring** *(effort: ~10–14 h)* — tracked in
     **[`prompts/hybrid-subpackage-refactoring.plan.md`](hybrid-subpackage-refactoring.plan.md)**.
     Key integration points:
-    - Phase 4 (`OutlierConfig` dataclass) follows the same design decision as `DownsampleConfig` (item 8 above).
+    - Phase 4 (`OutlierConfig` dataclass) follows the same design decision as `DownsampleConfig` (item 8 above); do after item 12.
     - Phases 1–3 and 5 are self-contained; no dependency on other open items.
     - Does **not** address `HybridData` timestamp support (item 11 above), which remains separate.
+
+13. **CLI consolidation** *(effort: ~1–2 d)* — tracked in
+    **[`prompts/cli-consolidation.plan.md`](cli-consolidation.plan.md)**.
+    Reduces 8 entry points to 3 (`magnetrun`, `magnetrun-fetch`, `magnetrun-config`) by
+    adopting the `register(subparsers)` pattern already used by `magnetrun-config`.
+    Key changes: new `magnetrun` dispatcher in `python_magnetrun/main.py`; `input_file`
+    moves from top-level to each subcommand parser (eliminating `_normalize_argv`);
+    new `magnetrun signature` subcommand promoted from `tests/test-signature.py`;
+    `srvdata-to-magnetrun` renamed to `magnetrun-fetch` (standalone).
+    **Coordinate `analysis/cli.py` pass with `analysis-subpackage-refactoring.plan.md`
+    Phase 5.3** — adding `register()` and decomposing `main()` should be a single branch.
 
 14. **Cross-domain comparison — Phases B–G** *(effort: XL)* — depends on item 11.
 
@@ -349,5 +374,4 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     | F | `magnetrun-compare` CLI |
     | G | `tests/test_comparison.py` |
 
-12. **Editor backup file** *(effort: S)* — remove `pigbrother-defs.json~` and add `*.json~` to
-    `.gitignore`.
+12. **Editor backup file** *(done)* — `pigbrother-defs.json~` removed; `*.json~` added to `.gitignore`.

@@ -1,6 +1,6 @@
 # Implementation Status — python_magnetrun
 
-*Last updated: 2026-04-23 — branch `rework_analysis` — commit `fd83fe5`*
+*Last updated: 2026-04-24 — branch `rework_analysis`*
 
 This document tracks detailed implementation status and task completion. For strategic direction, see [ROADMAP.md](ROADMAP.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -180,9 +180,10 @@ def plot_data(
 
 **Status:** Detailed plan exists
 **See:** [hybrid-subpackage-refactoring.plan.md](hybrid-subpackage-refactoring.plan.md)
+**Prerequisite:** 3.5 Outlier Deduplication below (Phase 1 of hybrid plan becomes a thin-delegate; do that first)
 
 **Key Phases:**
-1. Outlier removal deduplication
+1. ~~Outlier removal deduplication~~ → handled by 3.5; only `OutlierConfig` wrapper remains here
 2. `OutlierConfig` dataclass (following `DownsampleConfig` pattern)
 3. `signal_processing.py` extraction
 4. Test coverage
@@ -192,14 +193,40 @@ def plot_data(
 
 #### 3.3 CLI Consolidation 🔴 OPEN
 
-**Current Issues:**
-- `processing/cli.py` and `analysis/cli.py` are independent CLIs
-- Don't use `commands/` subpackage pattern
-- Different argument conventions
+**Status:** Detailed plan exists
+**See:** [cli-consolidation.plan.md](cli-consolidation.plan.md)
 
-**Action:** Migrate to unified CLI structure
-**Effort:** ~3-5 days
+**Goal:** Reduce 8 entry points to 3:
+- `magnetrun` — unified dispatcher (new `python_magnetrun/main.py`)
+- `magnetrun-fetch` — renamed from `srvdata-to-magnetrun` (standalone)
+- `magnetrun-config` — unchanged
+
+**New `magnetrun` subcommands:** `info`, `add`, `plot`, `select`, `stats`, `signature` (new), `analysis`, `processing`, `hybrid`, `logparser`
+
+**Key change:** `input_file` moves to each subcommand parser (subcommand-first argv); eliminates `_normalize_argv` hack in `cli.py`
+
+**Coordinate:** `analysis/cli.py` pass must land together with `analysis-subpackage-refactoring.plan.md` Phase 5.3 (single branch)
+
+**Effort:** ~1-2 days
 **Priority:** Low
+
+#### 3.5 Outlier Deduplication 🔴 OPEN *(do before 3.2)*
+
+**Status:** Detailed plan exists
+**See:** [outlier-consolidation.plan.md](outlier-consolidation.plan.md)
+
+**Canonical module:** `hybrid/outliers.py` (complete — `OutlierDetector`, `OutlierResult`, `detect_outliers`)
+
+**Duplicates to eliminate:**
+
+| File | Issue | Action |
+|------|-------|--------|
+| `examples/outliers.py` | 213-line rolling-MAD reimplementation; never imported | Delete |
+| `processing/hysteresis.py::remove_outliers` | ~120 lines inline IQR/zscore/MAD | Thin-delegate to canonical module (~25 lines) |
+| `tests/test-anomalies.py` + `tests/test-anomalies-optimized.py` | CLI scripts, not pytest; require real TDMS files | Delete; replace with `tests/test_outliers.py` (synthetic data) |
+
+**Effort:** ~4-5 hours
+**Priority:** Medium (precursor to 3.2)
 
 #### 3.4 `analysis/__init__.py` Namespace 🔴 OPEN
 
@@ -348,9 +375,9 @@ def plot_data(
 | Add `ruff` pre-commit hook | 1 hour | High | ✅ Done | — |
 | File validation | 4 hours | High | ✅ Done | — |
 | Add assertions to `test_python_magnetrun.py` | 30 min | Medium | 🔴 Open | Add meaningful test assertions |
-| Remove `pigbrother-defs.json~` | 5 min | Low | 🔴 Open | Delete backup file |
-| Add `*.json~` to `.gitignore` | 2 min | Low | 🔴 Open | Prevent future backups |
-| Remove placeholder in `requests/cli.py` | 5 min | Low | 🔴 Open | Clean up "Replace this message..." |
+| Remove `pigbrother-defs.json~` | 5 min | Low | ✅ Done | — |
+| Add `*.json~` to `.gitignore` | 2 min | Low | ✅ Done | — |
+| Audit TODOs in `requests/cli.py` (rename site→housing, geometry, Parts) | 15 min | Low | 🔴 Open | Four TODO comments that need tracking or resolution |
 | Enable `mypy` pre-commit hook | 1 hour | Medium | 🔴 Open | Uncomment in `.pre-commit-config.yaml` |
 | Add CI pipeline | 2 hours | High | 🔴 Open | Create `.github/workflows/ci.yml` |
 
@@ -358,7 +385,7 @@ def plot_data(
 1. Add CI pipeline (enables automated testing)
 2. Add assertions to `test_python_magnetrun.py` (makes CI meaningful)
 3. Enable `mypy` (enforces type hints)
-4. Quick cleanups (backup file, placeholder, .gitignore)
+4. Quick cleanups (backup file already done; audit TODOs in `requests/cli.py`)
 
 ---
 
@@ -391,7 +418,7 @@ def plot_data(
 5. **Quick wins cleanup**
    - Add assertions to `test_python_magnetrun.py`
    - Enable `mypy` pre-commit hook
-   - Remove backup file and placeholder text
+   - Audit TODOs in `requests/cli.py`
 
 ### 🟢 Medium Priority (Do This Quarter)
 
@@ -412,9 +439,10 @@ def plot_data(
 ### 🔵 Lower Priority (Future Quarters)
 
 9. **analysis/ refactoring** (~5-7 days)
-10. **hybrid/ refactoring** (~10-14 hours)
-11. **CLI consolidation** (~3-5 days)
-12. **HybridData timestamp support** (~0.5 days)
+10. **Outlier deduplication** (~4-5 hours) — precursor to hybrid/ refactoring
+11. **hybrid/ refactoring** (~10-14 hours, after item 10)
+12. **CLI consolidation** (~1-2 days, coordinate analysis/cli.py with item 9 Phase 5.3)
+13. **HybridData timestamp support** (~0.5 days)
 13. **Cross-domain Phases D-G** (~2-3 weeks)
 14. **Type hints backfill** (ongoing)
 
@@ -460,8 +488,9 @@ def plot_data(
 - Logging migration
 - Type hints backfill
 - analysis/ refactoring (Phases 1-5)
-- hybrid/ refactoring
-- CLI consolidation
+- Outlier deduplication (3.5)
+- hybrid/ refactoring (3.2, after outlier dedup)
+- CLI consolidation (3.3, coordinate analysis/cli.py with analysis Phase 5.3)
 
 ---
 

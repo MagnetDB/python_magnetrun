@@ -1,6 +1,6 @@
 # Development Roadmap — python_magnetrun
 
-*Updated: 2026-04-23*
+*Updated: 2026-04-24*
 
 This document outlines strategic priorities and upcoming work. For detailed implementation status, see [CHECK_IMPLEMENTATION.md](CHECK_IMPLEMENTATION.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -125,16 +125,26 @@ Current: Structured `ChannelMapping` exists; needs fuzzy fallback
 - **Effort:** ~5-7 days
 
 **3.2 `hybrid/` Subpackage Refactoring**
-- Deduplicate outlier removal code
-- Create `OutlierConfig` dataclass
+- Create `OutlierConfig` dataclass (following `DownsampleConfig` pattern)
 - Extract `signal_processing.py` utility module
+- **Prerequisite:** 3.5 Outlier deduplication below (clean base for `OutlierConfig`)
 - **See:** [hybrid-subpackage-refactoring.plan.md](hybrid-subpackage-refactoring.plan.md)
 - **Effort:** ~10-14 hours
 
 **3.3 CLI Consolidation**
-- `processing/cli.py` and `analysis/cli.py` don't use `commands/` pattern
-- Migrate to unified CLI structure
-- **Effort:** ~3-5 days
+- Reduce 8 entry points to 3: `magnetrun` (unified dispatcher), `magnetrun-fetch` (renamed from `srvdata-to-magnetrun`), `magnetrun-config` (unchanged)
+- Add `magnetrun signature` subcommand (promoted from `tests/test-signature.py`)
+- `register(subparsers)` pattern, subcommand-first argv (eliminates `_normalize_argv` hack)
+- Coordinate `analysis/cli.py` pass with `analysis-subpackage-refactoring.plan.md` Phase 5.3
+- **See:** [cli-consolidation.plan.md](cli-consolidation.plan.md)
+- **Effort:** ~1-2 days
+
+**3.5 Outlier Deduplication** *(do before 3.2)*
+- `hybrid/outliers.py` is canonical; `processing/hysteresis.py::remove_outliers` and `examples/outliers.py` reimplement inline
+- Delete `examples/outliers.py`; thin-delegate `hysteresis.py::remove_outliers` to canonical module
+- Replace two CLI-style anomaly test scripts with a proper pytest module
+- **See:** [outlier-consolidation.plan.md](outlier-consolidation.plan.md)
+- **Effort:** ~4-5 hours
 
 **3.4 `analysis/__init__.py` Namespace**
 - 80+ names exported flat
@@ -190,9 +200,9 @@ Priority items that provide immediate value with minimal effort:
 | Add `ruff` pre-commit hook | 1 hour | Enforces consistency | ✅ Done |
 | File validation infrastructure | 4 hours | Early error detection | ✅ Done |
 | Add assertions to `test_python_magnetrun.py` | 30 min | Makes CI meaningful | ⬜ Open |
-| Remove `pigbrother-defs.json~` | 5 min | Clean repository | ⬜ Open |
-| Add `*.json~` to `.gitignore` | 2 min | Prevent future backups | ⬜ Open |
-| Remove placeholder in `requests/cli.py` | 5 min | Polish | ⬜ Open |
+| Remove `pigbrother-defs.json~` | 5 min | Clean repository | ✅ Done |
+| Add `*.json~` to `.gitignore` | 2 min | Prevent future backups | ✅ Done |
+| Audit TODOs in `requests/cli.py` (rename site→housing, geometry, Parts) | 15 min | Polish | ⬜ Open |
 | Enable `mypy` pre-commit hook | 1 hour | Type checking in CI | ⬜ Open |
 | Add CI pipeline | 2 hours | Automated testing | ⬜ Open |
 
@@ -224,12 +234,13 @@ Month 4 (August 2026)
 
 Month 5 (September 2026)
 ├─ analysis/ internal refactoring (complete)
-├─ hybrid/ internal refactoring
+├─ Outlier deduplication (3.5, ~0.5 day)
+├─ hybrid/ internal refactoring (3.2, after outlier dedup)
+├─ CLI consolidation (3.3, coordinate analysis/cli.py with analysis Phase 5.3)
 └─ HybridData timestamp support
 
 Month 6+ (October 2026+)
 ├─ Cross-domain Phases D-G
-├─ CLI consolidation
 ├─ Optional: HoloViews migration OR pipeline redesign
 └─ Type hints backfill complete, mypy strict mode
 ```
@@ -257,11 +268,13 @@ graph TD
 
     J[Quick Wins] -.independent.-> A
     K[Stream 3: Refactoring] -.parallel.-> A
+    L[3.5 Outlier Dedup] --> M[3.2 hybrid/ refactoring]
 ```
 
 **Critical Path:** Phase 2B → 2C → 2D (unified plotting)
 **Long Pole:** analysis/ Phase 6 blocks HybridData timestamps
-**Independent:** Quick wins, logging migration, CLI consolidation, type hints
+**Independent:** Quick wins, logging migration, CLI consolidation, outlier deduplication, type hints
+**Intra-Stream-3 order:** 3.5 Outlier Dedup → 3.2 hybrid/ refactoring; 3.3 CLI consolidation can run in parallel but `analysis/cli.py` must land with analysis Phase 5.3
 
 ---
 
