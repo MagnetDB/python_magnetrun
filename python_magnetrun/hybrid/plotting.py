@@ -745,7 +745,7 @@ def plot_khz_with_rms(
         dfs.append(pd.DataFrame({"t": khz_time, khz_variable: khz_data}))
         fields.append(khz_variable)
         colors.append("blue")
-        field_styles.append(("-", None, None))
+        field_styles.append(("-", None, None, None))
     except (OSError, ValueError, RuntimeError, KeyError, struct.error) as e:
         logger.error("Error loading kHz variable %s: %s", khz_variable, e)
 
@@ -758,7 +758,7 @@ def plot_khz_with_rms(
         dfs.append(pd.DataFrame({"t": rms_time, rms_col: rms_data}))
         fields.append(rms_col)
         colors.append("red")
-        field_styles.append(("-", ".", None))
+        field_styles.append(("-", ".", None, None))
     except (OSError, ValueError, RuntimeError, KeyError) as e:
         logger.error("Error loading RMS variable %s: %s", rms_variable, e)
 

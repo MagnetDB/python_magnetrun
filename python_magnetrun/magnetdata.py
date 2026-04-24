@@ -60,14 +60,18 @@ def load_magnetdata(
             return _fromtdms(filename, defs_file=defs_file)
         return _fromtdms(filename)
     elif ext == ".txt":
-        return PandasMagnetData.fromtxt(filename, defs_file=defs_file or "pupitre-defs.json")
+        return PandasMagnetData.fromtxt(
+            filename, defs_file=defs_file or "pupitre-defs.json"
+        )
     elif ext == ".csv":
         return PandasMagnetData.fromcsv(filename, defs_file=defs_file)
     else:
         raise ValueError(f"load_magnetdata: unsupported file extension {ext!r}")
 
 
-def _fromtdms(name: str, defs_file: str | None = "pigbrother-defs.json") -> TdmsMagnetData:
+def _fromtdms(
+    name: str, defs_file: str | None = "pigbrother-defs.json"
+) -> TdmsMagnetData:
     """Load a pigbrother TDMS file and return a :class:`TdmsMagnetData`.
 
     This function contains the TDMS-specific loading logic previously on
@@ -121,10 +125,14 @@ def _fromtdms(name: str, defs_file: str | None = "pigbrother-defs.json") -> Tdms
                 cname = channel.name.replace(" ", "_")
                 Keys.append(f"{gname}/{cname}")
                 Groups[gname][cname] = channel.properties
+                logger.debug(
+                    f"channel {gname}/{cname} properties: {Groups[gname][cname]}"
+                )
                 if "wf_start_offset" in Groups[gname][cname]:
                     logger.debug(
-                        f"update wf_start_offset for {gname}/{cname} - original value: "
+                        f"update wf_start_offset for {gname}/{cname} - from: "
                         f"{Groups[gname][cname]['wf_start_offset']}"
+                        f" to: {t_offset}"
                     )
                     Groups[gname][cname]["wf_start_offset"] = t_offset
             Data[gname] = group.as_dataframe(
@@ -134,6 +142,16 @@ def _fromtdms(name: str, defs_file: str | None = "pigbrother-defs.json") -> Tdms
                 columns={col: col.replace(" ", "_") for col in Data[gname].columns},
                 inplace=True,
             )
+            channel = list(Groups[gname].keys())[0]
+            if len(Data[gname]) != Groups[gname][channel]["wf_samples"]:
+                logger.warning(
+                    f"group '{gname}': loaded {len(Data[gname])} rows but wf_samples={Groups[gname][channel]['wf_samples']}"
+                )
+                logging.warning(
+                    f"update wf_samples for {gname} to match loaded data length: {len(Data[gname])}"
+                )
+                for channel in Groups[gname]:
+                    Groups[gname][channel]["wf_samples"] = len(Data[gname])
         else:
             Groups[gname] = group
 

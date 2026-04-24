@@ -92,9 +92,39 @@ get_backend("plotly-resampler").show(fig)   # fig.show_dash()
 fig = plot_subplots(df, ["Field"], backend="plotly-widget")
 ```
 
+## Per-series style (`field_styles`)
+
+`plot_subplots`, `plot_overlay`, and `plot_xy` accept a `field_styles` parameter
+— a list of `(linestyle, marker, markevery, alpha)` tuples, one per field (extra
+entries are ignored, missing entries fall back to defaults).
+
+| Position | Type | Meaning |
+|----------|------|---------|
+| 0 | `str \| None` | Line style (`"-"`, `"--"`, `"-."`, `"none"`) |
+| 1 | `str \| None` | Matplotlib/Plotly marker (e.g. `"o"`, `"s"`, `"D"`) |
+| 2 | `int \| None` | `markevery` — draw marker every *N* points |
+| 3 | `float \| None` | `alpha` — opacity in `[0, 1]` |
+
+```python
+from python_magnetrun.plotting import plot_overlay
+
+fig = plot_overlay(
+    df,
+    ["Référence_A1", "Référence_A2"],
+    field_styles=[
+        ("-",    None, None, None),   # A1: solid line, full opacity
+        ("--",   "o",  10,   0.5),    # A2: dashed line + circles every 10 pts, 50% opacity
+    ],
+    backend="matplotlib",
+)
+```
+
+From the CLI the same options are expressed via `--field_style FIELD=STYLESPEC`
+where the syntax is `[LINESTYLE][MARKER][:N][@ALPHA]` (see project README).
+
 ---
 
-## Downsampling integration
+
 
 Pass a `DownsampleConfig` to pre-reduce data before plotting (useful for
 matplotlib or static Plotly export):

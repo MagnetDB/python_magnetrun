@@ -8,6 +8,23 @@ import pandas as pd
 import pytz
 
 
+def utc_naive_to_local(
+    ts: pd.Timestamp | datetime,
+    time_zone: str = "Europe/Paris",
+) -> datetime:
+    """Convert a naive UTC timestamp to a naive local datetime.
+
+    :param ts: naive UTC (or tz-aware UTC) timestamp
+    :param time_zone: IANA timezone for the output (default ``"Europe/Paris"``)
+    :return: naive local :class:`~datetime.datetime`
+    """
+    pts = pd.Timestamp(ts)
+    if pts.tzinfo is None:
+        pts = pts.tz_localize(pytz.utc)
+    tz = pytz.timezone(time_zone)
+    return pts.tz_convert(tz).to_pydatetime().replace(tzinfo=None)
+
+
 def local_to_utc_naive(
     ts: pd.Timestamp | datetime,
     time_zone: str = "Europe/Paris",
@@ -71,11 +88,7 @@ def series_utc_to_local_naive(
     :return: naive local datetime Series
     """
     tz = pytz.timezone(time_zone)
-    return (
-        series.dt.tz_localize(pytz.utc)
-        .dt.tz_convert(tz)
-        .dt.tz_localize(None)
-    )
+    return series.dt.tz_localize(pytz.utc).dt.tz_convert(tz).dt.tz_localize(None)
 
 
 def timerange_to_utc(

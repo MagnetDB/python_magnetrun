@@ -612,6 +612,11 @@ def select_files(
                 f"\n (file_start_time={file_start_time}, file_end_time={file_end_time})"
             )
             if file_start_time < end_time and file_end_time > start_time:
+                if file_end_time - file_start_time <= timedelta(seconds=30):
+                    logger.warning(
+                        f"{file}: duration is very short ({(file_end_time - file_start_time).total_seconds()}s), skipping"
+                    )
+                    continue
                 logger.debug(f"Selected file: {file}")
                 selected.append(file)
 

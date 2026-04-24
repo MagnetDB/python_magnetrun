@@ -170,7 +170,7 @@ def plot_subplots(
     style: PlotStyle | None = None,
     title: str = "",
     colors: list[str] | None = None,
-    field_styles: list[tuple[str | None, str | None, int | None]] | None = None,
+    field_styles: list[tuple[str | None, str | None, int | None, float | None]] | None = None,
 ) -> Any:
     """Plot *N* fields as stacked subplots sharing a common time axis.
 
@@ -242,12 +242,25 @@ def plot_subplots(
             continue
         y, symbol = resolved.get(field, (df[field].to_numpy(dtype=float), field))
         color = colors[i] if colors and i < len(colors) else None
-        ls, mk, me = field_styles[i] if field_styles and i < len(field_styles) else (None, None, None)
+        ls, mk, me, al = (
+            (*field_styles[i], None, None, None, None)[:4]
+            if field_styles and i < len(field_styles)
+            else (None, None, None, None)
+        )
         ylabel = f"{field} [{symbol}]" if symbol != field else field
         b.add_series(
-            fig, i, t, y, label=field, normalize=normalize,
-            color=color, ylabel=ylabel,
-            linestyle=ls, marker=mk, markevery=me,
+            fig,
+            i,
+            t,
+            y,
+            label=field,
+            normalize=normalize,
+            color=color,
+            ylabel=ylabel,
+            linestyle=ls,
+            marker=mk,
+            markevery=me,
+            alpha=al,
         )
 
     if title and hasattr(fig, "update_layout"):
@@ -270,7 +283,7 @@ def plot_overlay(
     style: PlotStyle | None = None,
     title: str = "",
     colors: list[str] | None = None,
-    field_styles: list[tuple[str | None, str | None, int | None]] | None = None,
+    field_styles: list[tuple[str | None, str | None, int | None, float | None]] | None = None,
 ) -> Any:
     """Plot *N* fields on a single axes (overlay).
 
@@ -356,7 +369,9 @@ def plot_overlay(
     shared_symbol = next(iter(unique_symbols)) if len(unique_symbols) == 1 else None
     # A symbol equal to the field name means no unit metadata was available.
     has_unit_info = shared_symbol is not None and shared_symbol not in present_fields
-    shared_ylabel = f"[{shared_symbol}]" if (not mixed_units and has_unit_info) else None
+    shared_ylabel = (
+        f"[{shared_symbol}]" if (not mixed_units and has_unit_info) else None
+    )
 
     fig = b.subplots(1, share_x=False, style=style)
 
@@ -366,7 +381,11 @@ def plot_overlay(
             continue
         y, symbol = resolved.get(field, (df[field].to_numpy(dtype=float), field))
         color = colors[i] if colors and i < len(colors) else None
-        ls, mk, me = field_styles[i] if field_styles and i < len(field_styles) else (None, None, None)
+        ls, mk, me, al = (
+            (*field_styles[i], None, None, None, None)[:4]
+            if field_styles and i < len(field_styles)
+            else (None, None, None, None)
+        )
 
         # Build legend label according to unit/normalize rules.
         unit_in_legend = mixed_units and symbol != field
@@ -388,9 +407,18 @@ def plot_overlay(
         # Pass ylabel only for the first series (sets it once on the axes).
         ylabel = shared_ylabel if i == 0 else None
         b.add_series(
-            fig, 0, t, y, label=label, normalize=do_normalize,
-            color=color, ylabel=ylabel,
-            linestyle=ls, marker=mk, markevery=me,
+            fig,
+            0,
+            t,
+            y,
+            label=label,
+            normalize=do_normalize,
+            color=color,
+            ylabel=ylabel,
+            linestyle=ls,
+            marker=mk,
+            markevery=me,
+            alpha=al,
         )
 
     if title and hasattr(fig, "update_layout"):
@@ -412,7 +440,7 @@ def plot_xy(
     colors: list[str] | None = None,
     marker: str | None = None,
     linestyle: str | None = None,
-    field_styles: list[tuple[str | None, str | None, int | None]] | None = None,
+    field_styles: list[tuple[str | None, str | None, int | None, float | None]] | None = None,
     xlabel: str | None = None,
     ylabel: str | None = None,
 ) -> Any:
@@ -468,7 +496,11 @@ def plot_xy(
 
     # Determine x-axis label from the set of unique x columns (fallback).
     x_cols_seen = list(dict.fromkeys(xc for xc, _ in pairs))
-    _xlabel = xlabel if xlabel is not None else (", ".join(x_cols_seen) if x_cols_seen else "")
+    _xlabel = (
+        xlabel
+        if xlabel is not None
+        else (", ".join(x_cols_seen) if x_cols_seen else "")
+    )
 
     for i, (x_col, y_col) in enumerate(pairs):
         if x_col not in data.columns:
@@ -489,13 +521,21 @@ def plot_xy(
         _ylabel_series = (ylabel if ylabel is not None else y_col) if i == 0 else None
 
         # Per-series style overrides the global marker/linestyle.
-        _fs = field_styles[i] if field_styles and i < len(field_styles) else (None, None, None)
+        _fs = (
+            field_styles[i]
+            if field_styles and i < len(field_styles)
+            else (None, None, None, None)
+        )
         _ls = _fs[0] if _fs[0] is not None else linestyle
         _mk = _fs[1] if _fs[1] is not None else marker
         _me = _fs[2]
+        _al = _fs[3] if len(_fs) > 3 else None
 
         b.add_series(
-            fig, 0, x, y,
+            fig,
+            0,
+            x,
+            y,
             label=label,
             normalize=False,
             color=color,
@@ -503,6 +543,7 @@ def plot_xy(
             marker=_mk,
             linestyle=_ls,
             markevery=_me,
+            alpha=_al,
         )
 
     # Store xlabel so finalize() uses it instead of the default "t [s]".

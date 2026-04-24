@@ -37,12 +37,14 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 import pandas as pd
 
 from ..utils.downsampling import DownsampleConfig  # noqa: F401 — available for callers
+from ..utils.timestamps import parse_tdms_filename
+from ..utils.timezone import utc_naive_to_local
 from .config import (
     DEFAULT_DATA_DIR,
     DEFAULT_HYBRID_DATA_DIR,
@@ -536,6 +538,7 @@ def process_overview_file(
     config: ProcessingConfig,
     housing_config: HousingConfig | None = None,
     dry_run: bool = False,
+    time_zone: str = "Europe/Paris",
 ) -> OverviewRecord:
     """
     Process a single overview file with all associated data.
@@ -552,6 +555,8 @@ def process_overview_file(
         Processing configuration
     housing_config : HousingConfig, optional
         Housing-specific configuration (auto-detected if not provided)
+    time_zone : str, optional
+        IANA timezone for filename timestamps (default ``"Europe/Paris"``)
 
     Returns
     -------
@@ -623,6 +628,49 @@ def process_overview_file(
     if df_overview.empty:
         raise ValueError(f"Failed to load overview data from {overview_file}")
     logger.info(f"{overview_file}: loaded done")
+
+    # check latest record.sources.overview file
+    # check last values for current keys in df_overview.columns
+    # check last values for current keys in df_overview.columns
+    last_values = {
+        col: df_overview[col].iloc[-1]
+        for col in df_overview.columns
+        if col.startswith("Courant")
+    }
+
+    # check if values are above 0.5 A (magnet still running), if so warn and guess next overview file
+    for key, value in last_values.items():
+        if abs(value) > 10.0:
+            logger.warning(
+                f"{record.sources.overview[-1]}: {key} last value is above 10.0 A: {value}"
+            )
+            last_overview = record.sources.overview[-1]
+            if "timestamp" in df_overview.columns:
+                last_ts = df_overview["timestamp"].iloc[-1]
+                last_ts_local = utc_naive_to_local(last_ts, time_zone)
+            elif "t" in df_overview.columns:
+                start_dt = parse_tdms_filename(record.sources.overview[0])
+                if start_dt is None:
+                    logger.warning(
+                        f"Cannot derive end time from {record.sources.overview[0]}, skipping"
+                    )
+                    continue
+                last_ts_local = start_dt + timedelta(
+                    seconds=float(df_overview["t"].iloc[-1])
+                )
+            else:
+                logger.warning(
+                    f"No timestamp or t column in df_overview for {last_overview}, skipping"
+                )
+                continue
+            _housing = os.path.basename(last_overview).split("_")[0]
+            _dirname = os.path.dirname(last_overview)
+            new_ts_str = last_ts_local.strftime("%y%m%d-%H%M")
+            new_overview_file = os.path.join(
+                _dirname, f"{_housing}_Overview_{new_ts_str}.tdms"
+            )
+            logger.info(f"Guessed next overview file: {new_overview_file}")
+            break
 
     keys = [
         key.replace(config.group, "")

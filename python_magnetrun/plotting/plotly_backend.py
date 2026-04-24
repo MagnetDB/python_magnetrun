@@ -84,8 +84,16 @@ class PlotlyBackend:
         marker: str | None = None,
         linestyle: str | None = None,
         markevery: int | None = None,
+        alpha: float | None = None,
     ) -> None:
         _require_plotly()
+
+        valid_mask = ~np.isnan(y)
+        t = t[valid_mask]
+        y = y[valid_mask]
+        if len(y) == 0:
+            return
+
         if normalize:
             abs_max = float(np.nanmax(np.abs(y))) if len(y) else 1.0
             if abs_max == 0 or not np.isfinite(abs_max):
@@ -165,6 +173,8 @@ class PlotlyBackend:
                 scatter_kwargs["y"] = y_mk
 
         fig.add_trace(go.Scatter(**scatter_kwargs), row=ax_idx + 1, col=1)
+        if alpha is not None:
+            fig.data[-1].update(opacity=alpha)
         if ylabel is not None:
             fig.update_yaxes(title_text=ylabel, row=ax_idx + 1, col=1)
 

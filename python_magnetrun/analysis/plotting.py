@@ -50,6 +50,7 @@ from python_magnetrun.plotting.style import (  # noqa: F401
     PlotStyle,
 )
 from python_magnetrun.plotting.timeseries import plot_overlay
+from python_magnetrun.plotting.utils import format_axis_label
 from python_magnetrun.utils.downsampling import DownsampleConfig
 
 # Module logger
@@ -316,10 +317,7 @@ def plot_data(
     ...     show=True,
     ... )
     """
-    if downsample_config is None and downsample_percent < 100.0:
-        downsample_config = DownsampleConfig.from_percent(
-            data_len=10_000, percent=downsample_percent
-        )
+
     logger.info(
         f"Plotting data for key '{key}' vs tkey={tkey} with downsample_config={downsample_config!r}"
     )
@@ -338,35 +336,47 @@ def plot_data(
     field_styles: list[tuple] = []
 
     if not df_overview.empty:
+        logger.debug(
+            f"housing={housing}, key={key}, channels_dict={channels_dict}, "
+            f"df.columns={df_overview.columns.tolist()}"
+        )
         ov_rename: dict[str, str] = {}
         if key in df_overview.columns:
             col = f"Overview: {key}"
             ov_rename[key] = col
             field_names.append(col)
             field_colors.append(colors.overview)
-            field_styles.append((None, None, None))
+            field_styles.append((None, None, None, 1))
         ov_ch = channels_dict.get(key)
         if ov_ch and ov_ch in df_overview.columns:
             col = f"Overview: {ov_ch}"
             ov_rename[ov_ch] = col
             field_names.append(col)
             field_colors.append(colors.overview)
-            field_styles.append((None, ".", None))  # small markers distinguish source
+            field_styles.append(
+                (None, ".", None, 1)
+            )  # small markers distinguish source
         if ov_rename:
             ov_cols = [tkey] + list(ov_rename.keys())
             dfs_to_concat.append(df_overview[ov_cols].rename(columns=ov_rename))
 
     if not df_archive.empty:
+        logger.debug(
+            f"housing={housing}, key={key}, channels_dict={channels_dict}, "
+            f"df.columns={df_archive.columns.tolist()}"
+        )
         ar_ch = channels_dict.get(key)
         if ar_ch and ar_ch in df_archive.columns:
             col = f"Archive: {ar_ch}"
             dfs_to_concat.append(df_archive[[tkey, ar_ch]].rename(columns={ar_ch: col}))
             field_names.append(col)
             field_colors.append(colors.archive)
-            field_styles.append(("--", None, None))  # dashed to distinguish
+            field_styles.append(
+                ("--", None, None, 0.5)
+            )  # dashed + semi-transparent to distinguish
 
     if not df_pupitre.empty:
-        logger.info(
+        logger.debug(
             f"housing={housing}, key={key}, pupitre_dict={pupitre_dict}, "
             f"df.columns={df_pupitre.columns.tolist()}"
         )
@@ -376,18 +386,50 @@ def plot_data(
             dfs_to_concat.append(df_pupitre[[tkey, pu_ch]].rename(columns={pu_ch: col}))
             field_names.append(col)
             field_colors.append(colors.pupitre)
-            field_styles.append(("-.", None, None))  # dash-dot for pupitre
-
+            field_styles.append(("-.", None, None, 1))  # dash-dot for pupitre
+            logger.debug(f"pupitre[{pu_ch}]:\n{dfs_to_concat[-1].head()}")
+            logger.debug(f"pupitre[{pu_ch}]:\n{dfs_to_concat[-1].describe()}")
     if not field_names:
         logger.warning(
-            "plot_data: no data columns found for key %r — nothing to plot", key
+            f"plot_data: no data columns found for key {key!r} — nothing to plot"
         )
         return None
+
+    # Resolve unit for ylabel before concat drops attrs
+    _ch = channels_dict.get(key, key)
+    logger.debug(
+        f"Resolving unit for key={key!r}, channel={_ch!r} from overview and archive metadata"
+    )
+    for _df in [
+        df_overview,
+        df_archive,
+        df_pupitre,
+    ]:
+        logger.debug(f"{_df}.attrs.get('units', {{}}): {_df.attrs.get('units', {})}")
+
+    _unit_entry = (
+        df_overview.attrs.get("units", {}).get(_ch)
+        or df_overview.attrs.get("units", {}).get(key)
+        or df_archive.attrs.get("units", {}).get(_ch)
+        or df_archive.attrs.get("units", {}).get(key)
+    )
+    logger.debug(
+        f"Found unit entry for key={key!r}: {_unit_entry!r} (type: {type(_unit_entry)})"
+    )
+    _pint_unit = _unit_entry[1] if _unit_entry else None
+    _symbol_unit = _unit_entry[0] if _unit_entry else ""
+    ylabel = format_axis_label(_symbol_unit, _pint_unit)
+    logger.debug(
+        f"Determined ylabel={ylabel!r} for key={key!r} with unit entry: {_unit_entry!r}"
+    )
 
     merged = (
         pd.concat(dfs_to_concat, ignore_index=True)
         .sort_values(tkey, kind="stable")
         .reset_index(drop=True)
+    )
+    logger.debug(
+        f"Merged DataFrame for plotting:\n{merged.head()}\n{merged.describe()}"
     )
 
     from python_magnetrun.plotting.matplotlib_backend import MatplotlibBackend
@@ -396,36 +438,54 @@ def plot_data(
     # the module-level plt import (required for mock-based testing).
     _direct_mpl = isinstance(b, MatplotlibBackend)
     if _direct_mpl:
-        if downsample_percent < 100.0:
-            merged = downsample_dataframe(merged, percent=downsample_percent)
+        logger.debug(
+            f"Using backend {type(b).__name__} to plot data with fields: {field_names} -- in direct matplotlib mode"
+        )
         t_arr = merged[tkey].to_numpy(dtype=float)
         fig, ax = plt.subplots(1, 1, figsize=style.figsize)
         fig._magnetrun_axes = [ax]  # type: ignore[attr-defined]
         for i, field in enumerate(field_names):
+            logger.debug(
+                f"Plotting field '{field}' with color {field_colors[i]} and style {field_styles[i]}"
+            )
             if field not in merged.columns:
                 continue
             y_arr = merged[field].to_numpy(dtype=float)
+            # Filter to valid (non-NaN) points per field. Without this, sparse
+            # sources (e.g. 1 Hz overview mixed with 120 Hz archive) produce
+            # isolated single points surrounded by NaN gaps; matplotlib renders
+            # zero-length line segments which are invisible with no marker.
+            valid = ~np.isnan(y_arr)
+            if not valid.any():
+                continue
             color = field_colors[i] if i < len(field_colors) else None
-            ls, mk, me = (
-                field_styles[i] if i < len(field_styles) else (None, None, None)
+            ls, mk, me, al = (
+                field_styles[i] if i < len(field_styles) else (None, None, None, None)
             )
-            ax.plot(
-                t_arr,
-                y_arr,
-                label=field,
-                color=color,
-                linestyle=ls or "-",
-                marker=mk if mk else None,
-                markevery=me,
-            )
+            _plot_kwargs: dict = {
+                "label": field,
+                "color": color,
+                "linestyle": ls or "-",
+            }
+            if mk:
+                _plot_kwargs["marker"] = mk
+            if me is not None:
+                _plot_kwargs["markevery"] = me
+            if al is not None:
+                _plot_kwargs["alpha"] = al
+            ax.plot(t_arr[valid], y_arr[valid], **_plot_kwargs)
         ax.legend()
-        ax.set_xlabel(tkey)
+        ax.set_xlabel(f"{tkey} [s]")
+        ax.set_ylabel(ylabel)
         if style.grid:
             ax.grid(True, alpha=style.grid_alpha)
         plot_title = f"{title.replace('_Overview', '')}: {key} {msg}"
         if plot_title:
             fig.suptitle(plot_title)
     else:
+        logger.debug(
+            f"Using backend {type(b).__name__} to plot data with fields: {field_names}"
+        )
         fig = plot_overlay(
             merged,
             field_names,
@@ -437,14 +497,16 @@ def plot_data(
             field_styles=field_styles,
             downsample=downsample_config,
         )
-    fig._magnetrun_xlabel = tkey  # type: ignore[attr-defined]
+        fig._magnetrun_xlabel = f"{tkey} [s]"  # type: ignore[attr-defined]
+        fig._magnetrun_ylabel = ylabel  # type: ignore[attr-defined]
 
-    # ------------------------------------------------------------------
-    # Incident annotations (backend-agnostic via AnnotationManager)
     # ------------------------------------------------------------------
     if df_incidents is not None and interactive:
         from python_magnetrun.plotting.annotations import AnnotationManager
 
+        logger.info(
+            f"Adding interactive incident annotations: {list(df_incidents.keys())}"
+        )
         manager = AnnotationManager(b, style=style, colors=colors)
         for itype, incident_list in df_incidents.items():
             for i, idf in enumerate(incident_list):

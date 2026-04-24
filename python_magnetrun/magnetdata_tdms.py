@@ -552,12 +552,11 @@ class TdmsMagnetData(MagnetDataBase):
                 (g for g in self.Groups if g != "Infos" and self.Groups[g]),
                 None,
             )
-        if group is None:
-            return 0.0
         channel = list(self.Groups[group].keys())[0]
         ordered_dict = self.Groups[group][channel]
         dt = ordered_dict["wf_increment"]
         samples = ordered_dict["wf_samples"]
+        logger.debug(f"getDuration: group={group}, dt={dt}, samples={samples}")
         return float(dt * samples)
 
     def addTdmsTime(self, group: str | None = None) -> int:  # noqa: N802

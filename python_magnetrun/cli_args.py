@@ -149,11 +149,12 @@ def create_common_plot_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "per-field plot style for --vs_time; repeatable. "
-            "STYLESPEC syntax: [LINESTYLE][MARKER][:N] where LINESTYLE is '-', '--' or '-.', "
-            "MARKER is any matplotlib marker (e.g. 'o', '+', 's'), and N is markevery. "
+            "STYLESPEC syntax: [LINESTYLE][MARKER][:N][@ALPHA] where LINESTYLE is '-', '--' or '-.', "
+            "MARKER is any matplotlib marker (e.g. 'o', '+', 's'), N is markevery, and ALPHA is opacity in [0,1]. "
             "Examples: --field_style Référence_A1=- "
             "--field_style Référence_A2=o:10 "
-            "--field_style Référence_A2=-o:5"
+            "--field_style Référence_A2=-o:5 "
+            "--field_style Référence_A2=-@0.5"
         ),
     )
     return parser

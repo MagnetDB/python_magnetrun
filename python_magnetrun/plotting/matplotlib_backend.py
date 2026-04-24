@@ -55,6 +55,7 @@ class MatplotlibBackend:
         marker: str | None = None,
         linestyle: str | None = None,
         markevery: int | None = None,
+        alpha: float | None = None,
     ) -> None:
         ax = self._get_ax(fig, ax_idx)
         if normalize:
@@ -72,6 +73,8 @@ class MatplotlibBackend:
             kwargs["linestyle"] = linestyle
         if markevery is not None:
             kwargs["markevery"] = markevery
+        if alpha is not None:
+            kwargs["alpha"] = alpha
 
         # Filter out NaN values to avoid matplotlib rendering issues with sparse arrays.
         # When plotting merged data from multiple sources, NaN gaps can cause matplotlib
@@ -131,10 +134,13 @@ class MatplotlibBackend:
             handles, labels = ax.get_legend_handles_labels()
             if labels:
                 ax.legend()
-        # plot_xy() stores a custom xlabel on the figure; honour it over the default.
+        # plot_xy() / plot_data() store custom labels on the figure; honour them.
         _xlabel = getattr(fig, "_magnetrun_xlabel", xlabel)
         if axes and _xlabel and not axes[-1].get_xlabel():
             axes[-1].set_xlabel(_xlabel)
+        _ylabel = getattr(fig, "_magnetrun_ylabel", None)
+        if axes and _ylabel and not axes[0].get_ylabel():
+            axes[0].set_ylabel(_ylabel)
 
     def show(self, fig: Any) -> None:
         self.finalize(fig)

@@ -28,49 +28,53 @@ def _flatten(nested):
             yield item
 
 
-# Regex for field style spec: [LINESTYLE][MARKER][:N]
+# Regex for field style spec: [LINESTYLE][MARKER][:N][@ALPHA]
 # LINESTYLE: '-', '--', '-.'
 # MARKER:    any single or multi-char matplotlib marker string (e.g. 'o', '+', 's', 'D')
 # :N:        markevery integer
-_FIELD_STYLE_RE = re.compile(r"^(-{1,2}\.?)?([^:]+)?(?::(\d+))?$")
+# @ALPHA:    opacity float in [0, 1]
+_FIELD_STYLE_RE = re.compile(r"^(-{1,2}\.?)?([^:@]+)?(?::(\d+))?(?:@([\d.]+))?$")
 
 
 def parse_field_style_spec(
     spec: str,
-) -> tuple[str | None, str | None, int | None]:
-    """Parse a style spec string into ``(linestyle, marker, markevery)``.
+) -> tuple[str | None, str | None, int | None, float | None]:
+    """Parse a style spec string into ``(linestyle, marker, markevery, alpha)``.
 
-    Syntax: ``[LINESTYLE][MARKER][:N]``
+    Syntax: ``[LINESTYLE][MARKER][:N][@ALPHA]``
 
     Examples::
 
-        '-'       → lines only          (linestyle='-',    marker=None, markevery=None)
-        'o'       → markers only        (linestyle='none', marker='o',  markevery=None)
-        'o:10'    → markers every 10 pt (linestyle='none', marker='o',  markevery=10)
-        '-o:5'    → lines + markers/5pt (linestyle='-',    marker='o',  markevery=5)
-        '--s'     → dashed + square mk  (linestyle='--',   marker='s',  markevery=None)
+        '-'         → lines only          (linestyle='-',    marker=None, markevery=None, alpha=None)
+        'o'         → markers only        (linestyle='none', marker='o',  markevery=None, alpha=None)
+        'o:10'      → markers every 10 pt (linestyle='none', marker='o',  markevery=10,   alpha=None)
+        '-o:5'      → lines + markers/5pt (linestyle='-',    marker='o',  markevery=5,    alpha=None)
+        '--s'       → dashed + square mk  (linestyle='--',   marker='s',  markevery=None, alpha=None)
+        '-@0.5'     → lines, 50% opacity  (linestyle='-',    marker=None, markevery=None, alpha=0.5)
+        '-o:5@0.3'  → all options         (linestyle='-',    marker='o',  markevery=5,    alpha=0.3)
     """
     m = _FIELD_STYLE_RE.match(spec)
     if not m:
         raise ValueError(f"invalid field style spec: {spec!r}")
-    ls_part, mk_part, ev_part = m.group(1), m.group(2), m.group(3)
+    ls_part, mk_part, ev_part, al_part = m.group(1), m.group(2), m.group(3), m.group(4)
     # No linestyle given but marker present → suppress lines
     linestyle = ls_part if ls_part is not None else ("none" if mk_part else None)
     marker = mk_part if mk_part else None
     markevery = int(ev_part) if ev_part else None
-    return linestyle, marker, markevery
+    alpha = float(al_part) if al_part else None
+    return linestyle, marker, markevery, alpha
 
 
 def _parse_field_styles(
     field_style_args: list[str] | None,
-) -> dict[str, tuple[str | None, str | None, int | None]]:
+) -> dict[str, tuple[str | None, str | None, int | None, float | None]]:
     """Parse a list of ``FIELD=STYLESPEC`` strings.
 
     The returned dict is keyed by both the full key and its short (post-``/``)
     component so look-ups work for both ``group/channel`` and bare ``channel``
     forms.
     """
-    result: dict[str, tuple[str | None, str | None, int | None]] = {}
+    result: dict[str, tuple[str | None, str | None, int | None, float | None]] = {}
     if not field_style_args:
         return result
     for item in field_style_args:
@@ -331,7 +335,7 @@ def _plot_vs_time_backend(
     ext_units: dict[str, list[str]] = defaultdict(list)
     ext_styles: dict[str, list[tuple]] = defaultdict(
         list
-    )  # (linestyle, marker, markevery)
+    )  # (linestyle, marker, markevery, alpha)
     t0: list = []
 
     for i, file in enumerate(input_files):
@@ -441,7 +445,7 @@ def _plot_vs_time_backend(
             if _fs:
                 ext_styles[f_extension].append(_fs)
             else:
-                ext_styles[f_extension].append((None, None, None))
+                ext_styles[f_extension].append((None, None, None, None))
 
     # Hybrid data gets its own group so it is never mixed with other types.
     vs_time_hybrid = getattr(args, "vs_time_hybrid", None)
@@ -468,7 +472,7 @@ def _plot_vs_time_backend(
                 ext_units[h_ext].append("?")
                 _short_h = key.split("/")[-1] if "/" in key else key
                 _fs_h = field_styles.get(key) or field_styles.get(_short_h)
-                ext_styles[h_ext].append(_fs_h if _fs_h else (None, None, None))
+                ext_styles[h_ext].append(_fs_h if _fs_h else (None, None, None, None))
             except (KeyError, ValueError, RuntimeError) as e:
                 logger.error(f"key: {key} not found in hybrid data: {e}")
 
@@ -679,7 +683,7 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
             # Look up field_style by the original y-key (key2) or its short form.
             y_short = key2.split("/")[-1] if "/" in key2 else key2
             _fs = field_styles.get(key2) or field_styles.get(y_short)
-            per_styles.append(_fs if _fs else (None, None, None))
+            per_styles.append(_fs if _fs else (None, None, None, None))
 
             # Build "symbol [unit]" axis labels from field metadata.
             for orig_key, axis_label_list in (
