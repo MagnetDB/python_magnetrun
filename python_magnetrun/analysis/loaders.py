@@ -324,6 +324,84 @@ class FileSet:
 
 
 # =============================================================================
+# Metadata-only helpers (no data arrays loaded)
+# =============================================================================
+
+def _tdms_end_from_properties(
+    file: str, start_timestamp: float, start_ftimestamp: str
+) -> str:
+    """Return end timestamp by reading only TDMS channel properties.
+
+    Reads ``wf_samples`` and ``wf_increment`` from the first usable channel's
+    properties via ``TdmsFile.open()`` — no data arrays are loaded.
+
+    Returns an empty string if the required properties are not found.
+    """
+    from nptdms import TdmsFile
+
+    try:
+        with TdmsFile.open(file) as tdms:
+            for group in tdms.groups():
+                if group.name == "Infos":
+                    continue
+                for ch in group.channels():
+                    p = ch.properties
+                    if "wf_samples" in p and "wf_increment" in p:
+                        duration = float(p["wf_samples"]) * float(p["wf_increment"])
+                        end_dt = (
+                            datetime.fromtimestamp(start_timestamp)
+                            + timedelta(seconds=duration)
+                        )
+                        return end_dt.strftime(TIMESTAMP_FORMAT)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        logger.warning(f"_tdms_end_from_properties: {file}: {exc}")
+    return ""
+
+
+def _pupitre_end_from_last_line(file: str, keys: list[str]) -> str:
+    """Return end timestamp from the last data row without loading the full file.
+
+    Seeks to the end of *file*, walks back to find the last non-empty line,
+    then parses ``Date`` and ``Time`` fields by column position.
+
+    Returns an empty string on any parse or I/O failure.
+    """
+    if "Date" not in keys or "Time" not in keys:
+        return ""
+    date_idx = keys.index("Date")
+    time_idx = keys.index("Time")
+    try:
+        with open(file, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            pos = f.tell()
+            if pos == 0:
+                return ""
+            # skip trailing newline/carriage-return bytes
+            pos -= 1
+            f.seek(pos)
+            while pos > 0 and f.read(1) in (b"\n", b"\r", b" "):
+                pos -= 1
+                f.seek(pos)
+            # walk back to the start of the last data line
+            while pos > 0:
+                pos -= 1
+                f.seek(pos)
+                if f.read(1) == b"\n":
+                    break
+            last_line = f.readline().decode(errors="replace").strip()
+        fields = last_line.split()
+        if len(fields) <= max(date_idx, time_idx):
+            return ""
+        end_dt = datetime.strptime(
+            f"{fields[date_idx]} {fields[time_idx]}", "%Y.%m.%d %H:%M:%S"
+        )
+        return end_dt.strftime(TIMESTAMP_FORMAT)
+    except (OSError, ValueError, IndexError, UnicodeDecodeError) as exc:
+        logger.warning(f"_pupitre_end_from_last_line: {file}: {exc}")
+        return ""
+
+
+# =============================================================================
 # Extract data function
 # =============================================================================
 def extract_data(
@@ -381,6 +459,8 @@ def extract_data(
 
     start_timestamp: float = 0.0
     start_ftimestamp: str = ""
+    end_ftimestamp: str = ""
+    skip: bool = False
     mrun = None
 
     if extension == ".txt":
@@ -393,8 +473,18 @@ def extract_data(
             f"Parsed pupitre filename: date={date}, time={time}, start_ftimestamp={start_ftimestamp}"
         )
         if not dry_run:
-            mrun = MagnetRun.fromtxt(housing, site, file)
-            logger.info(f"Loaded pupitre file: {file}")
+            if key is None:
+                # metadata-only path: read header to get column positions, then
+                # seek last line for end timestamp — no full DataFrame loaded
+                with open(file) as _f:
+                    _hdr = pd.read_csv(
+                        _f, sep=r"\s+", engine="python", skiprows=1, nrows=0
+                    )
+                _keys = _hdr.columns.tolist()
+                end_ftimestamp = _pupitre_end_from_last_line(file, _keys)
+            else:
+                mrun = MagnetRun.fromtxt(housing, site, file)
+                logger.info(f"Loaded pupitre file: {file}")
 
     elif extension == ".tdms":
         res = filename.split("_")
@@ -432,13 +522,17 @@ def extract_data(
             f"Parsed TDMS filename: housing={housing}, mode={mode}, date={date}, time={time}, start_ftimestamp={start_ftimestamp}"
         )
         if not dry_run:
-            mrun = MagnetRun.fromtdms(housing, site, file)
-            logger.info(f"Loaded TDMS file: {file}")
+            if key is None:
+                # metadata-only path: read wf_samples/wf_increment from
+                # channel properties — no data arrays loaded
+                end_ftimestamp = _tdms_end_from_properties(
+                    file, start_timestamp, start_ftimestamp
+                )
+            else:
+                mrun = MagnetRun.fromtdms(housing, site, file)
+                logger.info(f"Loaded TDMS file: {file}")
     else:
         raise RuntimeError(f"{file}: unsupported extension {extension}")
-
-    skip = False
-    end_ftimestamp = ""
 
     if not dry_run and mrun is not None:
         mdata = mrun.getMData()
@@ -455,11 +549,8 @@ def extract_data(
         logger.info(
             f"{file}: start={start_ftimestamp}, end={end_ftimestamp}, duration={duration}s"
         )
-    else:
-        logger.info(f"Dry run: data loading for {file} to get end_ftimestamps")
-        start_ftimestamp, end_ftimestamp, skip = extract_data(
-            file, housing, site, key, dry_run=False
-        )
+    # dry_run=True: filename-derived start only, end unknown
+    # (mrun is None because we skipped all load paths above)
 
     return (start_ftimestamp, end_ftimestamp, skip)
 

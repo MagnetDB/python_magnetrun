@@ -84,7 +84,6 @@ def _fromtdms(
     :raises RuntimeError: if file extension is not .tdms or required group missing
     :return: TdmsMagnetData instance
     """
-    import pandas as pd
     from nptdms import TdmsFile
 
     from .utils.validation import validate_tdms_format
@@ -93,7 +92,8 @@ def _fromtdms(
 
     Keys: list[str] = []
     Groups: dict = {}
-    Data: dict[str, pd.DataFrame] = {}
+    # _tdms_groups maps normalised group name → TdmsGroup for lazy data loading
+    _tdms_groups: dict = {}
 
     if not os.path.exists(name):
         raise FileNotFoundError(f"_fromtdms: file not found: {name}")
@@ -108,6 +108,7 @@ def _fromtdms(
     elif "Archive" in name:
         t_offset = (1 / 120.0) / 2.0
 
+    # Keep handle open — data arrays are read lazily via _ensure_group_loaded()
     rawData = TdmsFile.open(name)
     for group in rawData.groups():
         gname = group.name.replace(" ", "_")
@@ -120,7 +121,7 @@ def _fromtdms(
             )
         Groups[gname] = {}
         if gname != "Infos":
-            Data[gname] = {}
+            _tdms_groups[gname] = group
             for channel in group.channels():
                 cname = channel.name.replace(" ", "_")
                 Keys.append(f"{gname}/{cname}")
@@ -135,30 +136,19 @@ def _fromtdms(
                         f" to: {t_offset}"
                     )
                     Groups[gname][cname]["wf_start_offset"] = t_offset
-            Data[gname] = group.as_dataframe(
-                time_index=False, absolute_time=False, scaled_data=True
-            )
-            Data[gname].rename(
-                columns={col: col.replace(" ", "_") for col in Data[gname].columns},
-                inplace=True,
-            )
-            channel = list(Groups[gname].keys())[0]
-            if len(Data[gname]) != Groups[gname][channel]["wf_samples"]:
-                logger.warning(
-                    f"group '{gname}': loaded {len(Data[gname])} rows but wf_samples={Groups[gname][channel]['wf_samples']}"
-                )
-                logging.warning(
-                    f"update wf_samples for {gname} to match loaded data length: {len(Data[gname])}"
-                )
-                for channel in Groups[gname]:
-                    Groups[gname][channel]["wf_samples"] = len(Data[gname])
         else:
             Groups[gname] = group
 
-    if "Courants_Alimentations" not in Data:
+    if "Courants_Alimentations" not in Groups:
         raise RuntimeError(
             f"_fromtdms: Courants_Alimentations group not found in {name}"
         )
 
-    mdata = TdmsMagnetData(name, Groups, Keys, Data, defs_file=defs_file)
+    mdata = TdmsMagnetData(
+        name, Groups, Keys,
+        Data={},
+        defs_file=defs_file,
+        _tdms_file=rawData,
+        _tdms_groups=_tdms_groups,
+    )
     return mdata

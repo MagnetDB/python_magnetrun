@@ -25,6 +25,18 @@ from .utils.timezone import (
 logger = logging.getLogger(__name__)
 
 
+class _LazyGroupDict(dict):
+    """Dict that loads TDMS groups on demand via ``_ensure_group_loaded``."""
+
+    def __init__(self, owner: TdmsMagnetData) -> None:
+        super().__init__()
+        self._owner = owner
+
+    def __getitem__(self, key: str) -> pd.DataFrame:
+        self._owner._ensure_group_loaded(key)
+        return super().__getitem__(key)
+
+
 class TdmsMagnetData(MagnetDataBase):
     """TDMS-backed magnet data.
 
@@ -49,8 +61,22 @@ class TdmsMagnetData(MagnetDataBase):
         Data: dict | None = None,
         defs_file: str | None = None,
         time_zone: str = "Europe/Paris",
+        _tdms_file: Any = None,
+        _tdms_groups: dict | None = None,
     ) -> None:
-        super().__init__(filename, Groups, Keys, Data, defs_file)
+        super().__init__(
+            filename, Groups, Keys, Data if Data is not None else {}, defs_file
+        )
+        # Lazy-loading state: file handle and per-group TdmsGroup objects.
+        # Groups are loaded on first access via _ensure_group_loaded().
+        self._tdms_file: Any = _tdms_file
+        self._tdms_groups: dict = _tdms_groups or {}
+        # Replace self.Data with a lazy-loading dict that triggers _ensure_group_loaded
+        # on __getitem__.  Pre-loaded groups (if any) are copied over.
+        lazy: _LazyGroupDict = _LazyGroupDict(self)
+        if isinstance(self.Data, dict):
+            lazy.update(self.Data)
+        self.Data = lazy
         dt = parse_filename_timestamp(filename)
         self.start_timestamp = pd.Timestamp(dt) if dt is not None else None
         self._validate_start_timestamp()
@@ -63,6 +89,58 @@ class TdmsMagnetData(MagnetDataBase):
                 )
             if self.end_timestamp is not None:
                 self.end_timestamp = local_to_utc_naive(self.end_timestamp, time_zone)
+
+    # --- lazy group loading ------------------------------------------
+
+    def _ensure_group_loaded(self, gname: str) -> None:
+        """Load *gname*'s DataFrame from disk on first access.
+
+        Reads the group via ``TdmsGroup.as_dataframe()``, renames columns
+        (spaces → underscores), validates ``wf_samples``, and stores the
+        result in ``self.Data[gname]``.  Subsequent calls for the same group
+        are no-ops.
+        """
+        if gname in self.Data:
+            return
+        if gname not in self._tdms_groups:
+            raise RuntimeError(
+                f"TdmsMagnetData._ensure_group_loaded: group {gname!r} not found "
+                f"in {self.FileName!r}. Available: {list(self._tdms_groups)}"
+            )
+        group = self._tdms_groups[gname]
+        df = group.as_dataframe(time_index=False, absolute_time=False, scaled_data=True)
+        df.rename(
+            columns={col: col.replace(" ", "_") for col in df.columns},
+            inplace=True,
+        )
+        if self.Groups.get(gname):
+            first_ch = next(iter(self.Groups[gname]))
+            expected = self.Groups[gname][first_ch].get("wf_samples")
+            if expected is None:
+                for ch in self.Groups[gname]:
+                    self.Groups[gname][ch]["wf_samples"] = len(df)
+            elif len(df) != expected:
+                logger.warning(
+                    "group %r: loaded %d rows but wf_samples=%d — updating",
+                    gname,
+                    len(df),
+                    expected,
+                )
+                for ch in self.Groups[gname]:
+                    self.Groups[gname][ch]["wf_samples"] = len(df)
+        assert isinstance(self.Data, dict)
+        self.Data[gname] = df
+        logger.debug("_ensure_group_loaded: loaded group %r (%d rows)", gname, len(df))
+
+    def close(self) -> None:
+        """Release the open TDMS file handle."""
+        if self._tdms_file is not None:
+            with contextlib.suppress(Exception):
+                self._tdms_file.close()
+            self._tdms_file = None
+
+    def __del__(self) -> None:
+        self.close()
 
     def _validate_start_timestamp(self) -> None:
         """Refine ``start_timestamp`` using TDMS ``wf_start_time`` channel properties.
@@ -155,6 +233,7 @@ class TdmsMagnetData(MagnetDataBase):
             raise Exception(
                 f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict"
             )
+        self._ensure_group_loaded(group)
         if channel is None or not channel:
             return self.Data[group]
         return self.Data[group][channel]
@@ -304,6 +383,8 @@ class TdmsMagnetData(MagnetDataBase):
 
         # Step 4 — PigBrotherUnits keyword matching for any remaining entries
         for entry in self.Data:
+            if not isinstance(entry, str):
+                continue
             if entry in self.units:
                 continue
             if entry == "t":
@@ -412,6 +493,7 @@ class TdmsMagnetData(MagnetDataBase):
                     )
                     continue
                 group, channel = key.split("/", 1)
+                self._ensure_group_loaded(group)
                 if group in self.Data and channel in self.Data[group].columns:
                     self.Data[group].drop(columns=[channel], inplace=True)
                     if key in self.Keys:
@@ -440,6 +522,7 @@ class TdmsMagnetData(MagnetDataBase):
 
         (group, channel) = key.split("/")
         logger.debug(f"add: key={key} - group={group}, channel={channel}")
+        self._ensure_group_loaded(group)
 
         nformula = formula.replace(f"{group}/", "")
 
@@ -506,8 +589,10 @@ class TdmsMagnetData(MagnetDataBase):
         method: Any,
         key: str,
         kparams: list,
-        unit: tuple | None = None,
+        unit: tuple | str | None = None,
         debug: bool = False,
+        label: str = "",
+        description: str = "",
     ) -> None:
         raise RuntimeError(
             f"computeData: key={key} not implemented for pigbrother file"
@@ -567,17 +652,32 @@ class TdmsMagnetData(MagnetDataBase):
         """
         assert isinstance(self.Data, dict)
 
-        if group is not None and group not in self.Data:
+        if (
+            group is not None
+            and group not in self._tdms_groups
+            and group not in self.Data
+        ):
             raise RuntimeError(
-                f"MagnetData/addTdmsTime {self.FileName}: group '{group}' not found in Data"
+                f"MagnetData/addTdmsTime {self.FileName}: group '{group}' not found"
             )
 
-        groups_to_process = [group] if group is not None else list(self.Data.keys())
+        # Use Groups (always populated from metadata) as the source of group names
+        # so that unloaded groups are still processed.
+        groups_to_process = (
+            [group]
+            if group is not None
+            else [
+                g
+                for g in self.Groups
+                if g != "Infos" and isinstance(self.Groups[g], dict)
+            ]
+        )
         logger.debug(f"addTdmsTime: groups_to_process={groups_to_process}")
 
         for gname in groups_to_process:
             if gname == "Infos":
                 continue
+            self._ensure_group_loaded(gname)
             if "t" in self.Data[gname].columns:
                 logger.debug(
                     f"addTdmsTime: 't' already present in group '{gname}', skipping"
@@ -680,6 +780,7 @@ class TdmsMagnetData(MagnetDataBase):
         self, key: str, threshold: float
     ) -> pd.DataFrame:  # noqa: N802
         (group, channel) = key.split("/")
+        self._ensure_group_loaded(group)
         return self.Data[group][channel].loc[self.Data[group][channel] >= threshold]  # type: ignore[index]
 
     def addTdmsTimestamp(  # noqa: N802
@@ -698,16 +799,29 @@ class TdmsMagnetData(MagnetDataBase):
         """
         assert isinstance(self.Data, dict)
 
-        if group is not None and group not in self.Data:
+        if (
+            group is not None
+            and group not in self._tdms_groups
+            and group not in self.Data
+        ):
             raise RuntimeError(
                 f"addTdmsTimestamp {self.FileName}: group '{group}' not found"
             )
 
-        groups_to_process = [group] if group is not None else list(self.Data.keys())
+        groups_to_process = (
+            [group]
+            if group is not None
+            else [
+                g
+                for g in self.Groups
+                if g != "Infos" and isinstance(self.Groups[g], dict)
+            ]
+        )
 
         for gname in groups_to_process:
             if gname == "Infos":
                 continue
+            self._ensure_group_loaded(gname)
             if "timestamp" in self.Data[gname].columns:
                 logger.debug(
                     f"addTdmsTimestamp: 'timestamp' already in '{gname}', skipping"
@@ -842,6 +956,7 @@ class TdmsMagnetData(MagnetDataBase):
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: xgroup={xgroup} != {ygroup}"
             )
 
+        self._ensure_group_loaded(xgroup)
         df = self.Data[xgroup].copy()  # type: ignore[index]
 
         # Convert naive UTC timestamp → naive local time for display
@@ -886,6 +1001,7 @@ class TdmsMagnetData(MagnetDataBase):
         logger.info("magnetdata.stats")
         if key is not None:
             (group, channel) = key.split("/")
+            self._ensure_group_loaded(group)
             if group in self.Data:
                 if channel in self.Data[group]:  # type: ignore[index]
                     logger.info(
@@ -903,7 +1019,8 @@ class TdmsMagnetData(MagnetDataBase):
             else:
                 raise RuntimeError(f"magnetdata/stats: cannot find group {group}")
         else:
-            for group in self.Data:
+            for group in list(self._tdms_groups):
+                self._ensure_group_loaded(group)
                 logger.info(f"stats[{group}]: ")
                 df = self.Data[group].describe(include="all")  # type: ignore[index]
                 logger.info(tabulate(df, headers="keys", tablefmt="psql"))
