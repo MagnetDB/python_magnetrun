@@ -459,143 +459,31 @@ def show_housing_config(config: HousingConfig) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Pre-defined housing configurations (built-in defaults)
+# Pre-defined housing configurations — loaded from bundled JSON files
 # ---------------------------------------------------------------------------
 
-_PIGBROTHER_FORMULA_MAP = {
-    "Courants_Alimentations/Référence_GR1": (
-        "Courants_Alimentations/Référence_GR1 = Référence_A1 + Référence_A2"
-    ),
-    "Courants_Alimentations/Référence_GR2": (
-        "Courants_Alimentations/Référence_GR2 = Référence_A3 + Référence_A4"
-    ),
-}
-_HYBRID_FORMULA_MAP = {
-    "FEPC-AUX-LNCMI/ALIM1": ("FEPC-AUX-LNCMI/ALIM1_J1 + FEPC-AUX-LNCMI/ALIM1_J2"),
-    "FEPC-AUX-LNCMI/ALIM2": ("FEPC-AUX-LNCMI/ALIM2_J1 + FEPC-AUX-LNCMI/ALIM2_J2"),
-}
-# NOTE: this mapping is run-dependent and may change between experiments.
-# Canonical source: M8-housing-config.json "hybrid_voltage_mask_map".
-_HYBRID_VOLTAGE_MASK_MAP = {
-    "FEPC-AUX-LNCMI/ALIM1_J1": "FEPC-AUX-LNCMI/BITTER_V2",
-    "FEPC-AUX-LNCMI/ALIM1_J2": "FEPC-AUX-LNCMI/BITTER_V2",
-    "FEPC-AUX-LNCMI/ALIM2_J1": "FEPC-AUX-LNCMI/PH_V14",
-    "FEPC-AUX-LNCMI/ALIM2_J2": "FEPC-AUX-LNCMI/PH_V14",
-}
 
-HOUSING_CONFIGS: dict[str, HousingConfig] = {
-    "M9": HousingConfig(
-        name="M9",
-        formats=("pupitre", "pigbrother"),
-        reference_gr1_current="IH",
-        reference_gr2_current="IB",
-        reference_gr1_flow="FlowH",
-        reference_gr2_flow="FlowB",
-        reference_gr1_rpm="RpmH",
-        reference_gr2_rpm="RpmB",
-        reference_gr1_pin="HPH",
-        reference_gr2_pin="HPB",
-        voltage_channels_gr1=(
-            "Ucoil1",
-            "Ucoil2",
-            "Ucoil3",
-            "Ucoil4",
-            "Ucoil5",
-            "Ucoil6",
-            "Ucoil7",
-            "Ucoil8",
-            "Ucoil9",
-            "Ucoil10",
-            "Ucoil11",
-            "Ucoil12",
-            "Ucoil13",
-            "Ucoil14",
-        ),
-        voltage_channels_gr2=("Ucoil15", "Ucoil16"),
-        reference_gr1_voltage="UH",
-        reference_gr2_voltage="UB",
-        pupitre_formula_map={
-            "IH_ref": "IH_ref = Idcct1 + Idcct2",
-            "IB_ref": "IB_ref = Idcct3 + Idcct4",
-        },
-        pigbrother_formula_map=_PIGBROTHER_FORMULA_MAP,
-    ),
-    "M8": HousingConfig(
-        name="M8",
-        formats=("pupitre", "pigbrother", "hybrid"),
-        reference_gr1_current="IB",
-        reference_gr2_current="IH",
-        reference_gr1_flow="FlowB",
-        reference_gr2_flow="FlowH",
-        reference_gr1_rpm="RpmB",
-        reference_gr2_rpm="RpmH",
-        reference_gr1_pin="HPB",
-        reference_gr2_pin="HPH",
-        voltage_channels_gr1=("Ucoil15", "Ucoil16"),
-        voltage_channels_gr2=(
-            "Ucoil1",
-            "Ucoil2",
-            "Ucoil3",
-            "Ucoil4",
-            "Ucoil5",
-            "Ucoil6",
-            "Ucoil7",
-            "Ucoil8",
-            "Ucoil9",
-            "Ucoil10",
-            "Ucoil11",
-            "Ucoil12",
-            "Ucoil13",
-            "Ucoil14",
-        ),
-        reference_gr1_voltage="UB",
-        reference_gr2_voltage="UH",
-        pupitre_formula_map={
-            "IH_ref": "IH_ref = Idcct3 + Idcct4",
-            "IB_ref": "IB_ref = Idcct1 + Idcct2",
-        },
-        pigbrother_formula_map=_PIGBROTHER_FORMULA_MAP,
-        hybrid_formula_map=_HYBRID_FORMULA_MAP,
-        hybrid_voltage_mask_map=_HYBRID_VOLTAGE_MASK_MAP,
-    ),
-    "M10": HousingConfig(
-        name="M10",
-        formats=("pupitre", "pigbrother"),
-        reference_gr1_current="IB",
-        reference_gr2_current="IH",
-        reference_gr1_flow="FlowB",
-        reference_gr2_flow="FlowH",
-        reference_gr1_rpm="RpmB",
-        reference_gr2_rpm="RpmH",
-        reference_gr1_pin="HPB",
-        reference_gr2_pin="HPH",
-        voltage_channels_gr1=("Ucoil15", "Ucoil16"),
-        voltage_channels_gr2=(
-            "Ucoil1",
-            "Ucoil2",
-            "Ucoil3",
-            "Ucoil4",
-            "Ucoil5",
-            "Ucoil6",
-            "Ucoil7",
-            "Ucoil8",
-            "Ucoil9",
-            "Ucoil10",
-            "Ucoil11",
-            "Ucoil12",
-            "Ucoil13",
-            "Ucoil14",
-        ),
-        reference_gr1_voltage="UB",
-        reference_gr2_voltage="UH",
-        pupitre_formula_map={
-            "IH_ref": "IH_ref = Idcct3 + Idcct4",
-            "IB_ref": "IB_ref = Idcct1 + Idcct2",
-        },
-        pigbrother_formula_map=_PIGBROTHER_FORMULA_MAP,
-    ),
-}
-"""Built-in default sensor role assignments per housing."""
+def _load_bundled_configs() -> dict[str, HousingConfig]:
+    """Load all ``*-housing-config.json`` files bundled with the package."""
+    configs: dict[str, HousingConfig] = {}
+    pkg = importlib.resources.files("python_magnetrun")
+    for entry in pkg.iterdir():
+        name = entry.name
+        if not name.endswith("-housing-config.json"):
+            continue
+        try:
+            with entry.open("r", encoding="utf-8") as fh:
+                d = json.load(fh)
+            cfg = HousingConfig.from_dict(d)
+            configs[cfg.name] = cfg
+            logger.debug(f"_load_bundled_configs: loaded {cfg.name!r} from {name}")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(f"_load_bundled_configs: skipping {name!r}: {exc}")
+    return configs
+
+
+HOUSING_CONFIGS: dict[str, HousingConfig] = _load_bundled_configs()
+"""Built-in default sensor role assignments per housing, loaded from bundled JSON files."""
 
 
 # ---------------------------------------------------------------------------
@@ -779,10 +667,6 @@ def _dispatch_housing(args: argparse.Namespace) -> int:
 def register(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None:
     """Register the 'housing' domain into a parent subparsers group."""
 
-    p = sub.add_parser(
-        "housing", help="Manage <Housing>-housing-config.json files"
-    )
+    p = sub.add_parser("housing", help="Manage <Housing>-housing-config.json files")
     _populate_housing_parser(p)
     p.set_defaults(_domain_handler=_dispatch_housing)
-
-
