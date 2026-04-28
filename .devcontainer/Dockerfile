@@ -25,7 +25,7 @@ ENV LANG=en_US.UTF-8 \
 # Configure apt and install packages
 RUN apt-get update \
     && apt-get -y install --no-install-recommends apt-utils dialog 2>&1 \
-    && apt-get -y install git git-lfs iproute2 procps lsb-release \
+    && apt-get -y install git git-lfs iproute2 procps lsb-release direnv \
     #\
     # Install dev tools\
     && apt-get -y install build-essential gfortran \
@@ -90,7 +90,6 @@ RUN echo '[ ! -z "$TERM" -a -r /etc/motd ] && cat /etc/issue && cat /etc/motd' \
     \n\
     * To quit the virtual env:\n\
     deactivate\n"\
-
     > /etc/motd
 
 # Switch to USERNAME
