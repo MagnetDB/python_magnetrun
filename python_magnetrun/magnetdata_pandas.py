@@ -27,6 +27,20 @@ from .utils.timezone import (
 logger = logging.getLogger(__name__)
 
 
+@contextlib.contextmanager
+def _open_text_with_fallback(path: str):
+    """Try UTF-8 first, fall back to Latin-1."""
+    try:
+        with open(path, encoding="utf-8") as probe:
+            probe.read(1)
+    except UnicodeDecodeError:
+        with open(path, encoding="latin-1", errors="replace") as f:
+            yield f
+    else:
+        with open(path, encoding="utf-8") as f:
+            yield f
+
+
 def _dataframe_keys(df: pd.DataFrame) -> list[str]:
     """Return DataFrame column names normalized to ``list[str]``."""
     return [str(column) for column in df.columns.tolist()]
@@ -100,14 +114,18 @@ class PandasMagnetData(MagnetDataBase):
             return
         if not self._read_kwargs:
             return
-        with open(self.FileName) as f:
+        with _open_text_with_fallback(self.FileName) as f:
             df = pd.read_csv(f, **self._read_kwargs)
+        from .utils.validation import FileFormatError
+
+        if df.empty:
+            raise FileFormatError(
+                f"{self.FileName}: no data rows found (header-only file)"
+            )
         self._data_loaded = True  # set before assigning self.Data to avoid recursion
         self.Data = df
         self.Keys = _dataframe_keys(df)
-        logger.debug(
-            "_ensure_data_loaded: loaded %s (%d rows)", self.FileName, len(df)
-        )
+        logger.debug("_ensure_data_loaded: loaded %s (%d rows)", self.FileName, len(df))
 
     # --- abstract property -------------------------------------------
 
@@ -727,7 +745,7 @@ class PandasMagnetData(MagnetDataBase):
 
         (ysymbol, yunit) = self.getUnitKey(y)
 
-        assert   isinstance(self.Data, pd.DataFrame)
+        assert isinstance(self.Data, pd.DataFrame)
         df: pd.DataFrame = self.Data.copy()
 
         # Convert UTC timestamp → naive local time for display
@@ -782,7 +800,9 @@ class PandasMagnetData(MagnetDataBase):
                 )
         else:
             df = self.Data.describe(include="all")
-            print(tabulate(df.values.tolist(), headers=list(df.columns), tablefmt="psql"))
+            print(
+                tabulate(df.values.tolist(), headers=list(df.columns), tablefmt="psql")
+            )
         return None
 
     def info(self) -> None:
@@ -840,15 +860,27 @@ class PandasMagnetData(MagnetDataBase):
         :meth:`_ensure_data_loaded` (triggered by :meth:`addTime`,
         :meth:`cleanupData`, or :meth:`getPandasData`).
         """
-        from .utils.validation import FileFormatError, validate_txt_format
+        from .utils.validation import (
+            FileFormatError,
+            check_pupitre_truncation,
+            validate_txt_format,
+        )
 
         if os.path.splitext(name)[-1] != ".txt":
             raise FileFormatError(f"{name}: expected .txt extension")
         validate_txt_format(name)
-        _csv_kwargs = {"sep": r"\s+", "engine": "python", "skiprows": 1}
-        with open(name) as f:
+        _csv_kwargs = {
+            "sep": r"\s+",
+            "engine": "python",
+            "skiprows": 1,
+            "on_bad_lines": "warn",
+        }
+        with _open_text_with_fallback(name) as f:
             stub = pd.read_csv(f, **_csv_kwargs, nrows=1)
+        if stub.empty:
+            raise FileFormatError(f"{name}: no data rows found (header-only file)")
         Keys = _dataframe_keys(stub)
+        check_pupitre_truncation(name, Keys)
         return cls(name, {}, Keys, stub, defs_file=defs_file, _read_kwargs=_csv_kwargs)
 
     @classmethod
@@ -857,8 +889,10 @@ class PandasMagnetData(MagnetDataBase):
         from .utils.validation import validate_csv_format
 
         validate_csv_format(name)
-        with open(name) as f:
-            Data = pd.read_csv(f, sep=",", engine="python", skiprows=0)
+        with _open_text_with_fallback(name) as f:
+            Data = pd.read_csv(
+                f, sep=",", engine="python", skiprows=0, on_bad_lines="warn"
+            )
             Keys = _dataframe_keys(Data)
         return cls(name, {}, Keys, Data, defs_file=defs_file)
 

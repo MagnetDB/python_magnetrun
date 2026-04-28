@@ -10,7 +10,10 @@ blocks in callers continue to work without modification.
 
 from __future__ import annotations
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class FileFormatError(ValueError):
@@ -42,7 +45,7 @@ def validate_txt_format(path: str) -> None:
     if ext != ".txt":
         raise FileFormatError(f"{path}: expected .txt extension, got '{ext}'")
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8", errors="replace") as f:
             lines = [f.readline() for _ in range(2)]
     except OSError as exc:
         raise FileFormatError(f"{path}: cannot read file: {exc}") from exc
@@ -53,6 +56,57 @@ def validate_txt_format(path: str) -> None:
         raise FileFormatError(
             f"{path}: missing required header columns ['Date', 'Time'] in second line"
         )
+
+
+def check_pupitre_truncation(path: str, keys: list[str]) -> bool:
+    """Return True and log a WARNING if the file appears truncated.
+
+    Checks two conditions:
+    - the file does not end with '\\n' (last line incomplete), or
+    - the last non-empty line has fewer fields than the header.
+    """
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            if size == 0:
+                return False
+            f.seek(size - 1)
+            last_byte = f.read(1)
+        if last_byte != b"\n":
+            logger.warning(
+                "%s: file does not end with newline — likely truncated", path
+            )
+            return True
+        # Check last non-empty line has correct field count
+        n_fields = len(keys)
+        if n_fields == 0:
+            return False
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            pos = f.tell()
+            pos -= 1
+            f.seek(pos)
+            while pos > 0 and f.read(1) in (b"\n", b"\r", b" "):
+                pos -= 1
+                f.seek(pos)
+            while pos > 0:
+                pos -= 1
+                f.seek(pos)
+                if f.read(1) == b"\n":
+                    break
+            last_line = f.readline().decode(errors="replace").strip()
+        if last_line and len(last_line.split()) < n_fields:
+            logger.warning(
+                "%s: last line has %d fields, expected %d — likely truncated",
+                path,
+                len(last_line.split()),
+                n_fields,
+            )
+            return True
+    except OSError:
+        pass
+    return False
 
 
 def validate_tdms_format(path: str) -> None:

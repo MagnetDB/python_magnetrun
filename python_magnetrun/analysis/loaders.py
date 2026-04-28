@@ -40,6 +40,7 @@ import pandas as pd
 from natsort import natsorted
 
 from ..magnetdata_base import DataType
+from ..magnetdata_pandas import _open_text_with_fallback
 from ..runlogs.pigbrother import PIGBROTHER_LOG_FILENAME
 from .config import (
     DEFAULT_DATA_DIR,
@@ -476,7 +477,7 @@ def extract_data(
             if key is None:
                 # metadata-only path: read header to get column positions, then
                 # seek last line for end timestamp — no full DataFrame loaded
-                with open(file) as _f:
+                with _open_text_with_fallback(file) as _f:
                     _hdr = pd.read_csv(
                         _f, sep=r"\s+", engine="python", skiprows=1, nrows=0
                     )
@@ -711,7 +712,7 @@ def select_files(
                 logger.debug(f"Selected file: {file}")
                 selected.append(file)
 
-        except (OSError, ValueError, RuntimeError) as e:
+        except (OSError, ValueError, RuntimeError, UnicodeDecodeError) as e:
             logger.warning(f"Error processing {file}: {e}")
             continue
 
@@ -963,7 +964,7 @@ def load_files_data(
             df_list.append(df)
             logger.debug(f"{file} t0={t0_file}, shift={shift:.3f}s, rows={len(df)}")
 
-        except (OSError, ValueError, RuntimeError, KeyError) as e:
+        except (OSError, ValueError, RuntimeError, KeyError, UnicodeDecodeError) as e:
             logger.error(f"load_files_data: failed to load {file}: {e}")
 
     if not df_list:
