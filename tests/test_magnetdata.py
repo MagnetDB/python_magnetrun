@@ -1145,3 +1145,61 @@ class TestRealisticM9Tdms:
         )
         assert "Courant_A1" in df.columns
         assert len(df) == 432000
+
+
+# ===========================================================================
+# Data abstract property + close / context-manager
+# ===========================================================================
+
+
+class TestDataProperty:
+    def test_data_property_triggers_load_pandas(self) -> None:
+        """Accessing .Data on a stub-loaded PandasMagnetData must trigger _ensure_data_loaded."""
+        md = PandasMagnetData.fromtxt(str(SAMPLE_TXT))
+        assert not md._data_loaded
+        df = md.Data
+        assert md._data_loaded
+        assert len(df) > 1
+
+    def test_validate_start_timestamp_does_not_trigger_full_load(self) -> None:
+        """Construction via fromtxt must NOT trigger a full file load."""
+        md = PandasMagnetData.fromtxt(str(SAMPLE_TXT))
+        assert not md._data_loaded
+
+    def test_data_property_triggers_load_tdms(self) -> None:
+        """Accessing .Data['group'] must trigger _ensure_group_loaded for that group."""
+        from unittest.mock import MagicMock
+
+        group_mock = MagicMock()
+        group_mock.as_dataframe.return_value = pd.DataFrame({"Courant_GR1": [1.0, 2.0]})
+
+        groups = {
+            "Courants_Alimentations": {
+                "Courant_GR1": {"wf_increment": 1.0, "wf_samples": 2},
+            }
+        }
+        keys = ["Courants_Alimentations/Courant_GR1"]
+        md = TdmsMagnetData(
+            "test.tdms",
+            groups,
+            keys,
+            Data={},
+            _tdms_groups={"Courants_Alimentations": group_mock},
+        )
+        assert "Courants_Alimentations" not in md._data
+        _ = md.Data["Courants_Alimentations"]
+        assert "Courants_Alimentations" in md._data
+
+    def test_context_manager_closes_tdms(self, tmp_path: Path) -> None:
+        """Using TdmsMagnetData as a context manager must call close() on exit."""
+        tdms_path, tdms_mock = _make_mock_tdms(tmp_path)
+        with patch("nptdms.TdmsFile") as MockTdms:
+            MockTdms.open.return_value = tdms_mock
+            with load_magnetdata(str(tdms_path)) as mdata:
+                assert isinstance(mdata, TdmsMagnetData)
+        assert mdata._tdms_file is None
+
+    def test_close_noop_for_pandas(self) -> None:
+        """Calling close() on PandasMagnetData must not raise."""
+        md = PandasMagnetData.fromtxt(str(SAMPLE_TXT))
+        md.close()  # must be a no-op

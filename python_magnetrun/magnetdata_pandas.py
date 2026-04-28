@@ -76,13 +76,12 @@ class PandasMagnetData(MagnetDataBase):
         time_zone: str = "Europe/Paris",
         _read_kwargs: dict | None = None,
     ) -> None:
-        super().__init__(filename, Groups, Keys, Data, defs_file)
-        # Lazy-loading state.  _read_kwargs holds the pd.read_csv arguments
-        # needed to reload the full file on first data access.
-        self._data_loaded: bool = Data is not None and (
-            not isinstance(Data, pd.DataFrame) or len(Data) > 1
-        )
+        # Initialise backing store before super().__init__ so that the Data
+        # property is usable from _validate_start_timestamp (called below).
+        self._data: pd.DataFrame = Data if isinstance(Data, pd.DataFrame) else pd.DataFrame()
+        self._data_loaded: bool = len(self._data) > 1
         self._read_kwargs: dict = _read_kwargs or {}
+        super().__init__(filename, Groups, Keys, defs_file=defs_file)
         dt = parse_filename_timestamp(filename)  # in local time
         self.start_timestamp = pd.Timestamp(dt) if dt is not None else None
         self._validate_start_timestamp()
@@ -91,18 +90,18 @@ class PandasMagnetData(MagnetDataBase):
         if self.start_timestamp is not None:
             self.start_timestamp = local_to_utc_naive(self.start_timestamp, time_zone)
 
-    # --- lazy loading ------------------------------------------------
+    # --- Data property (implements lazy loading) ---------------------
 
-    def __getattribute__(self, name: str):
-        """Trigger lazy loading on first access to ``Data``."""
-        if name == "Data":
-            try:
-                loaded = object.__getattribute__(self, "_data_loaded")
-            except AttributeError:
-                loaded = True
-            if not loaded:
-                object.__getattribute__(self, "_ensure_data_loaded")()
-        return object.__getattribute__(self, name)
+    @property
+    def Data(self) -> pd.DataFrame:
+        self._ensure_data_loaded()
+        return self._data
+
+    @Data.setter
+    def Data(self, value: pd.DataFrame) -> None:
+        self._data = value
+
+    # --- lazy loading ------------------------------------------------
 
     def _ensure_data_loaded(self) -> None:
         """Load the full file from disk on first data access.
@@ -288,12 +287,12 @@ class PandasMagnetData(MagnetDataBase):
         """
         if "Date" not in self.Keys or "Time" not in self.Keys:
             return
-        assert isinstance(self.Data, pd.DataFrame)
-        if self.Data.empty:
+        df = self._data  # bypass property — stub already has row 0, no full load needed
+        if not isinstance(df, pd.DataFrame) or df.empty:
             return
         try:
-            date_str = str(self.Data["Date"].iloc[0])
-            time_str = str(self.Data["Time"].iloc[0])
+            date_str = str(df["Date"].iloc[0])
+            time_str = str(df["Time"].iloc[0])
             data_ts = pd.Timestamp(
                 datetime.strptime(f"{date_str} {time_str}", "%Y.%m.%d %H:%M:%S")
             )

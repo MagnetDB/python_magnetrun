@@ -64,19 +64,17 @@ class TdmsMagnetData(MagnetDataBase):
         _tdms_file: Any = None,
         _tdms_groups: dict | None = None,
     ) -> None:
-        super().__init__(
-            filename, Groups, Keys, Data if Data is not None else {}, defs_file
-        )
+        # Initialise backing store before super().__init__ so that the Data
+        # property is valid if any base-class code accesses it.
+        lazy: _LazyGroupDict = _LazyGroupDict(self)
+        if isinstance(Data, dict):
+            lazy.update(Data)
+        self._data: _LazyGroupDict = lazy
         # Lazy-loading state: file handle and per-group TdmsGroup objects.
         # Groups are loaded on first access via _ensure_group_loaded().
         self._tdms_file: Any = _tdms_file
         self._tdms_groups: dict = _tdms_groups or {}
-        # Replace self.Data with a lazy-loading dict that triggers _ensure_group_loaded
-        # on __getitem__.  Pre-loaded groups (if any) are copied over.
-        lazy: _LazyGroupDict = _LazyGroupDict(self)
-        if isinstance(self.Data, dict):
-            lazy.update(self.Data)
-        self.Data = lazy
+        super().__init__(filename, Groups, Keys, defs_file=defs_file)
         dt = parse_filename_timestamp(filename)
         self.start_timestamp = pd.Timestamp(dt) if dt is not None else None
         self._validate_start_timestamp()
@@ -131,6 +129,23 @@ class TdmsMagnetData(MagnetDataBase):
         assert isinstance(self.Data, dict)
         self.Data[gname] = df
         logger.debug("_ensure_group_loaded: loaded group %r (%d rows)", gname, len(df))
+
+    # --- Data property -----------------------------------------------
+
+    @property
+    def Data(self) -> _LazyGroupDict:
+        return self._data
+
+    @Data.setter
+    def Data(self, value: dict) -> None:
+        if isinstance(value, _LazyGroupDict):
+            self._data = value
+        else:
+            new_lazy: _LazyGroupDict = _LazyGroupDict(self)
+            new_lazy.update(value)
+            self._data = new_lazy
+
+    # --- resource lifecycle ------------------------------------------
 
     def close(self) -> None:
         """Release the open TDMS file handle."""

@@ -116,7 +116,6 @@ class MagnetDataBase(ABC):
         filename: str,
         Groups: dict,
         Keys: list[str],
-        Data: pd.DataFrame | dict | None = None,
         defs_file: str | None = None,
         start_timestamp: datetime | None = None,
         end_timestamp: datetime | None = None,
@@ -124,7 +123,6 @@ class MagnetDataBase(ABC):
         self.FileName = filename
         self.Groups = Groups
         self.Keys = Keys
-        self.Data: pd.DataFrame | dict = Data if Data is not None else pd.DataFrame()
         self.units: dict = {}
         self.field_meta: dict[str, FieldMeta] = {}
         self.defs_file: str | None = defs_file
@@ -137,8 +135,32 @@ class MagnetDataBase(ABC):
 
     @property
     @abstractmethod
+    def Data(self) -> pd.DataFrame | dict:
+        """The loaded dataset.  Accessing this property triggers lazy loading."""
+
+    @Data.setter
+    @abstractmethod
+    def Data(self, value: pd.DataFrame | dict) -> None:
+        """Set the dataset backing store."""
+
+    @property
+    @abstractmethod
     def Type(self) -> DataType:
         """Data-type discriminator."""
+
+    # ------------------------------------------------------------------
+    # Resource lifecycle — concrete default; TDMS subclass overrides
+    # ------------------------------------------------------------------
+
+    def close(self) -> None:
+        """Release any open file handles.  No-op by default."""
+        return None
+
+    def __enter__(self) -> MagnetDataBase:
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self.close()
 
     @abstractmethod
     def getData(
