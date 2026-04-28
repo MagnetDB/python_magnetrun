@@ -1,6 +1,7 @@
 """Tests for plot_subplots and plot_overlay."""
 
 import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pytest
@@ -8,6 +9,12 @@ import pytest
 matplotlib.use("Agg")
 
 from python_magnetrun.plotting.timeseries import plot_overlay, plot_subplots
+
+
+@pytest.fixture(autouse=True)
+def close_figures():
+    yield
+    plt.close("all")
 
 
 @pytest.fixture()
@@ -131,7 +138,11 @@ class TestPlotOverlay:
     def test_normalize_and_display_units_do_not_raise(self, simple_df):
         # normalize and display_units are independent and compose — must not raise.
         fig = plot_overlay(
-            simple_df, ["A"], normalize=True, display_units={"A": "T"}, backend="matplotlib"
+            simple_df,
+            ["A"],
+            normalize=True,
+            display_units={"A": "T"},
+            backend="matplotlib",
         )
         assert fig is not None
 
@@ -152,6 +163,10 @@ class TestPlotSubplotsNormalize:
 
     def test_normalize_and_display_units_do_not_raise(self, simple_df):
         fig = plot_subplots(
-            simple_df, ["A"], normalize=True, display_units={"A": "T"}, backend="matplotlib"
+            simple_df,
+            ["A"],
+            normalize=True,
+            display_units={"A": "T"},
+            backend="matplotlib",
         )
         assert fig is not None

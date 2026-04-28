@@ -150,6 +150,8 @@ class VProcessFileReader:
 
     def parse_header(self) -> None:
         """Parse the ASCII header from the VProcess file."""
+        self.variables = []
+        self.metadata = {}
         validate_vprocess_format(str(self.filepath))
         with open(self.filepath, "rb") as f:
             header_lines = []

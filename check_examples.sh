@@ -65,9 +65,9 @@ run_cmd 3 python3 -m python_magnetrun.cli \
 
 # 4: Plot with pigbrother (pigbrother TDMS resolved via env, only txt passed)
 run_cmd 4 python3 -m python_magnetrun.cli \
-    --housing M10 "2025.01.27 - "*.txt M10_Overview_250127-1605.tdms \
+    --housing M10 '2025.01.27 - *.txt' M10_Overview_250127-1605.tdms \
     plot --key_vs_key timestamp-IH \
-         --key_vs_key "timestamp-Courants_Alimentations/Référence_GR1"
+         --key_vs_key "Courants_Alimentations/timestamp-Courants_Alimentations/Référence_GR2"
 
 # 5: Hybrid plot — requires external files not in repo
 skip_cmd 5 "requires external hybrid data" \
@@ -77,7 +77,7 @@ echo ""
 echo "--- Statistics and plateau detection ---"
 
 # 6: Stats
-run_cmd 6 python3 -m python_magnetrun.cli "data/*.txt" stats
+run_cmd 6 python3 -m python_magnetrun.cli 'data/*.txt' stats
 
 # 7: Stats with plateau
 run_cmd 7 python3 -m python_magnetrun.cli --housing M8 '2025.*.txt' stats --plateau
@@ -154,7 +154,7 @@ run_cmd 24 python3 "$TESTS/test-signature.py" \
 
 # 25: pigbrother analysis (TDMS resolved via env)
 run_cmd 25 python3 -m python_magnetrun.analysis \
-    --housing M10 M10_Overview_250211-*.tdms \
+    --housing M10 'M10_Overview_250211-*.tdms' \
     --key Référence_GR1 --show --synchronize
 
 echo ""
