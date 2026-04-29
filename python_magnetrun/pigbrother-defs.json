@@ -45,6 +45,9 @@
                                               "aliases": {"pupitre": "Ucoil16", "hybrid": "FEPC-AUX-LNCMI/BITTER_V2"}},
   "Tensions_Aimant/ALL_internes":            {"description": "Sum of all internal coil voltages",     "label": "U_int_sum", "symbol": "U", "unit": "volt"},
   "Tensions_Aimant/ALL_externes":            {"description": "Sum of all external coil voltages",     "label": "U_ext_sum", "symbol": "U", "unit": "volt"},
+  "Tensions_Aimant/Power_internes":            {"description": "Total power dissipated in internal coils",     "label": "P_H", "symbol": "Power", "unit": "megawatt"},
+  "Tensions_Aimant/Power_externes":            {"description": "Total power dissipated in external coils",     "label": "P_B", "symbol": "Power", "unit": "megawatt"},
+  "Tensions_Aimant/CourantSupra":            {"description": "Current in SupraConductor",     "label": "I_Supra", "symbol": "I", "unit": "ampere"},
 
   "Tensions_MC1/Tension_P_A1":              {"description": "MC1 positive bus voltage, A1",          "label": "U_MC1+A1", "symbol": "U", "unit": "volt"},
   "Tensions_MC1/Tension_P_A2":              {"description": "MC1 positive bus voltage, A2",          "label": "U_MC1+A2", "symbol": "U", "unit": "volt"},

@@ -35,6 +35,12 @@
     "symbol": "B",
     "unit": "tesla"
   },
+  "TAlimout": {
+    "description": "Output Temperature in transformer cooling loop",
+    "label": "T_out_alim",
+    "symbol": "T",
+    "unit": "degC"
+  },
   "Tin1": {
     "description": "Input Temperature in primary cooling loop GR1",
     "label": "T_in_GR1",
@@ -576,6 +582,18 @@
   "Pmagnet": {
     "description": "Total power dissipated in the magnet coils (calibrated from Icoil1-16 and Ucoil1-16)",
     "label": "P_magnet",
+    "symbol": "Power",
+    "unit": "megawatt"
+  },
+  "PowerH": {
+    "description": "Total power dissipated in insert H1-H14 (calibrated from Icoil1-14 and Ucoil1-14)",
+    "label": "P_H",
+    "symbol": "Power",
+    "unit": "megawatt"
+  },
+  "PowerB": {
+    "description": "Total power dissipated in insert B1-B14 (calibrated from Icoil1-14 and Ucoil1-14)",
+    "label": "P_B",
     "symbol": "Power",
     "unit": "megawatt"
   },

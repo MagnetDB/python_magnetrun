@@ -17,12 +17,36 @@
   "reference_gr1_voltage": "UH",
   "reference_gr2_voltage": "UB",
   "pupitre_formula_map": {
-    "IH": "IH = Idcct1 + Idcct2",
-    "IB": "IB = Idcct3 + Idcct4"
+    "IH": {
+      "formula": "IH = Idcct1 + Idcct2",
+      "symbol": "I_H",
+      "unit": "ampere",
+      "label": "Upper Coil Current",
+      "description": "Upper coil current sum from DCCT sensors"
+    },
+    "IB": {
+      "formula": "IB = Idcct3 + Idcct4",
+      "symbol": "I_B",
+      "unit": "ampere",
+      "label": "Lower Coil Current",
+      "description": "Lower coil current sum from DCCT sensors"
+    }
   },
   "pigbrother_formula_map": {
-    "Courants_Alimentations/Référence_GR1": "Courants_Alimentations/Référence_GR1 = Référence_A1 + Référence_A2",
-    "Courants_Alimentations/Référence_GR2": "Courants_Alimentations/Référence_GR2 = Référence_A3 + Référence_A4"
+    "Courants_Alimentations/Référence_GR1": {
+      "formula": "Courants_Alimentations/Référence_GR1 = Référence_A1 + Référence_A2",
+      "symbol": "I_ref_GR1",
+      "unit": "ampere",
+      "label": "GR1 Reference Current",
+      "description": "Group 1 reference current sum from power supply outputs"
+    },
+    "Courants_Alimentations/Référence_GR2": {
+      "formula": "Courants_Alimentations/Référence_GR2 = Référence_A3 + Référence_A4",
+      "symbol": "I_ref_GR2",
+      "unit": "ampere",
+      "label": "GR2 Reference Current",
+      "description": "Group 2 reference current sum from power supply outputs"
+    }
   },
   "hybrid_formula_map": {}
 }

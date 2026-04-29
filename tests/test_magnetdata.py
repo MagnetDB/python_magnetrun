@@ -417,13 +417,13 @@ class TestRemoveData:
 class TestAddData:
     def test_adds_new_column_from_formula(self, simple_magnetdata: PandasMagnetData) -> None:
         """addData should evaluate a formula and add the resulting column."""
-        simple_magnetdata.addData("Field2", "Field2 = Field * 2")
+        simple_magnetdata.addData("Field2", "Field2 = Field * 2", symbol="B2", unit="tesla", label="Doubled Field", description="Magnetic field multiplied by 2")
         assert "Field2" in simple_magnetdata.Keys
         assert "Field2" in simple_magnetdata.Data.columns  # type: ignore[union-attr]
 
     def test_computed_values_correct(self, simple_magnetdata: PandasMagnetData) -> None:
         """The new column should contain the correct computed values."""
-        simple_magnetdata.addData("Field2", "Field2 = Field * 2")
+        simple_magnetdata.addData("Field2", "Field2 = Field * 2", symbol="B2", unit="tesla", label="Doubled Field", description="Magnetic field multiplied by 2")
         expected = simple_magnetdata.Data["Field"] * 2
         pd.testing.assert_series_equal(
             simple_magnetdata.Data["Field2"].reset_index(drop=True),
@@ -434,7 +434,7 @@ class TestAddData:
     def test_duplicate_key_is_skipped(self, simple_magnetdata: PandasMagnetData) -> None:
         """addData with an already-existing key should not modify the column."""
         original_values = simple_magnetdata.Data["Field"].copy()
-        simple_magnetdata.addData("Field", "Field = Field * 999")
+        simple_magnetdata.addData("Field", "Field = Field * 999", symbol="B", unit="tesla", label="Field", description="Should be skipped")
         pd.testing.assert_series_equal(simple_magnetdata.Data["Field"], original_values)
 
 
@@ -873,12 +873,12 @@ class TestSaveData:
 
 class TestComputeData:
     def test_adds_column_from_function(self, simple_magnetdata: PandasMagnetData) -> None:
-        simple_magnetdata.computeData(lambda f, i: f * i, "Product", ["Field", "Icoil1"])
+        simple_magnetdata.computeData(lambda f, i: f * i, "Product", ["Field", "Icoil1"], symbol="Product", unit=None, label="Field × Icoil1", description="Product of Field and Icoil1")
         assert "Product" in simple_magnetdata.Keys
         assert "Product" in simple_magnetdata.Data.columns
 
     def test_computed_values_correct(self, simple_df: pd.DataFrame, simple_magnetdata: PandasMagnetData) -> None:
-        simple_magnetdata.computeData(lambda f, i: f * i, "Product", ["Field", "Icoil1"])
+        simple_magnetdata.computeData(lambda f, i: f * i, "Product", ["Field", "Icoil1"], symbol="Product", unit=None, label="Field × Icoil1", description="Product of Field and Icoil1")
         expected = simple_df["Field"] * simple_df["Icoil1"]
         pd.testing.assert_series_equal(
             simple_magnetdata.Data["Product"].reset_index(drop=True),
@@ -888,7 +888,7 @@ class TestComputeData:
 
     def test_existing_key_is_skipped(self, simple_magnetdata: PandasMagnetData) -> None:
         original = simple_magnetdata.Data["Field"].copy()
-        simple_magnetdata.computeData(lambda f: f * 999, "Field", ["Field"])
+        simple_magnetdata.computeData(lambda f: f * 999, "Field", ["Field"], symbol="B", unit="tesla", label="Field", description="Should be skipped")
         pd.testing.assert_series_equal(simple_magnetdata.Data["Field"], original)
 
 

@@ -3,6 +3,7 @@
 import logging
 
 from ..commands.plot import _handle_output, _resolve_plot_config
+from ..magnetdata_base import DataType
 from ..plotting.backend import get_backend
 
 logger = logging.getLogger(__name__)
@@ -15,15 +16,29 @@ def _plot_fields(mdata, fields: list[str], title: str, args, cfg) -> None:
     normalize = getattr(args, "normalize", False)
 
     fig = b.subplots(1, share_x=False, style=cfg.style)
+    logger.debug(f"mdata: filename={mdata.FileName!r}, type={mdata.Type}")
 
     for field in fields:
         try:
-            df = mdata.getData(["t", field])
+            tkey = "t"
+            logger.debug(f"initial tkey={tkey!r} for field {field!r}")
+            if mdata.Type == DataType.TDMS:
+                logger.debug(f"tkey={tkey!r} for field {field!r}")
+                tkey = f"{field.split('/')[0]}/t"
+
+            logger.debug(
+                f"try to load field {field!r} with tkey={tkey!r} for mdata type {mdata.Type}"
+            )
+            df = mdata.getData([tkey, field])
+            logger.debug(
+                f"loaded field {field!r} with tkey={tkey!r}, df columns={df.columns}"
+            )
+            logger.debug(f"tkey={tkey!r}, key={field!r}")
         except (KeyError, RuntimeError) as e:
             logger.error(f"could not load field {field!r}: {e}")
             continue
-        t = df["t"].to_numpy(dtype=float)
-        y = df[field].to_numpy(dtype=float)
+        t = df[tkey.split("/")[-1]].to_numpy(dtype=float)
+        y = df[field.split("/")[-1]].to_numpy(dtype=float)
         try:
             symbol, unit = mdata.getUnitKey(field)
             unit_str = f"{unit:~P}" if unit is not None else "?"
@@ -58,12 +73,18 @@ def add_field(mrun, args):
         from python_magnetcooling.water_properties import get_rho
 
         ureg = UnitRegistry()
-        nkey = "rho"
-        nkey_unit = ("rho", ureg.kilogram / ureg.meter**3)
         nkey_params = ["HPH", "TinH"]
-        nkey_method = get_rho
 
-        mdata.computeData(nkey_method, nkey, nkey_params, nkey_unit)
+        mdata.computeData(
+            get_rho,
+            "rho",
+            nkey_params,
+            symbol="rho",
+            unit=ureg.kilogram / ureg.meter**3,
+            label="Water Density",
+            description="Cooling water density",
+        )
+        nkey = "rho"
         logger.debug(mdata.getKeys())
         logger.debug(mdata.getData("rho").describe())
 
@@ -74,10 +95,25 @@ def add_field(mrun, args):
         logger.debug(f"add {args.formula}, plot={args.plot}")
 
         nkey = args.formula.split(" = ")[0]
-        nunit = ""
+        nsymbol = getattr(args, "symbol", "") or nkey
+        nunit = getattr(args, "unit", "")
+        nlabel = getattr(args, "label", "")
+        ndescription = getattr(args, "description", "")
 
-        logger.debug(f"try to add nkey={nkey} (formula={args.formula[1:]})")
-        mdata.addData(key=nkey, formula=args.formula, unit=nunit)
+        logger.debug(
+            f"try to add nkey={nkey}: "
+            f"formula={args.formula[1:]},"
+            f"symbol={nsymbol!r}, unit={nunit!r}, "
+            f"label={nlabel!r}, description={ndescription!r}"
+        )
+        mdata.addData(
+            key=nkey,
+            formula=args.formula,
+            symbol=nsymbol,
+            unit=nunit,
+            label=nlabel,
+            description=ndescription,
+        )
         logger.debug(mdata.getKeys())
 
         if args.plot:

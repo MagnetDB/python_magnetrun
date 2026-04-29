@@ -152,7 +152,7 @@ class MagnetRun:
         filename: str,
         keys_to_remove: list[str] | None = None,
         keys_to_rename: dict[str, str] | None = None,
-        keys_to_add: dict[str, str] | None = None,
+        keys_to_add: dict[str, dict[str, Any]] | None = None,
         time_zone: str = "Europe/Paris",
     ) -> "MagnetRun":
         """create from a txt file"""

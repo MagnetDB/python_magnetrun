@@ -260,6 +260,8 @@ class TdmsMagnetData(MagnetDataBase):
     ) -> pd.DataFrame:
         from .utils.downsampling import downsample_dataframe
 
+        logger.debug(f"getData: key={key}, downsample={downsample}")
+
         channels: list[str] = []
         groups: list[str] = []
 
@@ -286,7 +288,7 @@ class TdmsMagnetData(MagnetDataBase):
 
         if len(groups) == 0 or len(groups) > 1:
             raise RuntimeError(
-                f"magnetata:getData for tdms - expect only one group - got {len(groups)}"
+                f"magnetata:getData for tdms - expect only one group - got {len(groups)}: {groups}"
             )
 
         df = self.getTdmsData(groups[0], channels)
@@ -322,6 +324,7 @@ class TdmsMagnetData(MagnetDataBase):
             "Courant": ("I", ureg.ampere),
             "Tension": ("U", ureg.volt),
             "Puissance": ("Power", ureg.watt),
+            "Power": ("Power", ureg.watt),
             "Champ_magn": ("B", ureg.gauss),
         }
 
@@ -358,17 +361,31 @@ class TdmsMagnetData(MagnetDataBase):
                 continue
             for cname, props in channels.items():
                 raw = props.get("unit_string", "") if hasattr(props, "get") else ""
+                logger.debug(
+                    f"Units: group={gname!r}, channel={cname!r}, raw unit_string={raw!r}"
+                )
                 if raw and raw.strip():
                     tdms_unit_strs[f"{gname}/{cname}"] = raw.strip()
+        logger.debug(f"Units: collected TDMS unit strings: {tdms_unit_strs}")
 
         # Step 2 — load defs_file (takes priority); warn on unit mismatch
         resolved = json_file or self.defs_file
+        logger.debug(
+            f"Units: json_file={json_file!r}, defs_file={self.defs_file!r}, resolved={resolved!r}"
+        )
         if resolved is not None:
             from .field_defs import load_defs
 
             field_defs = load_defs(resolved)
+            add_fields = []
             for key, tdms_unit_str in tdms_unit_strs.items():
-                if key not in field_defs or key.startswith("_"):
+                if key not in field_defs:
+                    if key.startswith("_"):
+                        continue
+                    logger.debug(
+                        f"Units: TDMS key {key!r} not found in defs_file {resolved!r}"
+                    )
+                    add_fields.append(key)
                     continue
                 defs_unit_str = field_defs[key].get("unit")
                 if defs_unit_str is not None and defs_unit_str != tdms_unit_str:
@@ -376,10 +393,14 @@ class TdmsMagnetData(MagnetDataBase):
                         f"Units: {key} — TDMS embedded unit {tdms_unit_str!r} differs from "
                         f"defs_file unit {defs_unit_str!r}; overriding with defs_file value -- aka {defs_unit_str!r}"
                     )
+
             self.load_units_from_json(resolved, debug=debug)
 
         # Step 3 — use embedded TDMS unit_string for keys not set by defs_file
         for key, unit_str in tdms_unit_strs.items():
+            logger.debug(
+                f"step3: Units: processing TDMS unit for key {key!r}: {unit_str!r}"
+            )
             if key in self.units:
                 continue
             if key.endswith("/t"):
@@ -389,6 +410,9 @@ class TdmsMagnetData(MagnetDataBase):
                 self.units[key] = ("time", None)
                 continue
             try:
+                logger.debug(
+                    f"Units: parsing TDMS unit string {unit_str!r} for key {key!r}"
+                )
                 pint_unit = ureg.parse_expression(unit_str)
                 self.units[key] = (key.split("/")[-1], pint_unit)
             except (ValueError, AttributeError, UndefinedUnitError):
@@ -398,6 +422,9 @@ class TdmsMagnetData(MagnetDataBase):
 
         # Step 4 — PigBrotherUnits keyword matching for any remaining entries
         for entry in self.Data:
+            logger.debug(
+                f"step4: Units: processing PigBrotherUnits for entry {entry!r}"
+            )
             if not isinstance(entry, str):
                 continue
             if entry in self.units:
@@ -424,6 +451,7 @@ class TdmsMagnetData(MagnetDataBase):
             logger.debug(f"Units: {self.Keys}")
 
     def getUnitKey(self, key: str) -> tuple:
+        logger.debug(f"getUnitKey: key={key}")
         if key not in self.Keys:
             from pint import UnitRegistry
 
@@ -438,7 +466,11 @@ class TdmsMagnetData(MagnetDataBase):
                 )
         if key in self.units:
             return self.units[key]
+
         (group, channel) = key.split("/")
+        logger.debug(
+            f"getUnitKey: key={key} - group={group}, channel={channel} (in_units:{key in self.units}, in_Keys:{key in self.Keys})"
+        )
         return self.PigBrotherUnits(channel)
 
     def renameData(self, columns: dict) -> None:  # noqa: N802
@@ -471,7 +503,7 @@ class TdmsMagnetData(MagnetDataBase):
         self,
         keys_to_remove: list[str] | None = None,
         keys_to_rename: dict[str, str] | None = None,
-        keys_to_add: dict[str, str] | None = None,
+        keys_to_add: dict[str, dict[str, Any]] | None = None,
         debug: bool = False,
     ) -> int:
         """Apply ETL operations to TDMS data.
@@ -482,8 +514,10 @@ class TdmsMagnetData(MagnetDataBase):
 
         :param keys_to_remove: list of ``"Group/Channel"`` keys to drop.
         :param keys_to_rename: unused for TDMS; a warning is emitted if non-empty.
-        :param keys_to_add: ``{"Group/Channel": "formula"}`` pairs; each formula
-            is evaluated via :meth:`addData`.
+        :param keys_to_add: ``{"Group/Channel": field_def}`` pairs where each
+            ``field_def`` dict contains ``formula``, ``symbol``, ``unit``,
+            ``label``, and ``description`` keys; each entry is evaluated via
+            :meth:`addData`.
         :param debug: passed through to :meth:`addData`.
         :return: 0 on success.
         """
@@ -493,9 +527,17 @@ class TdmsMagnetData(MagnetDataBase):
             )
 
         if keys_to_add:
-            for key, formula in keys_to_add.items():
+            for key, field_def in keys_to_add.items():
                 if key not in self.Keys:
-                    self.addData(key, formula, debug=debug)
+                    self.addData(
+                        key,
+                        field_def["formula"],
+                        symbol=field_def["symbol"],
+                        unit=field_def["unit"],
+                        label=field_def["label"],
+                        description=field_def["description"],
+                        debug=debug,
+                    )
                 else:
                     logger.debug(f"cleanupData: key {key!r} already exists, skipping")
 
@@ -526,10 +568,11 @@ class TdmsMagnetData(MagnetDataBase):
         self,
         key: str,
         formula: str,
-        unit: str | tuple | None = None,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
         debug: bool = False,
-        label: str = "",
-        description: str = "",
     ) -> int:
         from pint.errors import UndefinedUnitError
 
@@ -557,11 +600,7 @@ class TdmsMagnetData(MagnetDataBase):
 
             first_key = list(self.Groups[group].keys())[0]
             first_props = self.Groups[group][first_key]
-            unit_str = (
-                unit
-                if isinstance(unit, str)
-                else (unit[0] if isinstance(unit, tuple) and unit else "")
-            )
+            unit_str = unit if isinstance(unit, str) else ""
             self.Groups[group][channel] = {
                 "wf_increment": first_props["wf_increment"],
                 "wf_start_time": first_props.get("wf_start_time"),
@@ -570,27 +609,20 @@ class TdmsMagnetData(MagnetDataBase):
                 "unit_string": unit_str,
             }
 
-            # Populate self.units and self.field_meta for the new key.
-            if isinstance(unit, tuple) and len(unit) == 2:
-                symbol, pint_unit = unit
-            elif isinstance(unit, str) and unit:
+            if isinstance(unit, str) and unit:
                 try:
                     ureg = _make_ureg()
                     parsed = ureg.parse_expression(unit)
                     pint_unit = parsed.units if hasattr(parsed, "units") else parsed
-                    symbol = channel
                 except (ValueError, UndefinedUnitError):
                     pint_unit = None
-                    symbol = channel
             else:
-                symbol = channel
-                pint_unit = None
+                pint_unit = unit if unit else None  # empty string → None
 
-            if pint_unit is not None or symbol != channel:
-                self.units[key] = (symbol, pint_unit)
-                self.field_meta[key] = FieldMeta(
-                    symbol=symbol, unit=pint_unit, label=label, description=description
-                )
+            self.units[key] = (symbol, pint_unit)
+            self.field_meta[key] = FieldMeta(
+                symbol=symbol, unit=pint_unit, label=label, description=description
+            )
 
         except pd.errors.UndefinedVariableError as error:
             raise RuntimeError(
@@ -604,10 +636,11 @@ class TdmsMagnetData(MagnetDataBase):
         method: Any,
         key: str,
         kparams: list,
-        unit: tuple | str | None = None,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
         debug: bool = False,
-        label: str = "",
-        description: str = "",
     ) -> None:
         raise RuntimeError(
             f"computeData: key={key} not implemented for pigbrother file"

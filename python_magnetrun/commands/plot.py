@@ -311,10 +311,10 @@ def _plot_vs_time_backend(
     logger.info(f"plot_vs_time: input_files={input_files}, backend={backend_name}")
 
     items = args.vs_time
-    title = _plot_title(input_files, items)
+    title = getattr(args, "title", None) or _plot_title(input_files, items)
     output_json = getattr(args, "json", False)
     same_color_per_type: bool = getattr(args, "same_color_per_type", False)
-    display_units = _parse_display_units(getattr(args, "unit", None))
+    display_units = _parse_display_units(getattr(args, "display_unit", None))
     field_styles = _parse_field_styles(getattr(args, "field_style", None))
 
     # Pre-compute disambiguated labels from the first file's FieldMeta, identical
@@ -615,8 +615,8 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
     backend_name = getattr(args, "backend", "matplotlib")
     b = get_backend(backend_name)
 
-    title = os.path.basename(input_files[0])
-    if len(input_files) > 1:
+    title = getattr(args, "title", None) or os.path.basename(input_files[0])
+    if not getattr(args, "title", None) and len(input_files) > 1:
         klabels = list(_flatten(args.key_vs_key))
         title = "-".join(klabels)
 

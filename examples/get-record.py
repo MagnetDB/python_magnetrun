@@ -113,6 +113,7 @@ def main():
     )
     parser_plot.add_argument("--show", help="enable show mode", action="store_true")
     parser_plot.add_argument("--save", help="enable save mode", action="store_true")
+    parser_plot.add_argument("--title", type=str, default=None, metavar="TEXT", help="override plot title")
 
     # subcommand aggregate
     parser_aggregate.add_argument(
@@ -127,6 +128,7 @@ def main():
     parser_aggregate.add_argument(
         "--save", help="enable save mode", action="store_true"
     )
+    parser_aggregate.add_argument("--title", type=str, default=None, metavar="TEXT", help="override plot title")
 
     # subcommand stats
     parser_stats.add_argument("--fields", help="select fields", type=str, nargs="+")
@@ -144,6 +146,7 @@ def main():
     )
     parser_stats.add_argument("--show", help="enable show mode", action="store_true")
     parser_stats.add_argument("--save", help="enable save mode", action="store_true")
+    parser_stats.add_argument("--title", type=str, default=None, metavar="TEXT", help="override plot title")
 
     args = parser.parse_args()
     logger.error(f"get-record: Arguments={args}, pwd={os.getcwd()}")
@@ -157,7 +160,7 @@ def main():
     # Expand glob patterns and search configured data directories
     datadir = get_datadir_mapping(args)
     files = expand_input_files(args.input_file, datadir, args.housing)
-    print(f"files: {files}, datadir={datadir}")
+    print(f"files: {len(files)} records, datadir={datadir}")
 
     # need to be sorted by time??
     files = sorted(files, key=_sort_key, reverse=False)
@@ -198,13 +201,12 @@ def main():
             try:
                 logger.info(f"record: {file}")
                 data = load_record(file, args)
-                logger.info(f"record: {file} - duration: {data.getDuration():.1f} s")
+                # logger.info(f"record: {file} - duration: {data.getDuration():.1f} s")
                 if data.getDuration() >= min_duration:
                     try:
                         df_.append(data.getData(selected_keys))
-                        logger.info(f"record: {file} - extracted {selected_keys}")
                     except (KeyError, IndexError) as error:
-                        logger.warning(
+                        logger.error(
                             f"record: {file} - ignored: {selected_keys} not all in {data.getKeys()} (error={error})",
                         )
                 else:
@@ -217,7 +219,35 @@ def main():
 
         logger.info(f"aggregate: {len(df_)} dataframes collected")
 
-        df = pd.concat(df_, axis=0)
+        try:
+            df = pd.concat(df_, axis=0)
+        except ValueError as _exc:
+            if "different registries" not in str(_exc):
+                raise
+            col_regs: dict[str, list[tuple[str, object]]] = {}
+            for frame in df_:
+                for col, entry in (frame.attrs.get("units") or {}).items():
+                    unit = entry[1] if isinstance(entry, tuple) else entry
+                    if unit is None:
+                        continue
+                    col_regs.setdefault(col, []).append(
+                        (str(unit), id(getattr(unit, "_REGISTRY", None)))
+                    )
+            lines = []
+            for col, entries in col_regs.items():
+                reg_ids = {reg_id for _, reg_id in entries}
+                if len(reg_ids) > 1:
+                    unit_strs = list(dict.fromkeys(u for u, _ in entries))
+                    lines.append(
+                        f"  column {col!r}: unit representations {unit_strs} "
+                        f"span {len(reg_ids)} different pint registries"
+                    )
+            detail = "\n".join(lines) if lines else "  (no specific column identified)"
+            raise ValueError(
+                f"pd.concat failed — pint Unit registry mismatch.\n"
+                f"Columns with conflicting registries:\n{detail}\n"
+                "Ensure all records use the same pint UnitRegistry instance."
+            ) from _exc
         output = f"aggregate-{'-'.join(args.fields)}.csv"
         df.to_csv(output)
         logger.debug(f"concat dataframe:\n{df.head()}")
@@ -225,18 +255,54 @@ def main():
 
         df["month"] = df["timestamp"].dt.month
         df["year"] = df["timestamp"].dt.year
+        df["day"] = df["timestamp"].dt.day
         logger.debug(f"concat df:\n{df.head()}")
+
+        n_months = df["month"].nunique()
+        n_years = df["year"].nunique()
+        if n_months > 1:
+            x_col, hue_col = "month", "year"
+            x_label = "Month"
+        else:
+            x_col = "day"
+            x_label = "Day"
+            hue_col = "year" if n_years > 1 else None
+        logger.info(
+            f"aggregate plot: x={x_col}, hue={hue_col} ({n_months} month(s), {n_years} year(s))"
+        )
+
+        # Build housing label
+        if args.housing != "notdefined":
+            housing_label = f"housing={args.housing}"
+        else:
+            housings = sorted({os.path.basename(f).split("_")[0] for f in files})
+            housing_label = (
+                f"housing={housings[0]}"
+                if len(housings) == 1
+                else f"housings={housings}"
+            )
+
+        # Build date label from the actual data range
+        if n_months == 1:
+            date_label = datetime(
+                int(df["year"].iloc[0]), int(df["month"].iloc[0]), 1
+            ).strftime("%B %Y")
+        elif n_years == 1:
+            date_label = str(int(df["year"].iloc[0]))
+        else:
+            date_label = f"{int(df['year'].min())}-{int(df['year'].max())}"
 
         if args.fields:
             import seaborn as sns
 
             for key in args.fields:
-                logger.info(f"seaborn plot for {key} per months over years")
-                ax = sns.lineplot(x="month", y=key, hue="year", data=df)
+                logger.info(f"seaborn plot for {key} per {x_col}")
+                ax = sns.lineplot(x=x_col, y=key, hue=hue_col, data=df)
 
                 (symbol, unit) = data.getUnitKey(key)
                 ax.set_ylabel(f"{symbol} [{unit:~P}]")
-                ax.set_title(f"{file}: {key}")
+                ax.set_xlabel(x_label)
+                ax.set_title(args.title or f"{key}: {housing_label}, {date_label}")
                 plt.grid()
                 if args.show:
                     plt.show()

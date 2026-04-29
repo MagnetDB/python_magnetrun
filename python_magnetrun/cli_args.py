@@ -102,13 +102,14 @@ def create_common_plot_parser() -> argparse.ArgumentParser:
         help="overlay all fields on one axes (default mode; explicit flag for clarity)",
     )
     parser.add_argument(
-        "--unit",
+        "--display-unit",
+        dest="display_unit",
         metavar="FIELD=UNIT",
         action="append",
         default=None,
         help=(
             "override display unit for a field (pint-parseable); repeatable. "
-            "Example: --unit Field_B=tesla --unit Courant_GR1=ampere"
+            "Example: --display-unit Field_B=tesla --display-unit Courant_GR1=ampere"
         ),
     )
     parser.add_argument(
@@ -365,9 +366,9 @@ def create_base_parser(
 
 
 def create_managed_plots_parser() -> argparse.ArgumentParser:
-    """Create parser with managed plot options (save and show).
+    """Create parser with managed plot options (save, show, title).
 
-    :return: ArgumentParser with save and show arguments
+    :return: ArgumentParser with save, show, and title arguments
     :rtype: argparse.ArgumentParser
     """
     parser = argparse.ArgumentParser(add_help=False)
@@ -388,6 +389,13 @@ def create_managed_plots_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="display figure interactively (default when neither flag is given)",
+    )
+    parser.add_argument(
+        "--title",
+        type=str,
+        default=None,
+        metavar="TEXT",
+        help="override the auto-generated plot title",
     )
     return parser
 

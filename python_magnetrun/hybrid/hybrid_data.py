@@ -990,10 +990,11 @@ class HybridData:
         self,
         key: str,
         formula: str,
-        unit: str | tuple | None = None,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
         debug: bool = False,
-        label: str = "",
-        description: str = "",
     ) -> int:
         """Register a derived field lazily (stored for future use).
 
@@ -1006,26 +1007,20 @@ class HybridData:
 
         from ..magnetdata_base import FieldMeta, _make_ureg
 
-        if isinstance(unit, tuple) and len(unit) == 2:
-            symbol, pint_unit = unit
-        elif isinstance(unit, str) and unit:
+        if isinstance(unit, str) and unit:
             try:
                 ureg = _make_ureg()
                 parsed = ureg.parse_expression(unit)
                 pint_unit = parsed.units if hasattr(parsed, "units") else parsed
-                symbol = key
             except (ValueError, UndefinedUnitError):
                 pint_unit = None
-                symbol = key
         else:
-            symbol = key
-            pint_unit = None
+            pint_unit = unit if unit else None
 
         if key not in self.Keys:
             self.Keys.append(key)
-        if pint_unit is not None or label:
-            self.units[key] = (symbol, pint_unit)
-            self.field_meta[key] = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
+        self.units[key] = (symbol, pint_unit)
+        self.field_meta[key] = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
         logger.debug(f"HybridData.addData: registered derived key {key!r} (lazy)")
         return 0
 

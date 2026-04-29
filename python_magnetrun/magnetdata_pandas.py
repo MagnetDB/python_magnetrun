@@ -258,9 +258,9 @@ class PandasMagnetData(MagnetDataBase):
 
     def getUnitKey(self, key: str) -> tuple:
         if key not in self.Keys:
-            from pint import UnitRegistry
+            from .magnetdata_base import _make_ureg
 
-            ureg: UnitRegistry = UnitRegistry()
+            ureg = _make_ureg()
             if key == "t":
                 return ("t", ureg.second)
             elif key == "timestamp":
@@ -320,7 +320,7 @@ class PandasMagnetData(MagnetDataBase):
         self,
         keys_to_remove: list[str] | None = None,
         keys_to_rename: dict[str, str] | None = None,
-        keys_to_add: dict[str, str] | None = None,
+        keys_to_add: dict[str, dict[str, Any]] | None = None,
         debug: bool = False,
     ) -> int:
         self._ensure_data_loaded()
@@ -334,8 +334,16 @@ class PandasMagnetData(MagnetDataBase):
                 logger.warning(
                     f"cleanupData: keys {existing_keys} already exist in DataFrame, skipping addition"
                 )
-            for key, formula in keys_to_add.items():
-                self.addData(key, formula, debug=debug)
+            for key, field_def in keys_to_add.items():
+                self.addData(
+                    key,
+                    field_def["formula"],
+                    symbol=field_def["symbol"],
+                    unit=field_def["unit"],
+                    label=field_def["label"],
+                    description=field_def["description"],
+                    debug=debug,
+                )
 
         if keys_to_rename:
             logger.debug(f"cleanupData: renaming keys {keys_to_rename}")
@@ -463,10 +471,11 @@ class PandasMagnetData(MagnetDataBase):
         self,
         key: str,
         formula: str,
-        unit: str | tuple | None = None,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
         debug: bool = False,
-        label: str = "",
-        description: str = "",
     ) -> int:
         from pint.errors import UndefinedUnitError
 
@@ -480,25 +489,19 @@ class PandasMagnetData(MagnetDataBase):
         else:
             self.Data.eval(formula, inplace=True)
             self.Keys = _dataframe_keys(self.Data)
-            if isinstance(unit, tuple) and len(unit) == 2:
-                symbol, pint_unit = unit
-                self.units[key] = (symbol, pint_unit)
-                self.field_meta[key] = FieldMeta(
-                    symbol=symbol, unit=pint_unit, label=label, description=description
-                )
-            elif isinstance(unit, str) and unit:
+            if isinstance(unit, str) and unit:
                 try:
                     ureg = _make_ureg()
                     parsed = ureg.parse_expression(unit)
                     pint_unit = parsed.units if hasattr(parsed, "units") else parsed
-                    self.units[key] = (key, pint_unit)
-                    self.field_meta[key] = FieldMeta(
-                        symbol=key, unit=pint_unit, label=label, description=description
-                    )
                 except (ValueError, UndefinedUnitError):
-                    self.Units(debug)
+                    pint_unit = None
             else:
-                self.Units(debug)
+                pint_unit = unit if unit else None  # empty string → None
+            self.units[key] = (symbol, pint_unit)
+            self.field_meta[key] = FieldMeta(
+                symbol=symbol, unit=pint_unit, label=label, description=description
+            )
         return 0
 
     def computeData(  # noqa: N802
@@ -506,10 +509,11 @@ class PandasMagnetData(MagnetDataBase):
         method: Any,
         key: str,
         kparams: list,
-        unit: tuple | str | None = None,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
         debug: bool = False,
-        label: str = "",
-        description: str = "",
     ) -> None:
         from pint.errors import UndefinedUnitError
 
@@ -525,25 +529,19 @@ class PandasMagnetData(MagnetDataBase):
             data.append(method(*values))
         self.Data[key] = data
         self.Keys = _dataframe_keys(self.Data)
-        if isinstance(unit, tuple) and len(unit) == 2:
-            symbol, pint_unit = unit
-            self.units[key] = (symbol, pint_unit)
-            self.field_meta[key] = FieldMeta(
-                symbol=symbol, unit=pint_unit, label=label, description=description
-            )
-        elif isinstance(unit, str) and unit:
+        if isinstance(unit, str) and unit:
             try:
                 ureg = _make_ureg()
                 parsed = ureg.parse_expression(unit)
                 pint_unit = parsed.units if hasattr(parsed, "units") else parsed
-                self.units[key] = (key, pint_unit)
-                self.field_meta[key] = FieldMeta(
-                    symbol=key, unit=pint_unit, label=label, description=description
-                )
             except (ValueError, UndefinedUnitError):
-                self.Units(debug)
+                pint_unit = None
         else:
-            self.Units(debug)
+            pint_unit = unit if unit else None  # empty string → None
+        self.units[key] = (symbol, pint_unit)
+        self.field_meta[key] = FieldMeta(
+            symbol=symbol, unit=pint_unit, label=label, description=description
+        )
         logger.debug("done")
 
     # --- time utilities ----------------------------------------------

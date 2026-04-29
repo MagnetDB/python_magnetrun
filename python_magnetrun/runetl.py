@@ -2,6 +2,7 @@
 
 import logging
 import re
+from typing import Any
 
 from natsort import natsorted
 
@@ -109,7 +110,7 @@ def prepareData(
     housing: str,
     keys_to_remove: list[str] | None = None,
     keys_to_rename: dict[str, str] | None = None,
-    keys_to_add: dict[str, str] | None = None,
+    keys_to_add: dict[str, dict[str, Any]] | None = None,
     debug: bool = False,
 ) -> None:
     """Prepare magnet run data by adding computed fields and renaming columns.

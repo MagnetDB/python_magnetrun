@@ -71,7 +71,7 @@ class TestCleanupDataKeysToAdd:
     def test_adds_derived_column(self):
         """cleanupData(keys_to_add=...) computes and stores the new column."""
         tdms = _make_tdms()
-        tdms.cleanupData(keys_to_add={"GrpX/ChC": "GrpX/ChC = ChA + ChB"})
+        tdms.cleanupData(keys_to_add={"GrpX/ChC": {"formula": "GrpX/ChC = ChA + ChB", "symbol": "ChC", "unit": None, "label": "ChA + ChB", "description": "Sum of ChA and ChB"}})
         assert "GrpX/ChC" in tdms.Keys
         assert "ChC" in tdms.Data["GrpX"].columns
         expected = tdms.Data["GrpX"]["ChA"] + tdms.Data["GrpX"]["ChB"]
@@ -88,12 +88,12 @@ class TestCleanupDataKeysToAdd:
         assert "GrpX/ChA" in tdms.Keys
         original_values = tdms.Data["GrpX"]["ChA"].copy()
         # Try to overwrite via cleanupData — should be skipped
-        tdms.cleanupData(keys_to_add={"GrpX/ChA": "GrpX/ChA = ChA * 0"})
+        tdms.cleanupData(keys_to_add={"GrpX/ChA": {"formula": "GrpX/ChA = ChA * 0", "symbol": "ChA", "unit": None, "label": "ChA zeroed", "description": "Should be skipped"}})
         pd.testing.assert_series_equal(tdms.Data["GrpX"]["ChA"], original_values)
 
     def test_returns_zero(self):
         tdms = _make_tdms()
-        assert tdms.cleanupData(keys_to_add={"GrpX/ChC": "GrpX/ChC = ChA + ChB"}) == 0
+        assert tdms.cleanupData(keys_to_add={"GrpX/ChC": {"formula": "GrpX/ChC = ChA + ChB", "symbol": "ChC", "unit": None, "label": "ChA + ChB", "description": "Sum of ChA and ChB"}}) == 0
 
 
 # ---------------------------------------------------------------------------

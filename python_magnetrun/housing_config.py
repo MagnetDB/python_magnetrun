@@ -290,19 +290,22 @@ class HousingConfig:
 
     def get_pupitre_voltage_formulas(
         self, available_keys: list[str] | None = None
-    ) -> dict[str, str]:
-        """Return ``{reference_gr1_voltage: formula, reference_gr2_voltage: formula}``.
+    ) -> dict[str, dict]:
+        """Return ``{reference_gr1_voltage: field_def, reference_gr2_voltage: field_def}``.
 
         Only Ucoil channels present in *available_keys* are summed.  If
         *available_keys* is ``None``, all channels in
         ``voltage_channels_gr1``/``voltage_channels_gr2`` are used.
+
+        Each value is a field-definition dict with keys ``formula``, ``symbol``,
+        ``unit``, ``label``, and ``description``.
         """
 
         def _sum_formula(target: str, channels: tuple, keys: list[str] | None) -> str:
             srcs = [c for c in channels if keys is None or c in keys]
             return f"{target} = {' + '.join(srcs)}" if srcs else ""
 
-        result: dict[str, str] = {}
+        result: dict[str, dict] = {}
         f1 = _sum_formula(
             self.reference_gr1_voltage, self.voltage_channels_gr1, available_keys
         )
@@ -310,14 +313,26 @@ class HousingConfig:
             self.reference_gr2_voltage, self.voltage_channels_gr2, available_keys
         )
         if f1:
-            result[self.reference_gr1_voltage] = f1
+            result[self.reference_gr1_voltage] = {
+                "formula": f1,
+                "symbol": self.reference_gr1_voltage,
+                "unit": "volt",
+                "label": f"GR1 Voltage ({self.reference_gr1_voltage})",
+                "description": "Sum of GR1 Ucoil voltage channels",
+            }
         if f2:
-            result[self.reference_gr2_voltage] = f2
+            result[self.reference_gr2_voltage] = {
+                "formula": f2,
+                "symbol": self.reference_gr2_voltage,
+                "unit": "volt",
+                "label": f"GR2 Voltage ({self.reference_gr2_voltage})",
+                "description": "Sum of GR2 Ucoil voltage channels",
+            }
         return result
 
     def get_hybrid_voltage_formulas(
         self, available_keys: list[str] | None = None
-    ) -> dict[str, str]:
+    ) -> dict[str, dict]:
         """Return voltage sum formulas for hybrid (kHz) data (M8-only).
 
         Returns ``{}`` for housings that do not support the ``"hybrid"`` format.

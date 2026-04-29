@@ -89,15 +89,23 @@ run_cmd 8 python3 "$EXAMPLES/get-record.py" --housing M9 '2025.*.txt' \
 echo ""
 echo "--- Derived quantities ---"
 
-# 9: Add formula
+# 9: Add formula with symbol/unit/label/description
 run_cmd 9 python3 -m python_magnetrun.cli \
     "data/M10_2020.10.23---20_10_41.txt" \
-    add --formula '"PowerH = IH * UH / 1.e+6"' --plot --save "$PWD"/power.png
+    add --formula '"PowerH = IH * UH / 1.e+6"' \
+    --symbol P_H --unit megawatt \
+    --label '"Insert Power"' \
+    --description '"Insert electrical power in MW"' \
+    --plot --save "$PWD"/power.png
 
 # 10: pigbrother add formula (pigbrother TDMS resolved via env)
 run_cmd 10 python3 -m python_magnetrun.cli \
     --housing M10 M10_Overview_201003-0956.tdms \
-    add --formula '"Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6"' --plot
+    add --formula '"Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6"' \
+    --symbol P --unit megawatt \
+    --label '"Bitter Power"' \
+    --description '"Bitter electrical power in MW"' \
+    --plot
 
 echo ""
 echo "--- Field Definitions CLI (magnetrun-config field) ---"

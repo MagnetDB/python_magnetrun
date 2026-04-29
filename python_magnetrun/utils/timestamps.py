@@ -40,10 +40,13 @@ def parse_txt_filename(filename: str) -> datetime | None:
 
     Returns ``None`` for non-``.txt`` files or unrecognised date formats.
     """
+    logger.debug(f"parsing {filename}")
     name, ext = os.path.splitext(os.path.basename(filename))
+    logger.debug(f"name={name!r}, ext={ext!r}")
     if ext != ".txt":
         return None
     date_string = name.split("_")[-1]
+    logger.debug(f"date_string={date_string!r}")
     for fmt in TXT_TIMESTAMP_FORMATS:
         try:
             return datetime.strptime(date_string, fmt)
@@ -62,6 +65,7 @@ def parse_tdms_filename(filename: str) -> datetime | None:
     Returns ``None`` for non-``.tdms`` files or unrecognised formats.
     """
     name, ext = os.path.splitext(os.path.basename(filename))
+    logger.debug(f"name={name!r}, ext={ext!r}")
     if ext != ".tdms":
         return None
     parts = name.split("_")
@@ -148,5 +152,3 @@ def parse_wf_start_time(groups: dict) -> datetime | None:
 def seconds_since_midnight(dt: datetime) -> float:
     """Return seconds elapsed since midnight for *dt*."""
     return float(dt.hour * 3600 + dt.minute * 60 + dt.second)
-
-

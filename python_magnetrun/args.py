@@ -42,6 +42,10 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser_add.add_argument(
         "--formula", help="add new column with associated formula", type=str, default=""
     )
+    parser_add.add_argument("--symbol", help="physical symbol for the new field (e.g. 'B', 'I')", type=str, default="")
+    parser_add.add_argument("--unit", help="unit string for the new field (e.g. 'tesla', 'ampere')", type=str, default="")
+    parser_add.add_argument("--label", help="human-readable label for the new field", type=str, default="")
+    parser_add.add_argument("--description", help="description of the new field", type=str, default="")
     parser_add.add_argument("--compute", help="compute", action="store_true")
     parser_add.add_argument("--plot", help="plot", action="store_true")
 

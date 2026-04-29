@@ -55,14 +55,26 @@ pupitre_data = MagnetRun.fromtxt(site, insert, pupitre_file_path).getMData()
 tdms_data.addData(
     key="Puissances/HT1",
     formula="Puissances/HT1 = HT_Courant/HT1_RC * Haute_Tension/HT1_R + HT_Courant/HT1_SC * Haute_Tension/HT1_S + HT_Courant/HT1_TC * Haute_Tension/HT1_T",
+    symbol="P",
+    unit="watt",
+    label="HT1 Power",
+    description="Three-phase HT1 apparent electrical power",
 )
 tdms_data.addData(
     key="Puissances/HT2",
     formula="Puissances/HT2 = HT_Courant/HT2_RC * Haute_Tension/HT2_R + HT_Courant/HT2_SC * Haute_Tension/HT2_S + HT_Courant/HT2_TC * Haute_Tension/HT2_T",
+    symbol="P",
+    unit="watt",
+    label="HT2 Power",
+    description="Three-phase HT2 apparent electrical power",
 )
 tdms_data.addData(
     key="Puissances/HT2_HT1",
     formula="Puissances/HT2_HT1 = Puissances/HT2 - Puissances/HT1",
+    symbol="P",
+    unit="watt",
+    label="HT2-HT1 Power",
+    description="Difference between HT2 and HT1 apparent power",
 )
 my_ax = plt.gca()
 tdms_data.plotData(
@@ -76,24 +88,44 @@ plt.close()
 tdms_data.addData(
     key="Puissances/A1A2",
     formula="Puissances/A1A2 = Puissances/Puissance_A1 + Puissances/Puissance_A1",
+    symbol="P",
+    unit="watt",
+    label="A1+A2 Power",
+    description="Sum of power supply outputs A1 and A2",
 )
 tdms_data.addData(
     key="Puissances/A3A4",
     formula="Puissances/A3A4 = Puissances/Puissance_A3 + Puissances/Puissance_A4",
+    symbol="P",
+    unit="watt",
+    label="A3+A4 Power",
+    description="Sum of power supply outputs A3 and A4",
 )
 
 tdms_data.addData(
     key="Puissances/Helix",
     formula="Puissances/Helix = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2",
+    symbol="P",
+    unit="watt",
+    label="Helix Power",
+    description="Helix coil electrical power (voltage × current)",
 )
 tdms_data.addData(
     key="Puissances/Bitter",
     formula="Puissances/Bitter = Tensions_Aimant/ALL_externes * Courants_Alimentations/Courant_GR1",
+    symbol="P",
+    unit="watt",
+    label="Bitter Power",
+    description="Bitter coil electrical power (voltage × current)",
 )
 
 tdms_data.addData(
     key="Puissances/Busbar",
     formula="Puissances/Busbar = (Puissances/A1A2+Puissances/A3A4) - (Puissances/Bitter + Puissances/Helix)",
+    symbol="P",
+    unit="watt",
+    label="Busbar Power Loss",
+    description="Busbar losses: total supply power minus magnet power",
 )
 my_ax = plt.gca()
 tdms_data.plotData(
@@ -111,8 +143,8 @@ else:
 plt.close()
 
 # Add data to pupitre
-pupitre_data.addData(key="PowerH", formula="PowerH = IH * UH")
-pupitre_data.addData(key="PowerB", formula="PowerB = IB * UB")
+pupitre_data.addData(key="PowerH", formula="PowerH = IH * UH", symbol="P_H", unit="watt", label="Upper Magnet Power", description="Upper magnet electrical power")
+pupitre_data.addData(key="PowerB", formula="PowerB = IB * UB", symbol="P_B", unit="watt", label="Lower Magnet Power", description="Lower magnet electrical power")
 
 # Plot Power Balance
 my_ax = plt.gca()
@@ -143,14 +175,26 @@ plt.close()
 tdms_data.addData(
     key="Puissances/HT1_MW",
     formula="Puissances/HT1_MW = Puissances/HT1 /1.e+6",
+    symbol="P",
+    unit="megawatt",
+    label="HT1 Power",
+    description="HT1 apparent power in MW",
 )
 tdms_data.addData(
     key="Puissances/HT2_MW",
     formula="Puissances/HT2_MW = Puissances/HT2 /1.e+6",
+    symbol="P",
+    unit="megawatt",
+    label="HT2 Power",
+    description="HT2 apparent power in MW",
 )
 tdms_data.addData(
     key="Puissances/Total",
     formula="Puissances/Total = Puissances/HT1_MW + Puissances/HT2_MW",
+    symbol="P",
+    unit="megawatt",
+    label="Total Power",
+    description="Total electrical power HT1+HT2 in MW",
 )
 my_ax = plt.gca()
 pupitre_data.plotData(x="t", y="Ptot", ax=my_ax)
@@ -175,18 +219,22 @@ else:
 plt.close()
 
 # Get PAlim
-pupitre_data.addData(key="TAlim", formula="TAlim = (TAlimout - ( TinH + TinB)/2)")
+pupitre_data.addData(key="TAlim", formula="TAlim = (TAlimout - ( TinH + TinB)/2)", symbol="ΔT", unit="degC", label="Cooling ΔT", description="Temperature difference between supply and average magnet inlet")
 
 ureg = UnitRegistry()
 
-nkey = "rho"
-nkey_unit = ("rho", ureg.kilogram / ureg.meter**3)
 nkey_params = ["HPH", "TinH"]
-nkey_method = get_rho
-pupitre_data.computeData(nkey_method, nkey, nkey_params, nkey_unit)
-
-nkey = "Cp"  # [kJ / kg·K]
-nkey_unit = ("Cp", ureg.joule / ureg.kilogram / ureg.kelvin)
-nkey_params = ["HPH", "TinH"]
-nkey_method = get_cp
-pupitre_data.computeData(nkey_method, nkey, nkey_params, nkey_unit)
+pupitre_data.computeData(
+    get_rho, "rho", nkey_params,
+    symbol="rho",
+    unit=ureg.kilogram / ureg.meter**3,
+    label="Water Density",
+    description="Cooling water density",
+)
+pupitre_data.computeData(
+    get_cp, "Cp", nkey_params,
+    symbol="Cp",
+    unit=ureg.joule / ureg.kilogram / ureg.kelvin,
+    label="Specific Heat",
+    description="Cooling water specific heat capacity",
+)

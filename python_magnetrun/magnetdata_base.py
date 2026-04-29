@@ -44,13 +44,21 @@ class DataType(IntEnum):
     HYBRID = 3
 
 
-def _make_ureg():  # type: ignore[return]
-    """Return a pint UnitRegistry with project-specific units pre-registered.
+_ureg = None
 
-    Registers ``percent`` (%),  ``ppm``, and ``var`` if they are not already
-    known to the registry.  Call this once per :meth:`Units` invocation so
-    that each caller gets a consistent registry without global state.
+
+def _make_ureg():  # type: ignore[return]
+    """Return the shared pint UnitRegistry with project-specific units pre-registered.
+
+    Returns a module-level singleton so that all Unit objects produced by this
+    project share the same registry — a requirement for pint equality checks and
+    for ``pd.concat`` to merge DataFrame attrs without raising
+    "Cannot operate with Unit and Unit of different registries".
     """
+    global _ureg
+    if _ureg is not None:
+        return _ureg
+
     from pint import UnitRegistry
     from pint.errors import UndefinedUnitError
 
@@ -64,7 +72,8 @@ def _make_ureg():  # type: ignore[return]
             ureg.parse_units(unit)
         except UndefinedUnitError:
             ureg.define(defn)
-    return ureg
+    _ureg = ureg
+    return _ureg
 
 
 class MagnetDataBase(ABC):
@@ -270,7 +279,7 @@ class MagnetDataBase(ABC):
         self,
         keys_to_remove: list[str] | None = None,
         keys_to_rename: dict[str, str] | None = None,
-        keys_to_add: dict[str, str] | None = None,
+        keys_to_add: dict[str, dict[str, Any]] | None = None,
         debug: bool = False,
     ) -> int:
         return 0
@@ -288,10 +297,11 @@ class MagnetDataBase(ABC):
         self,
         key: str,
         formula: str,
-        unit: str | tuple | None = None,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
         debug: bool = False,
-        label: str = "",
-        description: str = "",
     ) -> int:
         raise NotImplementedError(f"{self.__class__.__name__}.addData not implemented")
 
@@ -300,10 +310,11 @@ class MagnetDataBase(ABC):
         method: Any,
         key: str,
         kparams: list,
-        unit: tuple | str | None = None,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
         debug: bool = False,
-        label: str = "",
-        description: str = "",
     ) -> None:
         raise NotImplementedError(
             f"{self.__class__.__name__}.computeData not implemented"
