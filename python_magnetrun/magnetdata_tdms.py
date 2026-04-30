@@ -529,7 +529,7 @@ class TdmsMagnetData(MagnetDataBase):
         if keys_to_add:
             for key, field_def in keys_to_add.items():
                 if key not in self.Keys:
-                    self.addData(
+                    status = self.addData(
                         key,
                         field_def["formula"],
                         symbol=field_def["symbol"],
@@ -538,6 +538,10 @@ class TdmsMagnetData(MagnetDataBase):
                         description=field_def["description"],
                         debug=debug,
                     )
+                    if status != 0:
+                        logger.warning(
+                            f"cleanupData: failed to add {key!r} (status={status})"
+                        )
                 else:
                     logger.debug(f"cleanupData: key {key!r} already exists, skipping")
 
@@ -564,6 +568,113 @@ class TdmsMagnetData(MagnetDataBase):
 
     # --- compute / add -----------------------------------------------
 
+    def _validate_formula_keys(
+        self, group: str, formula: str, nformula: str
+    ) -> tuple[int, str]:
+        """Validate and resolve all keys referenced in a formula.
+
+        Checks that:
+        1. All cross-group references (GroupName/ChannelName) exist
+        2. After cross-group data is copied, all remaining variables exist in the group
+        3. Copies data from referenced groups into the target group
+
+        Issues are logged as warnings rather than raising exceptions.
+
+        :param group: target group name (where formula will be evaluated)
+        :param formula: original formula (before group prefix removal)
+        :param nformula: normalized formula (group prefixes already removed)
+        :return: tuple of (status_code, normalized_formula) where status_code is 0 for success,
+                 non-zero if validation issues were found (but execution continues)
+        """
+        import re
+
+        status = 0
+
+        # Validate and copy cross-group references
+        match = re.findall(r"(\w+)/(\w+)", nformula)
+        missing_keys = []
+        if match:
+            for matched in match:
+                src_group, src_channel = matched[0], matched[1]
+                logger.debug(
+                    f"_validate_formula_keys: matched={src_group}/{src_channel}"
+                )
+
+                # Validate source group exists
+                if src_group not in self.Data:
+                    missing_keys.append(
+                        f"  • {src_group}/{src_channel}: group '{src_group}' not found in Data"
+                    )
+                    status = 1
+                    continue
+
+                # Validate source channel exists in group
+                if src_channel not in self.Data[src_group].columns:
+                    missing_keys.append(
+                        f"  • {src_group}/{src_channel}: channel '{src_channel}' not found in group '{src_group}' "
+                        f"(available: {list(self.Data[src_group].columns)})"
+                    )
+                    status = 1
+                    continue
+
+                self.Data[group][src_channel] = self.Data[src_group][src_channel]  # type: ignore[index]
+                nformula = nformula.replace(f"{src_group}/", "")
+
+        if missing_keys:
+            logger.warning(
+                f"_validate_formula_keys: {formula}: missing or undefined keys:\n"
+                + "\n".join(missing_keys)
+            )
+
+        # Validate remaining variables exist in target DataFrame before evaluation.
+        # Validate only expression variables, not the assignment target.
+        rhs = nformula.split("=", 1)[1] if "=" in nformula else nformula
+        remaining_vars = set(re.findall(r"\b([a-zA-Z_]\w*)\b", rhs))
+        # Remove Python/pandas built-in functions and constants
+        pandas_builtins = {
+            "abs",
+            "round",
+            "sum",
+            "mean",
+            "min",
+            "max",
+            "std",
+            "var",
+            "sqrt",
+            "exp",
+            "log",
+            "log10",
+            "sin",
+            "cos",
+            "tan",
+            "pi",
+            "e",
+            "True",
+            "False",
+            "None",
+            "nan",
+            "inf",
+        }
+        remaining_vars = remaining_vars - pandas_builtins
+
+        undefined_vars = [
+            v for v in remaining_vars if v not in self.Data[group].columns
+        ]
+        if undefined_vars:
+            logger.warning(
+                f"_validate_formula_keys: {formula}: undefined variables:\n"
+                f"  • Variables not found: {undefined_vars}\n"
+                f"  • Available in '{group}': {list(self.Data[group].columns)}"
+            )
+            status = 1
+
+        if status == 0:
+            logger.debug(
+                f"_validate_formula_keys: formula '{nformula}' validated successfully"
+            )
+
+        return status, nformula
+
     def addData(  # noqa: N802
         self,
         key: str,
@@ -584,15 +695,14 @@ class TdmsMagnetData(MagnetDataBase):
 
         nformula = formula.replace(f"{group}/", "")
 
-        import re
-
-        match = re.findall(r"(\w+)/(\w+)", nformula)
-        if match:
-            for matched in match:
-                logger.debug(f"matched={matched[0]}/{matched[1]}")
-                self.Data[group][matched[1]] = self.Data[matched[0]][matched[1]]  # type: ignore[index]
-                nformula = nformula.replace(f"{matched[0]}/", "")
-        logger.debug(f"formula: {nformula}")
+        # Validate all keys referenced in formula and copy cross-group data
+        status, nformula = self._validate_formula_keys(group, formula, nformula)
+        if status != 0:
+            logger.warning(
+                f"addData: {key}: formula validation returned status {status}; "
+                f"-- skipping formula evaluation due to warnings"
+            )
+            return status
 
         try:
             self.Data[group].eval(nformula, inplace=True)  # type: ignore[index]
@@ -641,7 +751,7 @@ class TdmsMagnetData(MagnetDataBase):
         label: str,
         description: str,
         debug: bool = False,
-    ) -> None:
+    ) -> int:
         raise RuntimeError(
             f"computeData: key={key} not implemented for pigbrother file"
         )

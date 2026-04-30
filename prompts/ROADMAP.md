@@ -1,6 +1,6 @@
 # Development Roadmap — python_magnetrun
 
-*Updated: 2026-04-24*
+*Updated: 2026-04-29*
 
 This document outlines strategic priorities and upcoming work. For detailed implementation status, see [CHECK_IMPLEMENTATION.md](CHECK_IMPLEMENTATION.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -11,15 +11,20 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 **Package Status:** Production-ready for core use cases ✅
 
 **Major Achievements (2026 Q1-Q2):**
-- ✅ Housing config consolidation (`HousingConfig` single source of truth)
+- ✅ Housing config consolidation (`HousingConfig` single source of truth; `Ih`/`Ib` via `Idcct`)
 - ✅ Factory pattern (`load_magnetdata` replacing shim)
 - ✅ Protocol unification (`DataLoader` protocol, Phase 2A complete)
 - ✅ Timestamp convention (naive UTC across all loaders)
+- ✅ Lazy loading (`PandasMagnetData._ensure_data_loaded` + `TdmsMagnetData._LazyGroupDict`)
+- ✅ `Data` as abstract property on `MagnetDataBase` (+ `close()` / context manager)
+- ✅ Resilient pupitre loading (encoding fallback, `on_bad_lines`, truncation check)
+- ✅ `addData`/`computeData` metadata (`symbol`/`unit`/`label`/`description` → `FieldMeta`)
+- ✅ `HybridRun.getData` formula-key resolution (`hybrid_formula_map` via `_resolve_hybrid_formula`)
 - ✅ Downsampling refactoring (`DownsampleConfig` + shared utilities)
 - ✅ Plotting refactoring (backend abstraction + 3 implementations)
 - ✅ File validation infrastructure (integrated throughout)
 - ✅ Logging infrastructure (`log_utils.py` + structured logging)
-- ✅ Test coverage (validation, analysis, processing, CLI smoke tests)
+- ✅ Test coverage (validation, analysis, processing, CLI smoke tests, truncated pupitre, hybrid formula)
 
 ---
 

@@ -1,6 +1,6 @@
 # Package Review: `python_magnetrun`
 
-Date: 2026-04-24 (updated)
+Date: 2026-04-29 (updated)
 
 ---
 
@@ -91,12 +91,18 @@ matching fallback. The unconditional `raise RuntimeError` is gone.
 resort ([magnetdata_tdms.py:313-316](python_magnetrun/magnetdata_tdms.py#L313-L316)). The resolution
 order is now consistent with `Units()`.
 
-**7. Incompatible `Data` attribute type across subclasses** *(done)*
+**7. Incompatible `Data` attribute type across subclasses** *(done — upgraded to abstract property)*
 
-All external callers outside the two subclasses have been cleaned up — `MagnetRun.py` no longer
-accesses `.Data` directly. The `pd.DataFrame | dict` union type annotation remains in
-`magnetdata_base.py:103` as an internal documentation detail; all external access goes through
-`getData()`. `Data` is effectively a private implementation detail of each subclass.
+`Data` is now an abstract `@property` (getter + setter) on `MagnetDataBase`
+([magnetdata_base.py:145-152](python_magnetrun/magnetdata_base.py#L145-L152)).
+`PandasMagnetData` stores data in a private `_data: pd.DataFrame` backing attribute and
+exposes it via `Data`; the property getter calls `_ensure_data_loaded()` for lazy loading.
+`TdmsMagnetData` uses a `_LazyGroupDict` backing attribute; the property returns the container
+and per-group loading is deferred to `_LazyGroupDict.__getitem__`.  The old `__getattribute__`
+override in `PandasMagnetData` is gone.  `close()` and context-manager support (`__enter__` /
+`__exit__`) are now part of the base class interface.  The `_validate_start_timestamp` method
+accesses `self._data` directly (bypassing the property) to avoid triggering a full load during
+`__init__`.  See [`prompts/data-property-abc.plan.md`](data-property-abc.plan.md).
 
 **8. Two conflicting Protocol definitions for the `MagnetRun`/`HybridRun` interface** *(done — Phase 2A complete)*
 
@@ -134,6 +140,34 @@ Full plan: **[`prompts/cli-consolidation.plan.md`](cli-consolidation.plan.md)**.
 
 Now added to `pyproject.toml` as a `hybrid` extras dependency.
 
+**13. Truncated / malformed pupitre files not handled** *(done)*
+
+`PandasMagnetData.fromtxt` now uses a two-attempt encoding helper (`UTF-8` → `Latin-1` fallback),
+passes `on_bad_lines="warn"` to `pd.read_csv`, raises a clear `FileFormatError` for header-only
+files, and calls `check_pupitre_truncation()` (new in `utils/validation.py`) before and after
+loading.  `analysis/loaders.py` catch blocks now include `UnicodeDecodeError`.
+See [`prompts/truncated-pupitre-files.plan.md`](truncated-pupitre-files.plan.md) and
+`tests/test_truncated_pupitre.py` (153 lines, 6 test cases).
+
+**14. `addData` / `computeData` lacked metadata** *(done)*
+
+Both methods on `MagnetDataBase` / `PandasMagnetData` now accept `symbol`, `unit`, `label`,
+and `description` parameters.  On success they store a `FieldMeta` entry in `self.field_meta`
+so that plot labels and unit annotations are automatically propagated.  Housing-config formula
+maps (`pupitre_formula_map`, `pigbrother_formula_map`, `hybrid_formula_map`) and JSON definition
+files now carry the same four keys.  `commands/add.py` passes all four when calling
+`addData` / `computeData`.
+
+**15. `HybridRun.getData` failed on `hybrid_formula_map` keys** *(done)*
+
+Keys in `hybrid_formula_map` (e.g. `"FEPC-AUX-LNCMI/ALIM1"`) were parsed as `type/system` by
+`HybridRun.getData`, causing `ValueError: Unknown data type`.  A new
+`_resolve_hybrid_formula()` helper is called before the parse block: it splits the formula
+string into operands, maps each to a `kHz/…` channel, calls `getData` recursively (with
+caching), and returns the element-wise sum.  Only `+` is supported; other operators raise
+`NotImplementedError`.  See [`prompts/hybrid-formula-key-resolution.plan.md`](hybrid-formula-key-resolution.plan.md)
+and `tests/test_hybrid_formula_resolution.py`.
+
 ---
 
 ## Code Duplication Summary
@@ -161,7 +195,11 @@ Now added to `pyproject.toml` as a `hybrid` extras dependency.
 | `prepareData_legacy` hardcoding | Done |
 | `PandasMagnetData.Units` dead code | Done |
 | `Units`/`getUnitKey` consistency in TDMS | Done |
-| `Data` attribute type divergence (`DataFrame` vs `dict`) | Done |
+| `Data` attribute type divergence — now abstract property with lazy loading | Done |
+| Truncated / malformed pupitre file handling | Done — see `truncated-pupitre-files.plan.md` |
+| `addData`/`computeData` metadata (`symbol`, `unit`, `label`, `description`) | Done |
+| `HybridRun.getData` formula-key resolution (`hybrid_formula_map`) | Done — see `hybrid-formula-key-resolution.plan.md` |
+| `Ih`/`Ib` defined via `Idcct` in housing configs | Done |
 | CLI consolidation (8 → 3 entry points, `magnetrun` dispatcher, `register()` pattern) | Planned — see `cli-consolidation.plan.md` |
 | Outlier deduplication (`hybrid/outliers.py` canonical, thin delegates, proper tests) | Planned — see `outlier-consolidation.plan.md` |
 | `saveData` abstraction in `MagnetRun` | Done |
@@ -181,14 +219,17 @@ Now added to `pyproject.toml` as a `hybrid` extras dependency.
 
 The core abstractions are well-conceived — the ABC, the defs system, and `HousingConfig` are solid
 foundations. All major structural issues are now resolved: housing config consolidation, `MagnetData`
-shim replacement, `getUnitKey` fix, `saveData` delegation, hardcoded-path removal, `Data` type
-divergence (external callers cleaned up), Protocol unification (`DataLoader` only, Phase 2A complete),
-timestamp convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC), downsampling
-refactoring (`DownsampleConfig`, shared `utils/downsampling.py`, `tsdownsample` extras), plotting
-refactoring (subpackage, backends, label/legend uniformization), and file validation infrastructure
-(committed and integrated). An optional HoloViews-based plotting system (~8 d) would replace the
-current three-backend implementation with `hv.extension()` + Panel + datashader and subsume
-`analysis/` downsampling Phase 2.
+shim replacement, `getUnitKey` fix, `saveData` delegation, hardcoded-path removal, `Data` promoted to
+an abstract property with lazy loading (`PandasMagnetData._ensure_data_loaded` + `TdmsMagnetData._LazyGroupDict`
++ context-manager support), Protocol unification (`DataLoader` only, Phase 2A complete), timestamp
+convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC), downsampling refactoring
+(`DownsampleConfig`, shared `utils/downsampling.py`, `tsdownsample` extras), plotting refactoring
+(subpackage, backends, label/legend uniformization), file validation infrastructure (committed and
+integrated), resilient pupitre-file loading (encoding fallback, `on_bad_lines="warn"`, empty-data
+guard, truncation check), `addData`/`computeData` metadata parameters (`symbol`, `unit`, `label`,
+`description` → `FieldMeta`), and `HybridRun.getData` formula-key resolution (`_resolve_hybrid_formula`).
+An optional HoloViews-based plotting system (~8 d) would replace the current three-backend
+implementation with `hv.extension()` + Panel + datashader and subsume `analysis/` downsampling Phase 2.
 
 **Package is production-ready for core use cases.** Remaining work in priority order:
 (1) known regressions (multiple-file plotting); (2) CI/CD pipeline; (3) logging migration completion;
@@ -248,9 +289,11 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
    See [`prompts/timestamp-utc-refactoring.plan.md`](timestamp-utc-refactoring.plan.md).
    `HybridData` timestamp support is deferred — see item 10.
 
-2. **`Data` attribute type divergence** *(done)* — no external `.Data` access remains outside
-   the two subclasses. `MagnetRun.py` and all callers route through `getData()`. The
-   `pd.DataFrame | dict` annotation in `magnetdata_base.py:103` is an internal detail only.
+2. **`Data` attribute type divergence** *(done — upgraded to abstract property)* — `Data` is
+   now an abstract `@property` on `MagnetDataBase`, implemented via `_data` backing attributes
+   in both subclasses.  Lazy loading is now part of the declared contract.  `close()` and
+   context-manager support added.  See item 7 above and
+   [`prompts/data-property-abc.plan.md`](data-property-abc.plan.md).
 
 3. **`TdmsMagnetData.getUnitKey`** *(done)* — now checks `self.units[key]` first, falling back
    to `PigBrotherUnits` only as a last resort

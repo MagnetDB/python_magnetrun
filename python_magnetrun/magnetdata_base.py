@@ -315,7 +315,7 @@ class MagnetDataBase(ABC):
         label: str,
         description: str,
         debug: bool = False,
-    ) -> None:
+    ) -> int:
         raise NotImplementedError(
             f"{self.__class__.__name__}.computeData not implemented"
         )

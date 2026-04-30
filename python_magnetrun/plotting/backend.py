@@ -120,19 +120,22 @@ class PlottingBackend(Protocol):
         ...
 
 
-def get_backend(name: str = "matplotlib") -> PlottingBackend:
+def get_backend(name: str | PlottingBackend | None = "matplotlib") -> PlottingBackend:
     """Return a backend instance by name.
 
     Parameters
     ----------
     name:
         One of ``"matplotlib"``, ``"plotly"``, ``"plotly-resampler"``,
-        ``"plotly-widget"``.
+        ``"plotly-widget"``.  A ``PlottingBackend`` instance is returned
+        unchanged.  ``None`` defaults to ``"matplotlib"``.
 
     ``"plotly-resampler"`` and ``"plotly-widget"`` require a live Python
     kernel (Jupyter / voilà / marimo / Dash) and the ``plotly-resampler``
     package.  Use ``"plotly"`` for static export or the REST/JS path.
     """
+    if not isinstance(name, str | type(None)):
+        return name  # already a PlottingBackend instance
     if name == "plotly":
         from .plotly_backend import PlotlyBackend
 

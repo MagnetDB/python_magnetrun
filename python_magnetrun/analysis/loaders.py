@@ -328,34 +328,87 @@ class FileSet:
 # Metadata-only helpers (no data arrays loaded)
 # =============================================================================
 
+
 def _tdms_end_from_properties(
-    file: str, start_timestamp: float, start_ftimestamp: str
+    file: str,
+    start_timestamp: float,
+    start_ftimestamp: str,
+    check_all_groups: bool = False,
 ) -> str:
-    """Return end timestamp by reading only TDMS channel properties.
+    """Return end timestamp by reading actual sample counts from TDMS data.
 
-    Reads ``wf_samples`` and ``wf_increment`` from the first usable channel's
-    properties via ``TdmsFile.open()`` — no data arrays are loaded.
+    For each usable channel (skipping the ``Infos`` group), counts the actual
+    number of samples written via ``read_data_chunks()`` and multiplies by
+    ``wf_increment`` from channel properties.  ``wf_samples`` is NOT trusted
+    because it is written by the DAQ at acquisition *start* and may differ from
+    the data actually recorded (e.g. truncated files).
 
-    Returns an empty string if the required properties are not found.
+    Parameters
+    ----------
+    file:
+        Path to the TDMS file.
+    start_timestamp:
+        Unix timestamp of the acquisition start (from the filename).
+    start_ftimestamp:
+        Formatted start timestamp string (unused, kept for API compatibility).
+    check_all_groups:
+        When ``True``, check every group instead of stopping after the first
+        usable channel.  A warning is emitted if groups report different
+        durations (indicating a corrupt or truncated file).  The duration
+        computed from the first usable channel is still returned.
+
+    Returns an empty string if no usable channel is found.
     """
     from nptdms import TdmsFile
 
     try:
         with TdmsFile.open(file) as tdms:
+            first_duration: float | None = None
             for group in tdms.groups():
                 if group.name == "Infos":
                     continue
+                # Scan ALL channels in the group and keep the longest duration.
+                # Spike/trigger files often have a single-sample trigger channel
+                # first; using only the first channel would give a misleadingly
+                # short duration.  The waveform channels (many samples) follow.
+                group_duration: float | None = None
                 for ch in group.channels():
                     p = ch.properties
-                    if "wf_samples" in p and "wf_increment" in p:
-                        duration = float(p["wf_samples"]) * float(p["wf_increment"])
-                        end_dt = (
-                            datetime.fromtimestamp(start_timestamp)
-                            + timedelta(seconds=duration)
+                    logger.debug(f"checking channel {ch.path} with properties {p}")
+                    if "wf_increment" not in p:
+                        continue
+                    actual = sum(len(chunk) for chunk in ch.data_chunks())
+                    wf_prop = p.get("wf_samples")
+                    if wf_prop is not None and int(wf_prop) != actual:
+                        logger.warning(
+                            f"{file} {ch.path}: wf_samples={wf_prop} != actual={actual} — using actual count"
                         )
-                        return end_dt.strftime(TIMESTAMP_FORMAT)
+                    duration = actual * float(p["wf_increment"])
+                    logger.debug(
+                        f"{file} {ch.path}: actual={actual} samples, duration={duration:.3f}s"
+                    )
+                    if group_duration is None or duration > group_duration:
+                        group_duration = duration
+
+                if group_duration is None:
+                    continue  # no channel with wf_increment in this group
+
+                if first_duration is None:
+                    first_duration = group_duration
+                    if not check_all_groups:
+                        break  # fast path: first usable group is enough
+                elif abs(group_duration - first_duration) > 1.0:
+                    logger.warning(
+                        f"{file} group {group.name!r}: duration {group_duration:.3f}s differs from first group {first_duration:.3f}s"
+                    )
+
+            if first_duration is not None:
+                end_dt = datetime.fromtimestamp(start_timestamp) + timedelta(
+                    seconds=first_duration
+                )
+                return end_dt.strftime(TIMESTAMP_FORMAT)
     except (OSError, ValueError, TypeError, KeyError) as exc:
-        logger.warning(f"_tdms_end_from_properties: {file}: {exc}")
+        logger.warning(f"{file}: {exc}")
     return ""
 
 
@@ -396,9 +449,10 @@ def _pupitre_end_from_last_line(file: str, keys: list[str]) -> str:
         end_dt = datetime.strptime(
             f"{fields[date_idx]} {fields[time_idx]}", "%Y.%m.%d %H:%M:%S"
         )
+        logger.debug(f"end_dt={end_dt} from last line: {last_line}")
         return end_dt.strftime(TIMESTAMP_FORMAT)
     except (OSError, ValueError, IndexError, UnicodeDecodeError) as exc:
-        logger.warning(f"_pupitre_end_from_last_line: {file}: {exc}")
+        logger.warning(f"{file}: {exc}")
         return ""
 
 
@@ -645,6 +699,7 @@ def select_files(
     housing: str,
     start: str,
     end: str,
+    min_duration_seconds: float = 30.0,
 ) -> list[str]:
     """
     Filter files by timestamp range.
@@ -661,6 +716,10 @@ def select_files(
         Start timestamp (TIMESTAMP_FORMAT)
     end : str
         End timestamp (TIMESTAMP_FORMAT)
+    min_duration_seconds : float, optional
+        Files shorter than this threshold are discarded (default 30 s).
+        Pass 0.0 for incident files (default, trigger, spike) which are
+        legitimately short captures.
 
     Returns
     -------
@@ -672,17 +731,19 @@ def select_files(
     >>> files = glob.glob("data/M9_Archive_241106-*.tdms")
     >>> selected = select_files(files, "M9", "2024-11-06 16:00:00", "2024-11-06 18:00:00")
     """
+
+    natsortedfiles = natsorted(files)
     logger.info(
-        f"select_files: files={files}, housing={housing}, start={start}, end={end}"
+        f"select_files: files={natsortedfiles}, housing={housing}, start={start}, end={end}"
     )
-    if not files:
+    if not natsortedfiles:
         return []
 
     start_time = datetime.strptime(start, TIMESTAMP_FORMAT)
     end_time = datetime.strptime(end, TIMESTAMP_FORMAT)
 
     selected = []
-    for file in files:
+    for file in natsortedfiles:
         try:
             file_start, file_end, skip = extract_data(
                 file, housing, site="", key=None, dry_run=False
@@ -699,14 +760,14 @@ def select_files(
 
             # Check if file time range is within selection range
             logger.debug(
-                f"File {file} within the selection range ?"
-                f"\n (start_time={start_time}, end_time={end_time}),"
-                f"\n (file_start_time={file_start_time}, file_end_time={file_end_time})"
+                f"File {file} (file_start_time={file_start_time}, file_end_time={file_end_time}) "
+                f"within the selection range (start_time={start_time}, end_time={end_time})?"
             )
             if file_start_time < end_time and file_end_time > start_time:
-                if file_end_time - file_start_time <= timedelta(seconds=30):
+                actual_duration = (file_end_time - file_start_time).total_seconds()
+                if actual_duration <= min_duration_seconds:
                     logger.warning(
-                        f"{file}: duration is very short ({(file_end_time - file_start_time).total_seconds()}s), skipping"
+                        f"{file}: duration {actual_duration:.3f}s <= min {min_duration_seconds:.1f}s, skipping"
                     )
                     continue
                 logger.debug(f"Selected file: {file}")
@@ -1158,9 +1219,17 @@ class FileDiscovery:
 
         file_set.pupitre = select_files(glob.glob(pupitre_filter), housing, start, end)
         file_set.archive = select_files(glob.glob(archive_filter), housing, start, end)
-        file_set.default = select_files(glob.glob(default_filter), housing, start, end)
-        file_set.trigger = select_files(glob.glob(trigger_filter), housing, start, end)
-        file_set.spike = select_files(glob.glob(spike_filter), housing, start, end)
+        # Incident files (default, trigger, spike) are intentionally short captures;
+        # disable the minimum-duration guard that is appropriate for archive files.
+        file_set.default = select_files(
+            glob.glob(default_filter), housing, start, end, min_duration_seconds=0.0
+        )
+        file_set.trigger = select_files(
+            glob.glob(trigger_filter), housing, start, end, min_duration_seconds=0.0
+        )
+        file_set.spike = select_files(
+            glob.glob(spike_filter), housing, start, end, min_duration_seconds=0.0
+        )
         logger.info(f"file_set.pupitre: {file_set.pupitre}")
         logger.info(f"file_set.archive: {file_set.archive}")
         logger.info(f"file_set.default: {file_set.default}")
@@ -1176,6 +1245,9 @@ class FileDiscovery:
             logger.debug(f"Pigbrother runlog not found at {pb_log}")
 
         # --- Pupitre run-log (Cirrus cirrus/A[1-4]/YYYY-MM-DD_cirrus_out.log) ---
+        logger.debug(
+            f"Checking for pupitre run-log: pupitre_runlog_dir={self.pupitre_runlog_dir}, start={start}, end={end}"
+        )
         if self.pupitre_runlog_dir is not None and start and end:
             from ..runlogs.pupitre import discover_pupitre_runlogs
 
@@ -1187,7 +1259,10 @@ class FileDiscovery:
             logger.info(f"file_set.pupitre_runlog: {file_set.pupitre_runlog}")
 
         # --- Hybrid data (M8 only) ---
-        if housing == "M8" and self.hybrid_datadir is not None and start:
+        logger.debug(
+            f"Checking for hybrid data: housing={housing}, hybrid_datadir={self.hybrid_datadir}, start={start}, end={end}"
+        )
+        if housing == "M8" and self.hybrid_datadir is not None and start and end:
             _ts_part = filename.split("_")[2]  # e.g. "241106-1643"
             _date_part, _time_part = _ts_part.split("-")  # "241106", "1643"
             _local_dt = datetime.strptime(_date_part + _time_part, "%y%m%d%H%M")
@@ -1258,7 +1333,10 @@ class FileDiscovery:
             f"{len(file_set.pupitre)} pupitres, "
             f"{len(file_set.default) + len(file_set.trigger) + len(file_set.spike)} incidents, "
             f"{len(file_set.pigbrother_runlog)} pigbrother runlog, "
-            f"{len(file_set.pupitre_runlog)} pupitre runlog"
+            f"{len(file_set.pupitre_runlog)} pupitre runlog, "
+            f"{len(file_set.hybrid_kHz)} kHz, "
+            f"{len(file_set.hybrid_rms)} rms, "
+            f"{len(file_set.hybrid_trigger)} trigger"
         )
 
         return file_set

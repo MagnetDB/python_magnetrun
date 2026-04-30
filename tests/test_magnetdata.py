@@ -176,6 +176,7 @@ class TestFromtdms:
     def test_wrong_extension_raises(self, tmp_path: Path) -> None:
         """_fromtdms with a non-.tdms filename should raise RuntimeError."""
         from python_magnetrun.magnetdata import _fromtdms
+
         bad = tmp_path / "data.txt"
         bad.touch()
         with pytest.raises(RuntimeError, match="expect a tdms filename"):
@@ -222,7 +223,9 @@ class TestFromtdms:
             md = load_magnetdata(str(tdms_path))
 
         # wf_start_offset should be overwritten to 0.5 for Overview files
-        assert md.Groups["Courants_Alimentations"]["Courant_GR1"]["wf_start_offset"] == 0.5
+        assert (
+            md.Groups["Courants_Alimentations"]["Courant_GR1"]["wf_start_offset"] == 0.5
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -231,19 +234,25 @@ class TestFromtdms:
 
 
 class TestGetDataPandas:
-    def test_none_key_returns_full_dataframe(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_none_key_returns_full_dataframe(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         """getData(None) should return the complete DataFrame."""
         df = simple_magnetdata.getData(None)
         assert isinstance(df, pd.DataFrame)
         assert len(df.columns) == len(simple_magnetdata.Keys)
 
-    def test_string_key_returns_single_column(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_string_key_returns_single_column(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         """getData('Field') should return a one-column DataFrame."""
         df = simple_magnetdata.getData("Field")
         assert "Field" in df.columns
         assert len(df.columns) == 1
 
-    def test_list_key_returns_selected_columns(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_list_key_returns_selected_columns(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         """getData(['Field', 'Icoil1']) should return both columns."""
         df = simple_magnetdata.getData(["Field", "Icoil1"])
         assert set(df.columns) == {"Field", "Icoil1"}
@@ -253,7 +262,9 @@ class TestGetDataPandas:
         with pytest.raises(Exception, match="no such key"):
             simple_magnetdata.getData("NonExistent")
 
-    def test_invalid_key_in_list_raises(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_invalid_key_in_list_raises(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         """getData with a list containing an unknown key should raise."""
         with pytest.raises(Exception, match="no such key"):
             simple_magnetdata.getData(["Field", "NonExistent"])
@@ -301,7 +312,9 @@ class TestGetDataTdms:
         df = tdms_magnetdata.getData("Courants_Alimentations/Courant_GR1")
         assert isinstance(df, pd.DataFrame)
 
-    def test_list_of_group_slash_channels(self, tdms_magnetdata: TdmsMagnetData) -> None:
+    def test_list_of_group_slash_channels(
+        self, tdms_magnetdata: TdmsMagnetData
+    ) -> None:
         """getData([...]) should work for multiple channels in the same group."""
         df = tdms_magnetdata.getData(
             [
@@ -341,7 +354,9 @@ class TestGetKeysAndType:
     def test_getkeys_returns_list(self, simple_magnetdata: PandasMagnetData) -> None:
         assert isinstance(simple_magnetdata.getKeys(), list)
 
-    def test_getkeys_matches_dataframe_columns(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_getkeys_matches_dataframe_columns(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         assert simple_magnetdata.getKeys() == simple_magnetdata.Data.columns.tolist()  # type: ignore[union-attr]
 
     def test_gettype_pandas(self, simple_magnetdata: PandasMagnetData) -> None:
@@ -369,7 +384,9 @@ class TestRenameData:
         assert "Field" not in simple_magnetdata.Keys
         assert "B" in simple_magnetdata.Data.columns  # type: ignore[union-attr]
 
-    def test_keys_updated_after_rename(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_keys_updated_after_rename(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         """Keys list must stay in sync with DataFrame columns after rename."""
         simple_magnetdata.renameData({"Icoil1": "IH"})
         assert simple_magnetdata.Keys == simple_magnetdata.Data.columns.tolist()  # type: ignore[union-attr]
@@ -382,7 +399,9 @@ class TestRenameData:
 
     def test_noop_for_type_1(self) -> None:
         """renameData on TDMS data (Type=1) should do nothing."""
-        md = TdmsMagnetData("x.tdms", {}, ["GroupA/ch"], {"GroupA": pd.DataFrame({"ch": [1]})})
+        md = TdmsMagnetData(
+            "x.tdms", {}, ["GroupA/ch"], {"GroupA": pd.DataFrame({"ch": [1]})}
+        )
         md.renameData({"GroupA/ch": "GroupA/new"})
         assert md.Keys == ["GroupA/ch"]
 
@@ -404,7 +423,9 @@ class TestRemoveData:
         simple_magnetdata.removeData(["NonExistent"])
         assert len(simple_magnetdata.Keys) == original_len
 
-    def test_keys_updated_after_remove(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_keys_updated_after_remove(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         simple_magnetdata.removeData(["Icoil1"])
         assert simple_magnetdata.Keys == simple_magnetdata.Data.columns.tolist()  # type: ignore[union-attr]
 
@@ -415,15 +436,33 @@ class TestRemoveData:
 
 
 class TestAddData:
-    def test_adds_new_column_from_formula(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_adds_new_column_from_formula(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         """addData should evaluate a formula and add the resulting column."""
-        simple_magnetdata.addData("Field2", "Field2 = Field * 2", symbol="B2", unit="tesla", label="Doubled Field", description="Magnetic field multiplied by 2")
+        status = simple_magnetdata.addData(
+            "Field2",
+            "Field2 = Field * 2",
+            symbol="B2",
+            unit="tesla",
+            label="Doubled Field",
+            description="Magnetic field multiplied by 2",
+        )
+        assert status == 0, f"addData should succeed, got status={status}"
         assert "Field2" in simple_magnetdata.Keys
         assert "Field2" in simple_magnetdata.Data.columns  # type: ignore[union-attr]
 
     def test_computed_values_correct(self, simple_magnetdata: PandasMagnetData) -> None:
         """The new column should contain the correct computed values."""
-        simple_magnetdata.addData("Field2", "Field2 = Field * 2", symbol="B2", unit="tesla", label="Doubled Field", description="Magnetic field multiplied by 2")
+        status = simple_magnetdata.addData(
+            "Field2",
+            "Field2 = Field * 2",
+            symbol="B2",
+            unit="tesla",
+            label="Doubled Field",
+            description="Magnetic field multiplied by 2",
+        )
+        assert status == 0, f"addData should succeed, got status={status}"
         expected = simple_magnetdata.Data["Field"] * 2
         pd.testing.assert_series_equal(
             simple_magnetdata.Data["Field2"].reset_index(drop=True),
@@ -431,10 +470,22 @@ class TestAddData:
             check_names=False,
         )
 
-    def test_duplicate_key_is_skipped(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_duplicate_key_is_skipped(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         """addData with an already-existing key should not modify the column."""
         original_values = simple_magnetdata.Data["Field"].copy()
-        simple_magnetdata.addData("Field", "Field = Field * 999", symbol="B", unit="tesla", label="Field", description="Should be skipped")
+        status = simple_magnetdata.addData(
+            "Field",
+            "Field = Field * 999",
+            symbol="B",
+            unit="tesla",
+            label="Field",
+            description="Should be skipped",
+        )
+        assert (
+            status == 1
+        ), f"addData should return status=1 for duplicate key, got status={status}"
         pd.testing.assert_series_equal(simple_magnetdata.Data["Field"], original_values)
 
 
@@ -509,7 +560,9 @@ class TestFromEnsight:
     def ensight_file(self, tmp_path: Path) -> Path:
         p = tmp_path / "result.csv"
         # Ensight CSV has 2 header rows before the column names
-        p.write_text("Ensight header line 1\nEnsight header line 2\nX,Y,Z\n0.1,0.2,0.3\n0.4,0.5,0.6\n")
+        p.write_text(
+            "Ensight header line 1\nEnsight header line 2\nX,Y,Z\n0.1,0.2,0.3\n0.4,0.5,0.6\n"
+        )
         return p
 
     def test_loads_ensight_file(self, ensight_file: Path) -> None:
@@ -557,7 +610,9 @@ class TestGetStartDate:
         assert result[3] == "21:55:19"
 
     def test_empty_when_no_date_columns(self) -> None:
-        md = PandasMagnetData("x.txt", {}, ["A", "B"], pd.DataFrame({"A": [1], "B": [2]}))
+        md = PandasMagnetData(
+            "x.txt", {}, ["A", "B"], pd.DataFrame({"A": [1], "B": [2]})
+        )
         assert md.getStartDate() == ()
 
 
@@ -584,7 +639,9 @@ class TestAddTime:
         simple_magnetdata.addTime()
         assert simple_magnetdata.Data["t"].iloc[0] == pytest.approx(0.0)
 
-    def test_t_values_one_second_apart(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_t_values_one_second_apart(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         """Sample data has 1-second intervals."""
         simple_magnetdata.addTime()
         diffs = simple_magnetdata.Data["t"].diff().dropna()
@@ -634,7 +691,9 @@ class TestAddTdmsTime:
             }
         }
         keys = ["Courants_Alimentations/Courant_GR1"]
-        return TdmsMagnetData("x.tdms", groups, keys, {"Courants_Alimentations": group_df})
+        return TdmsMagnetData(
+            "x.tdms", groups, keys, {"Courants_Alimentations": group_df}
+        )
 
     def test_adds_t_column(self, tdms_md: TdmsMagnetData) -> None:
         tdms_md.addTdmsTime()
@@ -670,11 +729,15 @@ class TestAddTdmsTime:
 
 
 class TestExtractData:
-    def test_returns_selected_columns(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_returns_selected_columns(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         df = simple_magnetdata.extractData(["Field", "Icoil1"])
         assert list(df.columns) == ["Field", "Icoil1"]
 
-    def test_values_match_original(self, simple_df: pd.DataFrame, simple_magnetdata: PandasMagnetData) -> None:
+    def test_values_match_original(
+        self, simple_df: pd.DataFrame, simple_magnetdata: PandasMagnetData
+    ) -> None:
         df = simple_magnetdata.extractData(["Field"])
         pd.testing.assert_series_equal(
             df["Field"].reset_index(drop=True),
@@ -687,8 +750,15 @@ class TestExtractData:
 
     def test_tdms_group_slash_channel(self) -> None:
         group_df = pd.DataFrame({"Courant_GR1": [1.0, 2.0], "Tension_GR1": [3.0, 4.0]})
-        groups = {"G": {"Courant_GR1": {"wf_increment": 1.0}, "Tension_GR1": {"wf_increment": 1.0}}}
-        md = TdmsMagnetData("x.tdms", groups, ["G/Courant_GR1", "G/Tension_GR1"], {"G": group_df})
+        groups = {
+            "G": {
+                "Courant_GR1": {"wf_increment": 1.0},
+                "Tension_GR1": {"wf_increment": 1.0},
+            }
+        }
+        md = TdmsMagnetData(
+            "x.tdms", groups, ["G/Courant_GR1", "G/Tension_GR1"], {"G": group_df}
+        )
         df = md.extractData(["G/Courant_GR1", "G/Tension_GR1"])
         assert "Courant_GR1" in df.columns
         assert "Tension_GR1" in df.columns
@@ -700,17 +770,23 @@ class TestExtractData:
 
 
 class TestExtractDataThreshold:
-    def test_filters_rows_at_or_above_threshold(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_filters_rows_at_or_above_threshold(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         # Field values: [0.5, 0.6, 0.7] — threshold 0.6 keeps rows 1 and 2
         df = simple_magnetdata.extractDataThreshold("Field", 0.6)
         assert len(df) == 2
         assert (df["Field"] >= 0.6).all()
 
-    def test_all_below_threshold_returns_empty(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_all_below_threshold_returns_empty(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         df = simple_magnetdata.extractDataThreshold("Field", 999.0)
         assert len(df) == 0
 
-    def test_all_at_or_above_threshold(self, simple_magnetdata: PandasMagnetData) -> None:
+    def test_all_at_or_above_threshold(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
         df = simple_magnetdata.extractDataThreshold("Field", 0.0)
         assert len(df) == 3
 
@@ -737,27 +813,37 @@ class TestExtractTimeData:
         # Date="2022.03.30" → CEST (UTC+2); local 21:55:17-19 → UTC 19:55:17-19.
         # Passing local range 21:55:17–21:55:18 must return exactly 2 rows.
         simple_magnetdata.addTime()
-        df = simple_magnetdata.extractTimeData("2022-03-30 21:55:17;2022-03-30 21:55:18")
+        df = simple_magnetdata.extractTimeData(
+            "2022-03-30 21:55:17;2022-03-30 21:55:18"
+        )
         assert len(df) == 2
 
     def test_inclusive_boundaries(self, simple_magnetdata: PandasMagnetData) -> None:
         simple_magnetdata.addTime()
-        df = simple_magnetdata.extractTimeData("2022-03-30 21:55:17;2022-03-30 21:55:17")
+        df = simple_magnetdata.extractTimeData(
+            "2022-03-30 21:55:17;2022-03-30 21:55:17"
+        )
         assert len(df) == 1
 
     def test_full_range(self, simple_magnetdata: PandasMagnetData) -> None:
         simple_magnetdata.addTime()
-        df = simple_magnetdata.extractTimeData("2022-03-30 21:55:17;2022-03-30 21:55:19")
+        df = simple_magnetdata.extractTimeData(
+            "2022-03-30 21:55:17;2022-03-30 21:55:19"
+        )
         assert len(df) == 3
 
     def test_empty_range(self, simple_magnetdata: PandasMagnetData) -> None:
         simple_magnetdata.addTime()
-        df = simple_magnetdata.extractTimeData("2022-03-30 22:00:00;2022-03-30 22:59:59")
+        df = simple_magnetdata.extractTimeData(
+            "2022-03-30 22:00:00;2022-03-30 22:59:59"
+        )
         assert len(df) == 0
 
     def test_result_is_dataframe(self, simple_magnetdata: PandasMagnetData) -> None:
         simple_magnetdata.addTime()
-        result = simple_magnetdata.extractTimeData("2022-03-30 21:55:17;2022-03-30 21:55:18")
+        result = simple_magnetdata.extractTimeData(
+            "2022-03-30 21:55:17;2022-03-30 21:55:18"
+        )
         assert isinstance(result, pd.DataFrame)
 
 
@@ -845,18 +931,27 @@ class TestExtractTimeDataTdms:
 
 
 class TestSaveData:
-    def test_creates_file(self, simple_magnetdata: PandasMagnetData, tmp_path: Path) -> None:
+    def test_creates_file(
+        self, simple_magnetdata: PandasMagnetData, tmp_path: Path
+    ) -> None:
         out = tmp_path / "out.csv"
         simple_magnetdata.saveData(["Field", "Icoil1"], str(out))
         assert out.exists()
 
-    def test_saved_file_has_correct_columns(self, simple_magnetdata: PandasMagnetData, tmp_path: Path) -> None:
+    def test_saved_file_has_correct_columns(
+        self, simple_magnetdata: PandasMagnetData, tmp_path: Path
+    ) -> None:
         out = tmp_path / "out.csv"
         simple_magnetdata.saveData(["Field", "Icoil1"], str(out))
         df = pd.read_csv(out, sep="\t")
         assert list(df.columns) == ["Field", "Icoil1"]
 
-    def test_saved_values_match(self, simple_df: pd.DataFrame, simple_magnetdata: PandasMagnetData, tmp_path: Path) -> None:
+    def test_saved_values_match(
+        self,
+        simple_df: pd.DataFrame,
+        simple_magnetdata: PandasMagnetData,
+        tmp_path: Path,
+    ) -> None:
         out = tmp_path / "out.csv"
         simple_magnetdata.saveData(["Field"], str(out))
         df = pd.read_csv(out, sep="\t")
@@ -872,13 +967,35 @@ class TestSaveData:
 
 
 class TestComputeData:
-    def test_adds_column_from_function(self, simple_magnetdata: PandasMagnetData) -> None:
-        simple_magnetdata.computeData(lambda f, i: f * i, "Product", ["Field", "Icoil1"], symbol="Product", unit=None, label="Field × Icoil1", description="Product of Field and Icoil1")
+    def test_adds_column_from_function(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
+        status = simple_magnetdata.computeData(
+            lambda f, i: f * i,
+            "Product",
+            ["Field", "Icoil1"],
+            symbol="Product",
+            unit=None,
+            label="Field × Icoil1",
+            description="Product of Field and Icoil1",
+        )
+        assert status == 0, f"computeData should succeed, got status={status}"
         assert "Product" in simple_magnetdata.Keys
         assert "Product" in simple_magnetdata.Data.columns
 
-    def test_computed_values_correct(self, simple_df: pd.DataFrame, simple_magnetdata: PandasMagnetData) -> None:
-        simple_magnetdata.computeData(lambda f, i: f * i, "Product", ["Field", "Icoil1"], symbol="Product", unit=None, label="Field × Icoil1", description="Product of Field and Icoil1")
+    def test_computed_values_correct(
+        self, simple_df: pd.DataFrame, simple_magnetdata: PandasMagnetData
+    ) -> None:
+        status = simple_magnetdata.computeData(
+            lambda f, i: f * i,
+            "Product",
+            ["Field", "Icoil1"],
+            symbol="Product",
+            unit=None,
+            label="Field × Icoil1",
+            description="Product of Field and Icoil1",
+        )
+        assert status == 0, f"computeData should succeed, got status={status}"
         expected = simple_df["Field"] * simple_df["Icoil1"]
         pd.testing.assert_series_equal(
             simple_magnetdata.Data["Product"].reset_index(drop=True),
@@ -888,7 +1005,18 @@ class TestComputeData:
 
     def test_existing_key_is_skipped(self, simple_magnetdata: PandasMagnetData) -> None:
         original = simple_magnetdata.Data["Field"].copy()
-        simple_magnetdata.computeData(lambda f: f * 999, "Field", ["Field"], symbol="B", unit="tesla", label="Field", description="Should be skipped")
+        status = simple_magnetdata.computeData(
+            lambda f: f * 999,
+            "Field",
+            ["Field"],
+            symbol="B",
+            unit="tesla",
+            label="Field",
+            description="Should be skipped",
+        )
+        assert (
+            status == 1
+        ), f"computeData should return status=1 for duplicate key, got status={status}"
         pd.testing.assert_series_equal(simple_magnetdata.Data["Field"], original)
 
 
@@ -1116,7 +1244,9 @@ class TestRealisticM9Tdms:
         assert dt == pytest.approx(1 / 4800, rel=1e-4)
 
     def test_duration(self, tdms: MagnetDataBase) -> None:
-        assert tdms.getDuration("Courants_Alimentations") == pytest.approx(90.0, abs=0.1)
+        assert tdms.getDuration("Courants_Alimentations") == pytest.approx(
+            90.0, abs=0.1
+        )
 
     def test_getData_single_channel(self, tdms: MagnetDataBase) -> None:
         df = tdms.getData("Courants_Alimentations/Courant_A1")

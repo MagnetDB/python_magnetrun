@@ -185,6 +185,10 @@ class HousingConfig:
     pupitre_formula_map: dict = field(default_factory=dict)
     pigbrother_formula_map: dict = field(default_factory=dict)
 
+    # Hybrid reference current channel names in df_hybrid (M8-only; empty = not applicable)
+    reference_gr1_hybrid: str = ""
+    reference_gr2_hybrid: str = ""
+
     # Hybrid (M8-only) derived current formulas; empty string = not applicable
     hybrid_formula_map: dict = field(default_factory=dict)
 
@@ -230,6 +234,13 @@ class HousingConfig:
         return {
             "Référence_GR1": self.reference_gr1_current,
             "Référence_GR2": self.reference_gr2_current,
+        }.get(reference_key, "")
+
+    def get_hybrid_channel(self, reference_key: str) -> str:
+        """Return the hybrid current field (in df_hybrid) for a TDMS reference channel."""
+        return {
+            "Référence_GR1": self.reference_gr1_hybrid,
+            "Référence_GR2": self.reference_gr2_hybrid,
         }.get(reference_key, "")
 
     def get_flow_channel(self, reference_key: str) -> str:

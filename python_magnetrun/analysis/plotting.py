@@ -252,7 +252,10 @@ def plot_data(
     style: PlotStyle | None = None,
     colors: PlotColors | None = None,
     interactive: bool = True,
-    backend: PlottingBackend | None = None,
+    backend: str | PlottingBackend | None = None,
+    df_hybrid: pd.DataFrame | None = None,
+    df_hybrid_incidents: dict[str, list[pd.DataFrame]] | None = None,
+    hybrid_dict: dict[str, dict[str, str]] | None = None,
 ) -> Any | None:
     """
     Plot data from multiple sources with optional downsampling.
@@ -389,6 +392,18 @@ def plot_data(
             field_styles.append(("-.", None, None, 1))  # dash-dot for pupitre
             logger.debug(f"pupitre[{pu_ch}]:\n{dfs_to_concat[-1].head()}")
             logger.debug(f"pupitre[{pu_ch}]:\n{dfs_to_concat[-1].describe()}")
+
+    if df_hybrid is not None and not df_hybrid.empty:
+        hy_ch = (hybrid_dict or {}).get(housing, {}).get(key)
+        if hy_ch and hy_ch in df_hybrid.columns:
+            col = f"Hybrid: {hy_ch}"
+            dfs_to_concat.append(df_hybrid[[tkey, hy_ch]].rename(columns={hy_ch: col}))
+            field_names.append(col)
+            field_colors.append(colors.hybrid)
+            field_styles.append(
+                (":", None, None, 1)
+            )  # dotted to distinguish from pupitre
+
     if not field_names:
         logger.warning(
             f"plot_data: no data columns found for key {key!r} — nothing to plot"
@@ -501,32 +516,71 @@ def plot_data(
         fig._magnetrun_ylabel = ylabel  # type: ignore[attr-defined]
 
     # ------------------------------------------------------------------
-    if df_incidents is not None and interactive:
+    _has_incidents = df_incidents is not None and any(
+        len(lst) > 0 for lst in df_incidents.values()
+    )
+    logger.debug(
+        f"_has_incidents={_has_incidents} based on df_incidents: {df_incidents}"
+    )
+    logger.debug(
+        f"df_hybrid_incidents: {df_hybrid_incidents if df_hybrid_incidents is not None else 'None'}"
+    )
+    _has_hybrid_incidents = (
+        df_hybrid_incidents is not None
+        and len(df_hybrid_incidents) > 0
+        and any(len(lst) > 0 for lst in df_hybrid_incidents.values())
+    )
+    if interactive and (_has_incidents or _has_hybrid_incidents):
         from python_magnetrun.plotting.annotations import AnnotationManager
 
-        logger.info(
-            f"Adding interactive incident annotations: {list(df_incidents.keys())}"
-        )
         manager = AnnotationManager(b, style=style, colors=colors)
-        for itype, incident_list in df_incidents.items():
-            for i, idf in enumerate(incident_list):
-                if idf.empty:
-                    continue
-                t_mid = idf[tkey].median()
-                incident_key = channels_dict.get(key, key)
-                if incident_key not in idf.columns:
-                    continue
-                f_mid = idf[incident_key].median()
-                label = rf"{itype} #{i + 1}"
-                detail = {
-                    "anomaly": label,
-                    "idx": i,
-                    "tkey": tkey,
-                    "df": idf,
-                    "pupitre": (df_pupitre, pupitre_dict.get(housing, {}).get(key)),
-                    "archive": (df_archive, channels_dict.get(key)),
-                }
-                manager.add(fig, 0, t_mid, f_mid, label, detail)
+
+        if df_incidents is not None:
+            logger.info(f"Adding incident annotations: {list(df_incidents.keys())}")
+            for itype, incident_list in df_incidents.items():
+                for i, idf in enumerate(incident_list):
+                    if idf.empty:
+                        continue
+                    t_mid = idf[tkey].median()
+                    incident_key = channels_dict.get(key, key)
+                    if incident_key not in idf.columns:
+                        continue
+                    f_mid = idf[incident_key].median()
+                    label = rf"{itype} #{i + 1}"
+                    detail = {
+                        "anomaly": label,
+                        "idx": i,
+                        "tkey": tkey,
+                        "df": idf,
+                        "pupitre": (df_pupitre, pupitre_dict.get(housing, {}).get(key)),
+                        "archive": (df_archive, channels_dict.get(key)),
+                    }
+                    manager.add(fig, 0, t_mid, f_mid, label, detail)
+
+        if df_hybrid_incidents is not None:
+            hy_ch = (hybrid_dict or {}).get(housing, {}).get(key)
+            logger.info(
+                f"Adding hybrid incident annotations: {list(df_hybrid_incidents.keys())}"
+            )
+            for itype, incident_list in df_hybrid_incidents.items():
+                for i, idf in enumerate(incident_list):
+                    if idf.empty:
+                        continue
+                    t_mid = idf[tkey].median()
+                    if hy_ch is None or hy_ch not in idf.columns:
+                        continue
+                    f_mid = idf[hy_ch].median()
+                    label = rf"{itype} #{i + 1}"
+                    detail = {
+                        "anomaly": label,
+                        "idx": i,
+                        "tkey": tkey,
+                        "df": idf,
+                        "hybrid": (df_hybrid, hy_ch),
+                        "archive": (df_archive, channels_dict.get(key)),
+                    }
+                    manager.add(fig, 0, t_mid, f_mid, label, detail)
+
         manager.connect(fig)
 
     if not _direct_mpl:

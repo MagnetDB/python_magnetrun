@@ -52,7 +52,7 @@ pupitre_data = MagnetRun.fromtxt(site, insert, pupitre_file_path).getMData()
 
 # Add data for HT tension to pigbrother
 # watch out HT tension data are derived from sinusoidal signals
-tdms_data.addData(
+status = tdms_data.addData(
     key="Puissances/HT1",
     formula="Puissances/HT1 = HT_Courant/HT1_RC * Haute_Tension/HT1_R + HT_Courant/HT1_SC * Haute_Tension/HT1_S + HT_Courant/HT1_TC * Haute_Tension/HT1_T",
     symbol="P",
@@ -60,7 +60,9 @@ tdms_data.addData(
     label="HT1 Power",
     description="Three-phase HT1 apparent electrical power",
 )
-tdms_data.addData(
+if status != 0:
+    logger.warning(f"Failed to add Puissances/HT1 (status={status})")
+status = tdms_data.addData(
     key="Puissances/HT2",
     formula="Puissances/HT2 = HT_Courant/HT2_RC * Haute_Tension/HT2_R + HT_Courant/HT2_SC * Haute_Tension/HT2_S + HT_Courant/HT2_TC * Haute_Tension/HT2_T",
     symbol="P",
@@ -68,7 +70,9 @@ tdms_data.addData(
     label="HT2 Power",
     description="Three-phase HT2 apparent electrical power",
 )
-tdms_data.addData(
+if status != 0:
+    logger.warning(f"Failed to add Puissances/HT2 (status={status})")
+status = tdms_data.addData(
     key="Puissances/HT2_HT1",
     formula="Puissances/HT2_HT1 = Puissances/HT2 - Puissances/HT1",
     symbol="P",
@@ -76,6 +80,8 @@ tdms_data.addData(
     label="HT2-HT1 Power",
     description="Difference between HT2 and HT1 apparent power",
 )
+if status != 0:
+    logger.warning(f"Failed to add Puissances/HT2_HT1 (status={status})")
 my_ax = plt.gca()
 tdms_data.plotData(
     x="t",
@@ -85,7 +91,7 @@ tdms_data.plotData(
 plt.show()
 plt.close()
 
-tdms_data.addData(
+status = tdms_data.addData(
     key="Puissances/A1A2",
     formula="Puissances/A1A2 = Puissances/Puissance_A1 + Puissances/Puissance_A1",
     symbol="P",
@@ -93,7 +99,9 @@ tdms_data.addData(
     label="A1+A2 Power",
     description="Sum of power supply outputs A1 and A2",
 )
-tdms_data.addData(
+if status != 0:
+    logger.warning(f"Failed to add Puissances/A1A2 (status={status})")
+status = tdms_data.addData(
     key="Puissances/A3A4",
     formula="Puissances/A3A4 = Puissances/Puissance_A3 + Puissances/Puissance_A4",
     symbol="P",
@@ -101,8 +109,10 @@ tdms_data.addData(
     label="A3+A4 Power",
     description="Sum of power supply outputs A3 and A4",
 )
+if status != 0:
+    logger.warning(f"Failed to add Puissances/A3A4 (status={status})")
 
-tdms_data.addData(
+status = tdms_data.addData(
     key="Puissances/Helix",
     formula="Puissances/Helix = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2",
     symbol="P",
@@ -110,7 +120,9 @@ tdms_data.addData(
     label="Helix Power",
     description="Helix coil electrical power (voltage × current)",
 )
-tdms_data.addData(
+if status != 0:
+    logger.warning(f"Failed to add Puissances/Helix (status={status})")
+status = tdms_data.addData(
     key="Puissances/Bitter",
     formula="Puissances/Bitter = Tensions_Aimant/ALL_externes * Courants_Alimentations/Courant_GR1",
     symbol="P",
@@ -118,8 +130,10 @@ tdms_data.addData(
     label="Bitter Power",
     description="Bitter coil electrical power (voltage × current)",
 )
+if status != 0:
+    logger.warning(f"Failed to add Puissances/Bitter (status={status})")
 
-tdms_data.addData(
+status = tdms_data.addData(
     key="Puissances/Busbar",
     formula="Puissances/Busbar = (Puissances/A1A2+Puissances/A3A4) - (Puissances/Bitter + Puissances/Helix)",
     symbol="P",
@@ -127,6 +141,8 @@ tdms_data.addData(
     label="Busbar Power Loss",
     description="Busbar losses: total supply power minus magnet power",
 )
+if status != 0:
+    logger.warning(f"Failed to add Puissances/Busbar (status={status})")
 my_ax = plt.gca()
 tdms_data.plotData(
     x="t",
@@ -143,8 +159,26 @@ else:
 plt.close()
 
 # Add data to pupitre
-pupitre_data.addData(key="PowerH", formula="PowerH = IH * UH", symbol="P_H", unit="watt", label="Upper Magnet Power", description="Upper magnet electrical power")
-pupitre_data.addData(key="PowerB", formula="PowerB = IB * UB", symbol="P_B", unit="watt", label="Lower Magnet Power", description="Lower magnet electrical power")
+status = pupitre_data.addData(
+    key="PowerH",
+    formula="PowerH = IH * UH",
+    symbol="P_H",
+    unit="watt",
+    label="Upper Magnet Power",
+    description="Upper magnet electrical power",
+)
+if status != 0:
+    logger.warning(f"Failed to add PowerH (status={status})")
+status = pupitre_data.addData(
+    key="PowerB",
+    formula="PowerB = IB * UB",
+    symbol="P_B",
+    unit="watt",
+    label="Lower Magnet Power",
+    description="Lower magnet electrical power",
+)
+if status != 0:
+    logger.warning(f"Failed to add PowerB (status={status})")
 
 # Plot Power Balance
 my_ax = plt.gca()
@@ -172,7 +206,7 @@ plt.show()
 plt.close()
 
 # Total power
-tdms_data.addData(
+status = tdms_data.addData(
     key="Puissances/HT1_MW",
     formula="Puissances/HT1_MW = Puissances/HT1 /1.e+6",
     symbol="P",
@@ -180,7 +214,9 @@ tdms_data.addData(
     label="HT1 Power",
     description="HT1 apparent power in MW",
 )
-tdms_data.addData(
+if status != 0:
+    logger.warning(f"Failed to add Puissances/HT1_MW (status={status})")
+status = tdms_data.addData(
     key="Puissances/HT2_MW",
     formula="Puissances/HT2_MW = Puissances/HT2 /1.e+6",
     symbol="P",
@@ -188,7 +224,9 @@ tdms_data.addData(
     label="HT2 Power",
     description="HT2 apparent power in MW",
 )
-tdms_data.addData(
+if status != 0:
+    logger.warning(f"Failed to add Puissances/HT2_MW (status={status})")
+status = tdms_data.addData(
     key="Puissances/Total",
     formula="Puissances/Total = Puissances/HT1_MW + Puissances/HT2_MW",
     symbol="P",
@@ -196,6 +234,8 @@ tdms_data.addData(
     label="Total Power",
     description="Total electrical power HT1+HT2 in MW",
 )
+if status != 0:
+    logger.warning(f"Failed to add Puissances/Total (status={status})")
 my_ax = plt.gca()
 pupitre_data.plotData(x="t", y="Ptot", ax=my_ax)
 tdms_data.plotData(
@@ -219,22 +259,40 @@ else:
 plt.close()
 
 # Get PAlim
-pupitre_data.addData(key="TAlim", formula="TAlim = (TAlimout - ( TinH + TinB)/2)", symbol="ΔT", unit="degC", label="Cooling ΔT", description="Temperature difference between supply and average magnet inlet")
+status = pupitre_data.addData(
+    key="TAlim",
+    formula="TAlim = (TAlimout - ( TinH + TinB)/2)",
+    symbol="ΔT",
+    unit="degC",
+    label="Cooling ΔT",
+    description="Temperature difference between supply and average magnet inlet",
+)
+if status != 0:
+    logger.warning(f"Failed to add TAlim (status={status})")
 
 ureg = UnitRegistry()
 
 nkey_params = ["HPH", "TinH"]
-pupitre_data.computeData(
-    get_rho, "rho", nkey_params,
+status = pupitre_data.computeData(
+    get_rho,
+    "rho",
+    nkey_params,
     symbol="rho",
     unit=ureg.kilogram / ureg.meter**3,
     label="Water Density",
     description="Cooling water density",
 )
-pupitre_data.computeData(
-    get_cp, "Cp", nkey_params,
+if status != 0:
+    logger.warning(f"Failed to compute rho (status={status})")
+
+status = pupitre_data.computeData(
+    get_cp,
+    "Cp",
+    nkey_params,
     symbol="Cp",
     unit=ureg.joule / ureg.kilogram / ureg.kelvin,
     label="Specific Heat",
     description="Cooling water specific heat capacity",
 )
+if status != 0:
+    logger.warning(f"Failed to compute Cp (status={status})")

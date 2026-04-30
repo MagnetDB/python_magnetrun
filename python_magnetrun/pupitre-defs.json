@@ -35,6 +35,12 @@
     "symbol": "B",
     "unit": "tesla"
   },
+  "TotalField": {
+    "description": "Total Magnetic Field",
+    "label": "B_total",
+    "symbol": "B",
+    "unit": "tesla"
+  },
   "TAlimout": {
     "description": "Output Temperature in transformer cooling loop",
     "label": "T_out_alim",

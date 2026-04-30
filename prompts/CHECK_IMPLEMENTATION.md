@@ -1,6 +1,6 @@
 # Implementation Status — python_magnetrun
 
-*Last updated: 2026-04-24 — branch `rework_analysis`*
+*Last updated: 2026-04-29 — branch `rework_analysis`*
 
 This document tracks detailed implementation status and task completion. For strategic direction, see [ROADMAP.md](ROADMAP.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -72,6 +72,7 @@ HybridRun                   ← satisfies DataLoader protocol
 | File format validation | ✅ Done | `3e722ec` | `utils/validation.py` integrated throughout |
 | `ruff` pre-commit hook | ✅ Done | `64ea699` | Enforces consistency |
 | `pathlib.Path` migration | 🟡 Partial | — | ~90 occurrences converted; ongoing |
+| Truncated pupitre file handling | ✅ Done | `8c4da77` | Encoding fallback, `on_bad_lines`, `check_pupitre_truncation`, `UnicodeDecodeError` in callers |
 
 #### Test Infrastructure ✅ Mostly Complete
 
@@ -82,6 +83,10 @@ HybridRun                   ← satisfies DataLoader protocol
 | Unit tests for `magnetdata.py` | ✅ Done | Covers factory, fromtdms, fromtxt, getData, column renaming |
 | Unit tests for `processing/` | ✅ Done | Pure functions: smoothers, trends, peaks, stats |
 | CLI entry point smoke tests | ✅ Done | Integration tests verify clean exits |
+| `tests/test_truncated_pupitre.py` | ✅ Done | 153 lines; 6 test cases for truncation/encoding/header-only |
+| `tests/test_hybrid_formula_resolution.py` | ✅ Done | 5 test cases for `HybridRun.getData` formula keys (mocked) |
+| `tests/test-vprocess.py` | ✅ Done | 496 lines; vprocess reader integration tests |
+| `tests/test-cfg-parser.py` | ✅ Done | 135 lines; config parser tests |
 | `test_python_magnetrun.py` assertions | 🔴 Open | Legacy test file has 0 assertions |
 | CI pipeline (GitHub Actions) | 🔴 Open | Need `ruff` + `pytest` on every push |
 
@@ -365,6 +370,38 @@ def plot_data(
    - `log_utils.py` with structured logging
    - Migration ongoing (~100-200 `print()` calls remain)
 
+9. **Lazy loading (on-demand data loading)**
+   - `PandasMagnetData`: `_ensure_data_loaded()` method; full CSV read deferred until first `Data` access
+   - `TdmsMagnetData`: `_LazyGroupDict` — per-group loading deferred to `__getitem__`
+   - `_validate_start_timestamp` accesses `self._data` directly (avoids early full load)
+
+10. **`Data` promoted to abstract property on ABC**
+    - `Data` getter/setter declared abstract on `MagnetDataBase`; both subclasses implement via `_data` backing attr
+    - `__getattribute__` override removed from `PandasMagnetData`
+    - `close()` + context-manager (`__enter__`/`__exit__`) added to base class
+
+11. **Resilient pupitre file loading** — see `truncated-pupitre-files.plan.md`
+    - Encoding fallback: UTF-8 → Latin-1 in `fromtxt` and `fromcsv`
+    - `on_bad_lines="warn"` on all `pd.read_csv` calls
+    - `check_pupitre_truncation()` in `utils/validation.py`
+    - `FileFormatError` raised for header-only files
+    - `UnicodeDecodeError` added to `loaders.py` catch blocks
+
+12. **`addData`/`computeData` metadata parameters**
+    - Both methods now accept `symbol`, `unit`, `label`, `description`
+    - On success, store `FieldMeta` in `self.field_meta[key]`
+    - Housing-config formula maps and JSON defs now carry all four keys
+    - `commands/add.py` passes keyword metadata; `examples/bilan.py` and `examples/get-record.py` updated
+
+13. **`HybridRun.getData` formula-key resolution** — see `hybrid-formula-key-resolution.plan.md`
+    - `_resolve_hybrid_formula()` helper: parses `LHS = op1 + op2 + …`, maps to `kHz/…`, returns element-wise sum
+    - Guard inserted before type/system parse block in `getData`; result is cached
+    - Covers `FEPC-AUX-LNCMI/ALIM1` and `ALIM2` keys used in M8 housing config
+
+14. **`Ih`/`Ib` defined via `Idcct` in housing configs**
+    - `housing_config.py` simplified: `get_pupitre_rename_map()` now derives `Ih`/`Ib` from `Idcct`
+    - Updated `M8/M9/M10-housing-config.json`
+
 ---
 
 ## Quick Wins — Immediate Value Items
@@ -452,6 +489,13 @@ def plot_data(
 
 | Commit | Task | Impact |
 |--------|------|--------|
+| f6394e2 | Change `addData`/`computeData` signature | `symbol`/`unit`/`label`/`description` → `FieldMeta`; JSON configs updated |
+| 6b40ea5 | Implement data-property-abc plan | `Data` as abstract property; lazy load in contract; `close()`/context manager |
+| 8c4da77 | Implement truncated-pupitre-files plan | Encoding fallback, `on_bad_lines`, truncation check, `UnicodeDecodeError` in callers |
+| c6404f9 | Add dev plans and code review YAML | `data-property-abc.plan.md`, `truncated-pupitre-files.plan.md`, `hybrid-formula-key-resolution.plan.md` |
+| e3786f3 | Up with tests — include hybrid data | `test-vprocess.py` (496 lines), `test-cfg-parser.py` (135 lines) |
+| c390172 | Implement lazy loading of actual values | `_ensure_data_loaded` in pandas; `_LazyGroupDict` in TDMS |
+| 2f78661 | Use `Idcct` to define `Ih` and `Ib` | `housing_config.py` simplified; M8/M9/M10 JSON updated |
 | a0b00ed | Add info log message | Logging improvement |
 | 97c8efc | Update `load_mrun` for easy data loading | Convenience method |
 | 2ca2ea2 | Fix matplotlib NaN rendering bug | Plotting robustness |
@@ -460,9 +504,6 @@ def plot_data(
 | 5fd35f1/6d0cad5 | Add/fix plotting features | Enhancement iteration |
 | ea9f27d | Add tests for show/save plot | Test coverage |
 | e0afc0b | Add `load_mrun` method | Convenience loading |
-| 033752a | Update plotting features | Enhancement |
-| 6255173 | Fix logging and pupitre detection | Bug fixes |
-| 9d05aa0 | Fix pylance warnings | Type checking |
 | da42a6c | Update plotting labels/legends | Uniformization |
 | 6d2e09b | Implement downsampling refactoring | `DownsampleConfig` |
 | de9f374 | Complete Phase A0-A3 | Protocol extension |

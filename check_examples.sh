@@ -161,7 +161,7 @@ run_cmd 24 python3 "$TESTS/test-signature.py" \
     --housing M9 "2025.01.27 - 15:39:29.txt" --window=10 --threshold 1.e-2
 
 # 25: pigbrother analysis (TDMS resolved via env)
-run_cmd 25 python3 -m python_magnetrun.analysis \
+run_cmd 25 python3 -m python_magnetrun.analysis.cli \
     --housing M10 'M10_Overview_250211-*.tdms' \
     --key Référence_GR1 --show --synchronize
 

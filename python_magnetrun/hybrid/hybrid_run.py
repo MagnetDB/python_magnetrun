@@ -479,6 +479,64 @@ class HybridRun:
         """Return ``(symbol, unit)`` for *key* — delegates to :attr:`HybridData`."""
         return self.getMData().getUnitKey(key)
 
+    def _resolve_hybrid_formula(
+        self,
+        key: str,
+        formula_str: str,
+        opts: "LoadOptions",
+    ) -> "tuple[np.ndarray, np.ndarray]":
+        """Evaluate a hybrid_formula_map formula string and return (data, time).
+
+        Only additive formulas (``A = B + C [+ ...]``) are supported.
+        Each operand is a bare ``SYSTEM/VARIABLE`` name that maps to
+        ``kHz/SYSTEM/VARIABLE`` in the HybridRun data model.
+        """
+        if "=" not in formula_str:
+            raise ValueError(
+                f"_resolve_hybrid_formula: expected 'LHS = RHS' in {formula_str!r}"
+            )
+        rhs = formula_str.split("=", 1)[1]
+        if "+" not in rhs:
+            raise NotImplementedError(
+                f"_resolve_hybrid_formula: only '+' is supported, got {rhs!r}"
+            )
+        operands = [tok.strip() for tok in rhs.split("+")]
+
+        arrays: list[np.ndarray] = []
+        time_ref: np.ndarray | None = None
+        for operand in operands:
+            parts = operand.split("/")
+            if len(parts) != 2:
+                raise ValueError(
+                    f"_resolve_hybrid_formula: expected SYSTEM/VARIABLE operand, "
+                    f"got {operand!r}"
+                )
+            system, variable = parts
+            result = self.getData(f"kHz/{system}/{variable}", options=opts)
+            if not (isinstance(result, tuple) and len(result) == 2):
+                raise ValueError(
+                    f"_resolve_hybrid_formula: getData returned unexpected type for "
+                    f"operand {operand!r}"
+                )
+            op_data, op_time = result
+            op_data = np.asarray(op_data)
+            op_time = np.asarray(op_time)
+            if time_ref is None:
+                time_ref = op_time
+            elif op_data.shape != arrays[0].shape:
+                raise ValueError(
+                    f"_resolve_hybrid_formula: shape mismatch between operands of "
+                    f"{key!r}: {arrays[0].shape} vs {op_data.shape}"
+                )
+            arrays.append(op_data)
+
+        data = np.sum(arrays, axis=0)
+        logger.debug(
+            f"_resolve_hybrid_formula: resolved {key!r} from {operands} "
+            f"(shape={data.shape})"
+        )
+        return data, time_ref  # type: ignore[return-value]
+
     def getData(
         self,
         key: str | None = None,
@@ -555,6 +613,24 @@ class HybridRun:
             entry = self._cache[cache_key]
             logger.debug(f"Cache hit for {cache_key}")
             return entry.data, entry.time
+
+        # Resolve hybrid_formula_map keys (e.g. "FEPC-AUX-LNCMI/ALIM1")
+        formula_entry = None
+        try:
+            from ..housing_config import get_housing_config
+
+            hcfg = get_housing_config(self.Housing)
+            formula_entry = hcfg.hybrid_formula_map.get(key)
+        except (ValueError, KeyError):
+            pass  # housing unknown — fall through
+
+        if formula_entry:
+            data, time = self._resolve_hybrid_formula(
+                key, formula_entry["formula"], opts
+            )
+            if opts.cache:
+                self._add_to_cache(cache_key, data, time, opts)
+            return data, time
 
         # Parse key
         parts = key.split("/")

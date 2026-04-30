@@ -34,10 +34,12 @@ Example usage::
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -107,6 +109,8 @@ class ProcessingConfig:
         Show plots interactively
     save : bool
         Save plots to files
+    backend : str
+        Plotting backend name ('matplotlib', 'plotly', 'plotly-resampler', 'plotly-widget')
     downsample_percent : float
         Percentage of data points to keep when plotting (0–100). 100 disables
         downsampling (default).
@@ -126,6 +130,7 @@ class ProcessingConfig:
     debug: bool = False
     show: bool = False
     save: bool = False
+    backend: str = "matplotlib"
     downsample_percent: float = 100.0
 
 
@@ -238,6 +243,10 @@ class OverviewRecord:
     def has_data(self, source: str) -> bool:
         """Check if data is loaded for a source."""
         data = self.data.get(source)
+        print(
+            f'Overview: has_data check for source="{source}", data type={type(data)}',
+            flush=True,
+        )
         if isinstance(data, pd.DataFrame):
             return not data.empty
         if isinstance(data, list):
@@ -436,7 +445,7 @@ def load_pupitre_data(
         Loaded pupitre DataFrame
     """
     if record.sources is None:
-        raise ValueError("No archive sources defined for record")
+        raise ValueError("No sources defined for record")
     if not record.sources.pupitre:
         logger.warning("No pupitre sources defined for record")
         return pd.DataFrame()
@@ -530,6 +539,129 @@ def load_incidents_data(
     return incidents
 
 
+def load_hybrid_data(
+    record: OverviewRecord,
+    housing_config: HousingConfig,
+    group: str,
+    keys: list[str],
+    extra_keys: list[str] | None = None,
+    htype: str = "kHz",
+) -> pd.DataFrame:
+    """
+    Load hybrid data for a record.
+
+    Parameters
+    ----------
+    record : OverviewRecord
+        Record to load data into
+    housing_config : HousingConfig
+        Housing configuration
+    group : str
+        TDMS group name
+    keys : List[str]
+        Current keys to load
+    extra_keys : List[str], optional
+        Additional keys (flow params, etc.)
+
+    Returns
+    -------
+    pd.DataFrame
+        Loaded hybrid DataFrame
+    """
+    if record.sources is None:
+        raise ValueError("No sources defined for record")
+    if htype == "kHz" and not record.sources.hybrid_kHz:
+        logger.warning("No hybrid kHz sources defined for record")
+        return pd.DataFrame()
+    if htype == "rms" and not record.sources.hybrid_rms:
+        logger.warning("No hybrid RMS sources defined for record")
+        return pd.DataFrame()
+
+    if htype == "kHz":
+        logger.info(
+            f"Loading hybrid kHz data: {len(record.sources.hybrid_kHz)} files, group={group}, keys={keys}, extra_keys={extra_keys}"
+        )
+    elif htype == "rms":
+        logger.info(
+            f"Loading hybrid RMS data: {len(record.sources.hybrid_rms)} files, group={group}, keys={keys}, extra_keys={extra_keys}"
+        )
+
+    # Map keys to hybrid channel names using helper
+    hybrid_keys = _get_hybrid_group(housing_config, group) or []
+    print(f"hybrid_keys={hybrid_keys} from group={group}", flush=True)
+
+    # Path structure: <base_dir>/kHz/<date_str>/<fepc_system>/<HH>HOST_*.bin
+    if htype == "kHz":
+        first_file = Path(record.sources.hybrid_kHz[0])
+    elif htype == "rms":
+        first_file = Path(record.sources.hybrid_rms[0])
+    base_dir = str(first_file.parents[3])
+    date_str = first_file.parents[1].name  # "YYYY-MM-DD"
+
+    hours_set: set[int] = set()
+    if htype == "kHz":
+        for f in record.sources.hybrid_kHz:
+            with contextlib.suppress(ValueError):
+                hours_set.add(int(Path(f).name[:2]))
+    elif htype == "rms":
+        for f in record.sources.hybrid_rms:
+            with contextlib.suppress(ValueError):
+                hours_set.add(int(Path(f).name[:2]))
+    hours_list: list[int] | None = sorted(hours_set) or None
+
+    try:
+        from ..hybrid.hybrid_run import HybridRun
+
+        hrun = HybridRun.fromdir(
+            base_dir=base_dir, date_str=date_str, housing=record.housing
+        )
+
+        for key in hybrid_keys:
+            data, time = hrun.getData(key, hours=hours_list)
+            print(
+                f"Loaded hybrid data for key={key}, data type={type(data)}, time shape={time.shape}",
+                flush=True,
+            )
+
+    except (OSError, ValueError, ImportError) as e:
+        logger.error(
+            f"load_hybrid_data: failed to create HybridRun for {date_str}: {e}"
+        )
+        return pd.DataFrame()
+    pass
+
+
+def load_hybrid_incidents_data(
+    record: OverviewRecord,
+    housing_config: HousingConfig,
+    group: str,
+    keys: list[str],
+    reference_t0: datetime,
+) -> dict[str, list[pd.DataFrame]]:
+    """
+    Load incidents data (trigger).
+
+    Parameters
+    ----------
+    record : OverviewRecord
+        Record to load data into
+    housing_config : HousingConfig
+        Housing configuration
+    group : str
+        TDMS group name
+    keys : List[str]
+        Keys to load
+    reference_t0 : datetime
+        Reference timestamp for time column
+
+    Returns
+    -------
+    Dict[str, List[pd.DataFrame]]
+        Incidents data by type
+    """
+    pass
+
+
 # =============================================================================
 # Main processing functions
 # =============================================================================
@@ -616,7 +748,8 @@ def process_overview_file(
         f"incidents: {len(record.sources.default) + len(record.sources.trigger) + len(record.sources.spike)}, "
         f"hybrid_kHz: {len(record.sources.hybrid_kHz)}, "
         f"hybrid_rms: {len(record.sources.hybrid_rms)}, "
-        f"hybrid_vprocess: {len(record.sources.hybrid_vprocess)}"
+        f"hybrid_vprocess: {len(record.sources.hybrid_vprocess)}, "
+        f"hybrid_trigger: {len(record.sources.hybrid_trigger)}"
     )
 
     if config.dry_run:
@@ -726,6 +859,42 @@ def process_overview_file(
             record.data["pupitre"] = df_pupitre
         logger.info(
             f"{overview_file}: loaded pupitre data with columns {df_pupitre.columns.tolist()} done"
+        )
+
+    if record.sources.hybrid_kHz:
+        print(f"record.sources.hybrid_kHz={record.sources.hybrid_kHz}", flush=True)
+        df_hybrid_kHz = load_hybrid_data(record, housing_config, config.group, keys)
+        if not df_hybrid_kHz.empty:
+            record.data["hybrid_kHz"] = df_hybrid_kHz
+        logger.info(
+            f"{overview_file}: loaded hybrid kHz data with columns {df_hybrid_kHz.columns.tolist()} done"
+        )
+
+    if record.sources.hybrid_rms:
+        print(f"record.sources.hybrid_rms={record.sources.hybrid_rms}", flush=True)
+        df_hybrid_rms = load_hybrid_data(
+            record, housing_config, config.group, keys, htype="rms"
+        )
+        if not df_hybrid_rms.empty:
+            record.data["hybrid_rms"] = df_hybrid_rms
+        logger.info(
+            f"{overview_file}: loaded hybrid rms data with columns {df_hybrid_rms.columns.tolist()} done"
+        )
+
+    if record.sources.hybrid_trigger:
+        print(
+            f"record.sources.hybrid_trigger={record.sources.hybrid_trigger}", flush=True
+        )
+        reference_t0 = (
+            record.data["archive"]["timestamp"].iloc[0]
+            if record.has_data("archive")
+            else record.t0
+        )
+        incidents = load_hybrid_incidents_data(
+            record, housing_config, config.group, keys, reference_t0
+        )
+        logger.debug(
+            f"{overview_file}: loaded hybrid incidents data with reference_t0={reference_t0}, keys={keys}"
         )
 
     # Synchronize pupitre with overview if requested
@@ -867,6 +1036,33 @@ def _get_pupitre_flow(housing_config: HousingConfig) -> list[str] | None:
         keys.append(housing_config.reference_gr1_pin)
     if housing_config.reference_gr2_pin:
         keys.append(housing_config.reference_gr2_pin)
+    return keys if keys else None
+
+
+def _get_hybrid_channel(housing_config: HousingConfig, key: str) -> str | None:
+    """Get hybrid channel name for a key."""
+    if key == "Courant_GR1":
+        return housing_config.reference_gr1_hybrid
+    elif key == "Courant_GR2":
+        return housing_config.reference_gr2_hybrid
+    return None
+
+
+def _get_hybrid_group(housing_config: HousingConfig, group: str) -> list[str] | None:
+    """Get hybrid list of keys for a group."""
+    keys = []
+    if group == "Courants_Alimentations":
+        if housing_config.reference_gr1_hybrid:
+            keys.append(housing_config.reference_gr1_hybrid)
+        if housing_config.reference_gr2_hybrid:
+            keys.append(housing_config.reference_gr2_hybrid)
+    elif group == "Tensions_Aimants":
+        if housing_config.voltage_channels_gr1 and housing_config.voltage_channels_gr2:
+            keys = (
+                housing_config.voltage_channels_gr1
+                + housing_config.voltage_channels_gr2
+            )
+
     return keys if keys else None
 
 
@@ -1084,7 +1280,7 @@ def print_record_summary(record: OverviewRecord) -> None:
         f"  - Incidents: {summary['n_default']} default, {summary['n_trigger']} trigger, {summary['n_spike']} spike"
     )
     if record.housing == "M8":
-        print(f"  - Hybrid Incidents: {summary['n_hybrid_incidents']} hybrid_trigger")
+        print(f"  - Hybrid Incidents: {summary['n_hybrid_incidents']}")
 
     print(f"Signatures: {', '.join(summary['signatures']) or 'None'}")
 

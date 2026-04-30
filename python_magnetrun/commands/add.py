@@ -75,7 +75,7 @@ def add_field(mrun, args):
         ureg = UnitRegistry()
         nkey_params = ["HPH", "TinH"]
 
-        mdata.computeData(
+        status = mdata.computeData(
             get_rho,
             "rho",
             nkey_params,
@@ -84,6 +84,8 @@ def add_field(mrun, args):
             label="Water Density",
             description="Cooling water density",
         )
+        if status != 0:
+            logger.warning(f"Failed to compute rho (status={status})")
         nkey = "rho"
         logger.debug(mdata.getKeys())
         logger.debug(mdata.getData("rho").describe())
@@ -106,7 +108,7 @@ def add_field(mrun, args):
             f"symbol={nsymbol!r}, unit={nunit!r}, "
             f"label={nlabel!r}, description={ndescription!r}"
         )
-        mdata.addData(
+        status = mdata.addData(
             key=nkey,
             formula=args.formula,
             symbol=nsymbol,
@@ -114,6 +116,8 @@ def add_field(mrun, args):
             label=nlabel,
             description=ndescription,
         )
+        if status != 0:
+            logger.warning(f"Failed to add {nkey} (status={status})")
         logger.debug(mdata.getKeys())
 
         if args.plot:

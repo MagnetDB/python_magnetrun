@@ -41,6 +41,7 @@ class PlotColors:
     overview: str = "blue"
     archive: str = "red"
     pupitre: str = "green"
+    hybrid: str = "orange"
     incident: str = "yellow"
     regime_up: str = "green"
     regime_down: str = "red"

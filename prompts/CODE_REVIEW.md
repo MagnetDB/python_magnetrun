@@ -1,6 +1,6 @@
 # Code Review — python_magnetrun
 
-*Reviewed: 2026-03-23 — Updated: 2026-04-23*
+*Reviewed: 2026-03-23 — Updated: 2026-04-30*
 
 ---
 
@@ -25,9 +25,9 @@ python_magnetrun/
 ├── __init__.py
 ├── MagnetRun.py              — high-level wrapper (satisfies DataLoader protocol)
 ├── magnetdata.py             — backward-compat facade (~235 lines)
-├── magnetdata_base.py        — ABC: MagnetDataBase
-├── magnetdata_pandas.py      — PandasMagnetData + subclasses (Ensight, Feelpp, BProfile)
-├── magnetdata_tdms.py        — TdmsMagnetData
+├── magnetdata_base.py        — ABC: MagnetDataBase (Data as abstract property; close()/context manager)
+├── magnetdata_pandas.py      — PandasMagnetData + subclasses; lazy load via _ensure_data_loaded()
+├── magnetdata_tdms.py        — TdmsMagnetData; lazy group load via _LazyGroupDict
 ├── cli.py                    — CLI entry point (was python_magnetrun.py)
 ├── housing_config.py         — HousingConfig: single source of truth for site/sensor config
 ├── log_utils.py              — structured logging utilities
@@ -48,16 +48,16 @@ python_magnetrun/
 │   ├── style.py              — plot styling
 │   └── annotations.py        — annotations support
 ├── analysis/                 — comprehensive time-series analysis framework
-│   ├── cli.py                — CLI with logging, progress tracking (404 lines)
+│   ├── cli.py                — CLI with logging, progress tracking (589 lines)
 │   ├── config.py             — channel/site configuration
-│   ├── loaders.py            — data loading (1228 lines)
+│   ├── loaders.py            — data loading (1403 lines; UnicodeDecodeError handling added)
 │   ├── synchronization.py    — time alignment utilities
 │   ├── metrics.py            — DTW, correlation, distance metrics
-│   ├── plotting.py           — multi-source visualization (810 lines)
-│   └── processing.py         — core data processing pipeline (1049 lines)
+│   ├── plotting.py           — multi-source visualization (926 lines)
+│   └── processing.py         — core data processing pipeline (1293 lines)
 ├── hybrid/                   — FEPC high-frequency acquisition systems
 │   ├── hybrid_data.py        — low-level reader (kHz/RMS/trigger), lazy loading
-│   ├── hybrid_run.py         — satisfies DataLoader protocol
+│   ├── hybrid_run.py         — satisfies DataLoader protocol; hybrid_formula_map key resolution
 │   ├── data_protocol.py      — DataLoader protocol definition
 │   ├── kHz/                  — 1 kHz data handling
 │   ├── rms/                  — RMS data handling
@@ -78,7 +78,7 @@ python_magnetrun/
 │   ├── downsampling.py       — NEW: DownsampleConfig + shared downsampling utilities
 │   ├── timestamps.py         — NEW: timestamp parsing utilities
 │   ├── timezone.py           — NEW: timezone helpers
-│   ├── validation.py         — NEW: FileFormatError + format validators
+│   ├── validation.py         — FileFormatError + validators; check_pupitre_truncation()
 │   ├── txt2csv.py            — text to CSV conversion
 │   ├── plots.py              — basic plotting helpers
 │   ├── list.py               — list utilities
@@ -94,15 +94,18 @@ python_magnetrun/
 
 ## Code Statistics
 
-| Metric | Mar 2026 | Apr 2026 | Trend |
-|--------|----------|----------|-------|
-| Total lines of code | ~35K | ~36K | +1K |
-| Python files | 91 | 113 | +22 |
-| `print()` statements | 1466 | 13 | ✅ -99% |
-| `logging` calls | 124 | 1140 | ✅ +9x |
-| Bare `except:` clauses | 5 | 0 | ✅ Fixed |
-| TODO/FIXME/BUG comments | 46 | 34 | -26% |
-| Functions with type hints | ~284 (40%) | ~40% | → Ongoing |
+| Metric | Mar 2026 | Apr 2026 | Apr 2026 (latest) | Trend |
+|--------|----------|----------|--------------------|-------|
+| Total lines of code | ~35K | ~36K | ~37K | +1K |
+| Python files (package) | 91 | 113 | 111 | → stable |
+| `logger.*` calls | 124 | 1140 | 1191 | ✅ +5% |
+| `print()` (diagnostic) | 1466 | ~13 | ~13 | ✅ low |
+| `print()` (intentional CLI output) | — | — | ~430 | → acceptable |
+| Bare `except:` clauses | 5 | 0 | 0 | ✅ Fixed |
+| TODO/FIXME/BUG comments | 46 | 34 | ~34 | → stable |
+| Functions with type hints | ~284 (40%) | ~40% | ~40% | → Ongoing |
+
+*Note: `print()` count includes intentional console output in housing_config display, `commands/stats.py` progress lines, and other CLI-output paths. Diagnostic `print()` (non-CLI) remains near zero.*
 
 ---
 
@@ -114,9 +117,14 @@ python_magnetrun/
 - **Modern Python** in newer modules — dataclasses, `@property`, context managers (`LogContext`, `timed_operation`)
 - **Strategy pattern** for outlier detection (IQR, LOF, Isolation Forest)
 - **Unified DataLoader protocol** — `MagnetRun`, `HybridRun`, `SimulationRun`, `BFieldRun` all satisfy one protocol
-- **Logging infrastructure** — `log_utils.py`, print→logger migration nearly complete (13 remaining)
-- **File validation** — `utils/validation.py` with `FileFormatError` integrated throughout loaders
+- **Logging infrastructure** — `log_utils.py`, diagnostic print→logger migration essentially complete
+- **File validation** — `utils/validation.py` with `FileFormatError` + `check_pupitre_truncation()` integrated throughout loaders
 - **`ruff` pre-commit hook** — enforces style consistency on every commit
+- **Lazy loading** — `PandasMagnetData` defers full CSV load to first `Data` access; `TdmsMagnetData` defers per-group TDMS load via `_LazyGroupDict`
+- **`Data` as abstract property** — lazy-load contract part of the ABC; `close()` + context-manager on base class enables `with load_magnetdata(...) as m:`
+- **Resilient file loading** — encoding fallback (UTF-8 → Latin-1), `on_bad_lines="warn"`, empty-data guard; `UnicodeDecodeError` caught in all loaders
+- **Rich field metadata** — `addData`/`computeData` now carry `symbol`, `unit`, `label`, `description`; stored as `FieldMeta` for automatic axis labelling
+- **Formula-key resolution in `HybridRun`** — `hybrid_formula_map` entries (e.g. `FEPC-AUX-LNCMI/ALIM1`) resolved by `_resolve_hybrid_formula` instead of failing with `ValueError`
 
 ---
 
@@ -133,10 +141,11 @@ All 5 bare except clauses removed. Replaced with specific exception types.
 Down from 1466 `print()` to 13 remaining; 1140 structured `logging` calls.
 Remaining 13 prints are in non-critical paths — low priority cleanup.
 
-#### 3. Hollow test suite 🔴 OPEN
+#### 3. Hollow test suite 🔴 OPEN (improving)
 
-`tests/test_python_magnetrun.py` still has **0 assertions**. `tests/analysis/` now
-has 7 test files (loaders, metrics, plotting, processing, sync, CLI, validation).
+`tests/test_python_magnetrun.py` still has **0 assertions**. `tests/analysis/` has 7
+test files. New additions: `test_truncated_pupitre.py` (6 cases), `test_hybrid_formula_resolution.py`
+(5 cases, mocked), `test-vprocess.py` (496 lines), `test-cfg-parser.py` (135 lines).
 Most `processing/` modules still lack unit tests. Target 70%+ coverage for core modules.
 
 #### 4. Incomplete type hints 🔴 OPEN
@@ -182,6 +191,18 @@ in multiple files. Centralize in `analysis/config.py`.
 #### 12. ~~No input validation at file boundaries~~ ✅ FIXED
 
 `utils/validation.py` with `FileFormatError` integrated in all loaders.
+
+#### 13. ~~`addData`/`computeData` lacked metadata~~ ✅ FIXED
+
+Both methods now accept `symbol`, `unit`, `label`, `description` and store `FieldMeta` in
+`self.field_meta[key]`.  Housing-config formula maps and JSON definition files carry the
+same four keys.  Plot label propagation is now automatic.
+
+#### 14. ~~`HybridRun.getData` failed on `hybrid_formula_map` keys~~ ✅ FIXED
+
+`_resolve_hybrid_formula()` helper evaluates formula strings (`LHS = op1 + op2 + …`) by
+loading constituent `kHz/…` channels and returning their element-wise sum.  Result is
+cached transparently.
 
 ### Low Priority
 
@@ -252,23 +273,27 @@ needs UTC conversion before `align_to_common_time()` can be implemented.
 | Protocol (formal) | `DataLoader` in `hybrid/data_protocol.py` — satisfied by all 4 run wrappers |
 | Protocol (formal) | `PlottingBackend` in `plotting/backend.py` — 3 implementations |
 | Dataclasses | `HydraulicData`, `SyncResult`, `DistanceResult`, `PlotStyle`, `PlotColors`, `DownsampleConfig` |
-| Context managers | `LogContext`, `timed_operation()` in `analysis/cli.py` |
+| Context managers | `LogContext`, `timed_operation()` in `analysis/cli.py`; `MagnetDataBase.__enter__`/`__exit__` for file-handle cleanup |
 | Strategy | Outlier detection (IQR, LOF, Isolation Forest) |
 | Single source of truth | `HousingConfig` for site/sensor/channel configuration |
+| Abstract property | `MagnetDataBase.Data` — lazy-load contract is part of the ABC |
+| Named tuple | `FieldMeta(symbol, unit, label, description)` — propagated by `addData`/`computeData` |
 
 ---
 
 ## Summary
 
 **python_magnetrun** is a production-ready package for magnet experimental run analysis.
-Significant progress since March 2026: logging migration is nearly complete, the
-magnetdata monolith has been split, a unified `DataLoader` protocol now covers all
-data sources (including new `SimulationRun` and `BFieldRun` adapters), plotting
-has been refactored into a multi-backend subpackage, and validation infrastructure
-is in place.
+Significant progress since March 2026: logging migration is essentially complete for
+diagnostic paths, the magnetdata monolith has been split, `Data` is now an abstract
+property with lazy loading and context-manager support on the ABC, a unified `DataLoader`
+protocol now covers all data sources (including `SimulationRun` and `BFieldRun` adapters),
+plotting has been refactored into a multi-backend subpackage, file loading is resilient to
+encoding and truncation issues, `addData`/`computeData` carry full `FieldMeta`, and
+`HybridRun.getData` correctly resolves `hybrid_formula_map` keys.
 
 **Main remaining pain points:**
-1. kHz/RMS UTC timestamp conversion (blocks unified multi-source plotting)
+1. kHz/RMS UTC timestamp conversion (blocks unified multi-source plotting, Phase 2B)
 2. Multiple-file `vs_time` regression
 3. Type hint coverage still ~40%
 4. No CI/CD pipeline

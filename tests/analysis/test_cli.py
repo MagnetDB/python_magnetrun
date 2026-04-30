@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from python_magnetrun.analysis.args import (
+    args_to_downsample_config,
     args_to_processing_config,
     create_argument_parser,
     parse_arguments,
@@ -428,10 +429,21 @@ class TestArgumentParser:
         assert args.lag is True
         assert args.distance is True
 
-    def test_downsample_option(self):
-        """Test --downsample option."""
-        args = parse_arguments(["input.tdms", "--downsample", "10.0"])
-        assert args.downsample == 10.0
+    def test_downsample_method_option(self):
+        """Test --downsample-method/--downsample-params options."""
+        args = parse_arguments(
+            [
+                "input.tdms",
+                "--downsample-method",
+                "stride",
+                "--downsample-params",
+                '{"n_out": 5000}',
+            ]
+        )
+        config = args_to_downsample_config(args)
+        assert config is not None
+        assert config.method == "stride"
+        assert config.n_out == 5000
 
     def test_tkey_option(self):
         """Test --tkey option."""
@@ -466,8 +478,6 @@ class TestArgsToProcessingConfig:
                 "--save",
                 "--synchronize",
                 "--lag",
-                "--downsample",
-                "25.0",
             ]
         )
         config = args_to_processing_config(args)
@@ -477,7 +487,6 @@ class TestArgsToProcessingConfig:
         assert config.save is True
         assert config.synchronize is True
         assert config.compute_lag is True
-        assert config.downsample_percent == 25.0
 
 
 class TestMain:

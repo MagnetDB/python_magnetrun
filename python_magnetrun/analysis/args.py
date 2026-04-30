@@ -37,8 +37,8 @@ Examples:
   %(prog)s input.tdms --save --debug --log-file analysis.log
       Process with debug logging to file
 
-  %(prog)s input.tdms --synchronize --lag --downsample 10
-      Synchronize data, compute lag, plot 10%% of points
+    %(prog)s input.tdms --synchronize --lag --downsample-method stride --downsample-params '{"n_out": 10000}'
+            Synchronize data, compute lag, and pre-downsample for plotting
         """,
     )
 
@@ -86,14 +86,6 @@ Examples:
         action="store_true",
         help="Discover files but don't load/process data",
     )
-    proc_group.add_argument(
-        "--downsample",
-        type=float,
-        default=100.0,
-        metavar="PERCENT",
-        help="Percentage of data points to keep when plotting (0-100, default: 100)",
-    )
-
     # Analysis parameters
     param_group = parser.add_argument_group("Analysis parameters")
     param_group.add_argument(
@@ -128,7 +120,16 @@ Examples:
     output_group.add_argument(
         "--save",
         action="store_true",
-        help="Save plots to PNG files",
+        help="Save plots to files (.png for matplotlib, .html for plotly backends)",
+    )
+    output_group.add_argument(
+        "--backend",
+        choices=["matplotlib", "plotly", "plotly-resampler", "plotly-widget"],
+        default="matplotlib",
+        help=(
+            "Plotting backend. 'plotly' enables interactive HTML output. "
+            "'plotly-resampler'/'plotly-widget' require a live Python kernel."
+        ),
     )
 
     # Logging options
@@ -246,5 +247,5 @@ def args_to_processing_config(args: argparse.Namespace):
         debug=args.debug,
         show=args.show,
         save=args.save,
-        downsample_percent=getattr(args, "downsample", 100.0),
+        backend=getattr(args, "backend", "matplotlib"),
     )

@@ -78,7 +78,9 @@ class PandasMagnetData(MagnetDataBase):
     ) -> None:
         # Initialise backing store before super().__init__ so that the Data
         # property is usable from _validate_start_timestamp (called below).
-        self._data: pd.DataFrame = Data if isinstance(Data, pd.DataFrame) else pd.DataFrame()
+        self._data: pd.DataFrame = (
+            Data if isinstance(Data, pd.DataFrame) else pd.DataFrame()
+        )
         self._data_loaded: bool = len(self._data) > 1
         self._read_kwargs: dict = _read_kwargs or {}
         super().__init__(filename, Groups, Keys, defs_file=defs_file)
@@ -335,7 +337,7 @@ class PandasMagnetData(MagnetDataBase):
                     f"cleanupData: keys {existing_keys} already exist in DataFrame, skipping addition"
                 )
             for key, field_def in keys_to_add.items():
-                self.addData(
+                status = self.addData(
                     key,
                     field_def["formula"],
                     symbol=field_def["symbol"],
@@ -344,6 +346,10 @@ class PandasMagnetData(MagnetDataBase):
                     description=field_def["description"],
                     debug=debug,
                 )
+                if status != 0:
+                    logger.warning(
+                        f"cleanupData: failed to add {key!r} (status={status})"
+                    )
 
         if keys_to_rename:
             logger.debug(f"cleanupData: renaming keys {keys_to_rename}")
@@ -467,6 +473,96 @@ class PandasMagnetData(MagnetDataBase):
 
     # --- compute / add -----------------------------------------------
 
+    def _validate_formula_keys(self, formula: str) -> tuple[int, str]:
+        """Validate that all variables referenced in a formula exist in the DataFrame.
+
+        Issues are logged as warnings rather than raising exceptions.
+
+        :param formula: formula to validate
+        :return: tuple of (status_code, formula) where status_code is 0 for success,
+                 non-zero if validation issues were found (but execution continues)
+        """
+        import re
+
+        assert isinstance(self.Data, pd.DataFrame)
+        status = 0
+
+        # Validate only expression variables, not the assignment target.
+        rhs = formula.split("=", 1)[1] if "=" in formula else formula
+
+        # Extract all variable names from the right-hand side expression.
+        remaining_vars = set(re.findall(r"\b([a-zA-Z_]\w*)\b", rhs))
+        # Remove Python/pandas built-in functions and constants
+        pandas_builtins = {
+            "abs",
+            "round",
+            "sum",
+            "mean",
+            "min",
+            "max",
+            "std",
+            "var",
+            "sqrt",
+            "exp",
+            "log",
+            "log10",
+            "sin",
+            "cos",
+            "tan",
+            "pi",
+            "e",
+            "True",
+            "False",
+            "None",
+            "nan",
+            "inf",
+        }
+        remaining_vars = remaining_vars - pandas_builtins
+
+        undefined_vars = [v for v in remaining_vars if v not in self.Data.columns]
+        if undefined_vars:
+            logger.warning(
+                f"_validate_formula_keys: {rhs}: undefined variables:\n"
+                f"  - Variables not found: {undefined_vars}\n"
+                f"  - Available columns: {_dataframe_keys(self.Data)}"
+            )
+            status = 1
+
+        if status == 0:
+            logger.debug(
+                f"_validate_formula_keys: formula '{rhs}' validated successfully"
+            )
+
+        return status, formula
+
+    def _validate_kparams(self, kparams: list) -> tuple[int, list]:
+        """Validate that all parameter keys exist in the DataFrame.
+
+        Issues are logged as warnings rather than raising exceptions.
+
+        :param kparams: list of column names to validate
+        :return: tuple of (status_code, kparams) where status_code is 0 for success,
+                 non-zero if any keys are missing
+        """
+        assert isinstance(self.Data, pd.DataFrame)
+        status = 0
+
+        missing_params = [p for p in kparams if p not in self.Data.columns]
+        if missing_params:
+            logger.warning(
+                "_validate_kparams: missing parameters:\n"
+                f"  - Missing: {missing_params}\n"
+                f"  - Available columns: {_dataframe_keys(self.Data)}"
+            )
+            status = 1
+
+        if status == 0:
+            logger.debug(
+                f"_validate_kparams: all parameters {kparams} validated successfully"
+            )
+
+        return status, kparams
+
     def addData(  # noqa: N802
         self,
         key: str,
@@ -486,22 +582,33 @@ class PandasMagnetData(MagnetDataBase):
             logger.warning(
                 f"addData: key '{key}' already exists in DataFrame, skipping addition"
             )
-        else:
-            self.Data.eval(formula, inplace=True)
-            self.Keys = _dataframe_keys(self.Data)
-            if isinstance(unit, str) and unit:
-                try:
-                    ureg = _make_ureg()
-                    parsed = ureg.parse_expression(unit)
-                    pint_unit = parsed.units if hasattr(parsed, "units") else parsed
-                except (ValueError, UndefinedUnitError):
-                    pint_unit = None
-            else:
-                pint_unit = unit if unit else None  # empty string → None
-            self.units[key] = (symbol, pint_unit)
-            self.field_meta[key] = FieldMeta(
-                symbol=symbol, unit=pint_unit, label=label, description=description
+            return 1
+
+        # Validate all variables referenced in formula exist in DataFrame
+        status, formula = self._validate_formula_keys(formula)
+        if status != 0:
+            logger.warning(
+                f"addData: {key}: formula validation returned status {status}; "
+                f"skipping evaluation"
             )
+            return status
+
+        self.Data.eval(formula, inplace=True)
+        self.Keys = _dataframe_keys(self.Data)
+        if isinstance(unit, str) and unit:
+            try:
+                ureg = _make_ureg()
+                parsed = ureg.parse_expression(unit)
+                pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+            except (ValueError, UndefinedUnitError):
+                pint_unit = None
+        else:
+            pint_unit = unit if unit else None  # empty string -> None
+
+        self.units[key] = (symbol, pint_unit)
+        self.field_meta[key] = FieldMeta(
+            symbol=symbol, unit=pint_unit, label=label, description=description
+        )
         return 0
 
     def computeData(  # noqa: N802
@@ -514,7 +621,7 @@ class PandasMagnetData(MagnetDataBase):
         label: str,
         description: str,
         debug: bool = False,
-    ) -> None:
+    ) -> int:
         from pint.errors import UndefinedUnitError
 
         from .magnetdata_base import FieldMeta, _make_ureg
@@ -522,7 +629,17 @@ class PandasMagnetData(MagnetDataBase):
         logger.debug(f"computeData: Key={key}")
         if key in self.Keys:
             logger.warning(f"Key {key} already exists in DataFrame")
-            return
+            return 1
+
+        # Validate that all parameter keys exist in DataFrame
+        status, kparams = self._validate_kparams(kparams)
+        if status != 0:
+            logger.warning(
+                f"computeData: {key}: kparams validation returned status {status}; "
+                f"skipping computation"
+            )
+            return status
+
         assert isinstance(self.Data, pd.DataFrame)
         data = []
         for values in self.Data[kparams].values.tolist():
@@ -543,6 +660,7 @@ class PandasMagnetData(MagnetDataBase):
             symbol=symbol, unit=pint_unit, label=label, description=description
         )
         logger.debug("done")
+        return 0
 
     # --- time utilities ----------------------------------------------
 

@@ -141,17 +141,27 @@ class PlotlyBackend:
         if has_markers:
             _symbol_map = {
                 "o": "circle",
+                ".": "circle",
+                ",": "circle",
                 "+": "cross",
                 "x": "x",
+                "X": "x",
                 "s": "square",
                 "D": "diamond",
+                "d": "diamond",
                 "^": "triangle-up",
                 "v": "triangle-down",
                 "<": "triangle-left",
                 ">": "triangle-right",
                 "*": "star",
+                "p": "pentagon",
+                "h": "hexagon",
+                "H": "hexagon2",
+                "8": "octagon",
+                "|": "line-ns",
+                "_": "line-ew",
             }
-            marker_dict: dict[str, Any] = {"symbol": _symbol_map.get(marker, marker)}
+            marker_dict: dict[str, Any] = {"symbol": _symbol_map.get(marker, "circle")}
             if color is not None:
                 marker_dict["color"] = color
             scatter_kwargs["marker"] = marker_dict
