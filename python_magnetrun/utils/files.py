@@ -13,6 +13,12 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_EXTENSIONS: frozenset[str] = frozenset({".tdms", ".txt", ".csv"})
 
+# Subdirectory names used in the TDMS data tree.
+DIR_ARCHIVE: str = "Fichiers_Archive"
+DIR_DEFAULT: str = "Fichiers_Default"
+DIR_TRIGGER: str = "Fichiers_Manuel_Trig"
+DIR_SPIKE: str = "Fichiers_Spike"
+
 
 def get_extension(path: str) -> str:
     """Return the lower-cased file extension of *path* (e.g. ``".tdms"``)."""
@@ -42,10 +48,10 @@ def expand_input_files(
     # Mapping from TDMS mode name (2nd underscore-part of filename) to subdirectory name.
     _TDMS_MODE_DIRS: dict[str, str] = {
         "Overview": "Overview",
-        "Archive": "Fichiers_Archives",
-        "Default": "Fichiers_Defaults",
-        "Spikes": "Fichiers_Spike",
-        "ManuelTrig": "Fichiers_Manuel_Trig",
+        "Archive": DIR_ARCHIVE,
+        "Default": DIR_DEFAULT,
+        "Spikes": DIR_SPIKE,
+        "ManuelTrig": DIR_TRIGGER,
     }
 
     logger.debug(f"Expanding input files ({input_patterns})...")
@@ -79,7 +85,7 @@ def expand_input_files(
                 if extension == ".tdms":
                     # Special handling: extract housing and mode from filename.
                     # Mode maps to a subdirectory (e.g. Overview→Overview,
-                    # Archive→Fichiers_Archives, …).
+                    # Archive→DIR_ARCHIVE, …).
                     parts = os.path.basename(pattern).split("_")
                     if len(parts) >= 2:
                         housing_from_file = parts[0]
@@ -239,12 +245,12 @@ def find_files(args, file, housing, date, time):
     extension = os.path.splitext(file)[-1]
     filename = os.path.basename(file).replace(extension, "")
     pigbrother = filename.replace("Overview", "Archive")
-    archive_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Archive")
+    archive_datadir = os.path.dirname(file).replace("Overview", DIR_ARCHIVE)
     archive_filter = f"{archive_datadir}/{pigbrother.replace(time, '*.tdms')}"
 
-    default_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Default")
-    trigger_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Manuel_Trig")
-    spike_datadir = os.path.dirname(file).replace("Overview", "Fichiers_Spike")
+    default_datadir = os.path.dirname(file).replace("Overview", DIR_DEFAULT)
+    trigger_datadir = os.path.dirname(file).replace("Overview", DIR_TRIGGER)
+    spike_datadir = os.path.dirname(file).replace("Overview", DIR_SPIKE)
 
     default = filename.replace("Overview", "Default")
     default_filter = f"{default_datadir}/{default.replace(time, '*.tdms')}"

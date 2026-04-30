@@ -106,17 +106,14 @@ Extend `plot_comparison()` to accept `list[DataLoader]`:
 
 **Phase 2E: Channel Auto-Mapping** 🔶 **PARTIAL**
 
-Build `CHANNEL_ALIASES` registry:
-```python
-CHANNEL_ALIASES: dict[str, list[str]] = {
-    "IH":     ["Courant_GR1", "I_H1", "I_GR1"],
-    "FlowH":  ["Debit_GR1", "flow_GR1"],
-    # ...
-}
-```
+Cross-domain alias resolution is handled by `KeyMapping` (Phase D of the cross-domain plan),
+which is a thin resolver on top of `field_defs.build_crossref()`. Alias data lives exclusively
+in the `*-defs.json` files under the `"aliases"` key — no hardcoded dict.
 
-Current: Structured `ChannelMapping` exists; needs fuzzy fallback
-**Effort:** ~1-2 weeks
+`simulation` and `bfield` alias entries still need to be added to the JSON files (Phase D0).
+Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `comparison/key_mapping.py` not yet created.
+
+**Effort:** ~1-2 weeks (shared with cross-domain Phase D)
 
 ---
 
@@ -139,6 +136,7 @@ Current: Structured `ChannelMapping` exists; needs fuzzy fallback
 **3.3 CLI Consolidation**
 - Reduce 8 entry points to 3: `magnetrun` (unified dispatcher), `magnetrun-fetch` (renamed from `srvdata-to-magnetrun`), `magnetrun-config` (unchanged)
 - Add `magnetrun signature` subcommand (promoted from `tests/test-signature.py`)
+- Add `magnetrun compare` subcommand via `comparison/cli.py::register()` — **no** separate `magnetrun-compare` entry point
 - `register(subparsers)` pattern, subcommand-first argv (eliminates `_normalize_argv` hack)
 - Coordinate `analysis/cli.py` pass with `analysis-subpackage-refactoring.plan.md` Phase 5.3
 - **See:** [cli-consolidation.plan.md](cli-consolidation.plan.md)
@@ -169,11 +167,11 @@ Current: Structured `ChannelMapping` exists; needs fuzzy fallback
 
 **4.2 Cross-Domain Comparison (Phases D-G)**
 - Phase B-C (adapters): ✅ Done
-- Phase D: Extend `*-defs.json` with simulation/bfield aliases
+- Phase D: Extend `*-defs.json` with simulation/bfield aliases; `KeyMapping` (reuses `field_defs.build_crossref()`)
 - Phase E: `ComparisonSession` implementation
-- Phase F: `magnetrun-compare` CLI
+- Phase F: `magnetrun compare` subcommand via `comparison/cli.py::register()` — wired into the unified `magnetrun` dispatcher (**no** standalone `magnetrun-compare` entry point; see `cli-consolidation.plan.md`)
 - Phase G: Comprehensive tests
-- **Depends on:** HybridData timestamp support
+- **Depends on:** HybridData timestamp support; CLI consolidation (Stream 3.3) should land first or in the same branch
 - **See:** [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
 - **Effort:** ~2-3 weeks
 

@@ -1,6 +1,6 @@
 # Cross-Domain Comparison — Architecture Evolution Plan
 
-*Created: 2026-04-08 — Updated: 2026-04-16*
+*Created: 2026-04-08 — Updated: 2026-04-30*
 
 ## Goal
 
@@ -19,9 +19,9 @@ simulation data (feelpp, ensight, magnettools), and magnetic field measurements
 | `get_time_range()` on data objects | `magnetdata_pandas.py:418`, `magnetdata_tdms.py:409` | **Done** — concrete implementations exist |
 | `DataProvider`/`DataLoader` duplication resolved | `hybrid/hybrid_run.py`, `hybrid/data_protocol.py` | **Done** — `DataProvider` deleted (Phase A0) |
 | `get_time_range()` added to `DataLoader` protocol | `hybrid/data_protocol.py:177` | **Done** — `HybridRun.get_time_range()` also exists (`hybrid_run.py:822`) |
-| `getDomain()` added to `DataLoader` protocol | `hybrid/data_protocol.py` | **Blocking** — not yet in protocol |
-| `MagnetRun.get_time_range()` delegation wrapper | `MagnetRun.py` | **Blocking** — wrapper missing |
-| `getDomain()` on `MagnetRun` and `HybridRun` | `MagnetRun.py`, `hybrid/hybrid_run.py` | **Blocking** — not yet implemented |
+| `getDomain()` added to `DataLoader` protocol | `hybrid/data_protocol.py` | **Done** — added to protocol |
+| `MagnetRun.get_time_range()` delegation wrapper | `MagnetRun.py` | **Done** — delegates to `self.MagnetData.get_time_range()` |
+| `getDomain()` on `MagnetRun` and `HybridRun` | `MagnetRun.py`, `hybrid/hybrid_run.py` | **Done** — both return `"operational"` |
 
 ---
 
@@ -55,11 +55,11 @@ DataLoader protocol (extended — all sources)
 `DataProvider` has been deleted from `hybrid_run.py`. All type annotations now use `DataLoader`
 from `hybrid/data_protocol.py`.
 
-### A1 — Add `getDomain()` and `get_time_range()` to the protocol
+### A1 — Add `getDomain()` and `get_time_range()` to the protocol *(done)*
 
-`get_time_range()` has been added to `DataLoader` (`data_protocol.py:177`). `getDomain()` is
-still missing. The current `DataLoader` protocol requires `getData`, `getKeys`, `getType`,
-`getSite`, `getHousing`, `get_time_range`. Still needed — add `getDomain()`:
+Both `get_time_range()` and `getDomain()` are in `DataLoader` (`data_protocol.py:138,142`).
+The protocol now requires `getData`, `getKeys`, `getType`, `getSite`, `getHousing`,
+`get_time_range`, `getDomain`.
 
 ```python
 @runtime_checkable
@@ -75,36 +75,19 @@ class DataLoader(Protocol):
         ...
 ```
 
-### A2 — Add missing methods to existing implementations
+### A2 — Add missing methods to existing implementations *(done)*
 
-`get_time_range()` is **already concrete** in the data layer:
-- `PandasMagnetData.get_time_range()` — `magnetdata_pandas.py:418` (uses Date/Time columns)
-- `TdmsMagnetData.get_time_range()` — `magnetdata_tdms.py:409` (uses wf_start_time)
-- `HybridRun.get_time_range()` — `hybrid_run.py:822` (already implemented)
+All implementations are concrete:
+- `PandasMagnetData.get_time_range()` — `magnetdata_pandas.py`
+- `TdmsMagnetData.get_time_range()` — `magnetdata_tdms.py`
+- `HybridRun.get_time_range()` — `hybrid_run.py:822`
+- `MagnetRun.get_time_range()` — delegates to `self.MagnetData.get_time_range()` (`MagnetRun.py:245`)
+- `MagnetRun.getDomain()` → `"operational"` (`MagnetRun.py:242`)
+- `HybridRun.getDomain()` → `"operational"` (`hybrid_run.py:859`)
 
-What is still missing (`getDomain()` and `MagnetRun` delegation):
+### A3 — Write a protocol compliance test *(done)*
 
-**`MagnetRun.py`** — add two methods:
-
-```python
-def get_time_range(self) -> tuple:
-    """Delegate to the underlying MagnetData object."""
-    return self.MagnetData.get_time_range()
-
-def getDomain(self) -> str:
-    return "operational"
-```
-
-**`hybrid_run.py`** — add one method (after A0 removes `DataProvider`):
-
-```python
-def getDomain(self) -> str:
-    return "operational"
-```
-
-### A3 — Write a protocol compliance test
-
-Add `tests/test_protocol.py`:
+`tests/test_protocol.py` exists with 5 passing tests. For reference:
 
 ```python
 from python_magnetrun.hybrid.data_protocol import DataLoader
@@ -122,11 +105,11 @@ def test_hybridrun_satisfies_protocol():
 
 ---
 
-## Phase B — `SimulationRun` adapter
+## Phase B — `SimulationRun` adapter *(done)*
 
-**New file:** `python_magnetrun/simulation/simulation_run.py`
+**File:** `python_magnetrun/simulation/simulation_run.py`
 
-### B1 — Create the adapter class
+### B1 — Create the adapter class *(done)*
 
 `EnsightMagnetData`, `FeelppMagnetData`, and the new `MagnetToolsData` all inherit
 from `PandasMagnetData` but none implement `DataLoader`. Wrap them:
@@ -197,9 +180,9 @@ class SimulationRun:
         raise NotImplementedError("No time column specified for this simulation dataset")
 ```
 
-### B2 — `magnettools` reader
+### B2 — `magnettools` reader *(done — stub)*
 
-**New file:** `python_magnetrun/simulation/magnettools_reader.py`
+**File:** `python_magnetrun/simulation/magnettools_reader.py`
 
 Implement `load_magnettools(filename: str) -> PandasMagnetData`.
 
@@ -217,9 +200,9 @@ def load_magnettools(filename: str) -> PandasMagnetData:
     return load_magnetdata(filename)
 ```
 
-### B3 — Register in `__init__.py`
+### B3 — Register in `__init__.py` *(done)*
 
-**File:** `python_magnetrun/simulation/__init__.py` (create)
+**File:** `python_magnetrun/simulation/__init__.py`
 
 ```python
 from .simulation_run import SimulationRun
@@ -229,11 +212,11 @@ __all__ = ["SimulationRun"]
 
 ---
 
-## Phase C — `BFieldRun` adapter
+## Phase C — `BFieldRun` adapter *(done)*
 
-**New file:** `python_magnetrun/bfield/bfield_run.py`
+**File:** `python_magnetrun/bfield/bfield_run.py`
 
-### C1 — Create the adapter class
+### C1 — Create the adapter class *(done)*
 
 `BProfileMagnetData` inherits from `PandasMagnetData` and stores profile data with
 columns `(Index, Position, Profile, ...)`. It is spatial rather than temporal, but
@@ -295,9 +278,9 @@ class BFieldRun:
         return self._measurement_time, self._measurement_time
 ```
 
-### C2 — Register in `__init__.py`
+### C2 — Register in `__init__.py` *(done)*
 
-**New file:** `python_magnetrun/bfield/__init__.py`
+**File:** `python_magnetrun/bfield/__init__.py`
 
 ```python
 from .bfield_run import BFieldRun
@@ -514,37 +497,68 @@ __all__ = ["ComparisonSession", "ComparisonResult"]
 
 ---
 
-## Phase F — CLI entry point
+## Phase F — `compare` subcommand in the unified dispatcher
 
 **New file:** `python_magnetrun/comparison/cli.py`
 
-### F1 — Argument structure
+This is **not** a standalone entry point. It follows the `register()` pattern from
+`cli-consolidation.plan.md` and is wired into `python_magnetrun/main.py` as
+`magnetrun compare`.  No new `[project.scripts]` entry is needed.
 
-```
-magnetrun-compare
-  --pupitre FILE              # operational pupitre .txt
-  --tdms FILE                 # operational pigbrother .tdms
-  --hybrid-dir DIR --hybrid-date YYYY-MM-DD  # hybrid FEPC
-  --feelpp FILE               # simulation Feel++
-  --ensight FILE              # simulation Ensight
-  --magnettools FILE          # simulation magnettools
-  --bprofile FILE             # B-field measurement
-  --housing HOUSING
-  --site SITE
-  --channels IH Field FlowH   # logical channel names (default: all common)
-  --resample-freq 1s          # common time axis resolution
-  --metrics                   # print metrics table
-  --plot                      # show plots
-  --save-dir DIR
-  --reference pupitre         # which source is the reference for metrics
+### F1 — `register()` and argument structure
+
+```python
+def register(sub: "argparse._SubParsersAction") -> None:
+    p = sub.add_parser(
+        "compare",
+        help="Compare operational, simulation, and B-field data",
+    )
+    p.add_argument("--pupitre",      metavar="FILE",  help="operational pupitre .txt")
+    p.add_argument("--tdms",         metavar="FILE",  help="operational pigbrother .tdms")
+    p.add_argument("--hybrid-dir",   metavar="DIR")
+    p.add_argument("--hybrid-date",  metavar="YYYY-MM-DD")
+    p.add_argument("--feelpp",       metavar="FILE",  help="simulation Feel++")
+    p.add_argument("--ensight",      metavar="FILE",  help="simulation Ensight")
+    p.add_argument("--magnettools",  metavar="FILE",  help="simulation magnettools")
+    p.add_argument("--bprofile",     metavar="FILE",  help="B-field measurement")
+    p.add_argument("--housing",      metavar="HOUSING")
+    p.add_argument("--site",         metavar="SITE")
+    p.add_argument("--channels",     nargs="+", metavar="KEY",
+                   help="logical channel names (default: all common)")
+    p.add_argument("--resample-freq", default="1s", metavar="FREQ")
+    p.add_argument("--metrics",      action="store_true", help="print metrics table")
+    p.add_argument("--plot",         action="store_true", help="show plots")
+    p.add_argument("--save-dir",     metavar="DIR")
+    p.add_argument("--reference",    metavar="LABEL",
+                   help="source label used as reference for metrics")
+    p.set_defaults(_handler=_run)
+
+
+def _run(args: argparse.Namespace) -> int:
+    ...
+    return 0
+
+
+def main() -> None:
+    """Standalone entry point — kept for development convenience only."""
+    import argparse, sys
+    parser = argparse.ArgumentParser(prog="magnetrun-compare")
+    sub = parser.add_subparsers()
+    register(sub)
+    args = parser.parse_args()
+    sys.exit(_run(args))
 ```
 
-### F2 — Register in `pyproject.toml`
+### F2 — Wire into `main.py`
 
-```toml
-[project.scripts]
-magnetrun-compare = "python_magnetrun.comparison.cli:main"
+Add one line to `python_magnetrun/main.py` (see `cli-consolidation.plan.md`):
+
+```python
+from .comparison.cli  import register as _r_cmp;    _r_cmp(sub)
 ```
+
+No new `[project.scripts]` entry is required — `magnetrun compare` is reached
+through the unified dispatcher.
 
 ---
 
@@ -569,48 +583,49 @@ Use synthetic DataFrames (no real files) for all tests except CLI smoke tests.
 
 ## Files to create
 
-| File | Purpose |
-|---|---|
-| `python_magnetrun/simulation/__init__.py` | Package init |
-| `python_magnetrun/simulation/simulation_run.py` | SimulationRun adapter |
-| `python_magnetrun/simulation/magnettools_reader.py` | magnettools format reader (stub) |
-| `python_magnetrun/bfield/__init__.py` | Package init |
-| `python_magnetrun/bfield/bfield_run.py` | BFieldRun adapter |
-| `python_magnetrun/comparison/__init__.py` | Package init |
-| `python_magnetrun/comparison/key_mapping.py` | `KeyMapping` resolver (Phase D) |
-| `python_magnetrun/comparison/session.py` | ComparisonSession |
-| `python_magnetrun/comparison/cli.py` | `magnetrun-compare` CLI |
-| `tests/test_protocol.py` | Protocol compliance tests |
-| `tests/test_comparison.py` | ComparisonSession unit tests |
+| File | Purpose | Status |
+|---|---|---|
+| `python_magnetrun/simulation/__init__.py` | Package init | ✅ Done |
+| `python_magnetrun/simulation/simulation_run.py` | SimulationRun adapter | ✅ Done |
+| `python_magnetrun/simulation/magnettools_reader.py` | magnettools format reader (stub) | ✅ Done (stub) |
+| `python_magnetrun/bfield/__init__.py` | Package init | ✅ Done |
+| `python_magnetrun/bfield/bfield_run.py` | BFieldRun adapter | ✅ Done |
+| `python_magnetrun/comparison/__init__.py` | Package init | 🔴 Open |
+| `python_magnetrun/comparison/key_mapping.py` | `KeyMapping` resolver (Phase D) | 🔴 Open |
+| `python_magnetrun/comparison/session.py` | ComparisonSession | 🔴 Open |
+| `python_magnetrun/comparison/cli.py` | `magnetrun-compare` CLI | 🔴 Open |
+| `tests/test_protocol.py` | Protocol compliance tests | ✅ Done |
+| `tests/test_comparison.py` | ComparisonSession unit tests | 🔴 Open |
 
 ## Files to modify
 
-| File | Change |
-|---|---|
-| `python_magnetrun/hybrid/data_protocol.py` | Add `getDomain()` to `DataLoader` protocol (Phase A1 — `get_time_range()` already done) |
-| `python_magnetrun/hybrid/hybrid_run.py` | Add `getDomain() → "operational"` (Phase A2 — `DataProvider` already deleted) |
-| `python_magnetrun/MagnetRun.py` | Add `get_time_range()` delegation + `getDomain() → "operational"` (Phase A2) |
-| `python_magnetrun/magnetdata_base.py` | No change needed — `get_time_range()` already concrete in subclasses |
-| `python_magnetrun/analysis/config.py` | **No change** — `CHANNEL_ALIASES` is not added here (see Phase D revision) |
-| `pupitre-defs.json`, `pigbrother-defs.json`, `hybrid-defs.json` | Add `"simulation"` and `"bfield"` alias entries (Phase D0) |
-| `pyproject.toml` | Add `magnetrun-compare` entry point; add new packages to `find_packages` (Phase F) |
+| File | Change | Status |
+|---|---|---|
+| `python_magnetrun/hybrid/data_protocol.py` | Add `getDomain()` to `DataLoader` protocol | ✅ Done |
+| `python_magnetrun/hybrid/hybrid_run.py` | Add `getDomain() → "operational"` | ✅ Done |
+| `python_magnetrun/MagnetRun.py` | Add `get_time_range()` delegation + `getDomain() → "operational"` | ✅ Done |
+| `python_magnetrun/magnetdata_base.py` | No change needed | ✅ N/A |
+| `python_magnetrun/analysis/config.py` | **No change** — `CHANNEL_ALIASES` is not added here (see Phase D revision) | ✅ N/A |
+| `pupitre-defs.json`, `pigbrother-defs.json`, `hybrid-defs.json` | Add `"simulation"` and `"bfield"` alias entries (Phase D0) | 🔴 Open |
+| `python_magnetrun/main.py` | Add `from .comparison.cli import register as _r_cmp; _r_cmp(sub)` (Phase F) | 🔴 Open |
+| `pyproject.toml` | Add new packages to `find_packages` if needed — **no** new `[project.scripts]` entry (subcommand only) | 🔴 Open |
 
 ---
 
 ## Implementation order
 
 ```
-Phase A0 (remove DataProvider duplication)   ← do first; unblocks A1
-Phase A1 (extend DataLoader protocol)        ← requires A0
-Phase A2 (add getDomain/get_time_range to    ← requires A1
+Phase A0 (remove DataProvider duplication)   ← ✅ done
+Phase A1 (extend DataLoader protocol)        ← ✅ done
+Phase A2 (add getDomain/get_time_range to    ← ✅ done
           MagnetRun and HybridRun)
-Phase A3 (protocol compliance tests)         ← requires A2
-Phase D  (KeyMapping)                        ← independent; can run in parallel with B/C
-Phase B  (SimulationRun)                     ← requires A1
-Phase C  (BFieldRun)                         ← requires A1
-Phase E  (ComparisonSession)                 ← requires A, B, C, D
-Phase F  (CLI)                               ← requires E
-Phase G  (tests)                             ← run throughout; finalize with F
+Phase A3 (protocol compliance tests)         ← ✅ done
+Phase B  (SimulationRun)                     ← ✅ done
+Phase C  (BFieldRun)                         ← ✅ done
+Phase D  (KeyMapping)                        ← 🔴 open; independent of E/F but needed for E
+Phase E  (ComparisonSession)                 ← 🔴 open; requires A, B, C, D
+Phase F  (CLI)                               ← 🔴 open; requires E
+Phase G  (tests/test_comparison.py)          ← 🔴 open; finalize with F
 ```
 
 ---

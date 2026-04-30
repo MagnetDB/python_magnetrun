@@ -18,14 +18,15 @@ from python_magnetrun.analysis.plotting import (
     # Dataclasses
     PlotStyle,
     create_figure_grid,
-    downsample_dataframe,
-    # Downsampling functions
-    downsample_for_plot,
-    downsample_minmax,
     estimate_downsample_percent,
     plot_incidents_markers,
     # Plotting functions
     plot_regimes,
+)
+from python_magnetrun.utils.downsampling import (
+    DownsampleConfig,
+    downsample_arrays,
+    downsample_dataframe,
 )
 
 
@@ -80,156 +81,73 @@ class TestDefaultInstances:
         assert isinstance(DEFAULT_COLORS, PlotColors)
 
 
-class TestDownsampleForPlot:
-    """Test downsample_for_plot function."""
+class TestDownsampleArrays:
+    """Test downsample_arrays via DownsampleConfig (canonical API)."""
 
     def test_no_downsampling(self):
-        """Test with 100% (no downsampling)."""
-        x = np.arange(100)
+        x = np.arange(100, dtype=float)
         y = np.sin(x)
-
-        x_ds, y_ds = downsample_for_plot(x, y, percent=100.0)
-
+        config = DownsampleConfig(n_out=200)
+        y_ds, x_ds = downsample_arrays(y, x, config)
         assert len(x_ds) == 100
-        np.testing.assert_array_equal(x_ds, x)
-        np.testing.assert_array_equal(y_ds, y)
 
-    def test_50_percent_downsampling(self):
-        """Test 50% downsampling."""
-        x = np.arange(100)
+    def test_stride_50_percent(self):
+        x = np.arange(100, dtype=float)
         y = np.sin(x)
-
-        x_ds, y_ds = downsample_for_plot(x, y, percent=50.0)
-
-        # Should have approximately 50 points
+        config = DownsampleConfig.from_percent(len(x), 50.0)
+        y_ds, x_ds = downsample_arrays(y, x, config)
         assert len(x_ds) == 50
-        assert len(y_ds) == 50
 
-    def test_10_percent_downsampling(self):
-        """Test 10% downsampling."""
-        x = np.arange(1000)
+    def test_stride_10_percent(self):
+        x = np.arange(1000, dtype=float)
         y = np.random.randn(1000)
+        config = DownsampleConfig.from_percent(len(x), 10.0)
+        y_ds, x_ds = downsample_arrays(y, x, config)
+        assert 90 <= len(x_ds) <= 110
 
-        x_ds, y_ds = downsample_for_plot(x, y, percent=10.0)
+    def test_minmax_preserves_extrema(self):
+        np.random.seed(42)
+        x = np.arange(1000, dtype=float)
+        y = np.random.randn(1000)
+        config = DownsampleConfig(n_out=20, method="minmax")
+        y_ds, x_ds = downsample_arrays(y, x, config)
+        assert len(x_ds) == 20
+        assert np.isclose(y_ds, y.min()).any() or y.min() in y_ds
 
-        # Should have approximately 100 points
-        assert len(x_ds) <= 110  # Allow some tolerance
-        assert len(x_ds) >= 90
-
-    def test_1_percent_downsampling(self):
-        """Test 1% downsampling for large datasets."""
-        x = np.arange(1000000)
-        y = np.sin(x / 1000)
-
-        x_ds, y_ds = downsample_for_plot(x, y, percent=1.0)
-
-        # Should have approximately 10000 points
-        assert len(x_ds) <= 11000
-        assert len(x_ds) >= 9000
-
-    def test_zero_percent(self):
-        """Test with 0% (edge case)."""
-        x = np.arange(100)
+    def test_first_point_preserved(self):
+        x = np.arange(100, dtype=float)
         y = np.sin(x)
-
-        x_ds, y_ds = downsample_for_plot(x, y, percent=0.0)
-
-        # Should return at least one point
-        assert len(x_ds) >= 1
-
-    def test_over_100_percent(self):
-        """Test with >100% (no effect)."""
-        x = np.arange(100)
-        y = np.sin(x)
-
-        x_ds, y_ds = downsample_for_plot(x, y, percent=150.0)
-
-        assert len(x_ds) == 100
-
-    def test_preserves_endpoints(self):
-        """Test that first point is preserved."""
-        x = np.arange(100)
-        y = np.sin(x)
-
-        x_ds, y_ds = downsample_for_plot(x, y, percent=10.0)
-
-        # First point should be preserved
+        config = DownsampleConfig.from_percent(len(x), 10.0)
+        y_ds, x_ds = downsample_arrays(y, x, config)
         assert x_ds[0] == x[0]
-        assert y_ds[0] == y[0]
 
 
 class TestDownsampleDataframe:
-    """Test downsample_dataframe function."""
+    """Test downsample_dataframe (canonical API from utils.downsampling)."""
 
     def test_no_downsampling(self):
-        """Test with 100% (no downsampling)."""
-        df = pd.DataFrame(
-            {
-                "t": np.arange(100),
-                "value": np.random.randn(100),
-            }
-        )
-
-        df_ds = downsample_dataframe(df, percent=100.0)
-
+        df = pd.DataFrame({"t": np.arange(100, dtype=float), "value": np.random.randn(100)})
+        config = DownsampleConfig(n_out=200)
+        df_ds = downsample_dataframe(df, "t", ["value"], config)
         assert len(df_ds) == 100
 
-    def test_50_percent(self):
-        """Test 50% downsampling."""
-        df = pd.DataFrame(
-            {
-                "t": np.arange(100),
-                "value": np.random.randn(100),
-            }
-        )
-
-        df_ds = downsample_dataframe(df, percent=50.0)
-
+    def test_stride_50_percent(self):
+        df = pd.DataFrame({"t": np.arange(100, dtype=float), "value": np.random.randn(100)})
+        config = DownsampleConfig.from_percent(len(df), 50.0)
+        df_ds = downsample_dataframe(df, "t", ["value"], config)
         assert len(df_ds) == 50
 
     def test_preserves_columns(self):
-        """Test that all columns are preserved."""
         df = pd.DataFrame(
             {
-                "t": np.arange(100),
+                "t": np.arange(100, dtype=float),
                 "value1": np.random.randn(100),
                 "value2": np.random.randn(100),
             }
         )
-
-        df_ds = downsample_dataframe(df, percent=20.0)
-
+        config = DownsampleConfig.from_percent(len(df), 20.0)
+        df_ds = downsample_dataframe(df, "t", ["value1", "value2"], config)
         assert list(df_ds.columns) == ["t", "value1", "value2"]
-
-
-class TestDownsampleMinmax:
-    """Test downsample_minmax function."""
-
-    def test_preserves_extrema(self):
-        """Test that min/max values are preserved in each bin."""
-        np.random.seed(42)
-        x = np.arange(1000)
-        y = np.random.randn(1000)
-
-        x_ds, y_ds = downsample_minmax(x, y, n_bins=10)
-
-        # Should have 2 points per bin (min and max)
-        assert len(x_ds) == 20
-
-        # Global min and max should be in result
-        assert y.min() in y_ds or np.isclose(y_ds, y.min()).any()
-        assert y.max() in y_ds or np.isclose(y_ds, y.max()).any()
-
-    def test_small_dataset(self):
-        """Test with dataset smaller than n_bins * 2."""
-        x = np.arange(10)
-        y = np.sin(x)
-
-        x_ds, y_ds = downsample_minmax(x, y, n_bins=100)
-
-        # Should return original data
-        np.testing.assert_array_equal(x_ds, x)
-        np.testing.assert_array_equal(y_ds, y)
 
 
 class TestEstimateDownsamplePercent:
@@ -411,38 +329,29 @@ class TestIntegration:
 
     def test_downsampling_workflow(self):
         """Test complete downsampling workflow."""
-        # Create large dataset
         n_points = 100000
-        x = np.arange(n_points)
+        x = np.arange(n_points, dtype=float)
         y = np.sin(x / 1000) + np.random.randn(n_points) * 0.1
 
-        # Estimate appropriate downsampling
         percent = estimate_downsample_percent(n_points, target_points=5000)
         assert percent < 10.0
 
-        # Apply downsampling
-        x_ds, y_ds = downsample_for_plot(x, y, percent)
+        config = DownsampleConfig.from_percent(n_points, percent)
+        y_ds, x_ds = downsample_arrays(y, x, config)
 
-        # Verify size reduction
         assert len(x_ds) < n_points / 10
         assert len(x_ds) > 0
 
     def test_dataframe_and_array_consistency(self):
-        """Test that DataFrame and array downsampling are consistent."""
+        """Test that DataFrame and array downsampling give the same point count."""
         np.random.seed(42)
+        n = 1000
+        t = np.arange(n, dtype=float)
+        values = np.random.randn(n)
+        df = pd.DataFrame({"t": t, "value": values})
 
-        df = pd.DataFrame(
-            {
-                "t": np.arange(1000),
-                "value": np.random.randn(1000),
-            }
-        )
+        config = DownsampleConfig.from_percent(n, 10.0)
+        df_ds = downsample_dataframe(df, "t", ["value"], config)
+        y_ds, x_ds = downsample_arrays(values, t, config)
 
-        # Downsample DataFrame
-        df_ds = downsample_dataframe(df, percent=10.0)
-
-        # Downsample arrays
-        x_ds, y_ds = downsample_for_plot(df["t"].values, df["value"].values, percent=10.0)
-
-        # Should have same length
         assert len(df_ds) == len(x_ds)

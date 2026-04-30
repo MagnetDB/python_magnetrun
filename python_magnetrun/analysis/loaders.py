@@ -42,6 +42,12 @@ from natsort import natsorted
 from ..magnetdata_base import DataType
 from ..magnetdata_pandas import _open_text_with_fallback
 from ..runlogs.pigbrother import PIGBROTHER_LOG_FILENAME
+from ..utils.files import (
+    DIR_ARCHIVE,
+    DIR_DEFAULT,
+    DIR_SPIKE,
+    DIR_TRIGGER,
+)
 from .config import (
     DEFAULT_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
@@ -665,13 +671,13 @@ def find_files(
 
     # Archive pattern
     pigbrother = filename.replace("Overview", "Archive")
-    archive_datadir = overview_dir.replace("Overview", "Fichiers_Archive")
+    archive_datadir = overview_dir.replace("Overview", DIR_ARCHIVE)
     archive_filter = f"{archive_datadir}/{pigbrother.replace(time, '*.tdms')}"
 
     # Incident patterns
-    default_datadir = overview_dir.replace("Overview", "Fichiers_Default")
-    trigger_datadir = overview_dir.replace("Overview", "Fichiers_Manuel_Trig")
-    spike_datadir = overview_dir.replace("Overview", "Fichiers_Spike")
+    default_datadir = overview_dir.replace("Overview", DIR_DEFAULT)
+    trigger_datadir = overview_dir.replace("Overview", DIR_TRIGGER)
+    spike_datadir = overview_dir.replace("Overview", DIR_SPIKE)
 
     default_name = filename.replace("Overview", "Default")
     default_filter = f"{default_datadir}/{default_name.replace(time, '*.tdms')}"

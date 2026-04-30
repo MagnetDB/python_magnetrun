@@ -17,7 +17,6 @@ Example usage::
     from python_magnetrun.analysis.plotting import (
         plot_data,
         plot_comparison,
-        downsample_for_plot,
     )
 
     # Plot with 10% downsampling for large datasets
@@ -51,157 +50,11 @@ from python_magnetrun.plotting.style import (  # noqa: F401
 )
 from python_magnetrun.plotting.timeseries import plot_overlay
 from python_magnetrun.plotting.utils import format_axis_label
-from python_magnetrun.utils.downsampling import DownsampleConfig
+from python_magnetrun.utils.downsampling import DownsampleConfig, downsample_arrays  # noqa: F401
 
 # Module logger
 logger = logging.getLogger("python_magnetrun.analysis.plotting")
 
-
-# =============================================================================
-# Downsampling functions
-# =============================================================================
-def downsample_for_plot(
-    x: np.ndarray,
-    y: np.ndarray,
-    percent: float = 100.0,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Downsample data for plotting to reduce memory usage and rendering time.
-
-    This is essential for plotting high-frequency data (e.g., 4800 Hz incident
-    files) where millions of points would overwhelm the plotting system.
-
-    Parameters
-    ----------
-    x : np.ndarray
-        X-axis data (e.g., time)
-    y : np.ndarray
-        Y-axis data (e.g., values)
-    percent : float, optional
-        Percentage of points to keep (0-100). Default is 100 (no downsampling).
-        A value of 10 means keep 10% of the data points.
-
-    Returns
-    -------
-    Tuple[np.ndarray, np.ndarray]
-        Downsampled (x, y) arrays
-
-    Examples
-    --------
-    >>> x = np.arange(1000000)
-    >>> y = np.sin(x / 1000)
-    >>> x_ds, y_ds = downsample_for_plot(x, y, percent=1.0)
-    >>> len(x_ds)  # ~10000 points
-    10000
-
-    Notes
-    -----
-    Uses uniform step-based downsampling which preserves the overall shape
-    but may miss sharp peaks. For peak-preserving downsampling, consider
-    using `downsample_lttb` or `downsample_minmax`.
-    """
-    if percent >= 100.0:
-        return x, y
-
-    if percent <= 0.0:
-        logger.warning("downsample percent <= 0, returning single point")
-        return x[:1], y[:1]
-
-    n = len(x)
-    n_keep = max(1, int(n * percent / 100.0))
-    step = max(1, n // n_keep)
-
-    logger.debug(
-        f"Downsampling: {n} -> {len(x[::step])} points ({percent:.1f}%, step={step})"
-    )
-
-    return x[::step], y[::step]
-
-
-def downsample_dataframe(
-    df: pd.DataFrame,
-    percent: float = 100.0,
-    preserve_columns: list[str] | None = None,
-) -> pd.DataFrame:
-    """
-    Downsample a DataFrame for plotting.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        DataFrame to downsample
-    percent : float, optional
-        Percentage of rows to keep (0-100)
-    preserve_columns : List[str], optional
-        Columns that must be included (not affected by downsampling logic)
-
-    Returns
-    -------
-    pd.DataFrame
-        Downsampled DataFrame
-    """
-    if percent >= 100.0:
-        return df
-
-    n = len(df)
-    n_keep = max(1, int(n * percent / 100.0))
-    step = max(1, n // n_keep)
-
-    return df.iloc[::step].copy()
-
-
-def downsample_minmax(
-    x: np.ndarray,
-    y: np.ndarray,
-    n_bins: int = 1000,
-) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Downsample preserving min/max values in each bin.
-
-    This method divides the data into bins and keeps both the minimum
-    and maximum value in each bin, preserving peaks and valleys.
-
-    Parameters
-    ----------
-    x : np.ndarray
-        X-axis data
-    y : np.ndarray
-        Y-axis data
-    n_bins : int, optional
-        Number of bins to divide data into
-
-    Returns
-    -------
-    Tuple[np.ndarray, np.ndarray]
-        Downsampled (x, y) arrays with preserved extrema
-    """
-    n = len(x)
-    if n <= n_bins * 2:
-        return x, y
-
-    bin_size = n // n_bins
-    x_out = []
-    y_out = []
-
-    for i in range(n_bins):
-        start = i * bin_size
-        end = min(start + bin_size, n)
-
-        y_slice = y[start:end]
-        x_slice = x[start:end]
-
-        min_idx = np.argmin(y_slice)
-        max_idx = np.argmax(y_slice)
-
-        # Add in order (min first if it comes before max)
-        if min_idx <= max_idx:
-            x_out.extend([x_slice[min_idx], x_slice[max_idx]])
-            y_out.extend([y_slice[min_idx], y_slice[max_idx]])
-        else:
-            x_out.extend([x_slice[max_idx], x_slice[min_idx]])
-            y_out.extend([y_slice[max_idx], y_slice[min_idx]])
-
-    return np.array(x_out), np.array(y_out)
 
 
 def estimate_downsample_percent(

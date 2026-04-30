@@ -39,6 +39,11 @@ Submodules
 
 from importlib.metadata import PackageNotFoundError, version
 
+from ..utils.downsampling import (
+    DownsampleConfig,
+    downsample_arrays,
+    downsample_dataframe,
+)
 from .config import (
     DEFAULT_BINS,
     DEFAULT_DATA_DIR,
@@ -60,6 +65,7 @@ from .config import (
     VoltageChannelMapping,
     # Functions
     get_housing_config,
+    get_time_offset,
 )
 from .loaders import (
     # Constants
@@ -115,10 +121,6 @@ from .plotting import (
     # Dataclasses
     PlotStyle,
     create_figure_grid,
-    downsample_dataframe,
-    # Downsampling functions
-    downsample_for_plot,
-    downsample_minmax,
     estimate_downsample_percent,
     plot_comparison,
     # Main plotting functions
@@ -138,7 +140,6 @@ from .processing import (
     ProcessingResult,
     add_time_column_with_offset,
     # Utilities
-    compute_time_offset,
     create_overview_dict,
     load_archive_data,
     load_incidents_data,
@@ -292,10 +293,10 @@ __all__ = [
     # Plotting constants
     "DEFAULT_STYLE",
     "DEFAULT_COLORS",
-    # Plotting downsampling functions
-    "downsample_for_plot",
+    # Downsampling (canonical, from utils.downsampling)
+    "DownsampleConfig",
+    "downsample_arrays",
     "downsample_dataframe",
-    "downsample_minmax",
     "estimate_downsample_percent",
     # Plotting main functions
     "plot_data",
@@ -316,7 +317,7 @@ __all__ = [
     "process_overview_file",
     "process_experiment",
     # Processing utilities
-    "compute_time_offset",
+    "get_time_offset",
     "add_time_column_with_offset",
     "create_overview_dict",
     "get_housing_config",

@@ -15,9 +15,9 @@ in priority order.
 
 | Item | File | Lines | Status | Action |
 |------|------|-------|--------|--------|
-| `_get_archive_channel()` | `analysis/processing.py` | ~825 | 🔴 Open | Delete function, inline the one call site |
-| Placeholder `_extract_signatures()` | `analysis/processing.py` | ~847 | 🔴 Open | Delete or replace with `raise NotImplementedError` |
-| `ColorConfig` dataclass | `analysis/config.py` | ~160 | 🔴 Open | Delete (never instantiated) |
+| `_get_archive_channel()` | `analysis/processing.py` | 1069 | 🔴 Open | Body is `return key`; inline the one call site (processing.py:1130) and delete |
+| `_extract_signatures()` | `analysis/processing.py` | 1091 | 🔴 Open | Has real content (min/max/mean), but labelled a placeholder (integrates with future `Signature` class). Replace body with `raise NotImplementedError` until that class lands. |
+| `ColorConfig` dataclass | `analysis/config.py` | 160 | ✅ Keep | Used as `default_factory` in `AnalysisConfig.colors` (config.py:494). Not dead code — original note was incorrect. |
 | Commented-out print blocks | `analysis/cli.py` | — | ⬜ Check | Delete if still present |
 
 ### 1.2 Replace `print()` with `logger` ✅ COMPLETE
@@ -27,7 +27,7 @@ The `--quiet` / `--debug` flags now work correctly end-to-end.
 
 ### 1.3 Deduplicate time-offset calculation 🔴 OPEN
 
-`compute_time_offset()` in `analysis/processing.py` (line 279) is identical to
+`compute_time_offset()` in `analysis/processing.py` (line 290) is identical to
 `get_time_offset()` already in `analysis/config.py` (line 84).
 
 **Action:**
@@ -37,8 +37,9 @@ The `--quiet` / `--debug` flags now work correctly end-to-end.
 ### 1.4 Centralise directory-name constants 🔴 OPEN
 
 The strings `"Fichiers_Archive"`, `"Fichiers_Default"`, `"Fichiers_Manuel_Trig"`,
-`"Fichiers_Spike"` are hardcoded in both `analysis/loaders.py` and
-`utils/files.py`.
+`"Fichiers_Spike"` are hardcoded in both `analysis/loaders.py` (lines 668–674)
+and `utils/files.py` (lines 242–247). `utils/files.py` also uses a dict mapping
+(`"Archive"` → `"Fichiers_Archives"`, etc.) at lines 45–48.
 
 **Action:**
 - Add them as module-level constants in `analysis/config.py` (or a dedicated
@@ -47,32 +48,16 @@ The strings `"Fichiers_Archive"`, `"Fichiers_Default"`, `"Fichiers_Manuel_Trig"`
 
 ---
 
-## Phase 2 — Complete Downsampling Migration (2-3 hours)
+## Phase 2 — Complete Downsampling Migration ✅ COMPLETE
 
-**Status:** 🟡 PARTIAL — Infrastructure in place (commit `6d2e09b`), migration incomplete
-
-`utils/downsampling.py` with `DownsampleConfig` was created and is now used in
-some parts of the codebase. However, the old percent-based functions in
-`analysis/plotting.py` are still present and actively used.
-
-### Current State
-
-| API | Location | Status |
-|-----|----------|--------|
-| `DownsampleConfig` + helpers | `utils/downsampling.py` | ✅ Exists, imported in `plotting.py:53` |
-| `downsample_for_plot` | `analysis/plotting.py:62` | 🔴 Still used in tests, line 400 |
-| `downsample_dataframe` | `analysis/plotting.py:120` | 🔴 Still called at line 400 |
-| `downsample_minmax` | `analysis/plotting.py:152` | 🔴 Still exists |
-
-### Remaining Steps
-
-1. ✅ ~~Extend `utils/downsampling.py`~~ — Already has needed capabilities
-2. 🔴 Rewrite remaining `downsample_*()` calls to use `DownsampleConfig`
-   - Main usage at `plotting.py:400`
-   - Update test files that import these functions
-3. 🔴 Delete the three percent-based functions from `plotting.py`
-4. 🔴 Update tests in `tests/analysis/test_plotting.py`
-5. 🔴 Run existing tests; fix any regressions
+`downsample_for_plot`, `downsample_dataframe`, and `downsample_minmax` have been
+deleted from `analysis/plotting.py`.  `analysis/__init__.py` now re-exports
+`DownsampleConfig`, `downsample_arrays`, and `downsample_dataframe` directly from
+`utils.downsampling`.  `tests/analysis/test_plotting.py` rewritten to use the
+canonical `DownsampleConfig` API.  `compute_time_offset` (deleted in item 3 of
+Phase 1) also cleaned up: `analysis/__init__.py` now exports `get_time_offset`
+from `.config`; `tests/analysis/test_processing.py` updated accordingly.
+53 tests pass.
 
 ---
 
@@ -80,19 +65,19 @@ some parts of the codebase. However, the old percent-based functions in
 
 **Status:** 🔴 OPEN
 
-`analysis/loaders.py` (1228 lines, grown from 1158) reimplements logic that already lives in
+`analysis/loaders.py` (1403 lines) reimplements logic that already lives in
 `utils/files.py`.
 
 | Duplicated method | loaders.py approx line | utils/files.py approx line | Overlap |
 |-------------------|------------------------|---------------------------|---------|
-| `load_df` | 628 | present | 70% |
-| `load_data` | 730 | present | 80% |
-| `merge_data` | 775 | present | 100% |
-| `find_files` | 470 | 192 | 60% |
-| `select_files` | 551 | 238 | 70% |
-| `extract_data` | 329 | 127 | 65% |
+| `load_df` | 786 | present | 70% |
+| `load_data` | 876 | present | 80% |
+| `merge_data` | 921 | present | 100% |
+| `find_files` | 616 | 192 | 60% |
+| `select_files` | 697 | 238 | 70% |
+| `extract_data` | 462 | 127 | 65% |
 
-Also: `convert_to_timestamp()` at `loaders.py:63` reimplements timestamp parsing
+Also: `convert_to_timestamp()` at `loaders.py:64` reimplements timestamp parsing
 already in `utils/timestamps.py` (`parse_filename_timestamp()`).
 
 ### Steps
@@ -111,33 +96,38 @@ already in `utils/timestamps.py` (`parse_filename_timestamp()`).
 
 ## Phase 4 — Move Channel Mapping to `HousingConfig` (half day)
 
-**Status:** 🔴 OPEN
+**Status:** 🟡 PARTIAL — `HousingConfig` has related lookup methods; processing.py helpers not yet removed
 
-Four helper functions in `analysis/processing.py` map logical channel keys to
-physical channel names using `HousingConfig`:
+`HousingConfig` (housing_config.py:232–260) now has `get_pupitre_channel()`,
+`get_hybrid_channel()`, `get_flow_channel()`, `get_rpm_channel()`, `get_pin_channel()`.
+However, three module-level helpers in `analysis/processing.py` that wrap similar
+lookups have not been removed or updated to delegate:
 
-- `_get_pupitre_channel(cfg, key)`
-- `_get_pupitre_group(cfg, key)`
-- `_get_pupitre_flow(cfg, key)`
-- `_get_archive_channel(key)` — to be deleted in Phase 1
+- `_get_pupitre_channel(cfg, key)` — processing.py:997
+- `_get_pupitre_group(cfg, key)` — processing.py:1006
+- `_get_pupitre_flow(cfg, key)` — processing.py:1024
 
 ### Steps
 
-1. Add `get_pupitre_channel(key)`, `get_pupitre_group(key)`,
-   `get_pupitre_flow(key)` as methods on `HousingConfig` (in
-   `python_magnetrun/housing_config.py` or wherever the class lives).
-2. Update all call sites in `processing.py` to use `cfg.get_pupitre_channel(key)`.
-3. Delete the module-level helper functions.
+1. ✅ ~~Add `get_pupitre_channel(key)` to `HousingConfig`~~ — Done (housing_config.py:232)
+2. 🔴 Verify `_get_pupitre_channel` in processing.py delegates to `cfg.get_pupitre_channel(key)`
+   and update all call sites to use the `HousingConfig` method directly; delete the wrapper.
+3. 🔴 Add `get_pupitre_group(key)` and `get_pupitre_flow()` to `HousingConfig` if semantics
+   differ from existing methods; otherwise map call sites to the closest existing method.
+4. 🔴 Delete `_get_pupitre_group` and `_get_pupitre_flow` from processing.py.
+5. 🔴 Also delete `_get_archive_channel` here (or coordinate with Phase 1.1).
 
 ---
 
 ## Phase 5 — Break Down Oversized Functions (1–2 days)
 
-**Status:** 🔴 OPEN
+**Status:** 🟡 PARTIAL (5.3 partially done; 5.1 and 5.2 open)
 
-**Note:** Line numbers may have shifted; file is now 1228 lines (was 1158).
+**Note:** File sizes as of last audit: `loaders.py` 1403 lines, `processing.py` 1293 lines, `cli.py` 589 lines.
 
-### 5.1 `discover()` in `analysis/loaders.py` (~225 lines, 5+ nesting levels)
+### 5.1 `discover()` in `analysis/loaders.py` (class method, line ~1100, ~225 lines, 5+ nesting levels)
+
+🔴 OPEN — no helpers extracted yet.
 
 Extract into:
 
@@ -151,9 +141,9 @@ Extract into:
 
 `discover()` becomes the orchestrator that calls these five.
 
-### 5.2 `process_overview_file()` in `analysis/processing.py` (~169 lines)
+### 5.2 `process_overview_file()` in `analysis/processing.py` (line 668, ~169 lines)
 
-**Note:** File is now 1049 lines; specific line numbers may have shifted.
+🔴 OPEN — no helpers extracted yet.
 
 Extract into:
 
@@ -163,22 +153,27 @@ Extract into:
 | `_synchronize_sources(record, cfg)` | Apply time-alignment to each source |
 | `_extract_analysis(record, cfg)` | Compute metrics, signatures, regimes |
 
-### 5.3 `main()` in `analysis/cli.py` (~315 lines)
+### 5.3 `main()` in `analysis/cli.py` (line 501)
 
-**Note:** File is now 404 lines total; specific line numbers may have shifted.
+🟡 PARTIAL — several helpers extracted; `main()` is still ~100 lines but significantly reduced.
+
+**Already extracted (under different names than originally planned):**
+
+| Function | Line | Responsibility |
+|---|---|---|
+| `_setup_logging(parsed_args)` | 83 | Configure logging, return logger |
+| `_collect_input_files(parsed_args, config)` | 109 | Expand globs, return sorted file list |
+| `_load_records(input_files, config, parsed_args, housing, logger)` | 120 | Loop over files, call `process_experiment`, accumulate results |
+| `_combine_dataframes(all_dfs)` | 257 | Merge per-file DataFrames |
+| `_run_combined_analysis(results, …)` | 296 | Metrics, distance, DTW, combined plots |
+
+**Still in `main()` / remaining to extract:**
+- Plot emission and save logic (`_emit_plots`)
+- Summary / metrics export (`_emit_metrics`)
 
 **Coordinate with `cli-consolidation.plan.md`:** adding `register(subparsers)` to
-`analysis/cli.py` (per the CLI consolidation plan) and decomposing `main()` (this
-phase) should be done in a single branch — they touch the same function.
-
-Extract into:
-
-| New function | Responsibility |
-|---|---|
-| `_resolve_files(args)` | Expand globs, filter by time range |
-| `_run_processing(files, cfg)` | Loop over files, call process_experiment |
-| `_emit_plots(results, args)` | Show or save all requested plots |
-| `_emit_metrics(results, args)` | Print or export distance / DTW results |
+`analysis/cli.py` (per the CLI consolidation plan) and completing this decomposition
+should be done in a single branch.
 
 ---
 
@@ -186,14 +181,19 @@ Extract into:
 
 **Status:** 🔴 OPEN
 
-`"timestamp"` (Timestamp) and `"t"` (float seconds) columns are added inline in
-at least three places: `processing.py`, `synchronization.py`, `loaders.py`.
+`"timestamp"` (Timestamp) and `"t"` (float seconds) columns are added in two
+existing module functions:
+
+- `add_time_column_with_offset(df, t0, sampling_rate)` — `analysis/processing.py:310`
+- `add_time_column(df, …)` — `analysis/synchronization.py:733`
+
+These are subtly different and not yet unified under a shared utility.
 
 ### Steps
 
 1. Add `add_time_columns(df, t0, sampling_rate) -> DataFrame` to
    `utils/timestamps.py`.
-2. Replace all inline equivalents with calls to this utility.
+2. Replace both inline equivalents with calls to this utility.
 
 ---
 
@@ -212,20 +212,23 @@ at least three places: `processing.py`, `synchronization.py`, `loaders.py`.
 
 | Phase | Effort | Risk | Status |
 |-------|--------|------|--------|
-| 1 — Quick wins | < 2 h | Very low | 🟡 Partial (1.2 done, 1.1/1.3/1.4 open) |
-| 2 — Downsampling | 2-3 h | Low | 🟡 Partial (infrastructure done, migration incomplete) |
+| 1 — Quick wins | < 2 h | Very low | 🟡 Partial (1.2 done; 1.1 revised, 1.3/1.4 open) |
+| 2 — Downsampling | 2-3 h | Low | ✅ Complete |
 | 3 — Data loading | 1–2 d | Medium | 🔴 Open |
-| 4 — Channel mapping | 4 h | Low | 🔴 Open |
-| 5 — Break down functions | 1–2 d | Medium | 🔴 Open |
+| 4 — Channel mapping | 4 h | Low | 🟡 Partial (`get_pupitre_channel` on `HousingConfig`; wrappers not deleted) |
+| 5 — Break down functions | 1–2 d | Medium | 🟡 Partial (5.3 partially done; 5.1/5.2 open) |
 | 6 — Time columns | 4 h | Low | 🔴 Open |
-| **Total** | **~5–7 days** | | **~1h done, ~4.5–6.5 days remaining** |
+| **Total** | **~5–7 days** | | **~1.5 h done, ~4–6 days remaining** |
 
 **Progress Notes:**
 - Phase 1.2 (logging migration) completed across the codebase
-- Phase 2 infrastructure (DownsampleConfig) in place but old functions still used
-- File sizes have grown; line number references updated where possible
+- Phase 1.1: `ColorConfig` was NOT dead code — it is actively used as `default_factory` in `AnalysisConfig`; original note corrected
+- Phase 2 infrastructure (`DownsampleConfig`) in place and used in `plot_data`/`plot_comparison`; old percent-based functions still defined
+- Phase 4: `HousingConfig` already has `get_pupitre_channel` and related lookup methods; processing.py wrappers not yet removed
+- Phase 5.3: partial — `_setup_logging`, `_collect_input_files`, `_load_records`, `_combine_dataframes`, `_run_combined_analysis` extracted; plot/metrics emission still in `main()`
 
 **Recommended Next Steps:**
-1. Complete Phase 1 (< 2 hours): Remove dead code, deduplicate time-offset
-2. Complete Phase 2 (2-3 hours): Finish downsampling migration
-3. Phases 3–6 should be done on a feature branch with incremental commits
+1. Complete Phase 1 (< 2 hours): inline `_get_archive_channel`, stub `_extract_signatures`, deduplicate time-offset (1.3), centralise directory constants (1.4)
+2. Complete Phase 2 (2-3 hours): remove the three old `downsample_*` functions from `plotting.py`
+3. Complete Phase 4 (4 hours): remove processing.py channel-mapping wrappers; delegate to `HousingConfig`
+4. Phases 3, 5, 6 on a feature branch with incremental commits

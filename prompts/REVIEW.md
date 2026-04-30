@@ -402,7 +402,8 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     Key changes: new `magnetrun` dispatcher in `python_magnetrun/main.py`; `input_file`
     moves from top-level to each subcommand parser (eliminating `_normalize_argv`);
     new `magnetrun signature` subcommand promoted from `tests/test-signature.py`;
-    `srvdata-to-magnetrun` renamed to `magnetrun-fetch` (standalone).
+    `srvdata-to-magnetrun` renamed to `magnetrun-fetch` (standalone);
+    `magnetrun compare` subcommand registered from `comparison/cli.py` (no separate entry point).
     **Coordinate `analysis/cli.py` pass with `analysis-subpackage-refactoring.plan.md`
     Phase 5.3** — adding `register()` and decomposing `main()` should be a single branch.
 
@@ -414,7 +415,7 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     | C | `BFieldRun` adapter (`python_magnetrun/bfield/`) | Done |
     | D | Extend `*-defs.json` with `simulation`/`bfield` aliases; `KeyMapping` in `comparison/key_mapping.py` (reuses `field_defs.build_crossref()`, no hardcoded dict) |
     | E | `ComparisonSession` (`python_magnetrun/comparison/session.py`) |
-    | F | `magnetrun-compare` CLI |
+    | F | `magnetrun compare` subcommand via `comparison/cli.py::register()` wired into unified dispatcher — **no** standalone `magnetrun-compare` entry point (see `cli-consolidation.plan.md`) |
     | G | `tests/test_comparison.py` |
 
 12. **Editor backup file** *(done)* — `pigbrother-defs.json~` removed; `*.json~` added to `.gitignore`.

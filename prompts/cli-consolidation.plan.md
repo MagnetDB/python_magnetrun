@@ -41,6 +41,7 @@ magnetrun analysis   files... [analysis-opts]
 magnetrun processing file    filter|smooth|lag [processing-opts]
 magnetrun hybrid     [hybrid-opts]
 magnetrun logparser  [log-opts]
+magnetrun compare    [compare-opts]                                        # new; see cross-domain-comparison.prompt.md Phase F
 ```
 
 ## Key structural gain: remove `_normalize_argv`
@@ -134,6 +135,7 @@ def main() -> None:
     from .processing.cli  import register as _r_proc;   _r_proc(sub)
     from .hybrid.cli      import register as _r_hyb;    _r_hyb(sub)
     from .tdms.log_parser import register as _r_log;    _r_log(sub)
+    from .comparison.cli  import register as _r_cmp;    _r_cmp(sub)
 
     args = parser.parse_args()
     sys.exit(args._handler(args))
@@ -169,6 +171,7 @@ if __name__ == "__main__":
 | `python_magnetrun/processing/cli.py` | Add `register()` |
 | `python_magnetrun/hybrid/cli.py` | Add `register()` |
 | `python_magnetrun/tdms/log_parser.py` | Add `register()` |
+| `python_magnetrun/comparison/cli.py` | Create with `register()` (see `cross-domain-comparison.prompt.md` Phase F — no standalone entry point) |
 | `python_magnetrun/cli.py` | Remove `_normalize_argv`; deprecate or remove `main()` |
 | `python_magnetrun/args.py` | Split: move subcommand parsers into individual `register()` fns |
 | `pyproject.toml` | Add `magnetrun`, `magnetrun-fetch`; mark old names deprecated |

@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from python_magnetrun.analysis.config import get_housing_config
+from python_magnetrun.analysis.config import get_housing_config, get_time_offset
 from python_magnetrun.analysis.loaders import FileSet
 from python_magnetrun.analysis.processing import (
     # Main dataclasses
@@ -21,7 +21,6 @@ from python_magnetrun.analysis.processing import (
     ProcessingResult,
     add_time_column_with_offset,
     # Utilities
-    compute_time_offset,
     create_overview_dict,
     summarize_record,
 )
@@ -173,21 +172,21 @@ class TestProcessingResult:
 
 
 class TestComputeTimeOffset:
-    """Test compute_time_offset function."""
+    """Test get_time_offset function (replaces deleted compute_time_offset)."""
 
     def test_1hz(self):
         """Test offset for 1 Hz sampling."""
-        offset = compute_time_offset(1.0)
+        offset = get_time_offset(1.0)
         assert offset == 0.5  # Half second
 
     def test_120hz(self):
         """Test offset for 120 Hz (archive) sampling."""
-        offset = compute_time_offset(120.0)
+        offset = get_time_offset(120.0)
         assert abs(offset - 1 / 240) < 1e-10
 
     def test_4800hz(self):
         """Test offset for 4800 Hz (incidents) sampling."""
-        offset = compute_time_offset(4800.0)
+        offset = get_time_offset(4800.0)
         assert abs(offset - 1 / 9600) < 1e-10
 
 

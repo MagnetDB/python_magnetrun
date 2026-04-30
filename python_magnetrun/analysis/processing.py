@@ -52,8 +52,9 @@ from .config import (
     DEFAULT_HYBRID_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
     HOUSING_CONFIGS,
-    SAMPLING_RATE_INCIDENTS,
+    TIME_OFFSET_INCIDENTS,
     HousingConfig,
+    get_time_offset,
 )
 from .loaders import (
     FileDiscovery,
@@ -284,29 +285,6 @@ class ProcessingResult:
         return self.records.get(filename)
 
 
-# =============================================================================
-# Time offset utilities
-# =============================================================================
-def compute_time_offset(sampling_rate: float) -> float:
-    """
-    Compute time offset for a given sampling rate.
-
-    The offset is half the sampling period, used to center
-    timestamps within their sampling window.
-
-    Parameters
-    ----------
-    sampling_rate : float
-        Sampling rate in Hz
-
-    Returns
-    -------
-    float
-        Time offset in seconds
-    """
-    return (1.0 / sampling_rate) / 2.0
-
-
 def add_time_column_with_offset(
     df: pd.DataFrame,
     reference_t0: datetime,
@@ -335,7 +313,7 @@ def add_time_column_with_offset(
     pd.DataFrame
         DataFrame with time column added
     """
-    t_offset = compute_time_offset(sampling_rate)
+    t_offset = get_time_offset(sampling_rate)
 
     df = df.copy()
     df[time_col] = df.apply(
@@ -512,7 +490,7 @@ def load_incidents_data(
         return {"default": [], "trigger": [], "spike": []}
 
     incidents = {}
-    t_offset = compute_time_offset(SAMPLING_RATE_INCIDENTS)
+    t_offset = TIME_OFFSET_INCIDENTS
 
     for incident_type in ["default", "trigger", "spike"]:
         files = getattr(record.sources, incident_type, [])
@@ -1066,9 +1044,9 @@ def _get_hybrid_group(housing_config: HousingConfig, group: str) -> list[str] | 
     return keys if keys else None
 
 
-def _get_archive_channel(key: str) -> str:
-    """Get archive channel name for a key (typically same as key)."""
-    return key
+# def _get_archive_channel(key: str) -> str:
+#     """Get archive channel name for a key (typically same as key)."""
+#     return key
 
 
 def _synchronize_pupitre(record: OverviewRecord, config: ProcessingConfig) -> None:
@@ -1127,7 +1105,7 @@ def _compute_lag_correlation(
 
     for key in keys:
         # Get channel mappings using helper functions
-        overview_key = _get_archive_channel(key)
+        overview_key = key  # _get_archive_channel(key)
         pupitre_key = _get_pupitre_channel(housing_config, key)
 
         if not pupitre_key:
