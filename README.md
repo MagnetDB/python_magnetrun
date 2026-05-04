@@ -561,9 +561,10 @@ threshold = config.thresholds.get("Courant_GR1")
 **Single Pupitre file (`.txt`):**
 
 ```python
-from python_magnetrun.magnetdata import MagnetData
+from python_magnetrun.magnetdata import load_magnetdata
+from python_magnetrun.runetl import prepareData
 
-data = MagnetData.fromtxt("srvdata/M9_2024.05.09---16_34_03.txt")
+data = load_magnetdata("srvdata/M9_2024.05.09---16_34_03.txt")
 print(data.Keys)          # list of available field names
 df = data.Data            # pandas DataFrame
 print(df[["t", "Field", "IH", "IB"]].head())
@@ -572,9 +573,10 @@ print(df[["t", "Field", "IH", "IB"]].head())
 **Single PigBrother file (`.tdms`):**
 
 ```python
-from python_magnetrun.magnetdata import MagnetData
+from python_magnetrun.magnetdata import load_magnetdata
+from python_magnetrun.runetl import prepareData
 
-data = MagnetData.fromtdms("pigbrotherdata/Fichiers_Data/M9/Overview/M9_Overview_240509-1634.tdms")
+data = load_magnetdata("pigbrotherdata/Fichiers_Data/M9/Overview/M9_Overview_240509-1634.tdms")
 print(data.Keys)          # list of "Group/Channel" keys
 # Access a specific group as a DataFrame
 df = data.Data["Courants_Alimentations"]
