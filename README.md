@@ -785,6 +785,11 @@ from python_magnetrun.MagnetRun import load_mrun
 mrun = load_mrun('2026.03.31 - 13:22:40.txt', housing='M9')
 print(f"Loaded: {mrun.MagnetData.FileName}")
 print(f"StartTime: {mrun.StartTime}")
+
+mdata = mrun.getMData()
+df = mdata.Data  # pandas DataFrame with all fields
+print(df.head())
+
 ```
 
 **How auto-resolution works:**
