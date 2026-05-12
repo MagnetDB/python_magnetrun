@@ -512,8 +512,11 @@ class HybridData:
         for bin_file in bin_files:
             logger.debug(f"Reading {bin_file.name}...")
             file_t0 = compute_hour_t0(str(bin_file), self.date_str)
-            print(
-                f"  file_t0: {file_t0}, global_t0: {global_t0}, offset: {(file_t0 - global_t0)} seconds"
+            logger.debug(
+                "file_t0: %s, global_t0: %s, offset: %s seconds",
+                file_t0,
+                global_t0,
+                file_t0 - global_t0,
             )
             hour_data, hour_timestamps = read_hour_file(
                 str(bin_file), card_type, endian=self.endian, t0=file_t0, debug=debug

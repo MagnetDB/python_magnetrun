@@ -408,6 +408,32 @@ def load_files_data(
     return pd.concat(df_list, ignore_index=True)
 
 
+def merge_data(dfs: list[pd.DataFrame]) -> pd.DataFrame:
+    """
+    Merge a list of DataFrames into one.
+
+    Parameters
+    ----------
+    dfs : list of pd.DataFrame
+        DataFrames to merge. Must be non-empty.
+
+    Returns
+    -------
+    pd.DataFrame
+        The single DataFrame unchanged, or a concatenation of all inputs.
+
+    Raises
+    ------
+    ValueError
+        When *dfs* is empty.
+    """
+    if not dfs:
+        raise ValueError("merge_data: list is empty")
+    if len(dfs) == 1:
+        return dfs[0]
+    return pd.concat(dfs, ignore_index=True)
+
+
 # =============================================================================
 # FileDiscovery class
 # =============================================================================

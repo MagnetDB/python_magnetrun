@@ -412,10 +412,12 @@ def binarize_signal(
     data = np.asarray(data, dtype=float)
     if normalize:
         data = normalize_signal(data)
-        print(
-            f"data stats: min={data.min():.4g}, max={data.max():.4g}, "
-            f"mean={data.mean():.4g}, std={data.std():.4g}",
-            flush=True,
+        logger.debug(
+            "data stats: min=%.4g, max=%.4g, mean=%.4g, std=%.4g",
+            data.min(),
+            data.max(),
+            data.mean(),
+            data.std(),
         )
     abs_data = np.abs(data)
 
@@ -427,18 +429,16 @@ def binarize_signal(
         noise_ceil = float(np.percentile(abs_data, noise_percentile))
         quiet = abs_data[abs_data <= noise_ceil]
         sigma = float(quiet.std())
-        print(
-            f"Noise floor (p{noise_percentile}={noise_ceil:.4g}), "
-            f"3*sigma={3.0 * sigma:.4g} as threshold.",
-            flush=True,
+        logger.debug(
+            "Noise floor (p%s=%.4g), 3*sigma=%.4g as threshold.",
+            noise_percentile,
+            noise_ceil,
+            3.0 * sigma,
         )
         threshold = 3.0 * sigma
     else:
         raise ValueError(
             f"Unknown method {method!r}. Choose 'fixed', 'otsu', or 'noise'."
         )
-    print(
-        f"Using threshold: {threshold:.4g} (method={method})",
-        flush=True,
-    )
+    logger.debug("Using threshold: %.4g (method=%s)", threshold, method)
     return np.where(abs_data <= threshold, 0, 1)
