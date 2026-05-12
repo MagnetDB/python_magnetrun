@@ -28,31 +28,35 @@ remove_outliers(df, x_col, y_col, method='iqr', threshold=1.5) -> pd.DataFrame
 ```
 Implements IQR, zscore, MAD, isolation_forest inline (~120 lines).
 
-### Target state (~25 lines)
-Replace the body with calls to `detect_outliers()` / `OutlierMethod` from the canonical module.
+### Target state (~15 lines)
+Replace the body with calls to `detect_outliers()` from the canonical module.
+`detect_outliers()` already accepts plain strings (`'iqr'`, `'zscore'`, `'mad'`, `'percentile'`),
+so no enum mapping is needed.
 
 ```python
-from python_magnetrun.hybrid.outliers import OutlierMethod, detect_outliers
+from python_magnetrun.hybrid.outliers import detect_outliers
 
-def remove_outliers(df, x_col, y_col, method="iqr", threshold=1.5):
+_VALID_METHODS = {"iqr", "zscore", "mad"}
+
+def remove_outliers(
+    df: pd.DataFrame,
+    x_col: str = "x",
+    y_col: str = "y",
+    method: str = "iqr",
+    threshold: float = 1.5,
+) -> pd.DataFrame:
     """Remove outliers from a hysteresis DataFrame using the canonical detector."""
-    _METHOD_MAP = {
-        "iqr": OutlierMethod.IQR,
-        "zscore": OutlierMethod.ZSCORE,
-        "mad": OutlierMethod.MAD,
-    }
-    if method not in _METHOD_MAP:
-        raise ValueError(f"method must be one of {list(_METHOD_MAP)}; got {method!r}")
-
-    mask_x = detect_outliers(df[x_col].values, method=_METHOD_MAP[method], threshold=threshold)
-    mask_y = detect_outliers(df[y_col].values, method=_METHOD_MAP[method], threshold=threshold)
+    if method not in _VALID_METHODS:
+        raise ValueError(f"method must be one of {sorted(_VALID_METHODS)}; got {method!r}")
+    mask_x = detect_outliers(df[x_col].values, method=method, threshold=threshold)
+    mask_y = detect_outliers(df[y_col].values, method=method, threshold=threshold)
     return df[~(mask_x | mask_y)].reset_index(drop=True)
 ```
 
 **Notes:**
 - `isolation_forest` is removed from the supported methods: it was never exposed in the canonical module and the only callers in this codebase are the two test scripts being deleted. Add it to `OutlierMethod` later if needed.
 - `remove_outliers_by_x_range`, `remove_low_x_outliers`, `remove_x_region_outliers` are left untouched; they are hysteresis-domain helpers and the canonical module has no equivalent.
-- `tests/test_processing.py` imports `remove_outliers` from `hysteresis` — the signature is unchanged, so it will keep working. The only behaviour change: `isolation_forest` method will now raise `ValueError` instead of silently running. Adjust that test if it exercises isolation_forest.
+- `tests/test_processing.py` imports `remove_outliers` from `hysteresis` — the signature is unchanged, so all existing tests keep working. None of them exercise `isolation_forest`, so no test changes are required for this step.
 
 ---
 

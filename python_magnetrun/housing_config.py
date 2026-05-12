@@ -276,6 +276,57 @@ class HousingConfig:
         return fmt in self.formats
 
     # ------------------------------------------------------------------
+    # Current-key lookups (keyed by "Courant_GR1" / "Courant_GR2" style)
+    # ------------------------------------------------------------------
+
+    def get_pupitre_current_channel(self, current_key: str) -> str | None:
+        """Return the pupitre current field for a "Courant_GR*" overview key."""
+        return {
+            "Courant_GR1": self.reference_gr1_current,
+            "Courant_GR2": self.reference_gr2_current,
+        }.get(current_key) or None
+
+    def get_pupitre_group_keys(self, group: str) -> list[str]:
+        """Return the pupitre column names relevant to a TDMS group."""
+        if group == "Courants_Alimentations":
+            return [
+                k for k in [self.reference_gr1_current, self.reference_gr2_current] if k
+            ]
+        if (
+            group == "Tensions_Aimants"
+            and self.voltage_channels_gr1
+            and self.voltage_channels_gr2
+        ):
+            return list(self.voltage_channels_gr1) + list(self.voltage_channels_gr2)
+        return []
+
+    def get_pupitre_flow_keys(self) -> list[str]:
+        """Return all flow/rpm/pin pupitre column names (non-empty only)."""
+        candidates = [
+            self.reference_gr1_flow,
+            self.reference_gr2_flow,
+            self.reference_gr1_rpm,
+            self.reference_gr2_rpm,
+            self.reference_gr1_pin,
+            self.reference_gr2_pin,
+        ]
+        return [k for k in candidates if k]
+
+    def get_hybrid_group_keys(self, group: str) -> list[str]:
+        """Return the hybrid column names relevant to a TDMS group."""
+        if group == "Courants_Alimentations":
+            return [
+                k for k in [self.reference_gr1_hybrid, self.reference_gr2_hybrid] if k
+            ]
+        if (
+            group == "Tensions_Aimants"
+            and self.voltage_channels_gr1
+            and self.voltage_channels_gr2
+        ):
+            return list(self.voltage_channels_gr1) + list(self.voltage_channels_gr2)
+        return []
+
+    # ------------------------------------------------------------------
     # Computed ETL helpers
     # ------------------------------------------------------------------
 

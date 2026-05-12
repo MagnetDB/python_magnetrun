@@ -18,12 +18,12 @@ _default_input = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "..",
     "data",
-    "M9_2019.02.14-23_00_38.txt",
+    "M9_2019.02.14---23_00_38.txt",
 )
 
 logger = logging.getLogger("python_magnetrun")
 command_line = None
-base_parser = create_base_parser()
+base_parser = create_base_parser(add_input_file=False)
 parser = argparse.ArgumentParser("Field factor identification", parents=[base_parser])
 parser.add_argument(
     "input_file",

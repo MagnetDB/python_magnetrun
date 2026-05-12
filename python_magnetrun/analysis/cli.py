@@ -128,6 +128,7 @@ def _load_records(input_files, config, parsed_args, housing, logger):
 
     results = []
     all_dfs: list = []
+    summary_rows: list[dict] = []
     channels_dict: dict = {}
     pupitre_dict: dict = {}
     hybrid_dict: dict = {}
@@ -239,6 +240,25 @@ def _load_records(input_files, config, parsed_args, housing, logger):
                         df_hybrid_incidents,
                     )
                 )
+                if record.sources:
+                    s = record.sources
+                    summary_rows.append(
+                        {
+                            "filename": record.filename,
+                            "overview": ", ".join(s.overview),
+                            "archive": ", ".join(s.archive),
+                            "pupitre": ", ".join(s.pupitre),
+                            "default": ", ".join(s.default),
+                            "trigger": ", ".join(s.trigger),
+                            "spike": ", ".join(s.spike),
+                            "hybrid_kHz": ", ".join(s.hybrid_kHz),
+                            "hybrid_rms": ", ".join(s.hybrid_rms),
+                            "hybrid_trigger": ", ".join(s.hybrid_trigger),
+                            "hybrid_vprocess": ", ".join(s.hybrid_vprocess),
+                            "pigbrother_runlog": ", ".join(s.pigbrother_runlog),
+                            "pupitre_runlog": ", ".join(s.pupitre_runlog),
+                        }
+                    )
                 keys = [
                     channel_map.get_setpoint_channel(g) for g in channel_map.groups()
                 ]
@@ -249,6 +269,41 @@ def _load_records(input_files, config, parsed_args, housing, logger):
                     logger.exception("Full traceback:")
 
         tracker.update()
+
+    if summary_rows:
+        import os
+
+        import pandas as pd
+        from tabulate import tabulate
+
+        raw_df = pd.DataFrame(summary_rows)
+        
+        def _basenames(v: str) -> str:
+            files = [x.strip() for x in v.split(",") if x.strip()]
+            return "\n".join(os.path.basename(f) for f in files)
+
+        list_cols = [
+            "overview", "archive", "pupitre",
+            "default", "trigger", "spike",
+            "hybrid_kHz", "hybrid_rms", "hybrid_trigger", "hybrid_vprocess",
+            "pigbrother_runlog", "pupitre_runlog",
+        ]
+        compact: dict = {"filename": raw_df["filename"].tolist()}
+        for col in list_cols:
+            if col in raw_df.columns:
+                compact[col] = raw_df[col].apply(_basenames)
+        summary_df = pd.DataFrame(compact)
+
+        print()
+        print(tabulate(
+            summary_df.values.tolist(),
+            headers=summary_df.columns.tolist(),
+            tablefmt="rounded_grid",
+        ))
+
+        json_path = Path(parsed_args.output_dir) / "summary.json"
+        raw_df.to_json(json_path, orient="records", indent=2)
+        logger.info(f"Summary saved to {json_path}")
 
     tracker.finish()
     return results, all_dfs, channels_dict, pupitre_dict, hybrid_dict, keys, housing
@@ -498,9 +553,48 @@ def _run_combined_analysis(
 # =============================================================================
 
 
+def _emit_metrics(
+    results: list,
+    input_files: list,
+    combined_metrics: dict,
+    parsed_args,
+    logger,
+) -> int:
+    """Log the final summary and per-key distance metrics. Returns exit code."""
+    successful = len(results)
+    failed = len(input_files) - successful
+    logger.info(f"Analysis complete: {successful} successful, {failed} failed")
+
+    if parsed_args.distance and combined_metrics:
+        logger.info("=== Metrics Summary ===")
+        for key, metrics in combined_metrics.items():
+            pupitre_line = (
+                f"  {key}: Euclidean={metrics.get('euclidean', 0):.4f}, "
+                f"MAPE={metrics.get('mape', 0):.2f}%, "
+                f"Corr={metrics.get('correlation', 0):.4f}"
+                + (f", DTW={metrics['dtw']:.4f}" if "dtw" in metrics else "")
+            )
+            hybrid_line = (
+                f"    hybrid: Euclidean={metrics.get('hybrid_euclidean', 0):.4f}, "
+                f"MAPE={metrics.get('hybrid_mape', 0):.2f}%, "
+                f"Corr={metrics.get('hybrid_correlation', 0):.4f}"
+                + (
+                    f", DTW={metrics['hybrid_dtw']:.4f}"
+                    if "hybrid_dtw" in metrics
+                    else ""
+                )
+                if "hybrid_euclidean" in metrics
+                else ""
+            )
+            logger.info(pupitre_line)
+            if hybrid_line:
+                logger.info(hybrid_line)
+
+    return 0 if failed == 0 else 1
+
+
 def main(args: list[str] | None = None) -> int:
-    """
-    Main entry point for the analysis CLI.
+    """Main entry point for the analysis CLI.
 
     Parameters
     ----------
@@ -518,9 +612,7 @@ def main(args: list[str] | None = None) -> int:
 
     try:
         config = args_to_processing_config(parsed_args)
-
         input_files = _collect_input_files(parsed_args, config)
-        logger.debug(f"input_files: {input_files}")
         logger.info(f"Processing {len(input_files)} input files")
 
         if parsed_args.save:
@@ -545,37 +637,9 @@ def main(args: list[str] | None = None) -> int:
                 logger,
             )
 
-        # === FINAL SUMMARY ===
-        successful = len(results)
-        failed = len(input_files) - successful
-        logger.info(f"Analysis complete: {successful} successful, {failed} failed")
-
-        if parsed_args.distance and combined_metrics:
-            logger.info("=== Metrics Summary ===")
-            for key, metrics in combined_metrics.items():
-                pupitre_line = (
-                    f"  {key}: Euclidean={metrics.get('euclidean', 0):.4f}, "
-                    f"MAPE={metrics.get('mape', 0):.2f}%, "
-                    f"Corr={metrics.get('correlation', 0):.4f}"
-                    + (f", DTW={metrics['dtw']:.4f}" if "dtw" in metrics else "")
-                )
-                hybrid_line = (
-                    f"    hybrid: Euclidean={metrics.get('hybrid_euclidean', 0):.4f}, "
-                    f"MAPE={metrics.get('hybrid_mape', 0):.2f}%, "
-                    f"Corr={metrics.get('hybrid_correlation', 0):.4f}"
-                    + (
-                        f", DTW={metrics['hybrid_dtw']:.4f}"
-                        if "hybrid_dtw" in metrics
-                        else ""
-                    )
-                    if "hybrid_euclidean" in metrics
-                    else ""
-                )
-                logger.info(pupitre_line)
-                if hybrid_line:
-                    logger.info(hybrid_line)
-
-        return 0 if failed == 0 else 1
+        return _emit_metrics(
+            results, input_files, combined_metrics, parsed_args, logger
+        )
 
     except KeyboardInterrupt:
         logger.info("Analysis interrupted by user")

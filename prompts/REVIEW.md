@@ -1,6 +1,6 @@
 # Package Review: `python_magnetrun`
 
-Date: 2026-04-29 (updated)
+Date: 2026-05-12 (updated)
 
 ---
 
@@ -206,12 +206,12 @@ and `tests/test_hybrid_formula_resolution.py`.
 | Hardcoded default path in `cli_args.py` | Done |
 | Protocol duplication (`DataProvider` / `DataLoader`) | Done |
 | Timestamp convention (Pandas + TDMS) | Done |
-| `HybridData` timestamp support | Pending (requires analysis Phase 6) |
+| `HybridData` timestamp support | Pending (prerequisite `analysis/` Phase 6 is now done) |
 | Cross-domain comparison (`DataLoader` extension, Phase A0–A3) | Done |
 | Cross-domain comparison (Phases D–G: `ComparisonSession`, adapters, CLI) | Pending (Phases B–C done) |
 | Downsampling refactoring (`DownsampleConfig`, shared module) | Done — see `downsampling-refactoring.plan.md` |
 | Plotting refactoring (`plotting/` subpackage, backend protocol) | Done — see `plotting-refactoring.plan.md` or `holoviews-migration.plan.md` for alternative |
-| `analysis/` internal refactoring (data loading, channel mapping, decomposition) | Pending — see `analysis-subpackage-refactoring.plan.md` |
+| `analysis/` internal refactoring (data loading, channel mapping, decomposition) | Done — see `analysis-subpackage-refactoring.plan.md` |
 | `hybrid/` internal refactoring (outlier dedup, `OutlierConfig`, signal processing) | Pending — see `hybrid-subpackage-refactoring.plan.md` |
 | Pipeline redesign: polars npTDMS, narwhals, no-double-load pipeline | Planned — see `mrun-cache-implementation.plan.md` (3 phases; Phase 1 independent) |
 | File validation infrastructure | Done — `utils/validation.py` committed and integrated |
@@ -233,13 +233,12 @@ implementation with `hv.extension()` + Panel + datashader and subsume `analysis/
 
 **Package is production-ready for core use cases.** Remaining work in priority order:
 (1) known regressions (multiple-file plotting); (2) CI/CD pipeline; (3) logging migration completion;
-(4) `analysis/` internal refactoring (`analysis-subpackage-refactoring.plan.md`);
-(5) outlier deduplication (`outlier-consolidation.plan.md`);
-(6) `hybrid/` internal refactoring (`hybrid-subpackage-refactoring.plan.md`);
-(7) CLI consolidation (`cli-consolidation.plan.md`) — coordinate `analysis/cli.py` with item 4 Phase 5.3;
-(8) `HybridData` timestamp support (requires analysis Phase 6);
-(9) cross-domain Phases D–G (`ComparisonSession`, CLI);
-(10) optional HoloViews migration; (11) pipeline redesign (polars/narwhals).
+(4) outlier deduplication (`outlier-consolidation.plan.md`);
+(5) `hybrid/` internal refactoring (`hybrid-subpackage-refactoring.plan.md`);
+(6) CLI consolidation (`cli-consolidation.plan.md`);
+(7) `HybridData` timestamp support (prerequisite `analysis/` Phase 6 complete — unblocked);
+(8) cross-domain Phases D–G (`ComparisonSession`, CLI);
+(9) optional HoloViews migration; (10) pipeline redesign (polars/narwhals).
 
 ---
 
@@ -347,14 +346,16 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
    state and HoloViews migration preserve `PlotStyle`/`PlotColors`/`format_label()`.
    Full plan: **[`prompts/holoviews-migration.plan.md`](holoviews-migration.plan.md)**.
 
-10. **`analysis/` internal refactoring** *(effort: ~5–7 d)* — tracked in
+10. **`analysis/` internal refactoring** *(done — all 6 phases)* — tracked in
     **[`prompts/analysis-subpackage-refactoring.plan.md`](analysis-subpackage-refactoring.plan.md)**.
-    Key integration points with this document:
-    - Phase 2 (downsampling unification) completes adoption of the already-done `DownsampleConfig` work (item 8 above) inside `analysis/plotting.py`.
-    - Phase 4 (channel mapping) moves the last housing-lookup helpers out of `processing.py` into `HousingConfig`, completing item 1 above.
-    - **Phase 6 (`add_time_columns` in `utils/timestamps.py`) is a prerequisite for item 11 below** — the shared utility is needed by `HybridData.addTime()`.
-    - Items still open in this document not covered by the plan: `analysis/__init__.py` flat export (Minor 9) and CLI consolidation (Minor 10).
-    - **Must be coordinated with item 10b below** — both touch `loaders.py`; run as a single pass.
+    Completed (branch `rework_analysis`):
+    - Phase 1: dead code removed, logging migrated, directory constants centralised
+    - Phase 2: downsampling unified (`DownsampleConfig` adopted in `analysis/plotting.py`)
+    - Phase 3: `utils/files.py` canonical data-loading; `analysis/loaders.py` imports from it
+    - Phase 4: 4 new `HousingConfig` methods (`get_pupitre_current_channel`, `get_pupitre_group_keys`, `get_pupitre_flow_keys`, `get_hybrid_group_keys`); 5 processing.py wrappers deleted
+    - Phase 5: `discover()`, `process_overview_file()`, and `main()` decomposed into focused helpers
+    - Phase 6: `add_time_columns(df, t0, sampling_rate)` added to `utils/timestamps.py`; all call sites unified; **HybridData timestamp support (item 11) is now unblocked**
+    - Items still open not covered by the plan: `analysis/__init__.py` flat export (Minor 9) and CLI consolidation (Minor 10)
 
 10b. **Pipeline redesign: polars/narwhals/no-double-load** *(effort: XL, multi-phase)* — tracked in
     **[`prompts/mrun-cache-implementation.plan.md`](mrun-cache-implementation.plan.md)**.
@@ -373,12 +374,12 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     Phase 1+2b-tdms  →  Phase 2  →  Phase 2 + item 10 (single pass)  →  Phase 3  →  item 14 Phases D–E  →  Phase 2b-pandas
     ```
 
-11. **`HybridData` timestamp support** *(effort: M, out of current scope)* — tracked in
+11. **`HybridData` timestamp support** *(effort: M, now unblocked)* — tracked in
     **[`prompts/hybriddata-timestamp-plan.md`](hybriddata-timestamp-plan.md)**:
     add `start_timestamp`, `end_timestamp`, `_infer_timestamps()`, `addTime()`,
     `getStartDate()`, `getDuration()` to `HybridData`. Required before `HybridRun` can
     participate as a source in `ComparisonSession` (Phase E).
-    **Prerequisite**: `analysis/` Phase 6 (`add_time_columns` utility) should land first.
+    **Prerequisite** `analysis/` Phase 6 (`add_time_columns` utility) is now complete.
 
 12. **Outlier deduplication** *(effort: ~4–5 h)* — tracked in
     **[`prompts/outlier-consolidation.plan.md`](outlier-consolidation.plan.md)**.
@@ -404,8 +405,8 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     new `magnetrun signature` subcommand promoted from `tests/test-signature.py`;
     `srvdata-to-magnetrun` renamed to `magnetrun-fetch` (standalone);
     `magnetrun compare` subcommand registered from `comparison/cli.py` (no separate entry point).
-    **Coordinate `analysis/cli.py` pass with `analysis-subpackage-refactoring.plan.md`
-    Phase 5.3** — adding `register()` and decomposing `main()` should be a single branch.
+    **Note:** `analysis/cli.py` decomposition (Phase 5.3) is complete — only the
+    `register(subparsers)` wiring into the unified dispatcher remains.
 
 14. **Cross-domain comparison — Phases B–G** *(effort: XL)* — depends on item 11.
 

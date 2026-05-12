@@ -40,6 +40,8 @@ from typing import Any
 
 from natsort import natsorted
 
+from ..utils.files import DIR_DEFAULT, DIR_SPIKE
+
 logger = logging.getLogger(__name__)
 
 #: Filename expected at the pigbrother runlog root.
@@ -148,9 +150,9 @@ class DefautType(Enum):
     def file_folder(self) -> str:
         """Expected folder for this fault type."""
         folders = {
-            DefautType.SPIKE_AIMANT: "Fichiers_Spike",
-            DefautType.DEFAUT_NUMS: "Fichiers_Default",
-            DefautType.COURANTS_50HZ: "Fichiers_Default",
+            DefautType.SPIKE_AIMANT: DIR_SPIKE,
+            DefautType.DEFAUT_NUMS: DIR_DEFAULT,
+            DefautType.COURANTS_50HZ: DIR_DEFAULT,
         }
         return folders.get(self, "Unknown")
 
@@ -614,7 +616,7 @@ class LogParser:
 
     def _is_defaut_file(self, filepath: str) -> bool:
         """Check if a filepath is a defaut-related file."""
-        defaut_folders = ["Fichiers_Spike", "Fichiers_Default", "Default", "Spike"]
+        defaut_folders = [DIR_SPIKE, DIR_DEFAULT, "Default", "Spike"]
         return any(folder in filepath for folder in defaut_folders)
 
     def _parse_defaut(self, entry: LogEntry) -> DefautEvent | None:

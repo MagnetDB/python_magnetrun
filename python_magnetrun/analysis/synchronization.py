@@ -48,6 +48,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ..utils.timestamps import add_time_columns
 from .config import LAG_THRESHOLD_RATIO
 
 # Module logger
@@ -194,11 +195,7 @@ def synchronize_data(
 
     # Recalculate time column
     new_t0 = df[timestamp_col].iloc[0]
-    if time_col in df.columns:
-        df.drop([time_col], axis=1, inplace=True)
-    df[time_col] = df.apply(
-        lambda row: (row[timestamp_col] - new_t0).total_seconds(), axis=1
-    )
+    df = add_time_columns(df, new_t0, timestamp_col=timestamp_col, time_col=time_col)
 
     logger.debug(
         f"Synchronized data: shift={timeshift.total_seconds():.3f} s, source_t0={source_t0}, target_t0={target_t0}"
@@ -250,10 +247,7 @@ def apply_lag_correction(
 
     # Recalculate time column if reference provided
     if reference_t0 is not None and time_col in df.columns:
-        df.drop([time_col], axis=1, inplace=True)
-        df[time_col] = df.apply(
-            lambda row: (row[timestamp_col] - reference_t0).total_seconds(), axis=1
-        )
+        df = add_time_columns(df, reference_t0, timestamp_col=timestamp_col, time_col=time_col)
 
     return df
 
@@ -755,16 +749,9 @@ def add_time_column(
     pd.DataFrame
         DataFrame with time column
     """
-    df = df.copy()
-
-    if time_col in df.columns:
-        df.drop([time_col], axis=1, inplace=True)
-
-    df[time_col] = df.apply(
-        lambda row: (row[timestamp_col] - reference_t0).total_seconds(), axis=1
+    return add_time_columns(
+        df, reference_t0, timestamp_col=timestamp_col, time_col=time_col
     )
-
-    return df
 
 
 def get_timestamp_info(

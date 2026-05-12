@@ -40,13 +40,12 @@ import pandas as pd
 from natsort import natsorted
 
 from ..magnetdata_base import DataType
-from ..magnetdata_pandas import _open_text_with_fallback
 from ..runlogs.pigbrother import PIGBROTHER_LOG_FILENAME
 from ..utils.files import (
-    DIR_ARCHIVE,
-    DIR_DEFAULT,
-    DIR_SPIKE,
-    DIR_TRIGGER,
+    TIMESTAMP_FORMAT,
+    extract_data,
+    find_files,
+    select_files,
 )
 from .config import (
     DEFAULT_DATA_DIR,
@@ -55,13 +54,6 @@ from .config import (
 
 # Module logger
 logger = logging.getLogger("python_magnetrun.analysis.loaders")
-
-
-# =============================================================================
-# Timestamp format constants
-# =============================================================================
-TIMESTAMP_FORMAT: str = "%Y-%m-%d %H:%M:%S"
-"""Standard timestamp format used for file selection."""
 
 
 # =============================================================================
@@ -330,634 +322,6 @@ class FileSet:
         return len(self.hybrid_trigger)
 
 
-# =============================================================================
-# Metadata-only helpers (no data arrays loaded)
-# =============================================================================
-
-
-def _tdms_end_from_properties(
-    file: str,
-    start_timestamp: float,
-    start_ftimestamp: str,
-    check_all_groups: bool = False,
-) -> str:
-    """Return end timestamp by reading actual sample counts from TDMS data.
-
-    For each usable channel (skipping the ``Infos`` group), counts the actual
-    number of samples written via ``read_data_chunks()`` and multiplies by
-    ``wf_increment`` from channel properties.  ``wf_samples`` is NOT trusted
-    because it is written by the DAQ at acquisition *start* and may differ from
-    the data actually recorded (e.g. truncated files).
-
-    Parameters
-    ----------
-    file:
-        Path to the TDMS file.
-    start_timestamp:
-        Unix timestamp of the acquisition start (from the filename).
-    start_ftimestamp:
-        Formatted start timestamp string (unused, kept for API compatibility).
-    check_all_groups:
-        When ``True``, check every group instead of stopping after the first
-        usable channel.  A warning is emitted if groups report different
-        durations (indicating a corrupt or truncated file).  The duration
-        computed from the first usable channel is still returned.
-
-    Returns an empty string if no usable channel is found.
-    """
-    from nptdms import TdmsFile
-
-    try:
-        with TdmsFile.open(file) as tdms:
-            first_duration: float | None = None
-            for group in tdms.groups():
-                if group.name == "Infos":
-                    continue
-                # Scan ALL channels in the group and keep the longest duration.
-                # Spike/trigger files often have a single-sample trigger channel
-                # first; using only the first channel would give a misleadingly
-                # short duration.  The waveform channels (many samples) follow.
-                group_duration: float | None = None
-                for ch in group.channels():
-                    p = ch.properties
-                    logger.debug(f"checking channel {ch.path} with properties {p}")
-                    if "wf_increment" not in p:
-                        continue
-                    actual = sum(len(chunk) for chunk in ch.data_chunks())
-                    wf_prop = p.get("wf_samples")
-                    if wf_prop is not None and int(wf_prop) != actual:
-                        logger.warning(
-                            f"{file} {ch.path}: wf_samples={wf_prop} != actual={actual} — using actual count"
-                        )
-                    duration = actual * float(p["wf_increment"])
-                    logger.debug(
-                        f"{file} {ch.path}: actual={actual} samples, duration={duration:.3f}s"
-                    )
-                    if group_duration is None or duration > group_duration:
-                        group_duration = duration
-
-                if group_duration is None:
-                    continue  # no channel with wf_increment in this group
-
-                if first_duration is None:
-                    first_duration = group_duration
-                    if not check_all_groups:
-                        break  # fast path: first usable group is enough
-                elif abs(group_duration - first_duration) > 1.0:
-                    logger.warning(
-                        f"{file} group {group.name!r}: duration {group_duration:.3f}s differs from first group {first_duration:.3f}s"
-                    )
-
-            if first_duration is not None:
-                end_dt = datetime.fromtimestamp(start_timestamp) + timedelta(
-                    seconds=first_duration
-                )
-                return end_dt.strftime(TIMESTAMP_FORMAT)
-    except (OSError, ValueError, TypeError, KeyError) as exc:
-        logger.warning(f"{file}: {exc}")
-    return ""
-
-
-def _pupitre_end_from_last_line(file: str, keys: list[str]) -> str:
-    """Return end timestamp from the last data row without loading the full file.
-
-    Seeks to the end of *file*, walks back to find the last non-empty line,
-    then parses ``Date`` and ``Time`` fields by column position.
-
-    Returns an empty string on any parse or I/O failure.
-    """
-    if "Date" not in keys or "Time" not in keys:
-        return ""
-    date_idx = keys.index("Date")
-    time_idx = keys.index("Time")
-    try:
-        with open(file, "rb") as f:
-            f.seek(0, os.SEEK_END)
-            pos = f.tell()
-            if pos == 0:
-                return ""
-            # skip trailing newline/carriage-return bytes
-            pos -= 1
-            f.seek(pos)
-            while pos > 0 and f.read(1) in (b"\n", b"\r", b" "):
-                pos -= 1
-                f.seek(pos)
-            # walk back to the start of the last data line
-            while pos > 0:
-                pos -= 1
-                f.seek(pos)
-                if f.read(1) == b"\n":
-                    break
-            last_line = f.readline().decode(errors="replace").strip()
-        fields = last_line.split()
-        if len(fields) <= max(date_idx, time_idx):
-            return ""
-        end_dt = datetime.strptime(
-            f"{fields[date_idx]} {fields[time_idx]}", "%Y.%m.%d %H:%M:%S"
-        )
-        logger.debug(f"end_dt={end_dt} from last line: {last_line}")
-        return end_dt.strftime(TIMESTAMP_FORMAT)
-    except (OSError, ValueError, IndexError, UnicodeDecodeError) as exc:
-        logger.warning(f"{file}: {exc}")
-        return ""
-
-
-# =============================================================================
-# Extract data function
-# =============================================================================
-def extract_data(
-    file: str,
-    housing: str,
-    site: str = "",
-    key: str | None = None,
-    dry_run: bool = False,
-) -> tuple[str, str, bool]:
-    """
-    Extract timestamp range and metadata from a data file.
-
-    Parses the filename to determine timestamps, and optionally loads
-    the file to verify keys and get exact duration.
-
-    Parameters
-    ----------
-    file : str
-        Path to the data file (.txt or .tdms)
-    housing : str, optional
-        Housing identifier (used for loading)
-    site : str, optional
-        Site identifier (used for loading)
-    key : str, optional
-        Key to verify exists in the file
-    dry_run : bool, optional
-        If True, only parse filename without loading data
-
-    Returns
-    -------
-    tuple[str, str, bool]
-        (start_timestamp, end_timestamp, skip_flag)
-        Timestamps are formatted as TIMESTAMP_FORMAT strings.
-        skip_flag is True if the file should be skipped.
-
-    Raises
-    ------
-    RuntimeError
-        If file extension is not supported
-
-    Examples
-    --------
-    >>> start, end, skip = extract_data("M9_Overview_241106-1643.tdms", "M9", "")
-    >>> print(start)
-    2024-11-06 16:43:00
-    """
-    # Lazy import to avoid circular dependencies
-    from python_magnetrun.MagnetRun import MagnetRun
-
-    logger.info(
-        f"extract_data: file={file}, housing={housing}, site={site}, key={key}, dry_run={dry_run}"
-    )
-    extension = os.path.splitext(file)[-1]
-    filename = os.path.basename(file).replace(extension, "")
-
-    start_timestamp: float = 0.0
-    start_ftimestamp: str = ""
-    end_ftimestamp: str = ""
-    skip: bool = False
-    mrun = None
-
-    if extension == ".txt":
-        # Pupitre file format: "2024.11.06 - 16:43:00.txt"
-        date, time = filename.replace(".txt", "").split(" - ")
-        start_timestamp, start_ftimestamp = convert_to_timestamp(
-            date, time, date_format="%Y.%m.%d", time_format="%H:%M:%S"
-        )
-        logger.info(
-            f"Parsed pupitre filename: date={date}, time={time}, start_ftimestamp={start_ftimestamp}"
-        )
-        if not dry_run:
-            if key is None:
-                # metadata-only path: read header to get column positions, then
-                # seek last line for end timestamp — no full DataFrame loaded
-                with _open_text_with_fallback(file) as _f:
-                    _hdr = pd.read_csv(
-                        _f, sep=r"\s+", engine="python", skiprows=1, nrows=0
-                    )
-                _keys = _hdr.columns.tolist()
-                end_ftimestamp = _pupitre_end_from_last_line(file, _keys)
-            else:
-                mrun = MagnetRun.fromtxt(housing, site, file)
-                logger.info(f"Loaded pupitre file: {file}")
-
-    elif extension == ".tdms":
-        res = filename.split("_")
-
-        mode = None
-        date, time = None, None
-
-        # Regular case: M9_Overview_241106-1643
-        if len(res) == 3:
-            housing_from_file, mode, timestamp = res
-            date, time = timestamp.split("-")
-            # Time may have seconds (6 chars) or just HHMM (4 chars)
-            start_timestamp, start_ftimestamp = convert_to_timestamp(
-                date,
-                time[:4],  # Use first 4 chars for HHMM
-                date_format="%y%m%d",
-                time_format="%H%M",
-            )
-        # Special case for default files: M9_Default_241106-164300_HT
-        elif len(res) == 4:
-            housing_from_file, mode, timestamp, dmode = res
-            if housing_from_file != housing:
-                logger.warning(
-                    f"Housing mismatch in filename: expected {housing}, got {housing_from_file}"
-                )
-            date, time = timestamp.split("-")
-            start_timestamp, start_ftimestamp = convert_to_timestamp(
-                date, time, date_format="%y%m%d", time_format="%H%M%S"
-            )
-        else:
-            logger.warning(f"Unexpected filename format: {filename}")
-            # Try to parse anyway
-            start_ftimestamp = ""
-        logger.info(
-            f"Parsed TDMS filename: housing={housing}, mode={mode}, date={date}, time={time}, start_ftimestamp={start_ftimestamp}"
-        )
-        if not dry_run:
-            if key is None:
-                # metadata-only path: read wf_samples/wf_increment from
-                # channel properties — no data arrays loaded
-                end_ftimestamp = _tdms_end_from_properties(
-                    file, start_timestamp, start_ftimestamp
-                )
-            else:
-                mrun = MagnetRun.fromtdms(housing, site, file)
-                logger.info(f"Loaded TDMS file: {file}")
-    else:
-        raise RuntimeError(f"{file}: unsupported extension {extension}")
-
-    if not dry_run and mrun is not None:
-        mdata = mrun.getMData()
-
-        # Check if required key exists
-        if key is not None and key not in mdata.getKeys():
-            logger.debug(f"{file}: key {key} not found")
-            skip = True
-
-        # Calculate end timestamp from duration
-        duration = mdata.getDuration()
-        end_dt = datetime.fromtimestamp(start_timestamp) + timedelta(seconds=duration)
-        end_ftimestamp = end_dt.strftime(TIMESTAMP_FORMAT)
-        logger.info(
-            f"{file}: start={start_ftimestamp}, end={end_ftimestamp}, duration={duration}s"
-        )
-    # dry_run=True: filename-derived start only, end unknown
-    # (mrun is None because we skipped all load paths above)
-
-    return (start_ftimestamp, end_ftimestamp, skip)
-
-
-# =============================================================================
-# Find files function
-# =============================================================================
-def find_files(
-    overview_file: str,
-    housing: str,
-    date: str,
-    time: str,
-    pupitre_datadir: str | Path = DEFAULT_DATA_DIR,
-) -> tuple[str, str, str, str, str]:
-    """
-    Build glob patterns to find files related to an overview file.
-
-    Parameters
-    ----------
-    overview_file : str
-        Path to the overview TDMS file
-    housing : str
-        Housing identifier (M8, M9, M10)
-    date : str
-        Date string from filename (e.g., "241106")
-    time : str
-        Time string from filename (e.g., "1643")
-    pupitre_datadir : str or Path, optional
-        Base directory for pupitre files
-
-    Returns
-    -------
-    tuple[str, str, str, str, str]
-        (pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter)
-        Each is a glob pattern for finding related files.
-
-    Examples
-    --------
-    >>> filters = find_files("data/M9_Overview_241106-1643.tdms", "M9", "241106", "1643")
-    >>> pupitre, archive, default, trigger, spike = filters
-    """
-    logger.info(
-        f"find_files: overview_file={overview_file}, housing={housing}, date={date}, time={time}, pupitre_datadir={pupitre_datadir}"
-    )
-    pupitre_datadir = Path(pupitre_datadir)
-
-    # Pupitre pattern: /datadir/M9/2024.11.06*.txt
-    pupitre_site_dir = pupitre_datadir / housing
-    pupitre_filter = str(
-        pupitre_site_dir / f"20{date[0:2]}.{date[2:4]}.{date[4:]}*.txt"
-    )
-
-    # Get base paths from overview file
-    extension = os.path.splitext(overview_file)[-1]
-    filename = os.path.basename(overview_file).replace(extension, "")
-    overview_dir = os.path.dirname(overview_file)
-
-    # Archive pattern
-    pigbrother = filename.replace("Overview", "Archive")
-    archive_datadir = overview_dir.replace("Overview", DIR_ARCHIVE)
-    archive_filter = f"{archive_datadir}/{pigbrother.replace(time, '*.tdms')}"
-
-    # Incident patterns
-    default_datadir = overview_dir.replace("Overview", DIR_DEFAULT)
-    trigger_datadir = overview_dir.replace("Overview", DIR_TRIGGER)
-    spike_datadir = overview_dir.replace("Overview", DIR_SPIKE)
-
-    default_name = filename.replace("Overview", "Default")
-    default_filter = f"{default_datadir}/{default_name.replace(time, '*.tdms')}"
-
-    trigger_name = filename.replace("Overview", "ManuelTrig")
-    trigger_filter = f"{trigger_datadir}/{trigger_name.replace(time, '*.tdms')}"
-
-    spike_name = filename.replace("Overview", "Spikes")
-    spike_filter = f"{spike_datadir}/{spike_name.replace(time, '*.tdms')}"
-
-    return (
-        pupitre_filter,
-        archive_filter,
-        default_filter,
-        trigger_filter,
-        spike_filter,
-    )
-
-
-# =============================================================================
-# Select files function
-# =============================================================================
-def select_files(
-    files: list[str],
-    housing: str,
-    start: str,
-    end: str,
-    min_duration_seconds: float = 30.0,
-) -> list[str]:
-    """
-    Filter files by timestamp range.
-
-    Selects files whose time range falls within the specified range.
-
-    Parameters
-    ----------
-    files : List[str]
-        List of file paths to filter
-    housing : str
-        Housing identifier
-    start : str
-        Start timestamp (TIMESTAMP_FORMAT)
-    end : str
-        End timestamp (TIMESTAMP_FORMAT)
-    min_duration_seconds : float, optional
-        Files shorter than this threshold are discarded (default 30 s).
-        Pass 0.0 for incident files (default, trigger, spike) which are
-        legitimately short captures.
-
-    Returns
-    -------
-    List[str]
-        Filtered and naturally sorted list of files
-
-    Examples
-    --------
-    >>> files = glob.glob("data/M9_Archive_241106-*.tdms")
-    >>> selected = select_files(files, "M9", "2024-11-06 16:00:00", "2024-11-06 18:00:00")
-    """
-
-    natsortedfiles = natsorted(files)
-    logger.info(
-        f"select_files: files={natsortedfiles}, housing={housing}, start={start}, end={end}"
-    )
-    if not natsortedfiles:
-        return []
-
-    start_time = datetime.strptime(start, TIMESTAMP_FORMAT)
-    end_time = datetime.strptime(end, TIMESTAMP_FORMAT)
-
-    selected = []
-    for file in natsortedfiles:
-        try:
-            file_start, file_end, skip = extract_data(
-                file, housing, site="", key=None, dry_run=False
-            )
-            logger.info(
-                f"File {file}: extracted start={file_start}, end={file_end}, skip={skip}"
-            )
-
-            if not file_start or not file_end:
-                continue
-
-            file_start_time = datetime.strptime(file_start, TIMESTAMP_FORMAT)
-            file_end_time = datetime.strptime(file_end, TIMESTAMP_FORMAT)
-
-            # Check if file time range is within selection range
-            logger.debug(
-                f"File {file} (file_start_time={file_start_time}, file_end_time={file_end_time}) "
-                f"within the selection range (start_time={start_time}, end_time={end_time})?"
-            )
-            if file_start_time < end_time and file_end_time > start_time:
-                actual_duration = (file_end_time - file_start_time).total_seconds()
-                if actual_duration <= min_duration_seconds:
-                    logger.warning(
-                        f"{file}: duration {actual_duration:.3f}s <= min {min_duration_seconds:.1f}s, skipping"
-                    )
-                    continue
-                logger.debug(f"Selected file: {file}")
-                selected.append(file)
-
-        except (OSError, ValueError, RuntimeError, UnicodeDecodeError) as e:
-            logger.warning(f"Error processing {file}: {e}")
-            continue
-
-    return natsorted(selected) if selected else []
-
-
-# =============================================================================
-# Load DataFrame functions
-# =============================================================================
-def load_df(
-    file: str,
-    housing: str,
-    site: str,
-    group: str,
-    keys: list[str] | None,
-) -> tuple[pd.DataFrame, datetime | None]:
-    """
-    Load a single file into a pandas DataFrame.
-
-    Handles both .txt (pupitre) and .tdms (pigbrother) files.
-    Adds timestamp column for time alignment.
-
-    Parameters
-    ----------
-    file : str
-        Path to the data file
-    housing : str
-        Housing identifier
-    site : str
-        Site identifier
-    group : str
-        TDMS group name (for .tdms files)
-    keys : List[str]
-        Column/channel names to load
-
-    Returns
-    -------
-    tuple[pd.DataFrame, datetime | None]
-        (dataframe, start_time)
-        DataFrame contains requested columns plus 'timestamp'.
-        Returns (empty DataFrame, None) if loading fails.
-
-    Examples
-    --------
-    >>> df, t0 = load_df("M9_Archive_241106-1643.tdms", "M9", "",
-    ...                   "Courants_Alimentations", ["Courant_GR1", "Courant_GR2"])
-    """
-    # Lazy import
-    from python_magnetrun.MagnetRun import MagnetRun
-
-    logger.info(f"load_df: file={file}, group={group}, keys={keys}")
-
-    extension = os.path.splitext(file)[-1]
-    df = pd.DataFrame()
-    t0: datetime | None = None
-
-    try:
-        if extension == ".txt":
-            mrun = MagnetRun.fromtxt(housing, site, file)
-            mdata = mrun.getMData()
-            logger.debug(f"load_df --pupitre -- {file}: mdata keys={mdata.getKeys()}")
-            t0 = mdata.start_timestamp
-            selected_keys = ["t", "timestamp"]
-            if keys is not None:
-                selected_keys += keys
-            logger.debug(f"load_df: selected_keys={selected_keys}")
-            df = pd.DataFrame(mdata.getData(selected_keys))
-
-        elif extension == ".tdms":
-            mrun = MagnetRun.fromtdms(housing, site, file)
-            mdata = mrun.getMData()
-            logger.debug(f"load_df --tdms -- {file}: mdata keys={mdata.getKeys()}")
-
-            # Load data
-            channels = list(mdata.getData(group).keys())
-            logger.debug(f"channels={channels}")
-            df = mdata.getTdmsData(group, keys)
-
-            # Check if first key exists
-            first_key = channels[0] if keys is None or not keys else keys[0]
-            logger.debug(f"first_key: {first_key}")
-            if keys is not None and keys and keys[0] not in mdata.Groups.get(group, {}):
-                logger.debug(f"{group}/{keys[0]} not found in {mdata.FileName}")
-                return df, t0
-
-            # Use t and timestamp already computed by prepareData → addTime()
-            t0 = mdata.start_timestamp
-            logger.debug(f"{file}: t0={t0}")
-            df["t"] = mdata.Data[group]["t"]
-            df["timestamp"] = mdata.Data[group]["timestamp"]
-        else:
-            logger.warning(f"Unsupported file extension: {extension}")
-
-    except (OSError, ValueError, RuntimeError, KeyError) as e:
-        logger.error(f"Failed to load {file}: {e}")
-
-    return df, t0
-
-
-def load_data(
-    files: list[str],
-    housing: str,
-    site: str,
-    group: str,
-    keys: list[str] | None,
-) -> list[pd.DataFrame]:
-    """
-    Load multiple files and return list of DataFrames.
-
-    Parameters
-    ----------
-    files : List[str]
-        List of file paths to load
-    housing : str
-        Housing identifier
-    site : str
-        Site identifier
-    group : str
-        TDMS group name
-    keys : List[str]
-        Column/channel names to load
-
-    Returns
-    -------
-    List[pd.DataFrame]
-        List of loaded DataFrames (empty DataFrames are excluded)
-
-    Examples
-    --------
-    >>> files = ["archive1.tdms", "archive2.tdms"]
-    >>> dfs = load_data(files, "M9", "", "Courants_Alimentations", ["Courant_GR1"])
-    """
-    logger.info(
-        f"load_data: files={files}, housing={housing}, site={site}, group={group}, keys={keys}"
-    )
-
-    df_list = []
-    for file in files:
-        df, t0 = load_df(file, housing, site, group, keys)
-        if not df.empty:
-            df_list.append(df)
-    return df_list
-
-
-def merge_data(df_list: list[pd.DataFrame]) -> pd.DataFrame:
-    """
-    Merge multiple DataFrames into one.
-
-    Concatenates DataFrames vertically, preserving column structure.
-
-    Parameters
-    ----------
-    df_list : List[pd.DataFrame]
-        List of DataFrames to merge
-
-    Returns
-    -------
-    pd.DataFrame
-        Merged DataFrame
-
-    Raises
-    ------
-    ValueError
-        If df_list is empty
-
-    Examples
-    --------
-    >>> merged = merge_data([df1, df2, df3])
-    """
-    if not df_list:
-        raise ValueError("Cannot merge empty list of DataFrames")
-
-    if len(df_list) == 1:
-        return df_list[0]
-
-    return pd.concat(df_list, ignore_index=True)
-
-
 def load_files_data(
     files: list[str],
     housing: str,
@@ -1023,7 +387,11 @@ def load_files_data(
             if mdata.Type == DataType.TDMS:
                 df = pd.DataFrame(mdata.getTdmsData(group=group, channel=None))
             else:
-                desired = (keys or []) + ["t", "timestamp"]
+                available = set(mdata.Keys)
+                desired = [k for k in (keys or []) + ["t", "timestamp"] if k in available]
+                missing = [k for k in (keys or []) if k not in available]
+                if missing:
+                    logger.warning(f"load_files_data: {file}: requested keys not available: {missing}")
                 df = pd.DataFrame(mdata.getData(desired))
 
             df["t"] = df["t"] + shift
@@ -1103,44 +471,26 @@ class FileDiscovery:
         )
         self.hybrid_datadir = Path(hybrid_datadir) if hybrid_datadir else None
 
-    def discover(
+    # ------------------------------------------------------------------
+    # Private helpers for discover()
+    # ------------------------------------------------------------------
+
+    def _resolve_overview_path(
         self,
         overview_file: str,
-        housing: str | None = None,
-        dry_run: bool = False,
-    ) -> FileSet:
-        """
-        Discover all files related to an overview file.
+        housing: str | None,
+        filename: str,
+        basename: str,
+    ) -> tuple[str, str]:
+        """Resolve a bare filename to a full path under pigbrother_datadir.
 
-        Parameters
-        ----------
-        overview_file : str
-            Path to the overview TDMS file
-        housing : str, optional
-            Housing identifier (extracted from filename if not provided)
-        dry_run : bool, optional
-        Returns
-        -------
-        FileSet
-            Container with all discovered related files
+        Returns (resolved_overview, overview_dir).  When *overview_file*
+        already contains a directory component both values are returned
+        unchanged.
         """
-        logger.info(
-            f"Discovering files for overview: {overview_file}, housing={housing}"
-        )
-        # Resolve overview path: if dirname is empty, look under pigbrother_datadir/<housing>/Overview
-        extension = os.path.splitext(overview_file)[-1]
-        basename = os.path.basename(overview_file)
-        filename = basename.replace(extension, "")
-        logger.info(
-            f"discover overview file: {overview_file} (filename={filename}, extension={extension})"
-        )
-
-        # If an explicit dirname wasn't provided, try to locate the overview
-        # file under the pigbrother data directory structure.
         overview_dir = os.path.dirname(overview_file)
         resolved_overview = overview_file
         if not overview_dir:
-            # Try pigbrother_datadir/<housing>/Overview (housing parsed below)
             logger.debug("No directory in overview_file, attempting to resolve...")
             parts_tmp = filename.split("_")
             if parts_tmp:
@@ -1155,94 +505,88 @@ class FileDiscovery:
                         f"Resolved overview {overview_file} -> {resolved_overview}"
                     )
                 else:
-                    # Keep original (may be relative to cwd)
                     overview_dir = ""
-        logger.info(
-            f"discover overview_dir={overview_dir}, resolved_overview={resolved_overview}"
-        )
+        return resolved_overview, overview_dir
 
-        # Extract housing, mode, timestamp from filename
+    def _parse_overview_filename(
+        self,
+        filename: str,
+        housing: str | None,
+    ) -> tuple[str, str, str] | None:
+        """Extract (housing, date, time) from an overview filename stem.
+
+        Returns ``None`` and logs an error when the stem cannot be parsed.
+        """
         parts = filename.split("_")
         logger.info(f"Filename parts: {parts}")
         if len(parts) < 3:
             logger.error(f"Cannot parse filename: {filename}")
-            return FileSet(overview=[f"{overview_dir}/{overview_file}"])
-
+            return None
         file_housing = parts[0]
         timestamp = parts[2]
-
+        resolved_housing = housing if housing is not None else file_housing
         if housing is None:
-            housing = file_housing
-            logger.info(f"Extracted housing from filename: {housing}")
+            logger.info(f"Extracted housing from filename: {resolved_housing}")
+        try:
+            date, time = timestamp.split("-")
+        except ValueError:
+            logger.error(f"Cannot split timestamp {timestamp!r} in {filename}")
+            return None
+        return resolved_housing, date, time
 
-        # Parse date and time
-        date, time = timestamp.split("-")
-        logger.info(f"Extracted date={date}, time={time} from filename")
+    def _select_related_files(
+        self,
+        overview_path: str,
+        housing: str,
+        date: str,
+        time: str,
+        start: str,
+        end: str,
+    ) -> FileSet:
+        """Glob and time-filter all file types related to *overview_path*.
 
-        # Use resolved overview path (may be under pigbrother_datadir)
-        overview_path_for_extract = resolved_overview
-
-        # Get time range from overview file
-        start, end, skip = extract_data(
-            overview_path_for_extract,
-            housing,
-            site="",
-            key=None,
-            dry_run=dry_run,
-        )
-        logger.info(f"Overview file time range: start={start}, end={end}, skip={skip}")
-        if housing == "M8":
-            logger.info(
-                f"Overview file {overview_file} has housing M8, looking for hybrid data to be implemented"
-            )
-
-        if skip or not start or not end:
-            logger.warning(f"Could not extract time range from {overview_file}")
-            return FileSet(overview=[f"{overview_dir}/{overview_file}"])
-
-        # Get file patterns (pass a path that includes the directory)
-        overview_for_patterns = overview_path_for_extract
+        Returns a :class:`FileSet` with ``overview`` left empty (the caller
+        fills it after resolving the path).
+        """
         filters = find_files(
-            overview_for_patterns,
+            overview_path,
             housing,
             date,
             time,
             pupitre_datadir=self.pupitre_datadir,
         )
-        pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter = (
-            filters
+        pupitre_f, archive_f, default_f, trigger_f, spike_f = filters
+        logger.info(
+            f"File patterns: pupitre={pupitre_f} archive={archive_f} "
+            f"default={default_f} trigger={trigger_f} spike={spike_f}"
         )
 
-        logger.info("File patterns:")
-        logger.info(f"  pupitre: {pupitre_filter}")
-        logger.info(f"  archive: {archive_filter}")
-        logger.info(f"  default: {default_filter}")
-        logger.info(f"  trigger: {trigger_filter}")
-        logger.info(f"  spike: {spike_filter}")
-
-        # Find and filter files
-        file_set = FileSet(overview=[resolved_overview])
-
-        file_set.pupitre = select_files(glob.glob(pupitre_filter), housing, start, end)
-        file_set.archive = select_files(glob.glob(archive_filter), housing, start, end)
-        # Incident files (default, trigger, spike) are intentionally short captures;
-        # disable the minimum-duration guard that is appropriate for archive files.
+        file_set = FileSet()
+        file_set.pupitre = select_files(glob.glob(pupitre_f), housing, start, end)
+        file_set.archive = select_files(glob.glob(archive_f), housing, start, end)
+        # Incident files are intentionally short; disable the min-duration guard.
         file_set.default = select_files(
-            glob.glob(default_filter), housing, start, end, min_duration_seconds=0.0
+            glob.glob(default_f), housing, start, end, min_duration_seconds=0.0
         )
         file_set.trigger = select_files(
-            glob.glob(trigger_filter), housing, start, end, min_duration_seconds=0.0
+            glob.glob(trigger_f), housing, start, end, min_duration_seconds=0.0
         )
         file_set.spike = select_files(
-            glob.glob(spike_filter), housing, start, end, min_duration_seconds=0.0
+            glob.glob(spike_f), housing, start, end, min_duration_seconds=0.0
         )
-        logger.info(f"file_set.pupitre: {file_set.pupitre}")
-        logger.info(f"file_set.archive: {file_set.archive}")
-        logger.info(f"file_set.default: {file_set.default}")
-        logger.info(f"file_set.spike: {file_set.spike}")
-        logger.info(f"file_set.trigger: {file_set.trigger}")
+        logger.info(
+            f"Selected: pupitre={file_set.pupitre} archive={file_set.archive} "
+            f"default={file_set.default} trigger={file_set.trigger} spike={file_set.spike}"
+        )
+        return file_set
 
-        # --- Pigbrother run-log (LOG_ACQ_ENET.txt) ---
+    def _discover_runlogs(
+        self,
+        file_set: FileSet,
+        start: str,
+        end: str,
+    ) -> None:
+        """Populate *file_set* pigbrother and pupitre run-log fields in place."""
         pb_log = self.pigbrother_runlog_dir / PIGBROTHER_LOG_FILENAME
         if pb_log.exists():
             file_set.pigbrother_runlog = [str(pb_log)]
@@ -1250,10 +594,6 @@ class FileDiscovery:
         else:
             logger.debug(f"Pigbrother runlog not found at {pb_log}")
 
-        # --- Pupitre run-log (Cirrus cirrus/A[1-4]/YYYY-MM-DD_cirrus_out.log) ---
-        logger.debug(
-            f"Checking for pupitre run-log: pupitre_runlog_dir={self.pupitre_runlog_dir}, start={start}, end={end}"
-        )
         if self.pupitre_runlog_dir is not None and start and end:
             from ..runlogs.pupitre import discover_pupitre_runlogs
 
@@ -1264,75 +604,144 @@ class FileDiscovery:
             )
             logger.info(f"file_set.pupitre_runlog: {file_set.pupitre_runlog}")
 
-        # --- Hybrid data (M8 only) ---
-        logger.debug(
-            f"Checking for hybrid data: housing={housing}, hybrid_datadir={self.hybrid_datadir}, start={start}, end={end}"
+    def _discover_hybrid_data(
+        self,
+        file_set: FileSet,
+        housing: str,
+        filename: str,
+        resolved_overview: str,
+        start: str,
+        end: str,
+    ) -> None:
+        """Populate *file_set* hybrid kHz/RMS/trigger fields for M8. No-op for other housings."""
+        if housing != "M8" or self.hybrid_datadir is None or not start or not end:
+            return
+
+        _ts_part = filename.split("_")[2]
+        _date_part, _time_part = _ts_part.split("-")
+        _local_dt = datetime.strptime(_date_part + _time_part, "%y%m%d%H%M")
+        date_str = _local_dt.strftime("%Y-%m-%d")
+        time_str = _local_dt.strftime("%H:%M")
+
+        from python_magnetrun.MagnetRun import MagnetRun as _MR
+
+        _mrun = _MR.fromtdms(housing, "", resolved_overview)
+        _duration = _mrun.getMData().getDuration()
+        _local_end_dt = _local_dt + timedelta(seconds=_duration)
+        end_time_str = _local_end_dt.strftime("%H:%M")
+        hours = range(_local_dt.hour, _local_end_dt.hour + 1)
+
+        try:
+            from ..hybrid.hybrid_data import HybridData
+
+            hdata = HybridData(str(self.hybrid_datadir), date_str)
+
+            def _khz_hour(p: Path) -> int | None:
+                try:
+                    return int(p.name[:2])
+                except ValueError:
+                    return None
+
+            def _rms_hour(p: Path) -> int | None:
+                m = re.search(r"\d{4}-\d{2}-\d{2}_(\d{2})\d{2}[—-]", p.stem)
+                return int(m.group(1)) if m else None
+
+            def _trigger_hour(p: Path) -> int | None:
+                m = re.search(r"__(\d{2})-\d{2}$", p.parent.name)
+                return int(m.group(1)) if m else None
+
+            file_set.hybrid_kHz = natsorted(
+                str(f)
+                for key, files in hdata._info.khz_files.items()
+                if not key.endswith("_cfg")
+                for f in files
+                if _khz_hour(f) in hours
+            )
+            file_set.hybrid_rms = natsorted(
+                str(f)
+                for files in hdata._info.rms_files.values()
+                for f in files
+                if _rms_hour(f) in hours
+            )
+            file_set.hybrid_trigger = natsorted(
+                str(f)
+                for files in hdata._info.trigger_files.values()
+                for f in files
+                if _trigger_hour(f) in hours
+            )
+            logger.info(
+                f"Hybrid data for {date_str} {time_str}–{end_time_str} (local)"
+                f" hours={list(hours)}: "
+                f"{len(file_set.hybrid_kHz)} kHz, "
+                f"{len(file_set.hybrid_rms)} rms, "
+                f"{len(file_set.hybrid_trigger)} trigger"
+            )
+        except (OSError, ValueError, ImportError) as e:
+            logger.warning(f"Could not discover hybrid data for {date_str}: {e}")
+
+    # ------------------------------------------------------------------
+    # Public discovery methods
+    # ------------------------------------------------------------------
+
+    def discover(
+        self,
+        overview_file: str,
+        housing: str | None = None,
+        dry_run: bool = False,
+    ) -> FileSet:
+        """Discover all files related to an overview file.
+
+        Parameters
+        ----------
+        overview_file : str
+            Path to the overview TDMS file
+        housing : str, optional
+            Housing identifier (extracted from filename if not provided)
+        dry_run : bool, optional
+            When True skip full file loads (timestamps from filename only)
+
+        Returns
+        -------
+        FileSet
+            Container with all discovered related files
+        """
+        logger.info(f"Discovering files for overview: {overview_file}, housing={housing}")
+
+        extension = os.path.splitext(overview_file)[-1]
+        basename = os.path.basename(overview_file)
+        filename = basename.replace(extension, "")
+        logger.info(f"discover overview file: {overview_file} (filename={filename})")
+
+        resolved_overview, overview_dir = self._resolve_overview_path(
+            overview_file, housing, filename, basename
         )
-        if housing == "M8" and self.hybrid_datadir is not None and start and end:
-            _ts_part = filename.split("_")[2]  # e.g. "241106-1643"
-            _date_part, _time_part = _ts_part.split("-")  # "241106", "1643"
-            _local_dt = datetime.strptime(_date_part + _time_part, "%y%m%d%H%M")
-            date_str = _local_dt.strftime("%Y-%m-%d")
-            time_str = _local_dt.strftime("%H:%M")
-            # Load overview to get accurate duration
-            from python_magnetrun.MagnetRun import MagnetRun as _MR
+        logger.info(f"discover overview_dir={overview_dir}, resolved_overview={resolved_overview}")
 
-            _mrun = _MR.fromtdms(housing, "", resolved_overview)
-            _duration = _mrun.getMData().getDuration()
-            _local_end_dt = _local_dt + timedelta(seconds=_duration)
-            end_time_str = _local_end_dt.strftime("%H:%M")
-            hours = range(_local_dt.hour, _local_end_dt.hour + 1)
-            try:
-                from ..hybrid.hybrid_data import HybridData
+        parsed = self._parse_overview_filename(filename, housing)
+        if parsed is None:
+            return FileSet(overview=[f"{overview_dir}/{overview_file}"])
+        housing, date, time = parsed
+        logger.info(f"Extracted date={date}, time={time} from filename")
 
-                hdata = HybridData(str(self.hybrid_datadir), date_str)
+        if housing == "M8":
+            logger.info(f"Overview file {overview_file} has housing M8, hybrid data will be discovered")
 
-                def _khz_hour(p: Path) -> int | None:
-                    try:
-                        return int(p.name[:2])
-                    except ValueError:
-                        return None
+        start, end, skip = extract_data(
+            resolved_overview, housing, site="", key=None, dry_run=dry_run
+        )
+        logger.info(f"Overview file time range: start={start}, end={end}, skip={skip}")
 
-                def _rms_hour(p: Path) -> int | None:
-                    m = re.search(r"\d{4}-\d{2}-\d{2}_(\d{2})\d{2}[—-]", p.stem)
-                    return int(m.group(1)) if m else None
+        if skip or not start or not end:
+            logger.warning(f"Could not extract time range from {overview_file}")
+            return FileSet(overview=[resolved_overview])
 
-                def _trigger_hour(p: Path) -> int | None:
-                    # parent dir: TRIGGER__YYYY-MM-DD__HH-MM
-                    m = re.search(r"__(\d{2})-\d{2}$", p.parent.name)
-                    return int(m.group(1)) if m else None
+        file_set = self._select_related_files(
+            resolved_overview, housing, date, time, start, end
+        )
+        file_set.overview = [resolved_overview]
 
-                # kHz: skip CFG entries, filter by hours
-                file_set.hybrid_kHz = natsorted(
-                    str(f)
-                    for key, files in hdata._info.khz_files.items()
-                    if not key.endswith("_cfg")
-                    for f in files
-                    if _khz_hour(f) in hours
-                )
-                # rms: filter by hours
-                file_set.hybrid_rms = natsorted(
-                    str(f)
-                    for files in hdata._info.rms_files.values()
-                    for f in files
-                    if _rms_hour(f) in hours
-                )
-                # trigger: filter by hours
-                file_set.hybrid_trigger = natsorted(
-                    str(f)
-                    for files in hdata._info.trigger_files.values()
-                    for f in files
-                    if _trigger_hour(f) in hours
-                )
-                logger.info(
-                    f"Hybrid data for {date_str} {time_str}–{end_time_str} (local)"
-                    f" hours={list(hours)}: "
-                    f"{len(file_set.hybrid_kHz)} kHz, "
-                    f"{len(file_set.hybrid_rms)} rms, "
-                    f"{len(file_set.hybrid_trigger)} trigger"
-                )
-            except (OSError, ValueError, ImportError) as e:
-                logger.warning(f"Could not discover hybrid data for {date_str}: {e}")
+        self._discover_runlogs(file_set, start, end)
+        self._discover_hybrid_data(file_set, housing, filename, resolved_overview, start, end)
 
         logger.info(
             f"Discovered files for {filename}: {len(file_set.archive)} archives, "
@@ -1344,7 +753,6 @@ class FileDiscovery:
             f"{len(file_set.hybrid_rms)} rms, "
             f"{len(file_set.hybrid_trigger)} trigger"
         )
-
         return file_set
 
     def discover_batch(

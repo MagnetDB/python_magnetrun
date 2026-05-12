@@ -16,6 +16,7 @@ import pandas as pd
 from natsort import natsorted
 
 from .magnetdata_base import DataType, MagnetDataBase
+from .utils.files import _open_text_with_fallback
 from .utils.timestamps import parse_filename_timestamp
 from .utils.timezone import (
     local_to_utc_naive,
@@ -26,19 +27,6 @@ from .utils.timezone import (
 
 logger = logging.getLogger(__name__)
 
-
-@contextlib.contextmanager
-def _open_text_with_fallback(path: str):
-    """Try UTF-8 first, fall back to Latin-1."""
-    try:
-        with open(path, encoding="utf-8") as probe:
-            probe.read(1)
-    except UnicodeDecodeError:
-        with open(path, encoding="latin-1", errors="replace") as f:
-            yield f
-    else:
-        with open(path, encoding="utf-8") as f:
-            yield f
 
 
 def _dataframe_keys(df: pd.DataFrame) -> list[str]:

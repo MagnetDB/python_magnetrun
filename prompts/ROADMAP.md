@@ -1,6 +1,6 @@
 # Development Roadmap — python_magnetrun
 
-*Updated: 2026-04-29*
+*Updated: 2026-05-12*
 
 This document outlines strategic priorities and upcoming work. For detailed implementation status, see [CHECK_IMPLEMENTATION.md](CHECK_IMPLEMENTATION.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -25,6 +25,7 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 - ✅ File validation infrastructure (integrated throughout)
 - ✅ Logging infrastructure (`log_utils.py` + structured logging)
 - ✅ Test coverage (validation, analysis, processing, CLI smoke tests, truncated pupitre, hybrid formula)
+- ✅ `analysis/` subpackage refactoring (all 6 phases: data loading, downsampling, channel mapping, function decomposition, time-column utility)
 
 ---
 
@@ -119,12 +120,10 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 
 ### Stream 3: Internal Refactoring (Lower Priority)
 
-**3.1 `analysis/` Subpackage Refactoring**
-- Break up monolithic functions
-- Move channel mapping to `HousingConfig`
-- Adopt downsampling in `analysis/plotting.py`
+**3.1 `analysis/` Subpackage Refactoring** ✅ **COMPLETE** *(branch `rework_analysis`)*
+- All 6 phases done: dead-code removal, logging migration, directory constants, downsampling adoption (`DownsampleConfig`), data-loading consolidation (`utils/files.py` canonical), channel mapping moved to `HousingConfig` (4 new methods), `discover()` / `process_overview_file()` / `main()` decomposed into helpers, `add_time_columns` utility in `utils/timestamps.py`
 - **See:** [analysis-subpackage-refactoring.plan.md](analysis-subpackage-refactoring.plan.md)
-- **Effort:** ~5-7 days
+- **827 tests pass, 6 skipped**
 
 **3.2 `hybrid/` Subpackage Refactoring**
 - Create `OutlierConfig` dataclass (following `DownsampleConfig` pattern)
@@ -138,7 +137,7 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - Add `magnetrun signature` subcommand (promoted from `tests/test-signature.py`)
 - Add `magnetrun compare` subcommand via `comparison/cli.py::register()` — **no** separate `magnetrun-compare` entry point
 - `register(subparsers)` pattern, subcommand-first argv (eliminates `_normalize_argv` hack)
-- Coordinate `analysis/cli.py` pass with `analysis-subpackage-refactoring.plan.md` Phase 5.3
+- `analysis/cli.py` function decomposition (Phase 5.3) **already done** — only `register(subparsers)` wiring remains
 - **See:** [cli-consolidation.plan.md](cli-consolidation.plan.md)
 - **Effort:** ~1-2 days
 
@@ -158,10 +157,10 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 
 ### Stream 4: Advanced Features (Future)
 
-**4.1 `HybridData` Timestamp Support**
+**4.1 `HybridData` Timestamp Support** ⬜ **UNBLOCKED**
 - Add `start_timestamp`, `end_timestamp`, `addTime()` to `HybridData`
 - Required before `HybridRun` can participate in `ComparisonSession`
-- **Prerequisite:** `analysis/` Phase 6 (`add_time_columns` utility)
+- **Prerequisite:** `analysis/` Phase 6 (`add_time_columns` utility) — ✅ **now complete**
 - **See:** [hybriddata-timestamp-plan.md](hybriddata-timestamp-plan.md)
 - **Effort:** ~0.5 days
 
@@ -232,15 +231,13 @@ Month 3 (July 2026)
 
 Month 4 (August 2026)
 ├─ Phase 2D: Side-by-side comparison (complete)
-├─ Phase 2E: Channel auto-mapping
-└─ analysis/ internal refactoring (start)
+└─ Phase 2E: Channel auto-mapping
 
 Month 5 (September 2026)
-├─ analysis/ internal refactoring (complete)
 ├─ Outlier deduplication (3.5, ~0.5 day)
 ├─ hybrid/ internal refactoring (3.2, after outlier dedup)
-├─ CLI consolidation (3.3, coordinate analysis/cli.py with analysis Phase 5.3)
-└─ HybridData timestamp support
+├─ CLI consolidation (3.3, analysis/cli.py decomposition already done)
+└─ HybridData timestamp support (now unblocked — analysis/ Phase 6 complete)
 
 Month 6+ (October 2026+)
 ├─ Cross-domain Phases D-G
@@ -263,7 +260,7 @@ graph TD
     A[Phase 2B: Time Alignment] --> B[Phase 2C: Hybrid Plotting]
     B --> C[Phase 2D: Comparison View]
 
-    D[analysis/ Phase 6: Timestamps] --> E[HybridData Timestamp Support]
+    D[analysis/ Phase 6: Timestamps ✅] --> E[HybridData Timestamp Support]
     E --> F[Cross-Domain Phase D-G]
 
     G[CI Pipeline] -.-> H[mypy Enabled]
@@ -275,9 +272,9 @@ graph TD
 ```
 
 **Critical Path:** Phase 2B → 2C → 2D (unified plotting)
-**Long Pole:** analysis/ Phase 6 blocks HybridData timestamps
+**Unblocked:** HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) is now complete
 **Independent:** Quick wins, logging migration, CLI consolidation, outlier deduplication, type hints
-**Intra-Stream-3 order:** 3.5 Outlier Dedup → 3.2 hybrid/ refactoring; 3.3 CLI consolidation can run in parallel but `analysis/cli.py` must land with analysis Phase 5.3
+**Intra-Stream-3 order:** 3.5 Outlier Dedup → 3.2 hybrid/ refactoring; 3.3 CLI consolidation ready (analysis/cli.py decomposition done)
 
 ---
 

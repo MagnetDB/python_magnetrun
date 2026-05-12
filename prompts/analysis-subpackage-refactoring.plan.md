@@ -25,26 +25,24 @@ in priority order.
 All bare `print()` calls in `analysis/` have been migrated to structured logging.
 The `--quiet` / `--debug` flags now work correctly end-to-end.
 
-### 1.3 Deduplicate time-offset calculation 🔴 OPEN
+### 1.3 Deduplicate time-offset calculation ✅ COMPLETE
 
-`compute_time_offset()` in `analysis/processing.py` (line 290) is identical to
-`get_time_offset()` already in `analysis/config.py` (line 84).
+`compute_time_offset()` was deleted during Phase 2 cleanup.  Every call site
+in `analysis/processing.py` already uses `get_time_offset()` imported from
+`analysis/config.py`.  `analysis/__init__.py` exports `get_time_offset` from
+`.config`.  The test suite documents this in
+`tests/analysis/test_processing.py` (comment: "replaces deleted compute_time_offset").
 
-**Action:**
-- Delete `compute_time_offset()`.
-- Replace every call site with `config.get_time_offset(rate)`.
+### 1.4 Centralise directory-name constants ✅ COMPLETE
 
-### 1.4 Centralise directory-name constants 🔴 OPEN
-
-The strings `"Fichiers_Archive"`, `"Fichiers_Default"`, `"Fichiers_Manuel_Trig"`,
-`"Fichiers_Spike"` are hardcoded in both `analysis/loaders.py` (lines 668–674)
-and `utils/files.py` (lines 242–247). `utils/files.py` also uses a dict mapping
-(`"Archive"` → `"Fichiers_Archives"`, etc.) at lines 45–48.
-
-**Action:**
-- Add them as module-level constants in `analysis/config.py` (or a dedicated
-  `analysis/constants.py`).
-- Update both files to import and use the constants.
+`DIR_ARCHIVE`, `DIR_DEFAULT`, `DIR_TRIGGER`, `DIR_SPIKE` are defined once in
+`utils/files.py` and imported everywhere they are used:
+- `analysis/loaders.py` — imports all four from `utils.files` (done in Phase 3).
+- `runlogs/pigbrother.py` — `file_folder` property and `_is_defaut_file` helper
+  now import `DIR_SPIKE` and `DIR_DEFAULT` from `utils.files` instead of using
+  hardcoded string literals.
+- The only remaining literal strings are inside a test-fixture log excerpt
+  (lines 1089–1100 of `pigbrother.py`) which cannot be parameterised.
 
 ---
 
@@ -63,137 +61,113 @@ from `.config`; `tests/analysis/test_processing.py` updated accordingly.
 
 ## Phase 3 — Consolidate Data Loading (1–2 days)
 
-**Status:** 🔴 OPEN
+**Status:** ✅ COMPLETE
 
-`analysis/loaders.py` (1403 lines) reimplements logic that already lives in
-`utils/files.py`.
+`utils/files.py` is now the canonical location for all shared data-loading
+utilities.  `analysis/loaders.py` imports them instead of duplicating them.
 
-| Duplicated method | loaders.py approx line | utils/files.py approx line | Overlap |
-|-------------------|------------------------|---------------------------|---------|
-| `load_df` | 786 | present | 70% |
-| `load_data` | 876 | present | 80% |
-| `merge_data` | 921 | present | 100% |
-| `find_files` | 616 | 192 | 60% |
-| `select_files` | 697 | 238 | 70% |
-| `extract_data` | 462 | 127 | 65% |
-
-Also: `convert_to_timestamp()` at `loaders.py:64` reimplements timestamp parsing
-already in `utils/timestamps.py` (`parse_filename_timestamp()`).
-
-### Steps
-
-1. Audit the signatures of each pair. Note any analysis-specific parameter that
-   must be preserved.
-2. Extend the `utils/` versions where needed (keep them generic).
-3. Replace the bodies of the `loaders.py` functions with thin wrappers that
-   delegate to `utils/`.
-4. Replace `convert_to_timestamp()` with `utils.timestamps.parse_filename_timestamp()`.
-5. When wrappers become one-liners, delete them and update call sites to import
-   from `utils/` directly.
-6. Run the full test suite.
+**What was done:**
+- `_open_text_with_fallback` moved from `magnetdata_pandas.py` → `utils/files.py`;
+  `magnetdata_pandas.py` now imports it from there.
+- `_tdms_end_from_properties` and `_pupitre_end_from_last_line` (private helpers)
+  moved from `loaders.py` → `utils/files.py`.
+- `TIMESTAMP_FORMAT` constant moved from `loaders.py` → `utils/files.py`
+  (re-exported in `loaders.py` via import).
+- `extract_data` rewritten to use `parse_filename_timestamp` instead of the
+  local `convert_to_timestamp`; moved to `utils/files.py`.
+- `find_files`, `select_files`, `load_df`, `load_data`, `merge_data` — the
+  loaders.py versions (which were the better implementations) replaced the
+  weaker stubs in `utils/files.py`; loaders.py now imports from utils/.
+- `convert_to_timestamp` kept in `loaders.py` (public API, tested) but its
+  internal usage eliminated (superseded by `parse_filename_timestamp`).
+- 814 tests pass; 4 pre-existing failures and 14 pre-existing errors (all
+  `FileNotFoundError` for missing data files) are unchanged.
 
 ---
 
 ## Phase 4 — Move Channel Mapping to `HousingConfig` (half day)
 
-**Status:** 🟡 PARTIAL — `HousingConfig` has related lookup methods; processing.py helpers not yet removed
+**Status:** ✅ COMPLETE
 
-`HousingConfig` (housing_config.py:232–260) now has `get_pupitre_channel()`,
-`get_hybrid_channel()`, `get_flow_channel()`, `get_rpm_channel()`, `get_pin_channel()`.
-However, three module-level helpers in `analysis/processing.py` that wrap similar
-lookups have not been removed or updated to delegate:
+Added four new methods to `HousingConfig` keyed by "Courant_GR*" / group-name style
+(distinct from the existing "Référence_GR*" style methods):
 
-- `_get_pupitre_channel(cfg, key)` — processing.py:997
-- `_get_pupitre_group(cfg, key)` — processing.py:1006
-- `_get_pupitre_flow(cfg, key)` — processing.py:1024
+- `get_pupitre_current_channel(key)` — maps "Courant_GR1"/"Courant_GR2" to pupitre current column
+- `get_pupitre_group_keys(group)` — returns pupitre column list for a TDMS group name
+- `get_pupitre_flow_keys()` — returns all flow/rpm/pin pupitre column names
+- `get_hybrid_group_keys(group)` — returns hybrid column list for a TDMS group name
 
-### Steps
-
-1. ✅ ~~Add `get_pupitre_channel(key)` to `HousingConfig`~~ — Done (housing_config.py:232)
-2. 🔴 Verify `_get_pupitre_channel` in processing.py delegates to `cfg.get_pupitre_channel(key)`
-   and update all call sites to use the `HousingConfig` method directly; delete the wrapper.
-3. 🔴 Add `get_pupitre_group(key)` and `get_pupitre_flow()` to `HousingConfig` if semantics
-   differ from existing methods; otherwise map call sites to the closest existing method.
-4. 🔴 Delete `_get_pupitre_group` and `_get_pupitre_flow` from processing.py.
-5. 🔴 Also delete `_get_archive_channel` here (or coordinate with Phase 1.1).
+Deleted from `analysis/processing.py`: `_get_pupitre_channel`, `_get_pupitre_group`,
+`_get_pupitre_flow`, `_get_hybrid_channel` (dead code), `_get_hybrid_group`, and the
+commented-out `_get_archive_channel` block. All call sites updated to use `HousingConfig`
+methods. Stray `print()` debug calls converted to `logger.debug()`. 827 tests pass.
 
 ---
 
 ## Phase 5 — Break Down Oversized Functions (1–2 days)
 
-**Status:** 🟡 PARTIAL (5.3 partially done; 5.1 and 5.2 open)
+**Status:** ✅ COMPLETE
 
-**Note:** File sizes as of last audit: `loaders.py` 1403 lines, `processing.py` 1293 lines, `cli.py` 589 lines.
+### 5.1 `discover()` in `analysis/loaders.py` ✅ COMPLETE
 
-### 5.1 `discover()` in `analysis/loaders.py` (class method, line ~1100, ~225 lines, 5+ nesting levels)
+Five private instance methods extracted into `FileDiscovery` before `discover()`:
 
-🔴 OPEN — no helpers extracted yet.
+| New method | Responsibility |
+|---|---|
+| `_resolve_overview_path(overview_file, housing, filename, basename)` | Resolve bare filename to full path under pigbrother_datadir |
+| `_parse_overview_filename(filename, housing)` | Extract (housing, date, time) from overview filename stem |
+| `_select_related_files(overview_path, housing, date, time, start, end)` | Glob and time-filter all file types related to overview_path |
+| `_discover_runlogs(file_set, start, end)` | Populate pigbrother and pupitre run-log fields in place |
+| `_discover_hybrid_data(file_set, housing, filename, resolved_overview, start, end)` | Populate hybrid kHz/RMS/trigger fields for M8 |
 
-Extract into:
+`discover()` is now a ~50-line orchestrator calling these five methods.
+
+### 5.2 `process_overview_file()` in `analysis/processing.py` ✅ COMPLETE
+
+Three module-level helpers extracted before `process_overview_file()`:
 
 | New function | Responsibility |
 |---|---|
-| `_parse_overview_filename(path)` | Derive run id and timestamps from filename |
-| `_extract_time_range(overview_df)` | Compute start/end from loaded data |
-| `_find_archive_files(root, time_range)` | Glob archive directories |
-| `_find_incidents(root, time_range)` | Glob incident files |
-| `_discover_hybrid_data(root, time_range)` | Handle hybrid/kHz data |
+| `_check_overview_end_state(df_overview, record, time_zone)` | Warn when magnet appears still running at end of overview |
+| `_load_all_sources(record, housing_config, config, keys)` | Load archive, pupitre, hybrid and incident data into record.data |
+| `_extract_analysis(record, housing_config, keys, config)` | Run post-load analysis: signatures and optional lag correlation |
 
-`discover()` becomes the orchestrator that calls these five.
+`process_overview_file()` reduced from ~265 lines to ~60 lines. Also fixed 3 leftover `print()` → `logger.info()` calls in the hybrid loading section.
 
-### 5.2 `process_overview_file()` in `analysis/processing.py` (line 668, ~169 lines)
+### 5.3 `main()` in `analysis/cli.py` ✅ COMPLETE
 
-🔴 OPEN — no helpers extracted yet.
+All helpers extracted; `main()` is now ~50 lines:
 
-Extract into:
-
-| New function | Responsibility |
+| Function | Responsibility |
 |---|---|
-| `_load_all_sources(record, cfg)` | Load archive, pupitre, incidents DataFrames |
-| `_synchronize_sources(record, cfg)` | Apply time-alignment to each source |
-| `_extract_analysis(record, cfg)` | Compute metrics, signatures, regimes |
+| `_setup_logging(parsed_args)` | Configure logging, return logger |
+| `_collect_input_files(parsed_args, config)` | Expand globs, return sorted file list |
+| `_load_records(input_files, config, parsed_args, housing, logger)` | Loop over files, call `process_experiment`, accumulate results |
+| `_combine_dataframes(all_dfs)` | Merge per-file DataFrames |
+| `_run_combined_analysis(results, …)` | Metrics, distance, DTW, combined plots |
+| `_emit_metrics(results, input_files, combined_metrics, parsed_args, logger)` | Log final summary and per-key distance metrics; returns exit code |
 
-### 5.3 `main()` in `analysis/cli.py` (line 501)
-
-🟡 PARTIAL — several helpers extracted; `main()` is still ~100 lines but significantly reduced.
-
-**Already extracted (under different names than originally planned):**
-
-| Function | Line | Responsibility |
-|---|---|---|
-| `_setup_logging(parsed_args)` | 83 | Configure logging, return logger |
-| `_collect_input_files(parsed_args, config)` | 109 | Expand globs, return sorted file list |
-| `_load_records(input_files, config, parsed_args, housing, logger)` | 120 | Loop over files, call `process_experiment`, accumulate results |
-| `_combine_dataframes(all_dfs)` | 257 | Merge per-file DataFrames |
-| `_run_combined_analysis(results, …)` | 296 | Metrics, distance, DTW, combined plots |
-
-**Still in `main()` / remaining to extract:**
-- Plot emission and save logic (`_emit_plots`)
-- Summary / metrics export (`_emit_metrics`)
-
-**Coordinate with `cli-consolidation.plan.md`:** adding `register(subparsers)` to
-`analysis/cli.py` (per the CLI consolidation plan) and completing this decomposition
-should be done in a single branch.
+827 tests pass, 6 skipped.
 
 ---
 
 ## Phase 6 — Standardise Time Column Creation (half day)
 
-**Status:** 🔴 OPEN
+**Status:** ✅ COMPLETE
 
-`"timestamp"` (Timestamp) and `"t"` (float seconds) columns are added in two
-existing module functions:
+`add_time_columns(df, t0, sampling_rate=0.0, timestamp_col, time_col) -> DataFrame`
+added to `utils/timestamps.py`.  When `sampling_rate > 0` it adds a
+half-period offset `1/(2*sampling_rate)` (TDMS downsampled window centre);
+otherwise no offset.
 
-- `add_time_column_with_offset(df, t0, sampling_rate)` — `analysis/processing.py:310`
-- `add_time_column(df, …)` — `analysis/synchronization.py:733`
-
-These are subtly different and not yet unified under a shared utility.
-
-### Steps
-
-1. Add `add_time_columns(df, t0, sampling_rate) -> DataFrame` to
-   `utils/timestamps.py`.
-2. Replace both inline equivalents with calls to this utility.
+- `add_time_column_with_offset` (`processing.py`) — body replaced with delegation to `add_time_columns`
+- `add_time_column` (`synchronization.py`) — body replaced with delegation to `add_time_columns`
+- Inline lambda in `load_incident_data` (`processing.py`) replaced with `add_time_columns(..., sampling_rate=SAMPLING_RATE_INCIDENTS)`
+- Inline lambdas in `synchronize_data` and `apply_lag_correction` (`synchronization.py`) replaced with `add_time_columns` calls
+- `TIME_OFFSET_INCIDENTS` import removed from `processing.py`; `SAMPLING_RATE_INCIDENTS` used instead
+- `get_time_offset` import removed from `processing.py` (no longer called there)
+- `add_time_columns` re-exported from `analysis/__init__.py`
+- 827 tests pass, 6 skipped
 
 ---
 
@@ -212,23 +186,20 @@ These are subtly different and not yet unified under a shared utility.
 
 | Phase | Effort | Risk | Status |
 |-------|--------|------|--------|
-| 1 — Quick wins | < 2 h | Very low | 🟡 Partial (1.2 done; 1.1 revised, 1.3/1.4 open) |
+| 1 — Quick wins | < 2 h | Very low | ✅ Complete (1.1 revised; 1.2/1.3/1.4 done) |
 | 2 — Downsampling | 2-3 h | Low | ✅ Complete |
-| 3 — Data loading | 1–2 d | Medium | 🔴 Open |
-| 4 — Channel mapping | 4 h | Low | 🟡 Partial (`get_pupitre_channel` on `HousingConfig`; wrappers not deleted) |
-| 5 — Break down functions | 1–2 d | Medium | 🟡 Partial (5.3 partially done; 5.1/5.2 open) |
-| 6 — Time columns | 4 h | Low | 🔴 Open |
-| **Total** | **~5–7 days** | | **~1.5 h done, ~4–6 days remaining** |
+| 3 — Data loading | 1–2 d | Medium | ✅ Complete |
+| 4 — Channel mapping | 4 h | Low | ✅ Complete (4 new HousingConfig methods; 5 processing.py wrappers deleted) |
+| 5 — Break down functions | 1–2 d | Medium | ✅ Complete (5.1/5.2/5.3 all done; 827 tests pass) |
+| 6 — Time columns | 4 h | Low | ✅ Complete (`add_time_columns` in `utils/timestamps.py`; all call sites unified) |
+| **Total** | **~5–7 days** | | **All phases complete** |
 
 **Progress Notes:**
 - Phase 1.2 (logging migration) completed across the codebase
 - Phase 1.1: `ColorConfig` was NOT dead code — it is actively used as `default_factory` in `AnalysisConfig`; original note corrected
-- Phase 2 infrastructure (`DownsampleConfig`) in place and used in `plot_data`/`plot_comparison`; old percent-based functions still defined
-- Phase 4: `HousingConfig` already has `get_pupitre_channel` and related lookup methods; processing.py wrappers not yet removed
-- Phase 5.3: partial — `_setup_logging`, `_collect_input_files`, `_load_records`, `_combine_dataframes`, `_run_combined_analysis` extracted; plot/metrics emission still in `main()`
+- Phase 2 infrastructure (`DownsampleConfig`) in place and used in `plot_data`/`plot_comparison`
+- Phase 3: `utils/files.py` is now canonical for shared data-loading utilities; `loaders.py` imports from it
+- Phase 4: 4 new `HousingConfig` methods (`get_pupitre_current_channel`, `get_pupitre_group_keys`, `get_pupitre_flow_keys`, `get_hybrid_group_keys`); 5 processing.py wrappers deleted; stray debug `print()` calls converted to `logger.debug()`
+- Phase 5: all three sub-phases complete — `discover()`, `process_overview_file()`, and `main()` decomposed into focused helpers; 827 tests pass, 6 skipped
 
-**Recommended Next Steps:**
-1. Complete Phase 1 (< 2 hours): inline `_get_archive_channel`, stub `_extract_signatures`, deduplicate time-offset (1.3), centralise directory constants (1.4)
-2. Complete Phase 2 (2-3 hours): remove the three old `downsample_*` functions from `plotting.py`
-3. Complete Phase 4 (4 hours): remove processing.py channel-mapping wrappers; delegate to `HousingConfig`
-4. Phases 3, 5, 6 on a feature branch with incremental commits
+**All phases complete.** The `analysis` subpackage refactoring plan is fully executed.

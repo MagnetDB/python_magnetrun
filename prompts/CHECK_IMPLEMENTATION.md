@@ -1,6 +1,6 @@
 # Implementation Status — python_magnetrun
 
-*Last updated: 2026-04-29 — branch `rework_analysis`*
+*Last updated: 2026-05-12 — branch `rework_analysis`*
 
 This document tracks detailed implementation status and task completion. For strategic direction, see [ROADMAP.md](ROADMAP.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -165,21 +165,18 @@ def plot_data(
 
 ### Stream 3: Internal Refactoring (Lower Priority)
 
-#### 3.1 `analysis/` Subpackage Refactoring 🔴 OPEN
+#### 3.1 `analysis/` Subpackage Refactoring ✅ COMPLETE *(branch `rework_analysis`)*
 
-**Status:** Detailed plan exists
+**Status:** All 6 phases complete — 827 tests pass, 6 skipped
 **See:** [analysis-subpackage-refactoring.plan.md](analysis-subpackage-refactoring.plan.md)
 
-**Key Phases:**
-1. Data loading consolidation
-2. Downsampling adoption (integrate `DownsampleConfig`)
-3. Function decomposition (break up monoliths)
-4. Channel mapping to `HousingConfig`
-5. Test coverage
-6. Timestamp utilities (`add_time_columns` — prerequisite for HybridData)
-
-**Effort:** ~5-7 days
-**Priority:** Medium
+**Completed Phases:**
+1. ✅ Dead code removed (`_extract_signatures` stubbed, `_get_archive_channel` deleted); logging migrated; `DIR_*` constants centralised in `utils/files.py`
+2. ✅ Downsampling unified — `DownsampleConfig` adopted in `analysis/plotting.py`; old percent-based functions removed
+3. ✅ Data loading consolidated — `utils/files.py` is canonical; `analysis/loaders.py` imports from it; `_open_text_with_fallback`, `extract_data`, `find_files`, `select_files`, `load_df`, `load_data`, `merge_data` moved
+4. ✅ Channel mapping moved to `HousingConfig` — `get_pupitre_current_channel`, `get_pupitre_group_keys`, `get_pupitre_flow_keys`, `get_hybrid_group_keys` added; 5 processing.py wrappers deleted; stray debug `print()` → `logger.debug()`
+5. ✅ Monolith decomposition — `FileDiscovery.discover()` (5 helpers), `process_overview_file()` (3 helpers), `analysis/cli.main()` (6 helpers including `_emit_metrics`)
+6. ✅ `add_time_columns(df, t0, sampling_rate)` added to `utils/timestamps.py`; `add_time_column_with_offset` and `add_time_column` now delegate to it; inline lambdas in `load_incident_data`, `synchronize_data`, `apply_lag_correction` replaced
 
 #### 3.2 `hybrid/` Subpackage Refactoring 🔴 OPEN
 
@@ -210,7 +207,7 @@ def plot_data(
 
 **Key change:** `input_file` moves to each subcommand parser (subcommand-first argv); eliminates `_normalize_argv` hack in `cli.py`
 
-**Coordinate:** `analysis/cli.py` pass must land together with `analysis-subpackage-refactoring.plan.md` Phase 5.3 (single branch)
+**Note:** `analysis/cli.py` function decomposition (Phase 5.3) is done — only `register(subparsers)` wiring into the unified dispatcher remains
 
 **Effort:** ~1-2 days
 **Priority:** Low
@@ -276,10 +273,10 @@ def plot_data(
 - Add `getStartDate()`, `getDuration()` methods
 - Required before `HybridRun` can participate in `ComparisonSession`
 
-**Prerequisite:** `analysis/` Phase 6 (`add_time_columns` utility)
+**Prerequisite:** `analysis/` Phase 6 (`add_time_columns` utility) — ✅ **complete**
 **See:** [hybriddata-timestamp-plan.md](hybriddata-timestamp-plan.md)
 **Effort:** ~0.5 days
-**Status:** Blocked by analysis/ Phase 6
+**Status:** Unblocked — ready to implement
 
 #### 4.2 Cross-Domain Comparison (Phases D-G) 🟡 PARTIAL
 
@@ -402,6 +399,14 @@ def plot_data(
     - `housing_config.py` simplified: `get_pupitre_rename_map()` now derives `Ih`/`Ib` from `Idcct`
     - Updated `M8/M9/M10-housing-config.json`
 
+15. **`analysis/` subpackage refactoring — all 6 phases** *(branch `rework_analysis`)*
+    - Phase 1: dead code, logging, `DIR_*` constants centralised in `utils/files.py`; `pigbrother.py` imports `DIR_DEFAULT`/`DIR_SPIKE`
+    - Phase 2: `DownsampleConfig` adopted in `analysis/plotting.py`; old percent-based helpers removed
+    - Phase 3: `utils/files.py` canonical for `_open_text_with_fallback`, `extract_data`, `find_files`, `select_files`, `load_df`, `load_data`, `merge_data`; `loaders.py` imports from it; `magnetdata_pandas.py` updated
+    - Phase 4: `HousingConfig` gains `get_pupitre_current_channel`, `get_pupitre_group_keys`, `get_pupitre_flow_keys`, `get_hybrid_group_keys`; `_get_pupitre_channel/group/flow`, `_get_hybrid_channel/group` deleted from `processing.py`; stray `print()` → `logger.debug()`
+    - Phase 5: `FileDiscovery.discover()` → 5 private helpers; `process_overview_file()` → 3 helpers; `analysis/cli.main()` → 6 helpers (`_setup_logging`, `_collect_input_files`, `_load_records`, `_combine_dataframes`, `_run_combined_analysis`, `_emit_metrics`)
+    - Phase 6: `add_time_columns(df, t0, sampling_rate=0.0)` in `utils/timestamps.py`; `add_time_column_with_offset` and `add_time_column` delegate to it; inline lambdas in `load_incident_data`, `synchronize_data`, `apply_lag_correction` replaced; `TIME_OFFSET_INCIDENTS`/`get_time_offset` removed from `processing.py` imports
+
 ---
 
 ## Quick Wins — Immediate Value Items
@@ -475,11 +480,10 @@ def plot_data(
 
 ### 🔵 Lower Priority (Future Quarters)
 
-9. **analysis/ refactoring** (~5-7 days)
-10. **Outlier deduplication** (~4-5 hours) — precursor to hybrid/ refactoring
-11. **hybrid/ refactoring** (~10-14 hours, after item 10)
-12. **CLI consolidation** (~1-2 days, coordinate analysis/cli.py with item 9 Phase 5.3)
-13. **HybridData timestamp support** (~0.5 days)
+9. **Outlier deduplication** (~4-5 hours) — precursor to hybrid/ refactoring
+10. **hybrid/ refactoring** (~10-14 hours, after item 9)
+11. **CLI consolidation** (~1-2 days; `analysis/cli.py` decomposition done)
+12. **HybridData timestamp support** (~0.5 days; now unblocked)
 13. **Cross-domain Phases D-G** (~2-3 weeks)
 14. **Type hints backfill** (ongoing)
 
@@ -489,6 +493,7 @@ def plot_data(
 
 | Commit | Task | Impact |
 |--------|------|--------|
+| (uncommitted) | `analysis/` subpackage refactoring — all 6 phases | `utils/files.py` canonical; `HousingConfig` 4 new methods; monoliths decomposed; `add_time_columns` utility; 827 tests pass |
 | f6394e2 | Change `addData`/`computeData` signature | `symbol`/`unit`/`label`/`description` → `FieldMeta`; JSON configs updated |
 | 6b40ea5 | Implement data-property-abc plan | `Data` as abstract property; lazy load in contract; `close()`/context manager |
 | 8c4da77 | Implement truncated-pupitre-files plan | Encoding fallback, `on_bad_lines`, truncation check, `UnicodeDecodeError` in callers |
@@ -516,8 +521,8 @@ def plot_data(
 - Phase 2C (Hybrid plotting)
 - Phase 2D (Comparison view)
 
-**analysis/ Phase 6 (Timestamp utilities)** blocks:
-- HybridData timestamp support
+**analysis/ Phase 6 (Timestamp utilities)** ✅ complete — previously blocked:
+- HybridData timestamp support — **now unblocked**
 - Cross-domain Phases D-G
 
 **HybridData timestamps** blocks:
@@ -528,10 +533,10 @@ def plot_data(
 - CI/CD pipeline
 - Logging migration
 - Type hints backfill
-- analysis/ refactoring (Phases 1-5)
+- HybridData timestamp support (analysis/ Phase 6 done)
 - Outlier deduplication (3.5)
 - hybrid/ refactoring (3.2, after outlier dedup)
-- CLI consolidation (3.3, coordinate analysis/cli.py with analysis Phase 5.3)
+- CLI consolidation (3.3; analysis/cli.py decomposition already done)
 
 ---
 

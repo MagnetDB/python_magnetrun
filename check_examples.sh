@@ -61,7 +61,7 @@ run_cmd 2 python3 "$EXAMPLES/get-record.py" --housing M8 '2025.*.txt' \
 
 # 3: Plot vs time
 run_cmd 3 python3 -m python_magnetrun.cli \
-    "data/M9_2019.02.14-23_00_38.txt" plot --vs_time "Field"
+    "data/M9_2019.02.14---23_00_38.txt" plot --vs_time "Field"
 
 # 4: Plot with pigbrother (pigbrother TDMS resolved via env, only txt passed)
 run_cmd 4 python3 -m python_magnetrun.cli \
@@ -191,7 +191,7 @@ echo ""
 echo "--- Advanced Usage: Field factor identification ---"
 
 # 31: requires file from home directory
-run_cmd 31 python3 $TESTS/test-fieldfactor.py --housing M9 "2024.05.13 - 16:30:51.txt"
+run_cmd 31 python3 $TESTS/test-fieldfactor.py --housing M10 "data/M10_2020.10.23---20_10_41.txt"
 
 # Clean up generated files
 rm -f M11-site-config.json analysis.json analysis.log

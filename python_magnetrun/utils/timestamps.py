@@ -17,6 +17,8 @@ import logging
 import os
 from datetime import datetime
 
+import pandas as pd
+
 logger = logging.getLogger(__name__)
 
 # Pupitre .txt date/time formats, newest first.
@@ -152,3 +154,28 @@ def parse_wf_start_time(groups: dict) -> datetime | None:
 def seconds_since_midnight(dt: datetime) -> float:
     """Return seconds elapsed since midnight for *dt*."""
     return float(dt.hour * 3600 + dt.minute * 60 + dt.second)
+
+
+def add_time_columns(
+    df: pd.DataFrame,
+    t0: datetime,
+    sampling_rate: float = 0.0,
+    timestamp_col: str = "timestamp",
+    time_col: str = "t",
+) -> pd.DataFrame:
+    """Return a copy of *df* with a float-seconds column *time_col*.
+
+    Each value is ``(timestamp - t0).total_seconds() + half_period_offset``
+    where ``half_period_offset = 1 / (2 * sampling_rate)`` when
+    *sampling_rate* > 0 (TDMS downsampled data represents the centre of
+    each sampling window).  When *sampling_rate* is 0 (default) no offset
+    is applied.
+    """
+    t_offset = (1.0 / (2.0 * sampling_rate)) if sampling_rate else 0.0
+    df = df.copy()
+    if time_col in df.columns:
+        df.drop(columns=[time_col], inplace=True)
+    df[time_col] = df[timestamp_col].map(
+        lambda ts: (ts - t0).total_seconds() + t_offset
+    )
+    return df

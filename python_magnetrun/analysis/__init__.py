@@ -44,6 +44,7 @@ from ..utils.downsampling import (
     downsample_arrays,
     downsample_dataframe,
 )
+from ..utils.timestamps import add_time_columns
 from .config import (
     DEFAULT_BINS,
     DEFAULT_DATA_DIR,
@@ -78,12 +79,7 @@ from .loaders import (
     # Functions
     convert_to_timestamp,
     discover_files,
-    extract_data,
-    find_files,
-    load_data,
-    load_df,
-    merge_data,
-    select_files,
+    load_files_data,
 )
 from .metrics import (
     CorrelationResult,
@@ -234,12 +230,7 @@ __all__ = [
     "TIMESTAMP_FORMAT",
     # Loaders functions
     "convert_to_timestamp",
-    "extract_data",
-    "find_files",
-    "select_files",
-    "load_df",
-    "load_data",
-    "merge_data",
+    "load_files_data",
     "discover_files",
     # Loaders dataclasses
     "FileMetadata",
@@ -260,6 +251,7 @@ __all__ = [
     "check_lag_reliability",
     "compute_simple_timeshift",
     "add_time_column",
+    "add_time_columns",
     "get_timestamp_info",
     # Metrics dataclasses
     "DistanceResult",
