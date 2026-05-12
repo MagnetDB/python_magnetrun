@@ -178,7 +178,7 @@ and `tests/test_hybrid_formula_resolution.py`.
 | `Référence_GR → Courant_GR` mapping | `config.py ChannelMapping` + `analysis/cli.py:162-165` | Done — cli.py now uses `channel_map.to_dict()` |
 | Plot logic | `commands/plot.py`, legacy `viewcsv.py` | Refactored — `plotting/` subpackage created |
 | Argument parsing for smoothing/logging | `cli_args.py` builders vs. `processing/cli.py` inline argparse | Planned — see `cli-consolidation.plan.md` |
-| Outlier detection | `hybrid/outliers.py` (canonical) + `processing/hysteresis.py::remove_outliers` (inline IQR/zscore/MAD) + `examples/outliers.py` (rolling-MAD inline) + 2 CLI-style test scripts | Planned — see `outlier-consolidation.plan.md` |
+| Outlier detection | `hybrid/outliers.py` (canonical) + `processing/hysteresis.py::remove_outliers` (inline IQR/zscore/MAD) + `examples/outliers.py` (rolling-MAD inline) + 2 CLI-style test scripts | Done — `examples/outliers.py` deleted; `hysteresis.py::remove_outliers` thin-delegates to `detect_outliers()`; `test-anomalies*.py` replaced by `tests/test_outliers.py` (142 tests); `isolation_forest` added to `OutlierMethod` |
 
 ---
 
@@ -201,7 +201,7 @@ and `tests/test_hybrid_formula_resolution.py`.
 | `HybridRun.getData` formula-key resolution (`hybrid_formula_map`) | Done — see `hybrid-formula-key-resolution.plan.md` |
 | `Ih`/`Ib` defined via `Idcct` in housing configs | Done |
 | CLI consolidation (8 → 3 entry points, `magnetrun` dispatcher, `register()` pattern) | Planned — see `cli-consolidation.plan.md` |
-| Outlier deduplication (`hybrid/outliers.py` canonical, thin delegates, proper tests) | Planned — see `outlier-consolidation.plan.md` |
+| Outlier deduplication (`hybrid/outliers.py` canonical, thin delegates, proper tests) | Done — `examples/outliers.py` deleted; `hysteresis.py` delegates to `detect_outliers()`; `tests/test_outliers.py` (142 tests); `ISOLATION_FOREST` added to `OutlierMethod` |
 | `saveData` abstraction in `MagnetRun` | Done |
 | Hardcoded default path in `cli_args.py` | Done |
 | Protocol duplication (`DataProvider` / `DataLoader`) | Done |
@@ -233,9 +233,8 @@ implementation with `hv.extension()` + Panel + datashader and subsume `analysis/
 
 **Package is production-ready for core use cases.** Remaining work in priority order:
 (1) known regressions (multiple-file plotting); (2) CI/CD pipeline; (3) logging migration completion;
-(4) outlier deduplication (`outlier-consolidation.plan.md`);
-(5) `hybrid/` internal refactoring (`hybrid-subpackage-refactoring.plan.md`);
-(6) CLI consolidation (`cli-consolidation.plan.md`);
+(4) `hybrid/` internal refactoring (`hybrid-subpackage-refactoring.plan.md`) — outlier dedup is done, `OutlierConfig` wrapper remains;
+(5) CLI consolidation (`cli-consolidation.plan.md`);
 (7) `HybridData` timestamp support (prerequisite `analysis/` Phase 6 complete — unblocked);
 (8) cross-domain Phases D–G (`ComparisonSession`, CLI);
 (9) optional HoloViews migration; (10) pipeline redesign (polars/narwhals).
@@ -381,13 +380,14 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     participate as a source in `ComparisonSession` (Phase E).
     **Prerequisite** `analysis/` Phase 6 (`add_time_columns` utility) is now complete.
 
-12. **Outlier deduplication** *(effort: ~4–5 h)* — tracked in
+12. **Outlier deduplication** *(done)* — tracked in
     **[`prompts/outlier-consolidation.plan.md`](outlier-consolidation.plan.md)**.
-    Three steps: (1) delete `examples/outliers.py` (inline reimplementation, never imported);
-    (2) thin-delegate `processing/hysteresis.py::remove_outliers` to the canonical
-    `hybrid/outliers.py::detect_outliers`; (3) replace the two CLI-style anomaly test scripts
-    with a proper pytest module using synthetic data.  Self-contained, no cross-plan
-    dependencies.  **Do before item 12b** so the `OutlierConfig` work builds on a clean base.
+    Completed: (1) `examples/outliers.py` deleted; (2) `processing/hysteresis.py::remove_outliers`
+    thin-delegates to `detect_outliers()` from `hybrid/outliers.py` (~120 lines → ~15 lines);
+    (3) `tests/test-anomalies.py` and `tests/test-anomalies-optimized.py` deleted; replaced by
+    `tests/test_outliers.py` (142 tests, synthetic data).  Also: `ISOLATION_FOREST` added to
+    `OutlierMethod` enum in `hybrid/outliers.py` (sklearn backend, contamination threshold, rolling
+    rejected with clear error).  `_VALID_METHODS` in `hysteresis.py` updated to include it.
 
 12b. **`hybrid/` internal refactoring** *(effort: ~10–14 h)* — tracked in
     **[`prompts/hybrid-subpackage-refactoring.plan.md`](hybrid-subpackage-refactoring.plan.md)**.

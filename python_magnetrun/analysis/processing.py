@@ -58,7 +58,6 @@ from .config import (
 from .loaders import (
     FileDiscovery,
     FileSet,
-    load_data,
     load_files_data,
 )
 from .synchronization import (
@@ -490,8 +489,11 @@ def load_incidents_data(
             continue
 
         logger.info(f"Loading {incident_type} data: {len(files)} files")
-        # load_files_data(files, record.housing, group, keys)
-        df_list = load_data(files, record.housing, "", group, keys)
+        df_list = [
+            df
+            for f in files
+            if not (df := load_files_data([f], record.housing, group, keys)).empty
+        ]
 
         # Add time column to each incident DataFrame
         for i, df in enumerate(df_list):

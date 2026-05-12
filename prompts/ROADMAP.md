@@ -26,6 +26,7 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 - ✅ Logging infrastructure (`log_utils.py` + structured logging)
 - ✅ Test coverage (validation, analysis, processing, CLI smoke tests, truncated pupitre, hybrid formula)
 - ✅ `analysis/` subpackage refactoring (all 6 phases: data loading, downsampling, channel mapping, function decomposition, time-column utility)
+- ✅ Outlier deduplication (canonical `hybrid/outliers.py`; `hysteresis.py` thin-delegates; `tests/test_outliers.py` 142 tests; `ISOLATION_FOREST` added to `OutlierMethod`)
 
 ---
 
@@ -141,12 +142,11 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - **See:** [cli-consolidation.plan.md](cli-consolidation.plan.md)
 - **Effort:** ~1-2 days
 
-**3.5 Outlier Deduplication** *(do before 3.2)*
-- `hybrid/outliers.py` is canonical; `processing/hysteresis.py::remove_outliers` and `examples/outliers.py` reimplement inline
-- Delete `examples/outliers.py`; thin-delegate `hysteresis.py::remove_outliers` to canonical module
-- Replace two CLI-style anomaly test scripts with a proper pytest module
+**3.5 Outlier Deduplication** ✅ **COMPLETE**
+- `examples/outliers.py` deleted; `processing/hysteresis.py::remove_outliers` thin-delegates to `detect_outliers()` (~120 lines → ~15 lines)
+- `tests/test-anomalies.py` + `tests/test-anomalies-optimized.py` deleted; replaced by `tests/test_outliers.py` (142 tests, synthetic data)
+- `ISOLATION_FOREST` added to `OutlierMethod` in `hybrid/outliers.py`; `_VALID_METHODS` in `hysteresis.py` updated
 - **See:** [outlier-consolidation.plan.md](outlier-consolidation.plan.md)
-- **Effort:** ~4-5 hours
 
 **3.4 `analysis/__init__.py` Namespace**
 - 80+ names exported flat
@@ -234,8 +234,7 @@ Month 4 (August 2026)
 └─ Phase 2E: Channel auto-mapping
 
 Month 5 (September 2026)
-├─ Outlier deduplication (3.5, ~0.5 day)
-├─ hybrid/ internal refactoring (3.2, after outlier dedup)
+├─ hybrid/ internal refactoring (3.2 — outlier dedup done; OutlierConfig wrapper remains)
 ├─ CLI consolidation (3.3, analysis/cli.py decomposition already done)
 └─ HybridData timestamp support (now unblocked — analysis/ Phase 6 complete)
 
@@ -268,13 +267,13 @@ graph TD
 
     J[Quick Wins] -.independent.-> A
     K[Stream 3: Refactoring] -.parallel.-> A
-    L[3.5 Outlier Dedup] --> M[3.2 hybrid/ refactoring]
+    L[3.5 Outlier Dedup ✅] --> M[3.2 hybrid/ refactoring]
 ```
 
 **Critical Path:** Phase 2B → 2C → 2D (unified plotting)
 **Unblocked:** HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) is now complete
 **Independent:** Quick wins, logging migration, CLI consolidation, outlier deduplication, type hints
-**Intra-Stream-3 order:** 3.5 Outlier Dedup → 3.2 hybrid/ refactoring; 3.3 CLI consolidation ready (analysis/cli.py decomposition done)
+**Intra-Stream-3 order:** 3.5 Outlier Dedup ✅ done → 3.2 hybrid/ refactoring (next); 3.3 CLI consolidation ready (analysis/cli.py decomposition done)
 
 ---
 

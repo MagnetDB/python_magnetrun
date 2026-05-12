@@ -212,23 +212,24 @@ def plot_data(
 **Effort:** ~1-2 days
 **Priority:** Low
 
-#### 3.5 Outlier Deduplication 🔴 OPEN *(do before 3.2)*
+#### 3.5 Outlier Deduplication ✅ COMPLETE
 
-**Status:** Detailed plan exists
+**Status:** All steps done
 **See:** [outlier-consolidation.plan.md](outlier-consolidation.plan.md)
 
-**Canonical module:** `hybrid/outliers.py` (complete — `OutlierDetector`, `OutlierResult`, `detect_outliers`)
+**Canonical module:** `hybrid/outliers.py` — `OutlierDetector`, `OutlierResult`, `OutlierMethod` (now includes `ISOLATION_FOREST`), `detect_outliers`, `remove_outliers`, `find_outlier_segments`, `get_outlier_summary`, `analyze_outliers`
 
-**Duplicates to eliminate:**
+**Completed actions:**
 
-| File | Issue | Action |
-|------|-------|--------|
-| `examples/outliers.py` | 213-line rolling-MAD reimplementation; never imported | Delete |
-| `processing/hysteresis.py::remove_outliers` | ~120 lines inline IQR/zscore/MAD | Thin-delegate to canonical module (~25 lines) |
-| `tests/test-anomalies.py` + `tests/test-anomalies-optimized.py` | CLI scripts, not pytest; require real TDMS files | Delete; replace with `tests/test_outliers.py` (synthetic data) |
-
-**Effort:** ~4-5 hours
-**Priority:** Medium (precursor to 3.2)
+| File | Action | Result |
+|------|--------|--------|
+| `examples/outliers.py` | Deleted (`git rm`) | 213-line inline reimplementation gone |
+| `processing/hysteresis.py::remove_outliers` | Replaced with thin delegator | ~120 lines → ~15 lines; delegates to `detect_outliers()` |
+| `tests/test-anomalies.py` + `tests/test-anomalies-optimized.py` | Deleted (`git rm`) | CLI scripts gone |
+| `tests/test_outliers.py` | Created | 142 tests (synthetic data, no file I/O); all passing |
+| `hybrid/outliers.py::OutlierMethod` | `ISOLATION_FOREST` added | sklearn backend; contamination threshold; rolling rejected with `ValueError` |
+| `processing/hysteresis.py::_VALID_METHODS` | `"isolation_forest"` added | Delegates through to canonical module |
+| `tests/test_processing.py` | Error-message regex updated | `"method must be one of"` (new wording) |
 
 #### 3.4 `analysis/__init__.py` Namespace 🔴 OPEN
 
@@ -399,7 +400,15 @@ def plot_data(
     - `housing_config.py` simplified: `get_pupitre_rename_map()` now derives `Ih`/`Ib` from `Idcct`
     - Updated `M8/M9/M10-housing-config.json`
 
-15. **`analysis/` subpackage refactoring — all 6 phases** *(branch `rework_analysis`)*
+15. **Outlier deduplication** *(branch `rework_analysis`)*
+    - `examples/outliers.py` deleted (213-line inline rolling-MAD, never imported)
+    - `processing/hysteresis.py::remove_outliers`: ~120 lines inline IQR/zscore/MAD/isolation_forest → ~15-line delegator calling `detect_outliers()` from `hybrid/outliers.py`
+    - `tests/test-anomalies.py` + `tests/test-anomalies-optimized.py` deleted (CLI scripts requiring real TDMS files)
+    - `tests/test_outliers.py` created: 142 tests across `TestOutlierDetector`, `TestOutlierResult`, `TestHelpers`; all synthetic data, no file I/O
+    - `OutlierMethod.ISOLATION_FOREST` added to `hybrid/outliers.py`: sklearn `IsolationForest` backend, contamination threshold (default 0.1), rolling-window correctly rejected with `ValueError`
+    - `_VALID_METHODS` in `hysteresis.py` extended with `"isolation_forest"`
+
+16. **`analysis/` subpackage refactoring — all 6 phases** *(branch `rework_analysis`)*
     - Phase 1: dead code, logging, `DIR_*` constants centralised in `utils/files.py`; `pigbrother.py` imports `DIR_DEFAULT`/`DIR_SPIKE`
     - Phase 2: `DownsampleConfig` adopted in `analysis/plotting.py`; old percent-based helpers removed
     - Phase 3: `utils/files.py` canonical for `_open_text_with_fallback`, `extract_data`, `find_files`, `select_files`, `load_df`, `load_data`, `merge_data`; `loaders.py` imports from it; `magnetdata_pandas.py` updated
@@ -480,8 +489,8 @@ def plot_data(
 
 ### 🔵 Lower Priority (Future Quarters)
 
-9. **Outlier deduplication** (~4-5 hours) — precursor to hybrid/ refactoring
-10. **hybrid/ refactoring** (~10-14 hours, after item 9)
+9. ~~**Outlier deduplication**~~ — ✅ Done (see Stream 3.5)
+10. **hybrid/ refactoring** (~10-14 hours; outlier dedup done — `OutlierConfig` wrapper is the next step)
 11. **CLI consolidation** (~1-2 days; `analysis/cli.py` decomposition done)
 12. **HybridData timestamp support** (~0.5 days; now unblocked)
 13. **Cross-domain Phases D-G** (~2-3 weeks)
@@ -493,6 +502,7 @@ def plot_data(
 
 | Commit | Task | Impact |
 |--------|------|--------|
+| (branch) | Outlier deduplication (3.5) | `examples/outliers.py` deleted; `hysteresis.py::remove_outliers` thin-delegates; `test-anomalies*.py` deleted; `tests/test_outliers.py` (142 tests); `ISOLATION_FOREST` in `OutlierMethod`; 142 new tests pass |
 | (uncommitted) | `analysis/` subpackage refactoring — all 6 phases | `utils/files.py` canonical; `HousingConfig` 4 new methods; monoliths decomposed; `add_time_columns` utility; 827 tests pass |
 | f6394e2 | Change `addData`/`computeData` signature | `symbol`/`unit`/`label`/`description` → `FieldMeta`; JSON configs updated |
 | 6b40ea5 | Implement data-property-abc plan | `Data` as abstract property; lazy load in contract; `close()`/context manager |
@@ -534,8 +544,7 @@ def plot_data(
 - Logging migration
 - Type hints backfill
 - HybridData timestamp support (analysis/ Phase 6 done)
-- Outlier deduplication (3.5)
-- hybrid/ refactoring (3.2, after outlier dedup)
+- hybrid/ refactoring (3.2 — outlier dedup done; `OutlierConfig` wrapper is next)
 - CLI consolidation (3.3; analysis/cli.py decomposition already done)
 
 ---

@@ -534,7 +534,7 @@ class TestRemoveOutliers:
         assert (result["y"].abs() < 10.0).all()
 
     def test_unknown_method_raises(self, clean_xy_df: pd.DataFrame) -> None:
-        with pytest.raises(ValueError, match="Unknown method"):
+        with pytest.raises(ValueError, match="method must be one of"):
             remove_outliers(clean_xy_df, method="bogus")
 
     def test_clean_data_mostly_kept(self, clean_xy_df: pd.DataFrame) -> None:

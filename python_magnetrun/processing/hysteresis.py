@@ -5,7 +5,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from python_magnetrun.hybrid.outliers import detect_outliers
+
 logger = logging.getLogger(__name__)
+
+_VALID_METHODS = {"iqr", "zscore", "mad", "isolation_forest"}
 
 
 def remove_outliers(
@@ -16,116 +20,35 @@ def remove_outliers(
     threshold: float = 1.5,
 ) -> pd.DataFrame:
     """
-    Remove outliers from x,y data using various methods.
+    Remove outliers from x,y data using the canonical outlier detector.
 
-    Parameters:
-    -----------
-    df : pandas DataFrame
-        Data with x and y columns
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Data with x and y columns.
     x_col : str
-        Name of x column
+        Name of x column.
     y_col : str
-        Name of y column
+        Name of y column.
     method : str
-        'iqr' - Interquartile range (default, robust, recommended)
-        'zscore' - Z-score method (statistical)
-        'isolation_forest' - Isolation Forest (handles multivariate outliers)
-        'mad' - Median Absolute Deviation (very robust)
+        'iqr'    — Interquartile Range (default, robust)
+        'zscore' — Z-score
+        'mad'    — Median Absolute Deviation (most robust)
     threshold : float
-        For 'iqr'/'mad': multiplier on IQR/MAD (default 1.5, try 1.0-2.0)
-        For 'zscore': z-score cutoff (default 3, standard is 2-3)
+        Multiplier on IQR/MAD, or z-score cutoff (default 1.5).
 
-    Returns:
-    --------
-    DataFrame with outliers removed
+    Returns
+    -------
+    pd.DataFrame
+        Copy of df with outlier rows removed.
     """
-    df_clean = df.copy()
-    x = df_clean[x_col].values
-    y = df_clean[y_col].values
-
-    if method == "iqr":
-        # Remove outliers in x using IQR method
-        Q1_x = np.percentile(x, 25)
-        Q3_x = np.percentile(x, 75)
-        IQR_x = Q3_x - Q1_x
-        lower_bound_x = Q1_x - threshold * IQR_x
-        upper_bound_x = Q3_x + threshold * IQR_x
-
-        # Remove outliers in y using IQR method
-        Q1_y = np.percentile(y, 25)
-        Q3_y = np.percentile(y, 75)
-        IQR_y = Q3_y - Q1_y
-        lower_bound_y = Q1_y - threshold * IQR_y
-        upper_bound_y = Q3_y + threshold * IQR_y
-
-        mask = (
-            (x >= lower_bound_x)
-            & (x <= upper_bound_x)
-            & (y >= lower_bound_y)
-            & (y <= upper_bound_y)
-        )
-
-        n_removed = len(df_clean) - np.sum(mask)
-        logger.debug(f"IQR method (threshold={threshold}): Removed {n_removed} outliers")
-        logger.debug(f"  x range: [{lower_bound_x:.4f}, {upper_bound_x:.4f}]")
-        logger.debug(f"  y range: [{lower_bound_y:.4f}, {upper_bound_y:.4f}]")
-
-    elif method == "zscore":
-        # Remove outliers using Z-score
-        z_x = np.abs((x - np.mean(x)) / np.std(x))
-        z_y = np.abs((y - np.mean(y)) / np.std(y))
-        mask = (z_x < threshold) & (z_y < threshold)
-
-        n_removed = len(df_clean) - np.sum(mask)
-        logger.debug(f"Z-score method (threshold={threshold}): Removed {n_removed} outliers")
-
-    elif method == "mad":
-        # Median Absolute Deviation (robust to extreme outliers)
-        median_x = np.median(x)
-        mad_x = np.median(np.abs(x - median_x))
-
-        median_y = np.median(y)
-        mad_y = np.median(np.abs(y - median_y))
-
-        lower_bound_x = median_x - threshold * mad_x
-        upper_bound_x = median_x + threshold * mad_x
-        lower_bound_y = median_y - threshold * mad_y
-        upper_bound_y = median_y + threshold * mad_y
-
-        mask = (
-            (x >= lower_bound_x)
-            & (x <= upper_bound_x)
-            & (y >= lower_bound_y)
-            & (y <= upper_bound_y)
-        )
-
-        n_removed = len(df_clean) - np.sum(mask)
-        logger.debug(f"MAD method (threshold={threshold}): Removed {n_removed} outliers")
-        logger.debug(f"  x range: [{lower_bound_x:.4f}, {upper_bound_x:.4f}]")
-        logger.debug(f"  y range: [{lower_bound_y:.4f}, {upper_bound_y:.4f}]")
-
-    elif method == "isolation_forest":
-        try:
-            from sklearn.ensemble import IsolationForest
-
-            iso_forest = IsolationForest(
-                contamination=threshold,  # Fraction of outliers expected (0-1)
-                random_state=42,
-            )
-            features = np.column_stack([x, y])
-            outlier_labels = iso_forest.fit_predict(features)
-            mask = outlier_labels == 1  # 1 = inlier, -1 = outlier
-
-            n_removed = len(df_clean) - np.sum(mask)
-            logger.debug(f"Isolation Forest (contamination={threshold}): Removed {n_removed} outliers")
-        except ImportError:
-            logger.warning("sklearn not available. Falling back to IQR method.")
-            return remove_outliers(df, x_col, y_col, method="iqr", threshold=1.5)
-
-    else:
-        raise ValueError(f"Unknown method: {method}")
-
-    return df_clean[mask].reset_index(drop=True)
+    if method not in _VALID_METHODS:
+        raise ValueError(f"method must be one of {sorted(_VALID_METHODS)}; got {method!r}")
+    mask_x = detect_outliers(df[x_col].values, method=method, threshold=threshold)
+    mask_y = detect_outliers(df[y_col].values, method=method, threshold=threshold)
+    n_removed = int((mask_x | mask_y).sum())
+    logger.debug(f"{method} (threshold={threshold}): removed {n_removed} outliers")
+    return df[~(mask_x | mask_y)].reset_index(drop=True)
 
 
 def remove_outliers_by_x_range(

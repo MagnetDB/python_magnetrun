@@ -49,6 +49,7 @@ class OutlierMethod(Enum):
     MODIFIED_ZSCORE = auto()  # Modified Z-score using median
     GRUBBS = auto()  # Grubbs' test (single outlier)
     DBSCAN = auto()  # Density-based (requires scipy)
+    ISOLATION_FOREST = auto()  # Isolation Forest (requires scikit-learn)
 
 
 @dataclass
@@ -193,6 +194,7 @@ class OutlierDetector:
         "percentile": 1.0,  # 1% from each end
         "modified_zscore": 3.5,
         "grubbs": 0.05,  # significance level
+        "isolation_forest": 0.1,  # expected contamination fraction (0–0.5)
     }
 
     def __init__(
@@ -312,6 +314,19 @@ class OutlierDetector:
                 mask = np.zeros(len(data), dtype=bool)
             stats = {"median": median, "mad": mad}
 
+        elif self.method == "isolation_forest":
+            try:
+                from sklearn.ensemble import IsolationForest
+            except ImportError as exc:
+                raise ImportError(
+                    "scikit-learn is required for isolation_forest. "
+                    "Install it with: pip install scikit-learn"
+                ) from exc
+            iso = IsolationForest(contamination=self.threshold, random_state=42)
+            labels = iso.fit_predict(data.reshape(-1, 1))
+            mask = labels == -1  # sklearn: -1 = outlier, 1 = inlier
+            stats = {"contamination": self.threshold}
+
         else:
             raise ValueError(f"Unknown method: {self.method}")
 
@@ -321,6 +336,11 @@ class OutlierDetector:
         """Rolling window outlier detection"""
         if self.window_size is None:
             raise ValueError("window_size must be set for rolling detection")
+        if self.method == "isolation_forest":
+            raise ValueError(
+                "isolation_forest does not support rolling-window mode; "
+                "use global detection (window_size=None) instead."
+            )
         n = len(data)
         mask = np.zeros(n, dtype=bool)
         half_window = self.window_size // 2
