@@ -31,7 +31,7 @@ Example usage:
     values, time = hrun.getData("kHz/FEPC-LNCMI/I_H1", downsample=10000)
 
     # Outlier detection (separate from plotting)
-    from python_magnetrun.hybrid.outliers import detect_outliers, OutlierDetector
+    from python_magnetrun.outliers import detect_outliers, OutlierDetector
     result = detect_outliers(values, method='iqr', threshold=1.5)
     clean_values = result.apply_to_data(values, strategy='interpolate')
 
@@ -54,6 +54,17 @@ CLI usage:
 """
 
 # Direct imports for commonly used items
+from ..outliers import (
+    OUTLIER_DEFAULTS,
+    OutlierConfig,
+    OutlierDetector,
+    OutlierMethod,
+    OutlierResult,
+    analyze_outliers,
+    detect_outliers,
+    find_outlier_segments,
+    get_outlier_summary,
+)
 from .data_protocol import (
     DataInfo,
     DataLoader,
@@ -64,15 +75,6 @@ from .data_protocol import (
 )
 from .hybrid_data import HybridData, HybridDataInfo
 from .hybrid_run import HybridRun, LoadOptions, load_hybrid
-from .outliers import (
-    OutlierDetector,
-    OutlierMethod,
-    OutlierResult,
-    analyze_outliers,
-    detect_outliers,
-    find_outlier_segments,
-    get_outlier_summary,
-)
 from .utils import list_available_dates
 
 # Sub-modules available via attribute access
@@ -93,6 +95,8 @@ __all__ = [
     "DataSourceType",
     "DataInfo",
     # Outlier detection
+    "OUTLIER_DEFAULTS",
+    "OutlierConfig",
     "OutlierDetector",
     "OutlierResult",
     "OutlierMethod",

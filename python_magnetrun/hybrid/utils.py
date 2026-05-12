@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .outliers import OutlierDetector, detect_outliers, remove_outliers  # noqa: F401
+from ..outliers import OutlierDetector, detect_outliers, remove_outliers  # noqa: F401
 
 # Setup logger
 logger = logging.getLogger(__name__)

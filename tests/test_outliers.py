@@ -1,9 +1,9 @@
-"""Tests for python_magnetrun.hybrid.outliers (canonical outlier module)."""
+"""Tests for python_magnetrun.outliers (canonical outlier module)."""
 
 import numpy as np
 import pytest
 
-from python_magnetrun.hybrid.outliers import (
+from python_magnetrun.outliers import (
     OutlierDetector,
     OutlierResult,
     analyze_outliers,

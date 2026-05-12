@@ -2,6 +2,7 @@
 
 import argparse
 
+from ..cli_args import args_to_outlier_config, create_outlier_parser  # noqa: F401
 from ..data_dirs import HYBRID_DATA_DIR
 from .hybrid_data import FEPC_SYSTEMS
 
@@ -143,36 +144,6 @@ def create_plot_parser():
         type=str,
         metavar="FILE",
         help="Save plot to file",
-    )
-    return parser
-
-
-def create_outlier_parser():
-    """Create parser with outlier removal arguments.
-
-    :return: ArgumentParser with outlier arguments
-    :rtype: argparse.ArgumentParser
-    """
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument(
-        "--remove-outliers",
-        type=str,
-        metavar="METHOD",
-        choices=["iqr", "zscore", "mad", "percentile"],
-        help="Remove outliers using specified method (iqr, zscore, mad, percentile)",
-    )
-    parser.add_argument(
-        "--outlier-threshold",
-        type=float,
-        default=1.5,
-        metavar="THRESHOLD",
-        help="Threshold for outlier detection (default: 1.5 for IQR, 3.0 for zscore)",
-    )
-    parser.add_argument(
-        "--outlier-window",
-        type=int,
-        metavar="SIZE",
-        help="Rolling window size for local outlier detection (optional)",
     )
     return parser
 

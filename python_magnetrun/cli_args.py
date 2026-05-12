@@ -400,6 +400,64 @@ def create_managed_plots_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def create_outlier_parser() -> argparse.ArgumentParser:
+    """Create parser with outlier removal arguments.
+
+    :return: ArgumentParser with outlier arguments
+    :rtype: argparse.ArgumentParser
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--remove-outliers",
+        type=str,
+        metavar="METHOD",
+        choices=["iqr", "zscore", "mad", "percentile"],
+        help="Remove outliers using specified method (iqr, zscore, mad, percentile)",
+    )
+    parser.add_argument(
+        "--outlier-threshold",
+        type=float,
+        default=None,
+        metavar="THRESHOLD",
+        help="Threshold for outlier detection (default: per-method from OUTLIER_DEFAULTS)",
+    )
+    parser.add_argument(
+        "--outlier-window",
+        type=int,
+        metavar="SIZE",
+        help="Rolling window size for local outlier detection (optional)",
+    )
+    return parser
+
+
+def args_to_outlier_config(args: argparse.Namespace):
+    """
+    Build an ``OutlierConfig`` from parsed CLI arguments.
+
+    Returns ``None`` when ``--remove-outliers`` was not supplied, signalling
+    that outlier detection should be skipped entirely.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments containing ``remove_outliers``, ``outlier_threshold``,
+        and ``outlier_window`` attributes.
+
+    Returns
+    -------
+    OutlierConfig or None
+    """
+    from .outliers import OutlierConfig
+
+    if not getattr(args, "remove_outliers", None):
+        return None
+    return OutlierConfig(
+        method=args.remove_outliers,
+        threshold=getattr(args, "outlier_threshold", None),
+        window_size=getattr(args, "outlier_window", None),
+    )
+
+
 def create_analysis_parser() -> argparse.ArgumentParser:
     """Create the argument parser for analysis-refactor.
 

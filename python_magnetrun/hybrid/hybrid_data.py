@@ -34,7 +34,7 @@ import pandas as pd
 from natsort import natsorted
 
 from ..magnetdata_base import DataType
-from .outliers import OUTLIER_DEFAULTS
+from ..outliers import OutlierConfig
 
 # Local imports
 
@@ -1042,9 +1042,7 @@ class HybridData:
         ax=None,
         show: bool = True,
         save: str | None = None,
-        remove_outliers_method: str | None = None,
-        outlier_threshold: float = OUTLIER_DEFAULTS["iqr"],
-        outlier_window: int | None = None,
+        outlier_config: OutlierConfig | None = None,
         **plot_kwargs,
     ):
         """
@@ -1070,12 +1068,8 @@ class HybridData:
             Show plot (default: True)
         save : str, optional
             Save plot to file
-        remove_outliers_method : str, optional
-            Outlier detection method: 'iqr', 'zscore', 'mad', 'percentile'
-        outlier_threshold : float, optional
-            Threshold for outlier detection (default: 1.5)
-        outlier_window : int, optional
-            Rolling window size for local outlier detection
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
         **plot_kwargs : dict
             Additional arguments passed to plt.plot()
 
@@ -1084,22 +1078,16 @@ class HybridData:
         tuple
             (fig, ax) matplotlib figure and axes
         """
+        from ..outliers import OutlierDetector
         from . import plotting
-        from .outliers import detect_outliers
 
-        # Perform outlier detection if method specified
+        # Perform outlier detection if config provided
         outlier_result = None
-        if remove_outliers_method:
-            # Read data for outlier detection
+        if outlier_config is not None:
             data, _ = self.read_khz_variable(
                 system, variable, hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir
             )
-            outlier_result = detect_outliers(
-                data,
-                method=remove_outliers_method,
-                threshold=outlier_threshold,
-                window_size=outlier_window,
-            )
+            outlier_result = OutlierDetector(config=outlier_config).detect(data)
 
         return plotting.plot_khz_variable(
             self,
@@ -1126,9 +1114,7 @@ class HybridData:
         share_x: bool = True,
         show: bool = True,
         save: str | None = None,
-        remove_outliers_method: str | None = None,
-        outlier_threshold: float = OUTLIER_DEFAULTS["iqr"],
-        outlier_window: int | None = None,
+        outlier_config: OutlierConfig | None = None,
         **plot_kwargs,
     ):
         """
@@ -1156,12 +1142,8 @@ class HybridData:
             Show plot (default: True)
         save : str, optional
             Save plot to file
-        remove_outliers_method : str, optional
-            Outlier detection method
-        outlier_threshold : float, optional
-            Threshold for outlier detection (default: 1.5)
-        outlier_window : int, optional
-            Rolling window size for local outlier detection
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
         **plot_kwargs : dict
             Additional arguments passed to plt.plot()
 
@@ -1170,23 +1152,19 @@ class HybridData:
         tuple
             (fig, axes) matplotlib figure and axes
         """
+        from ..outliers import OutlierDetector
         from . import plotting
-        from .outliers import detect_outliers
 
-        # Perform outlier detection for each variable if method specified
+        # Perform outlier detection for each variable if config provided
         outlier_results = None
-        if remove_outliers_method:
+        if outlier_config is not None:
+            detector = OutlierDetector(config=outlier_config)
             outlier_results = {}
             for var in variables:
                 data, _ = self.read_khz_variable(
                     system, var, hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir
                 )
-                outlier_results[var] = detect_outliers(
-                    data,
-                    method=remove_outliers_method,
-                    threshold=outlier_threshold,
-                    window_size=outlier_window,
-                )
+                outlier_results[var] = detector.detect(data)
 
         return plotting.plot_khz_variables(
             self,
@@ -1212,9 +1190,7 @@ class HybridData:
         ax=None,
         show: bool = True,
         save: str | None = None,
-        remove_outliers_method: str | None = None,
-        outlier_threshold: float = OUTLIER_DEFAULTS["iqr"],
-        outlier_window: int | None = None,
+        outlier_config: OutlierConfig | None = None,
         **plot_kwargs,
     ):
         """
@@ -1238,12 +1214,8 @@ class HybridData:
             Show plot (default: True)
         save : str, optional
             Save plot to file
-        remove_outliers_method : str, optional
-            Outlier detection method: 'iqr', 'zscore', 'mad', 'percentile'
-        outlier_threshold : float, optional
-            Threshold for outlier detection (default: 1.5)
-        outlier_window : int, optional
-            Rolling window size for local outlier detection
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
         **plot_kwargs : dict
             Additional arguments passed to plt.plot()
 
@@ -1252,22 +1224,16 @@ class HybridData:
         tuple
             (fig, ax) matplotlib figure and axes
         """
+        from ..outliers import OutlierDetector
         from . import plotting
-        from .outliers import detect_outliers
 
-        # Perform outlier detection if method specified
+        # Perform outlier detection if config provided
         outlier_result = None
-        if remove_outliers_method:
-            # Read data for outlier detection
+        if outlier_config is not None:
             data, _ = self.read_rms_variable(
                 system, variable, file_idx=file_idx, hours=hours
             )
-            outlier_result = detect_outliers(
-                data,
-                method=remove_outliers_method,
-                threshold=outlier_threshold,
-                window_size=outlier_window,
-            )
+            outlier_result = OutlierDetector(config=outlier_config).detect(data)
 
         return plotting.plot_rms_variable(
             self,
@@ -1292,9 +1258,7 @@ class HybridData:
         share_x: bool = True,
         show: bool = True,
         save: str | None = None,
-        remove_outliers_method: str | None = None,
-        outlier_threshold: float = OUTLIER_DEFAULTS["iqr"],
-        outlier_window: int | None = None,
+        outlier_config: OutlierConfig | None = None,
         **plot_kwargs,
     ):
         """
@@ -1320,12 +1284,8 @@ class HybridData:
             Show plot (default: True)
         save : str, optional
             Save plot to file
-        remove_outliers_method : str, optional
-            Outlier detection method
-        outlier_threshold : float, optional
-            Threshold for outlier detection (default: 1.5)
-        outlier_window : int, optional
-            Rolling window size for local outlier detection
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
         **plot_kwargs : dict
             Additional arguments passed to plt.plot()
 
@@ -1334,23 +1294,19 @@ class HybridData:
         tuple
             (fig, axes) matplotlib figure and axes
         """
+        from ..outliers import OutlierDetector
         from . import plotting
-        from .outliers import detect_outliers
 
-        # Perform outlier detection for each variable if method specified
+        # Perform outlier detection for each variable if config provided
         outlier_results = None
-        if remove_outliers_method:
+        if outlier_config is not None:
+            detector = OutlierDetector(config=outlier_config)
             outlier_results = {}
             for var in variables:
                 data, _ = self.read_rms_variable(
                     system, var, file_idx=file_idx, hours=hours
                 )
-                outlier_results[var] = detect_outliers(
-                    data,
-                    method=remove_outliers_method,
-                    threshold=outlier_threshold,
-                    window_size=outlier_window,
-                )
+                outlier_results[var] = detector.detect(data)
 
         return plotting.plot_rms_variables(
             self,

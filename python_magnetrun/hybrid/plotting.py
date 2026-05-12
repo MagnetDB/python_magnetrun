@@ -19,8 +19,8 @@ Performance features:
 - Set downsample parameter to target number of points for plotting
 
 Note:
-- Outlier detection is now handled by the separate `python_magnetrun.hybrid.outliers` module
-- For outlier analysis, use `from python_magnetrun.hybrid.outliers import OutlierDetector, detect_outliers`
+- Outlier detection is now handled by the separate `python_magnetrun.outliers` module
+- For outlier analysis, use `from python_magnetrun.outliers import OutlierDetector, detect_outliers`
 - Plotting functions accept pre-computed outlier masks via `outlier_mask` parameter
 """
 
@@ -37,11 +37,11 @@ from python_magnetrun.utils.downsampling import DownsampleConfig, downsample_arr
 
 # Type checking import to avoid circular import
 if TYPE_CHECKING:
+    from ..outliers import OutlierResult
     from .hybrid_data import HybridData
-    from .outliers import OutlierResult
 
 # Import outlier detection from dedicated module
-from .outliers import OutlierResult
+from ..outliers import OutlierResult
 
 # Setup logger
 logger = logging.getLogger(__name__)

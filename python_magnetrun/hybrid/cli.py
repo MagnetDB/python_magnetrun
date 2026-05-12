@@ -12,7 +12,7 @@ Usage:
 import logging
 
 from ..log_utils import setup_logging
-from .args import create_parser
+from .args import args_to_outlier_config, create_parser
 from .hybrid_data import HybridData
 from .utils import format_exception_location, list_available_dates, log_exception
 
@@ -148,6 +148,9 @@ def main() -> None:
             )
             return
 
+    # Build outlier config once; None means skip detection
+    outlier_config = args_to_outlier_config(args)
+
     # Plot kHz variable(s)
     if args.plot_khz:
         if not args.fepc_system:
@@ -166,9 +169,7 @@ def main() -> None:
                     hours=hours,
                     apply_calib=not args.no_calib,
                     save=args.save,
-                    remove_outliers_method=args.remove_outliers,
-                    outlier_threshold=args.outlier_threshold,
-                    outlier_window=args.outlier_window,
+                    outlier_config=outlier_config,
                 )
             else:
                 # Multiple variables - use new multi-variable method
@@ -181,9 +182,7 @@ def main() -> None:
                     hours=hours,
                     apply_calib=not args.no_calib,
                     save=args.save,
-                    remove_outliers_method=args.remove_outliers,
-                    outlier_threshold=args.outlier_threshold,
-                    outlier_window=args.outlier_window,
+                    outlier_config=outlier_config,
                     layout=args.layout,
                 )
         except ValueError as e:
@@ -213,6 +212,7 @@ def main() -> None:
                     args.fepc_system,
                     variables[0],
                     save=args.save,
+                    outlier_config=outlier_config,
                 )
             else:
                 # Multiple variables - use new multi-variable method
@@ -223,6 +223,7 @@ def main() -> None:
                     args.fepc_system,
                     variables,
                     save=args.save,
+                    outlier_config=outlier_config,
                     layout=args.layout,
                 )
         except (OSError, ValueError, RuntimeError) as e:

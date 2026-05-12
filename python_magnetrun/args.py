@@ -3,11 +3,13 @@
 import argparse
 
 from .cli_args import (
+    args_to_outlier_config,
     create_base_parser,
     create_common_plot_parser,
     create_common_smoothing_parser,
     create_hybrid_parser,
     create_managed_plots_parser,
+    create_outlier_parser,
     get_datadir_mapping,
 )
 
@@ -112,4 +114,9 @@ def create_argument_parser() -> argparse.ArgumentParser:
     return parser
 
 
-__all__ = ["create_argument_parser", "get_datadir_mapping"]
+__all__ = [
+    "args_to_outlier_config",
+    "create_argument_parser",
+    "create_outlier_parser",
+    "get_datadir_mapping",
+]

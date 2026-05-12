@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from python_magnetrun.hybrid.outliers import detect_outliers
+from python_magnetrun.outliers import detect_outliers
 
 logger = logging.getLogger(__name__)
 
