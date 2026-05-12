@@ -768,3 +768,106 @@ class TestDetectChanges:
         ts = pd.Series(data)
         changes = detect_changes(ts, algoname="Binseg", model="l2", n_bkps=2)
         assert len(changes) >= 2
+
+
+# ---------------------------------------------------------------------------
+# signal.py — normalize_signal, _otsu_threshold, binarize_signal
+# ---------------------------------------------------------------------------
+
+from python_magnetrun.processing.signal import (  # noqa: E402
+    _otsu_threshold,
+    binarize_signal,
+    normalize_signal,
+)
+
+
+class TestNormalizeSignal:
+    def test_all_zeros_unchanged(self) -> None:
+        data = np.zeros(10)
+        result = normalize_signal(data)
+        np.testing.assert_array_equal(result, data)
+
+    def test_max_abs_is_one(self) -> None:
+        data = np.array([1.0, -2.0, 0.5])
+        result = normalize_signal(data)
+        assert np.max(np.abs(result)) == pytest.approx(1.0)
+
+    def test_known_values(self) -> None:
+        data = np.array([2.0, 4.0, 6.0])
+        result = normalize_signal(data)
+        np.testing.assert_allclose(result, [1 / 3, 2 / 3, 1.0])
+
+    def test_output_shape_preserved(self) -> None:
+        data = np.ones(20)
+        result = normalize_signal(data)
+        assert result.shape == data.shape
+
+    def test_negative_values(self) -> None:
+        data = np.array([-3.0, 0.0, 3.0])
+        result = normalize_signal(data)
+        assert np.max(np.abs(result)) == pytest.approx(1.0)
+
+
+class TestOtsuThreshold:
+    def test_empty_returns_zero(self) -> None:
+        assert _otsu_threshold(np.array([])) == pytest.approx(0.0)
+
+    def test_all_zeros_returns_zero(self) -> None:
+        assert _otsu_threshold(np.zeros(10)) == pytest.approx(0.0)
+
+    def test_bimodal_signal_finds_threshold_between_modes(self) -> None:
+        rng = np.random.default_rng(42)
+        noise = rng.uniform(0, 0.01, 200)
+        signal = rng.uniform(0.5, 1.0, 200)
+        data = np.concatenate([noise, signal])
+        threshold = _otsu_threshold(data)
+        assert 0.01 < threshold < 0.5
+
+    def test_returns_float(self) -> None:
+        data = np.array([0.1, 0.5, 0.9])
+        assert isinstance(_otsu_threshold(data), float)
+
+
+class TestBinarizeSignal:
+    @pytest.fixture
+    def bimodal(self) -> np.ndarray:
+        rng = np.random.default_rng(0)
+        off = rng.uniform(0.0, 0.05, 100)
+        on = rng.uniform(0.8, 1.0, 100)
+        return np.concatenate([off, on])
+
+    def test_fixed_output_is_binary(self, bimodal: np.ndarray) -> None:
+        result = binarize_signal(bimodal, tolerance=0.1, method="fixed")
+        assert set(np.unique(result)).issubset({0, 1})
+
+    def test_otsu_output_is_binary(self, bimodal: np.ndarray) -> None:
+        result = binarize_signal(bimodal, method="otsu")
+        assert set(np.unique(result)).issubset({0, 1})
+
+    def test_noise_output_is_binary(self, bimodal: np.ndarray) -> None:
+        result = binarize_signal(bimodal, method="noise")
+        assert set(np.unique(result)).issubset({0, 1})
+
+    def test_unknown_method_raises(self, bimodal: np.ndarray) -> None:
+        with pytest.raises(ValueError, match="Unknown method"):
+            binarize_signal(bimodal, method="bogus")
+
+    def test_output_length_matches_input(self, bimodal: np.ndarray) -> None:
+        result = binarize_signal(bimodal, method="fixed")
+        assert len(result) == len(bimodal)
+
+    def test_all_zeros_all_off(self) -> None:
+        result = binarize_signal(np.zeros(50), method="fixed", tolerance=0.005)
+        assert np.all(result == 0)
+
+    def test_normalize_false_path(self, bimodal: np.ndarray) -> None:
+        result = binarize_signal(bimodal, method="fixed", tolerance=0.1, normalize=False)
+        assert set(np.unique(result)).issubset({0, 1})
+
+    def test_otsu_off_population_classified_correctly(self, bimodal: np.ndarray) -> None:
+        result = binarize_signal(bimodal, method="otsu")
+        assert result[:100].mean() < 0.5
+
+    def test_otsu_on_population_classified_correctly(self, bimodal: np.ndarray) -> None:
+        result = binarize_signal(bimodal, method="otsu")
+        assert result[100:].mean() > 0.5
