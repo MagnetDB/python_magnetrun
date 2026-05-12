@@ -26,7 +26,8 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 - ✅ Logging infrastructure (`log_utils.py` + structured logging)
 - ✅ Test coverage (validation, analysis, processing, CLI smoke tests, truncated pupitre, hybrid formula)
 - ✅ `analysis/` subpackage refactoring (all 6 phases: data loading, downsampling, channel mapping, function decomposition, time-column utility)
-- ✅ Outlier deduplication (canonical `hybrid/outliers.py`; `hysteresis.py` thin-delegates; `tests/test_outliers.py` 142 tests; `ISOLATION_FOREST` added to `OutlierMethod`)
+- ✅ Outlier deduplication (canonical `python_magnetrun/outliers.py`; `hybrid/outliers.py` is a shim; `hysteresis.py` thin-delegates; `tests/test_outliers.py` 142 tests; `ISOLATION_FOREST` added to `OutlierMethod`)
+- ✅ `hybrid/` subpackage refactoring — all 6 phases (`OutlierConfig` dataclass, `OUTLIER_DEFAULTS`, `processing/signal.py`, cache-eviction docstring, all-NaN / file-existence guards, typed exceptions; 866 tests pass)
 
 ---
 
@@ -53,11 +54,11 @@ This document outlines strategic priorities and upcoming work. For detailed impl
    - **Action:** Investigate and fix
    - **Effort:** ~1-2 days
 
-2. **CI/CD Pipeline** *(planned)*
-   - Add `.github/workflows/ci.yml`
-   - Run `ruff` + `pytest` on every push
-   - Eventually add `mypy` when type hints are complete
-   - **Effort:** ~2-4 hours
+2. **CI/CD Pipeline** ✅ **Already in place**
+   - `test.yml`: pytest on Ubuntu 24.04 (Python 3.11–3.14) + Debian Trixie; coverage uploaded to Codecov
+   - `docs.yml`: documentation build on push
+   - `ruff` enforced via pre-commit hook (`--fix`); no need to duplicate in CI
+   - Remaining: enable `mypy` when type hints are complete
 
 3. **Complete logging migration**
    - Infrastructure in place; ~100-200 `print()` calls remain
@@ -124,14 +125,15 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 **3.1 `analysis/` Subpackage Refactoring** ✅ **COMPLETE** *(branch `rework_analysis`)*
 - All 6 phases done: dead-code removal, logging migration, directory constants, downsampling adoption (`DownsampleConfig`), data-loading consolidation (`utils/files.py` canonical), channel mapping moved to `HousingConfig` (4 new methods), `discover()` / `process_overview_file()` / `main()` decomposed into helpers, `add_time_columns` utility in `utils/timestamps.py`
 - **See:** [analysis-subpackage-refactoring.plan.md](analysis-subpackage-refactoring.plan.md)
-- **827 tests pass, 6 skipped**
+- **866 tests pass, 6 skipped**
 
-**3.2 `hybrid/` Subpackage Refactoring**
-- Create `OutlierConfig` dataclass (following `DownsampleConfig` pattern)
-- Extract `signal_processing.py` utility module
-- **Prerequisite:** 3.5 Outlier deduplication below (clean base for `OutlierConfig`)
+**3.2 `hybrid/` Subpackage Refactoring** ✅ **COMPLETE** *(branch `rework_analysis`)*
+- All 6 phases done: print→logger, outlier dedup, `OUTLIER_DEFAULTS`, `OutlierConfig` dataclass, `processing/signal.py` extraction, cache-eviction method, edge-case guards, typed exceptions
+- Canonical outlier module: `python_magnetrun/outliers.py`; `hybrid/outliers.py` is a backward-compat shim
+- Signal processing: `python_magnetrun/processing/signal.py` (`normalize_signal`, `binarize_signal`, `_otsu_threshold`)
+- CLI plumbing: `create_outlier_parser` / `args_to_outlier_config` in `cli_args.py`
 - **See:** [hybrid-subpackage-refactoring.plan.md](hybrid-subpackage-refactoring.plan.md)
-- **Effort:** ~10-14 hours
+- **866 tests pass, 6 skipped**
 
 **3.3 CLI Consolidation**
 - Reduce 8 entry points to 3: `magnetrun` (unified dispatcher), `magnetrun-fetch` (renamed from `srvdata-to-magnetrun`), `magnetrun-config` (unchanged)
@@ -145,7 +147,8 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 **3.5 Outlier Deduplication** ✅ **COMPLETE**
 - `examples/outliers.py` deleted; `processing/hysteresis.py::remove_outliers` thin-delegates to `detect_outliers()` (~120 lines → ~15 lines)
 - `tests/test-anomalies.py` + `tests/test-anomalies-optimized.py` deleted; replaced by `tests/test_outliers.py` (142 tests, synthetic data)
-- `ISOLATION_FOREST` added to `OutlierMethod` in `hybrid/outliers.py`; `_VALID_METHODS` in `hysteresis.py` updated
+- `ISOLATION_FOREST` added to `OutlierMethod`; `_VALID_METHODS` in `hysteresis.py` updated
+- Canonical module moved to `python_magnetrun/outliers.py` (as part of 3.2); `hybrid/outliers.py` is a shim
 - **See:** [outlier-consolidation.plan.md](outlier-consolidation.plan.md)
 
 **3.4 `analysis/__init__.py` Namespace**
@@ -206,7 +209,7 @@ Priority items that provide immediate value with minimal effort:
 | Add `*.json~` to `.gitignore` | 2 min | Prevent future backups | ✅ Done |
 | Audit TODOs in `requests/cli.py` (rename site→housing, geometry, Parts) | 15 min | Polish | ⬜ Open |
 | Enable `mypy` pre-commit hook | 1 hour | Type checking in CI | ⬜ Open |
-| Add CI pipeline | 2 hours | Automated testing | ⬜ Open |
+| Enable `mypy` in pre-commit / CI | 1 hour | Type checking enforced | ⬜ Open |
 
 ---
 
@@ -215,7 +218,6 @@ Priority items that provide immediate value with minimal effort:
 ```
 Month 1 (May 2026)
 ├─ Fix multiple-file vs_time regression
-├─ Add CI/CD pipeline
 ├─ Quick wins (test assertions, cleanup)
 └─ Phase 2B: Time alignment layer (start)
 
@@ -234,9 +236,8 @@ Month 4 (August 2026)
 └─ Phase 2E: Channel auto-mapping
 
 Month 5 (September 2026)
-├─ hybrid/ internal refactoring (3.2 — outlier dedup done; OutlierConfig wrapper remains)
 ├─ CLI consolidation (3.3, analysis/cli.py decomposition already done)
-└─ HybridData timestamp support (now unblocked — analysis/ Phase 6 complete)
+└─ HybridData timestamp support (unblocked — analysis/ Phase 6 + hybrid/ refactoring both complete)
 
 Month 6+ (October 2026+)
 ├─ Cross-domain Phases D-G
@@ -266,21 +267,21 @@ graph TD
     H -.-> I[Type Hints Complete]
 
     J[Quick Wins] -.independent.-> A
-    K[Stream 3: Refactoring] -.parallel.-> A
-    L[3.5 Outlier Dedup ✅] --> M[3.2 hybrid/ refactoring]
+    K[Stream 3: Refactoring ✅] -.parallel.-> A
+    L[3.5 Outlier Dedup ✅] --> M[3.2 hybrid/ refactoring ✅]
 ```
 
 **Critical Path:** Phase 2B → 2C → 2D (unified plotting)
-**Unblocked:** HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) is now complete
-**Independent:** Quick wins, logging migration, CLI consolidation, outlier deduplication, type hints
-**Intra-Stream-3 order:** 3.5 Outlier Dedup ✅ done → 3.2 hybrid/ refactoring (next); 3.3 CLI consolidation ready (analysis/cli.py decomposition done)
+**Unblocked:** HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) and hybrid/ refactoring are both complete
+**Independent:** Quick wins, logging migration, CLI consolidation, type hints
+**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.5 outlier dedup ✅ · 3.3 CLI consolidation open · 3.4 namespace open
 
 ---
 
 ## Success Criteria
 
 **By End of Q2 2026:**
-- [ ] CI/CD pipeline running on all PRs
+- [x] CI/CD pipeline running on all PRs (`test.yml` + `docs.yml` already in place; `ruff` via pre-commit)
 - [ ] Multiple-file plotting regression fixed
 - [ ] Quick wins completed
 
@@ -292,7 +293,8 @@ graph TD
 **By End of Q4 2026:**
 - [ ] HybridData timestamp support complete
 - [ ] Cross-domain comparison Phases D-G complete
-- [ ] analysis/ and hybrid/ refactoring complete
+- [x] `analysis/` subpackage refactoring complete
+- [x] `hybrid/` subpackage refactoring complete
 - [ ] 100% type hints on public APIs
 
 ---

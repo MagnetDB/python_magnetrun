@@ -14,13 +14,14 @@ python_magnetrun/
 ├── magnetdata.py            # Factory + backward-compat shim
 ├── MagnetRun.py             # Session container
 ├── runetl.py                # ETL helpers
+├── outliers.py              # Canonical outlier detection (OutlierConfig, OutlierDetector, …)
 ├── field_defs.py / housing_config.py  # Config layer
 ├── cli.py                   # CLI entry point (renamed from python_magnetrun.py)
-├── cli_args.py / args.py    # CLI argument parsing
+├── cli_args.py / args.py    # CLI argument parsing (create_outlier_parser, args_to_outlier_config)
 ├── commands/                # Modular CLI subcommands
 ├── analysis/                # Analysis pipeline
-├── hybrid/                  # FEPC kHz/RMS/Trigger data
-├── processing/              # Signal processing
+├── hybrid/                  # FEPC kHz/RMS/Trigger data (outliers.py is a shim → python_magnetrun.outliers)
+├── processing/              # Signal processing (signal.py: normalize_signal, binarize_signal)
 ├── plotting/                # Plotting backends & utilities
 ├── utils/ / runlogs/ / requests/ / configAlims/
 ```
@@ -178,7 +179,7 @@ and `tests/test_hybrid_formula_resolution.py`.
 | `Référence_GR → Courant_GR` mapping | `config.py ChannelMapping` + `analysis/cli.py:162-165` | Done — cli.py now uses `channel_map.to_dict()` |
 | Plot logic | `commands/plot.py`, legacy `viewcsv.py` | Refactored — `plotting/` subpackage created |
 | Argument parsing for smoothing/logging | `cli_args.py` builders vs. `processing/cli.py` inline argparse | Planned — see `cli-consolidation.plan.md` |
-| Outlier detection | `hybrid/outliers.py` (canonical) + `processing/hysteresis.py::remove_outliers` (inline IQR/zscore/MAD) + `examples/outliers.py` (rolling-MAD inline) + 2 CLI-style test scripts | Done — `examples/outliers.py` deleted; `hysteresis.py::remove_outliers` thin-delegates to `detect_outliers()`; `test-anomalies*.py` replaced by `tests/test_outliers.py` (142 tests); `isolation_forest` added to `OutlierMethod` |
+| Outlier detection | `hybrid/outliers.py` (canonical) + `processing/hysteresis.py::remove_outliers` (inline IQR/zscore/MAD) + `examples/outliers.py` (rolling-MAD inline) + 2 CLI-style test scripts | Done — canonical moved to `python_magnetrun/outliers.py`; `hybrid/outliers.py` is a shim; `OutlierConfig` dataclass + `OUTLIER_DEFAULTS` added; `create_outlier_parser`/`args_to_outlier_config` in `cli_args.py`; `hybrid_data.py` plot methods accept `OutlierConfig`; signal functions in `processing/signal.py`; `test_outliers.py` (142 tests); `isolation_forest` in `OutlierMethod` |
 
 ---
 
@@ -212,7 +213,7 @@ and `tests/test_hybrid_formula_resolution.py`.
 | Downsampling refactoring (`DownsampleConfig`, shared module) | Done — see `downsampling-refactoring.plan.md` |
 | Plotting refactoring (`plotting/` subpackage, backend protocol) | Done — see `plotting-refactoring.plan.md` or `holoviews-migration.plan.md` for alternative |
 | `analysis/` internal refactoring (data loading, channel mapping, decomposition) | Done — see `analysis-subpackage-refactoring.plan.md` |
-| `hybrid/` internal refactoring (outlier dedup, `OutlierConfig`, signal processing) | Pending — see `hybrid-subpackage-refactoring.plan.md` |
+| `hybrid/` internal refactoring (outlier dedup, `OutlierConfig`, signal processing) | Done — all 6 phases complete; see `hybrid-subpackage-refactoring.plan.md` |
 | Pipeline redesign: polars npTDMS, narwhals, no-double-load pipeline | Planned — see `mrun-cache-implementation.plan.md` (3 phases; Phase 1 independent) |
 | File validation infrastructure | Done — `utils/validation.py` committed and integrated |
 | Logging infrastructure | Done — `log_utils.py` in place; `print()` migration ongoing |
@@ -232,8 +233,8 @@ An optional HoloViews-based plotting system (~8 d) would replace the current thr
 implementation with `hv.extension()` + Panel + datashader and subsume `analysis/` downsampling Phase 2.
 
 **Package is production-ready for core use cases.** Remaining work in priority order:
-(1) known regressions (multiple-file plotting); (2) CI/CD pipeline; (3) logging migration completion;
-(4) `hybrid/` internal refactoring (`hybrid-subpackage-refactoring.plan.md`) — outlier dedup is done, `OutlierConfig` wrapper remains;
+(1) known regressions (multiple-file plotting); (2) CI already in place (`test.yml` + `docs.yml`; `ruff` via pre-commit); (3) logging migration completion;
+(4) `hybrid/` internal refactoring — **all 6 phases complete** (`hybrid-subpackage-refactoring.plan.md`);
 (5) CLI consolidation (`cli-consolidation.plan.md`);
 (7) `HybridData` timestamp support (prerequisite `analysis/` Phase 6 complete — unblocked);
 (8) cross-domain Phases D–G (`ComparisonSession`, CLI);
@@ -389,12 +390,12 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     `OutlierMethod` enum in `hybrid/outliers.py` (sklearn backend, contamination threshold, rolling
     rejected with clear error).  `_VALID_METHODS` in `hysteresis.py` updated to include it.
 
-12b. **`hybrid/` internal refactoring** *(effort: ~10–14 h)* — tracked in
+12b. **`hybrid/` internal refactoring** *(done — all 6 phases)* — tracked in
     **[`prompts/hybrid-subpackage-refactoring.plan.md`](hybrid-subpackage-refactoring.plan.md)**.
-    Key integration points:
-    - Phase 4 (`OutlierConfig` dataclass) follows the same design decision as `DownsampleConfig` (item 8 above); do after item 12.
-    - Phases 1–3 and 5 are self-contained; no dependency on other open items.
-    - Does **not** address `HybridData` timestamp support (item 11 above), which remains separate.
+    - Phases 1–3: print→logger, outlier dedup, `OUTLIER_DEFAULTS` centralised
+    - Phase 4: `OutlierConfig` frozen dataclass (mirrors `DownsampleConfig`); `hybrid_data.py` plot methods use `outlier_config: OutlierConfig | None`; `create_outlier_parser`/`args_to_outlier_config` in `cli_args.py`; canonical moved to `python_magnetrun/outliers.py`
+    - Phase 5: `normalize_signal`, `binarize_signal`, `_otsu_threshold` moved to `python_magnetrun/processing/signal.py`; `processing/__init__.py` exports public names; `hybrid/utils.py` and `hybrid/hybrid_run.py` updated
+    - Phase 6: cache eviction extracted to `_evict_oldest_cache_entry()`; all-NaN guard in `read_khz_variable`; file-existence guard in `read_rms_variable`; `load_khz_config` raises `FileNotFoundError` instead of returning `None`; `_build_groups` wraps key-discovery in try/except; `saveData` guards against group-key; 866 tests pass
 
 13. **CLI consolidation** *(effort: ~1–2 d)* — tracked in
     **[`prompts/cli-consolidation.plan.md`](cli-consolidation.plan.md)**.

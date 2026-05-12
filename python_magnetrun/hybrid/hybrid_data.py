@@ -221,7 +221,7 @@ class HybridData:
 
     def _build_groups(self) -> None:
         """Build Groups and Keys from discovered data"""
-        logging.info(f"Building groups and keys for HybridData on {self.date_str}")
+        logger.debug("Building groups and keys for HybridData on %s", self.date_str)
         self.Groups = {}
         self.Keys = []
 
@@ -234,8 +234,12 @@ class HybridData:
                     "system": system,
                     "files": self._info.khz_files[system],
                 }
-                keys = self._build_group_keys("kHz", system)["analog"] if system else []
-                logging.info(f"getKeys: kHz keys for system={system}: {keys}")
+                try:
+                    keys = self._build_group_keys("kHz", system)["analog"]
+                except (ImportError, FileNotFoundError, ValueError) as e:
+                    logger.warning("Could not get kHz keys for %s: %s", system, e)
+                    keys = []
+                logger.debug("getKeys: kHz keys for system=%s: %s", system, keys)
                 self.Keys += [f"kHz/{system}/{key}" for key in keys]
 
             # RMS group
@@ -246,8 +250,12 @@ class HybridData:
                     "system": system,
                     "files": self._info.rms_files[system],
                 }
-                keys = self._build_group_keys("rms", system)["analog"] if system else []
-                logging.info(f"getKeys: RMS keys for system={system}: {keys}")
+                try:
+                    keys = self._build_group_keys("rms", system)["analog"]
+                except (ImportError, FileNotFoundError, ValueError) as e:
+                    logger.warning("Could not get rms keys for %s: %s", system, e)
+                    keys = []
+                logger.debug("getKeys: RMS keys for system=%s: %s", system, keys)
                 self.Keys += [f"rms/{system}/{key}" for key in keys]
 
             # Trigger group
@@ -343,7 +351,7 @@ class HybridData:
     # kHz Data Methods
     # -------------------------------------------------------------------------
 
-    def load_khz_config(self, system: str) -> Any | None:
+    def load_khz_config(self, system: str) -> Any:
         """
         Load kHz configuration for a FEPC system
 
@@ -354,8 +362,15 @@ class HybridData:
 
         Returns
         -------
-        FEPCConfig or None
-            Configuration object or None if not available
+        FEPCConfig
+            Configuration object
+
+        Raises
+        ------
+        ImportError
+            If the fepc_reader module is not available
+        FileNotFoundError
+            If no CFG file is found for the given system
         """
         logger.debug(f"load_khz_config: system={system}")
         if FEPCConfig is None or parse_cfg_file is None:
@@ -365,16 +380,10 @@ class HybridData:
             return self._khz_configs[system]
 
         cfg_key = f"{system}_cfg"
-        if cfg_key not in self._info.khz_files:
-            logger.warning(f"No CFG file found for {system}")
-            return None
+        if cfg_key not in self._info.khz_files or not self._info.khz_files[cfg_key]:
+            raise FileNotFoundError(f"No CFG file found for {system}")
 
-        cfg_files = self._info.khz_files[cfg_key]
-        if not cfg_files:
-            logger.warning(f"No CFG file found for cfg_key={cfg_key}")
-            return None
-
-        config = parse_cfg_file(str(cfg_files[0]))
+        config = parse_cfg_file(str(self._info.khz_files[cfg_key][0]))
         self._khz_configs[system] = config
         return config
 
@@ -394,9 +403,6 @@ class HybridData:
         """
         logger.debug(f"get_khz_variables: system={system}")
         config = self.load_khz_config(system)
-        if config is None:
-            raise ValueError(f"No configuration found for {system}")
-            # return {"analog": [], "digital": []}
 
         analog_vars = []
         digital_vars = []
@@ -456,8 +462,6 @@ class HybridData:
             raise ImportError("fepc_reader module not available")
 
         config = self.load_khz_config(system)
-        if config is None:
-            raise ValueError(f"No configuration found for {system}")
 
         # Find variable slot and channel
         var_slot = slot
@@ -538,6 +542,12 @@ class HybridData:
             if cnv_dir is None:
                 cnv_dir = str(khz_dir)
             data = calibrate_channel(data, var_card, var_channel, cnv_dir)
+
+        if np.all(np.isnan(data)):
+            logger.warning(
+                f"read_khz_variable: all-NaN result for {system}/{variable} — "
+                f"check calibration files in {cnv_dir or khz_dir}"
+            )
 
         return data, time
 
@@ -743,6 +753,11 @@ class HybridData:
         all_timestamps = []
 
         for rms_file in files_to_load:
+            if not rms_file.exists():
+                logger.warning(
+                    f"read_rms_variable: file no longer exists, skipping: {rms_file}"
+                )
+                continue
             reader = RMSFileReader(str(rms_file), endian=self.endian)
             rms_df = reader.read()
 
@@ -755,6 +770,11 @@ class HybridData:
 
             all_data.append(rms_df[variable].values)
             all_timestamps.append(rms_df.index)
+
+        if not all_data:
+            raise FileNotFoundError(
+                f"read_rms_variable: no readable RMS files remain for {system}"
+            )
 
         # Concatenate arrays
         data = np.concatenate(all_data)
@@ -932,16 +952,24 @@ class HybridData:
         _prefixes = {"kHz", "rms", "trigger"}
         for full_key in self.Keys:
             parts = full_key.split("/", 1)
-            short_key = parts[1] if len(parts) == 2 and parts[0] in _prefixes else full_key
+            short_key = (
+                parts[1] if len(parts) == 2 and parts[0] in _prefixes else full_key
+            )
             short_to_fulls.setdefault(short_key, []).append(full_key)
 
         for json_key, defn in field_defs.items():
             if json_key.startswith("_"):
                 continue
             # Accept a direct match (json_key already has a prefix) or a short match.
-            full_keys = [json_key] if json_key in self.Keys else short_to_fulls.get(json_key, [])
+            full_keys = (
+                [json_key]
+                if json_key in self.Keys
+                else short_to_fulls.get(json_key, [])
+            )
             if not full_keys:
-                logger.debug(f"load_units_from_json: {json_key!r} not in Keys, skipping")
+                logger.debug(
+                    f"load_units_from_json: {json_key!r} not in Keys, skipping"
+                )
                 continue
 
             symbol: str = defn.get("symbol", "")
@@ -960,7 +988,9 @@ class HybridData:
                         f"load_units_from_json: cannot parse unit {unit_str!r} for field {json_key!r}"
                     ) from exc
 
-            meta = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
+            meta = FieldMeta(
+                symbol=symbol, unit=pint_unit, label=label, description=description
+            )
             for full_key in full_keys:
                 self.units[full_key] = (symbol, pint_unit)
                 self.field_meta[full_key] = meta
@@ -1024,7 +1054,9 @@ class HybridData:
         if key not in self.Keys:
             self.Keys.append(key)
         self.units[key] = (symbol, pint_unit)
-        self.field_meta[key] = FieldMeta(symbol=symbol, unit=pint_unit, label=label, description=description)
+        self.field_meta[key] = FieldMeta(
+            symbol=symbol, unit=pint_unit, label=label, description=description
+        )
         logger.debug(f"HybridData.addData: registered derived key {key!r} (lazy)")
         return 0
 

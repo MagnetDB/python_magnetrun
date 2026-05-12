@@ -22,13 +22,14 @@ python_magnetrun/
 ├── magnetdata.py            # Factory + backward-compat shim
 ├── MagnetRun.py             # Session container
 ├── runetl.py                # ETL helpers
+├── outliers.py              # Canonical outlier detection (OutlierConfig, OutlierDetector, OUTLIER_DEFAULTS)
 ├── field_defs.py / housing_config.py  # Config layer
 ├── cli.py                   # CLI entry point (renamed from python_magnetrun.py)
-├── cli_args.py / args.py    # CLI argument parsing
+├── cli_args.py / args.py    # CLI argument parsing (create_outlier_parser, args_to_outlier_config)
 ├── commands/                # Modular CLI subcommands
 ├── analysis/                # Analysis pipeline
-├── hybrid/                  # FEPC kHz/RMS/Trigger data
-├── processing/              # Signal processing
+├── hybrid/                  # FEPC kHz/RMS/Trigger data (outliers.py is a backward-compat shim)
+├── processing/              # Signal processing (signal.py: normalize_signal, binarize_signal, _otsu_threshold)
 ├── plotting/                # Plotting backends & utilities
 ├── utils/ / runlogs/ / requests/ / configAlims/
 ```
@@ -60,7 +61,7 @@ HybridRun                   ← satisfies DataLoader protocol
 | Issue | Status | Effort | Priority | Notes |
 |-------|--------|--------|----------|-------|
 | Multiple-file `vs_time` regression | 🔴 Open | 1-2 days | **Critical** | Plot timing issues (commits 86c45c6/76351f3) |
-| CI/CD Pipeline | 🔴 Open | 2-4 hours | **High** | Add `.github/workflows/ci.yml` |
+| Enable `mypy` pre-commit / CI | 🔴 Open | 30 min | **Medium** | `ruff` already enforced via pre-commit (`--fix`); `mypy` hook exists but is commented out |
 | Validation on all entry points | 🟡 Verify | 2-3 hours | **High** | Infrastructure exists; verify all paths use it |
 | Logging migration | 🟡 In Progress | Ongoing | **Medium** | ~100-200 `print()` calls remain |
 
@@ -88,7 +89,7 @@ HybridRun                   ← satisfies DataLoader protocol
 | `tests/test-vprocess.py` | ✅ Done | 496 lines; vprocess reader integration tests |
 | `tests/test-cfg-parser.py` | ✅ Done | 135 lines; config parser tests |
 | `test_python_magnetrun.py` assertions | 🔴 Open | Legacy test file has 0 assertions |
-| CI pipeline (GitHub Actions) | 🔴 Open | Need `ruff` + `pytest` on every push |
+| CI pipeline (GitHub Actions) | ✅ Done | `test.yml` (pytest, Ubuntu 3.11–3.14 + Debian Trixie, Codecov) + `docs.yml` already in `.github/workflows/` |
 
 ---
 
@@ -167,7 +168,7 @@ def plot_data(
 
 #### 3.1 `analysis/` Subpackage Refactoring ✅ COMPLETE *(branch `rework_analysis`)*
 
-**Status:** All 6 phases complete — 827 tests pass, 6 skipped
+**Status:** All 6 phases complete — 866 tests pass, 6 skipped
 **See:** [analysis-subpackage-refactoring.plan.md](analysis-subpackage-refactoring.plan.md)
 
 **Completed Phases:**
@@ -178,20 +179,18 @@ def plot_data(
 5. ✅ Monolith decomposition — `FileDiscovery.discover()` (5 helpers), `process_overview_file()` (3 helpers), `analysis/cli.main()` (6 helpers including `_emit_metrics`)
 6. ✅ `add_time_columns(df, t0, sampling_rate)` added to `utils/timestamps.py`; `add_time_column_with_offset` and `add_time_column` now delegate to it; inline lambdas in `load_incident_data`, `synchronize_data`, `apply_lag_correction` replaced
 
-#### 3.2 `hybrid/` Subpackage Refactoring 🔴 OPEN
+#### 3.2 `hybrid/` Subpackage Refactoring ✅ COMPLETE
 
-**Status:** Detailed plan exists
+**Status:** All 6 phases done — 866 tests pass
 **See:** [hybrid-subpackage-refactoring.plan.md](hybrid-subpackage-refactoring.plan.md)
-**Prerequisite:** 3.5 Outlier Deduplication below (Phase 1 of hybrid plan becomes a thin-delegate; do that first)
 
-**Key Phases:**
-1. ~~Outlier removal deduplication~~ → handled by 3.5; only `OutlierConfig` wrapper remains here
-2. `OutlierConfig` dataclass (following `DownsampleConfig` pattern)
-3. `signal_processing.py` extraction
-4. Test coverage
-
-**Effort:** ~10-14 hours
-**Priority:** Medium
+**Completed Phases:**
+1. ✅ `print()` → `logger.debug/info`; commented debug code removed; `print_summary()` kept as-is
+2. ✅ Outlier duplication removed from `hybrid/utils.py`; re-exports from `python_magnetrun.outliers`
+3. ✅ `OUTLIER_DEFAULTS` dict centralised in `python_magnetrun/outliers.py`; `threshold or ...` bug fixed
+4. ✅ `OutlierConfig` frozen dataclass (mirrors `DownsampleConfig`); `hybrid_data.py` plot methods use `outlier_config: OutlierConfig | None`; `create_outlier_parser` / `args_to_outlier_config` in `cli_args.py`; canonical outlier module moved to `python_magnetrun/outliers.py`; `hybrid/outliers.py` is a shim
+5. ✅ `normalize_signal`, `binarize_signal`, `_otsu_threshold` moved to `python_magnetrun/processing/signal.py`; `processing/__init__.py` re-exports public names; shims in `hybrid/utils.py`; `hybrid_run.py` lazy import updated
+6. ✅ `_evict_oldest_cache_entry()` extracted with docstring; all-NaN guard in `read_khz_variable`; file-existence guard + `FileNotFoundError` fallback in `read_rms_variable`; `load_khz_config` raises `FileNotFoundError`; `_build_groups` wraps key discovery in try/except; `saveData` guards against group key
 
 #### 3.3 CLI Consolidation 🔴 OPEN
 
@@ -217,7 +216,7 @@ def plot_data(
 **Status:** All steps done
 **See:** [outlier-consolidation.plan.md](outlier-consolidation.plan.md)
 
-**Canonical module:** `hybrid/outliers.py` — `OutlierDetector`, `OutlierResult`, `OutlierMethod` (now includes `ISOLATION_FOREST`), `detect_outliers`, `remove_outliers`, `find_outlier_segments`, `get_outlier_summary`, `analyze_outliers`
+**Canonical module:** `python_magnetrun/outliers.py` — `OutlierDetector`, `OutlierResult`, `OutlierMethod` (now includes `ISOLATION_FOREST`), `OutlierConfig`, `OUTLIER_DEFAULTS`, `detect_outliers`, `remove_outliers`, `find_outlier_segments`, `get_outlier_summary`, `analyze_outliers`. `hybrid/outliers.py` is a backward-compat shim that re-exports everything.
 
 **Completed actions:**
 
@@ -400,7 +399,15 @@ def plot_data(
     - `housing_config.py` simplified: `get_pupitre_rename_map()` now derives `Ih`/`Ib` from `Idcct`
     - Updated `M8/M9/M10-housing-config.json`
 
-15. **Outlier deduplication** *(branch `rework_analysis`)*
+15. **`hybrid/` subpackage refactoring — all 6 phases** *(branch `rework_analysis`)*
+    - Phase 1: `print()` → `logger.debug/info`; commented debug removed; `print_summary()` kept
+    - Phase 2: outlier duplicate functions deleted from `hybrid/utils.py`; re-exports via `from ..outliers import …`
+    - Phase 3: `OUTLIER_DEFAULTS` dict in `python_magnetrun/outliers.py`; `threshold if … is not None else …` bug fixed; `OutlierDetector.__init__` updated
+    - Phase 4: `OutlierConfig` frozen dataclass; `hybrid_data.py` four plot methods use `outlier_config: OutlierConfig | None`; `create_outlier_parser`/`args_to_outlier_config` in `cli_args.py`; canonical code in `python_magnetrun/outliers.py`; `hybrid/outliers.py` is a backward-compat shim
+    - Phase 5: `normalize_signal`, `binarize_signal`, `_otsu_threshold` → `python_magnetrun/processing/signal.py`; `processing/__init__.py` re-exports; `hybrid/utils.py` and `hybrid/hybrid_run.py` updated; `merge_data` added to `analysis/loaders.py` (fixes prior test failure: 833 → 866 tests)
+    - Phase 6: `_evict_oldest_cache_entry()` extracted with LRU docstring; all-NaN guard in `read_khz_variable`; file-existence guard + `FileNotFoundError` in `read_rms_variable`; `load_khz_config` raises `FileNotFoundError`; `_build_groups` try/except with warning; `saveData` guards group keys; 866 tests pass
+
+16. **Outlier deduplication** *(branch `rework_analysis`)*
     - `examples/outliers.py` deleted (213-line inline rolling-MAD, never imported)
     - `processing/hysteresis.py::remove_outliers`: ~120 lines inline IQR/zscore/MAD/isolation_forest → ~15-line delegator calling `detect_outliers()` from `hybrid/outliers.py`
     - `tests/test-anomalies.py` + `tests/test-anomalies-optimized.py` deleted (CLI scripts requiring real TDMS files)
@@ -430,11 +437,10 @@ def plot_data(
 | Add `*.json~` to `.gitignore` | 2 min | Low | ✅ Done | — |
 | Audit TODOs in `requests/cli.py` (rename site→housing, geometry, Parts) | 15 min | Low | 🔴 Open | Four TODO comments that need tracking or resolution |
 | Enable `mypy` pre-commit hook | 1 hour | Medium | 🔴 Open | Uncomment in `.pre-commit-config.yaml` |
-| Add CI pipeline | 2 hours | High | 🔴 Open | Create `.github/workflows/ci.yml` |
+| Enable `mypy` pre-commit hook | 1 hour | Medium | 🔴 Open | Uncomment in `.pre-commit-config.yaml` (`ruff` already runs via pre-commit; no need to add to CI) |
 
 **Recommended order:**
-1. Add CI pipeline (enables automated testing)
-2. Add assertions to `test_python_magnetrun.py` (makes CI meaningful)
+1. Add assertions to `test_python_magnetrun.py` (CI already runs; make it meaningful)
 3. Enable `mypy` (enforces type hints)
 4. Quick cleanups (backup file already done; audit TODOs in `requests/cli.py`)
 
@@ -449,10 +455,9 @@ def plot_data(
    - Test with multiple input files
    - Verify fix across data sources
 
-2. **Add CI/CD pipeline**
-   - Create `.github/workflows/ci.yml`
-   - Run `ruff` + `pytest` on push
-   - Set up branch protection
+2. **Enable `mypy`**
+   - Uncomment the `mypy` hook in `.pre-commit-config.yaml`
+   - `ruff` already runs via pre-commit (`--fix`) — no CI change needed
 
 ### 🟡 High Priority (Do This Month)
 
@@ -490,7 +495,7 @@ def plot_data(
 ### 🔵 Lower Priority (Future Quarters)
 
 9. ~~**Outlier deduplication**~~ — ✅ Done (see Stream 3.5)
-10. **hybrid/ refactoring** (~10-14 hours; outlier dedup done — `OutlierConfig` wrapper is the next step)
+10. ~~**hybrid/ refactoring**~~ — ✅ Done (all 6 phases; see Stream 3.2)
 11. **CLI consolidation** (~1-2 days; `analysis/cli.py` decomposition done)
 12. **HybridData timestamp support** (~0.5 days; now unblocked)
 13. **Cross-domain Phases D-G** (~2-3 weeks)
@@ -552,7 +557,7 @@ def plot_data(
 ## Success Metrics
 
 **By End of Q2 2026:**
-- [ ] CI/CD pipeline running on all PRs
+- [x] CI/CD pipeline running on all PRs (`test.yml` + `docs.yml`; `ruff` via pre-commit)
 - [ ] Multiple-file plotting regression fixed
 - [ ] All quick wins completed
 - [ ] Phase 2B (Time Alignment) complete

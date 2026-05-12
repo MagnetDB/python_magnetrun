@@ -666,7 +666,7 @@ class HybridRun:
             # in <Housing>-housing-config.json and docs/Hybride.md.
             try:
                 from ..housing_config import get_housing_config
-                from .utils import binarize_signal
+                from ..processing.signal import binarize_signal
 
                 hcfg = get_housing_config(self.Housing)
                 cfg_key = f"{system}/{variable}"
@@ -799,7 +799,13 @@ class HybridRun:
             Specific key to save (saves all if None)
         """
         if key:
-            data, time = self.getData(key)
+            result = self.getData(key)
+            if not (isinstance(result, tuple) and len(result) == 2):
+                raise ValueError(
+                    f"saveData: key {key!r} does not resolve to (data, time) — "
+                    "use a variable key, not a group key"
+                )
+            data, time = result
             df = pd.DataFrame({"time": time, key: data})
             df.to_csv(filename, index=False)
         else:
@@ -809,6 +815,25 @@ class HybridRun:
     # Cache management
     # -------------------------------------------------------------------------
 
+    def _evict_oldest_cache_entry(self) -> None:
+        """Remove the oldest cache entry (LRU eviction).
+
+        Strategy: each entry is timestamped at insertion via
+        ``CacheEntry.loaded_at``.  The entry with the earliest timestamp is
+        removed and its size is subtracted from :attr:`_cache_size_bytes`.
+
+        Called by :meth:`_add_to_cache` in a loop until the projected total
+        cache size (current + incoming) falls within
+        :attr:`_cache_max_size_bytes` (default 1 GB, adjustable via
+        :meth:`set_cache_size`).  No-op if the cache is already empty.
+        """
+        if not self._cache:
+            return
+        oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].loaded_at)
+        evicted = self._cache.pop(oldest_key)
+        self._cache_size_bytes -= evicted.size_bytes
+        logger.debug("Evicted cache entry: %s", oldest_key)
+
     def _add_to_cache(
         self,
         key: str,
@@ -816,21 +841,15 @@ class HybridRun:
         time: np.ndarray,
         options: LoadOptions,
     ) -> None:
-        """Add data to cache with size management"""
+        """Store (data, time) in the LRU cache, evicting old entries if needed."""
         size_bytes = data.nbytes + time.nbytes
 
-        # Evict old entries if needed
         while (
             self._cache_size_bytes + size_bytes > self._cache_max_size_bytes
             and self._cache
         ):
-            # Remove oldest entry
-            oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].loaded_at)
-            evicted = self._cache.pop(oldest_key)
-            self._cache_size_bytes -= evicted.size_bytes
-            logger.debug(f"Evicted cache entry: {oldest_key}")
+            self._evict_oldest_cache_entry()
 
-        # Add new entry
         self._cache[key] = CacheEntry(
             data=data,
             time=time,
@@ -839,7 +858,7 @@ class HybridRun:
             size_bytes=size_bytes,
         )
         self._cache_size_bytes += size_bytes
-        logger.debug(f"Cached {key}: {size_bytes / 1024 / 1024:.1f} MB")
+        logger.debug("Cached %s: %.1f MB", key, size_bytes / 1024 / 1024)
 
     def clear_cache(self) -> None:
         """Clear all cached data"""

@@ -190,7 +190,8 @@ Hybrid data does not require network mounting; simply point `--hybrid_datadir` t
 - Statistics and plateau detection
 - Compute derived quantities via formulas (power, busbar losses, etc.)
 - Breakpoint detection and run signature (UPD)
-- Anomaly detection (Z-score, IQR, rolling mean/std, DBSCAN, MAD)
+- Anomaly detection (Z-score, IQR, rolling mean/std, DBSCAN, MAD, isolation forest) via `OutlierConfig` / `OutlierDetector`
+- Signal processing utilities (`normalize_signal`, `binarize_signal`) in `python_magnetrun.processing`
 - Piecewise linear regression (`piecewise_regression`, `pwlf`)
 - Field factor identification via OLS regression
 - Time-series synchronization between data sources
@@ -946,6 +947,7 @@ current = data[:, ch]
 
 ```python
 from python_magnetrun.hybrid.hybrid_data import HybridData
+from python_magnetrun.outliers import OutlierConfig
 
 hd = HybridData(
     base_dir="/path/to/hybrid",
@@ -961,8 +963,12 @@ df_rms = hd.load_rms_data("FEPC-LNCMI")
 print(df_rms.head())
 
 # Load kHz configuration and list variables
-cfg = hd.load_khz_config("FEPC-LNCMI")
-print(hd.get_khz_variables("FEPC-LNCMI"))
+vars = hd.get_khz_variables("FEPC-LNCMI")
+print(vars["analog"])
+
+# Read a variable with outlier removal
+cfg = OutlierConfig(method="iqr")   # threshold resolved from OUTLIER_DEFAULTS
+hd.plot_khz_variable("FEPC-LNCMI", "I_H1", outlier_config=cfg, show=False)
 ```
 
 ---
