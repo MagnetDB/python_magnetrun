@@ -34,6 +34,7 @@ import pandas as pd
 from natsort import natsorted
 
 from ..magnetdata_base import DataType
+from .outliers import OUTLIER_DEFAULTS
 
 # Local imports
 
@@ -1042,7 +1043,7 @@ class HybridData:
         show: bool = True,
         save: str | None = None,
         remove_outliers_method: str | None = None,
-        outlier_threshold: float = 1.5,
+        outlier_threshold: float = OUTLIER_DEFAULTS["iqr"],
         outlier_window: int | None = None,
         **plot_kwargs,
     ):
@@ -1126,7 +1127,7 @@ class HybridData:
         show: bool = True,
         save: str | None = None,
         remove_outliers_method: str | None = None,
-        outlier_threshold: float = 1.5,
+        outlier_threshold: float = OUTLIER_DEFAULTS["iqr"],
         outlier_window: int | None = None,
         **plot_kwargs,
     ):
@@ -1212,7 +1213,7 @@ class HybridData:
         show: bool = True,
         save: str | None = None,
         remove_outliers_method: str | None = None,
-        outlier_threshold: float = 1.5,
+        outlier_threshold: float = OUTLIER_DEFAULTS["iqr"],
         outlier_window: int | None = None,
         **plot_kwargs,
     ):
@@ -1292,7 +1293,7 @@ class HybridData:
         show: bool = True,
         save: str | None = None,
         remove_outliers_method: str | None = None,
-        outlier_threshold: float = 1.5,
+        outlier_threshold: float = OUTLIER_DEFAULTS["iqr"],
         outlier_window: int | None = None,
         **plot_kwargs,
     ):

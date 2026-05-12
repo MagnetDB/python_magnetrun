@@ -38,6 +38,17 @@ import numpy as np
 # Setup logger
 logger = logging.getLogger(__name__)
 
+# Default thresholds for each detection method — single source of truth.
+OUTLIER_DEFAULTS: dict[str, float] = {
+    "iqr": 1.5,
+    "zscore": 3.0,
+    "mad": 3.5,
+    "modified_zscore": 3.5,
+    "percentile": 1.0,
+    "grubbs": 0.05,
+    "isolation_forest": 0.1,
+}
+
 
 class OutlierMethod(Enum):
     """Available outlier detection methods"""
@@ -186,17 +197,6 @@ class OutlierDetector:
     >>> clean_data = result.apply_to_data(data, strategy='interpolate')
     """
 
-    # Default thresholds for each method
-    DEFAULT_THRESHOLDS = {
-        "iqr": 1.5,
-        "zscore": 3.0,
-        "mad": 3.5,
-        "percentile": 1.0,  # 1% from each end
-        "modified_zscore": 3.5,
-        "grubbs": 0.05,  # significance level
-        "isolation_forest": 0.1,  # expected contamination fraction (0–0.5)
-    }
-
     def __init__(
         self,
         method: str = "iqr",
@@ -205,7 +205,7 @@ class OutlierDetector:
         chunk_size: int | None = None,
     ):
         self.method = method.lower()
-        self.threshold = threshold or self.DEFAULT_THRESHOLDS.get(self.method, 1.5)
+        self.threshold = threshold if threshold is not None else OUTLIER_DEFAULTS.get(self.method, 1.5)
         self.window_size = window_size
         self.chunk_size = chunk_size
 
