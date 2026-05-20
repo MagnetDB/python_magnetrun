@@ -29,14 +29,14 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase, cfg) -> None:
 
     df = data.getData()
 
-    # Drop all-zero columns (skip Flow* and Field*)
+    # Drop all-zero columns (skip columns matched by Fkeys patterns)
+    _fkeys_patterns = re.compile(
+        r"Flow\w+|Rpm\w+|HP\w+|Pmagnet|Ptot|Idcct\d|(Supra)?Field|TotalField|TAlimout|teb|tsb"
+    )
     zero_cols = [
         col
         for col in df.columns
-        if (df[col] == 0).all()
-        and not col.startswith("Flow")
-        and not col.startswith("Field")
-        and not col.startswith("Idcct")
+        if (df[col] == 0).all() and not _fkeys_patterns.match(col)
     ]
     if zero_cols:
         logger.warning(
