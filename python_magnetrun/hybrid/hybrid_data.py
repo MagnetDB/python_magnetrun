@@ -221,7 +221,7 @@ class HybridData:
 
     def _build_groups(self) -> None:
         """Build Groups and Keys from discovered data"""
-        logger.debug("Building groups and keys for HybridData on %s", self.date_str)
+        logger.debug(f"Building groups and keys for HybridData on {self.date_str}")
         self.Groups = {}
         self.Keys = []
 
@@ -237,9 +237,9 @@ class HybridData:
                 try:
                     keys = self._build_group_keys("kHz", system)["analog"]
                 except (ImportError, FileNotFoundError, ValueError) as e:
-                    logger.warning("Could not get kHz keys for %s: %s", system, e)
+                    logger.warning(f"Could not get kHz keys for {system}: {e}")
                     keys = []
-                logger.debug("getKeys: kHz keys for system=%s: %s", system, keys)
+                logger.debug(f"getKeys: kHz keys for system={system}: {keys}")
                 self.Keys += [f"kHz/{system}/{key}" for key in keys]
 
             # RMS group
@@ -253,9 +253,9 @@ class HybridData:
                 try:
                     keys = self._build_group_keys("rms", system)["analog"]
                 except (ImportError, FileNotFoundError, ValueError) as e:
-                    logger.warning("Could not get rms keys for %s: %s", system, e)
+                    logger.warning(f"Could not get rms keys for {system}: {e}")
                     keys = []
-                logger.debug("getKeys: RMS keys for system=%s: %s", system, keys)
+                logger.debug(f"getKeys: RMS keys for system={system}: {keys}")
                 self.Keys += [f"rms/{system}/{key}" for key in keys]
 
             # Trigger group

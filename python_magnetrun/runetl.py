@@ -10,6 +10,10 @@ from .magnetdata_base import DataType, MagnetDataBase
 
 logger = logging.getLogger(__name__)
 
+_FKEYS_PATTERN = re.compile(
+    r"Flow\w+|Rpm\w+|HP\w+|Pmagnet|Ptot|Idcct\d|(Supra)?Field|TotalField|TAlimout|teb|tsb"
+)
+
 
 def _cleanup_pupitre_icoil(data: MagnetDataBase, cfg) -> None:
     """Remove zero/duplicate Icoil columns and rename surviving ones to GR role names.
@@ -30,13 +34,10 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase, cfg) -> None:
     df = data.getData()
 
     # Drop all-zero columns (skip columns matched by Fkeys patterns)
-    _fkeys_patterns = re.compile(
-        r"Flow\w+|Rpm\w+|HP\w+|Pmagnet|Ptot|Idcct\d|(Supra)?Field|TotalField|TAlimout|teb|tsb"
-    )
     zero_cols = [
         col
         for col in df.columns
-        if (df[col] == 0).all() and not _fkeys_patterns.match(col)
+        if (df[col] == 0).all() and not _FKEYS_PATTERN.match(col)
     ]
     if zero_cols:
         logger.warning(
@@ -154,7 +155,7 @@ def prepareData(
             }
 
     data.addTime()
-    _duration = data.getDuration()
+    data.getDuration()
 
     data.cleanupData(
         keys_to_remove=keys_to_remove,

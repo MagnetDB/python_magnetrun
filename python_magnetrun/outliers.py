@@ -30,7 +30,6 @@ Example usage:
 
 import logging
 from dataclasses import dataclass, field
-from enum import Enum, auto
 from typing import Any, Union
 
 import numpy as np
@@ -82,19 +81,6 @@ class OutlierConfig:
         if self.threshold is not None:
             return self.threshold
         return OUTLIER_DEFAULTS.get(self.method, 1.5)
-
-
-class OutlierMethod(Enum):
-    """Available outlier detection methods"""
-
-    IQR = auto()  # Interquartile Range
-    ZSCORE = auto()  # Z-score (standard deviations from mean)
-    MAD = auto()  # Median Absolute Deviation
-    PERCENTILE = auto()  # Percentile-based clipping
-    MODIFIED_ZSCORE = auto()  # Modified Z-score using median
-    GRUBBS = auto()  # Grubbs' test (single outlier)
-    DBSCAN = auto()  # Density-based (requires scipy)
-    ISOLATION_FOREST = auto()  # Isolation Forest (requires scikit-learn)
 
 
 @dataclass
@@ -215,7 +201,7 @@ class OutlierDetector:
 
     Parameters
     ----------
-    method : str or OutlierMethod
+    method : str
         Detection method: 'iqr', 'zscore', 'mad', 'percentile', 'modified_zscore'
     threshold : float
         Detection threshold (meaning depends on method)

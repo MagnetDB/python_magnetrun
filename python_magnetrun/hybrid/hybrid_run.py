@@ -832,7 +832,7 @@ class HybridRun:
         oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].loaded_at)
         evicted = self._cache.pop(oldest_key)
         self._cache_size_bytes -= evicted.size_bytes
-        logger.debug("Evicted cache entry: %s", oldest_key)
+        logger.debug(f"Evicted cache entry: {oldest_key}")
 
     def _add_to_cache(
         self,
@@ -858,7 +858,7 @@ class HybridRun:
             size_bytes=size_bytes,
         )
         self._cache_size_bytes += size_bytes
-        logger.debug("Cached %s: %.1f MB", key, size_bytes / 1024 / 1024)
+        logger.debug(f"Cached {key}: {size_bytes / 1024 / 1024:.1f} MB")
 
     def clear_cache(self) -> None:
         """Clear all cached data"""

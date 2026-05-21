@@ -238,7 +238,7 @@ def plot_subplots(
 
     for i, field in enumerate(fields):
         if field not in df.columns:
-            logger.warning("Field %r not found in DataFrame — skipping", field)
+            logger.warning(f"Field {field!r} not found in DataFrame — skipping")
             continue
         y, symbol = resolved.get(field, (df[field].to_numpy(dtype=float), field))
         color = colors[i] if colors and i < len(colors) else None
@@ -377,7 +377,7 @@ def plot_overlay(
 
     for i, field in enumerate(fields):
         if field not in df.columns:
-            logger.warning("Field %r not found in DataFrame — skipping", field)
+            logger.warning(f"Field {field!r} not found in DataFrame — skipping")
             continue
         y, symbol = resolved.get(field, (df[field].to_numpy(dtype=float), field))
         color = colors[i] if colors and i < len(colors) else None
@@ -504,10 +504,10 @@ def plot_xy(
 
     for i, (x_col, y_col) in enumerate(pairs):
         if x_col not in data.columns:
-            logger.warning("Column %r not found in DataFrame — skipping pair", x_col)
+            logger.warning(f"Column {x_col!r} not found in DataFrame — skipping pair")
             continue
         if y_col not in data.columns:
-            logger.warning("Column %r not found in DataFrame — skipping pair", y_col)
+            logger.warning(f"Column {y_col!r} not found in DataFrame — skipping pair")
             continue
 
         # Drop rows where either coordinate is NaN so scatter/line is clean.

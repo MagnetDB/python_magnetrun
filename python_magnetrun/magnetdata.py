@@ -11,6 +11,7 @@ classes directly for construction or isinstance checks.
 
 import logging
 import os
+import time
 
 from .magnetdata_base import DataType, MagnetDataBase
 from .magnetdata_pandas import (
@@ -109,15 +110,17 @@ def _fromtdms(
         t_offset = (1 / 120.0) / 2.0
 
     # Keep handle open — data arrays are read lazily via _ensure_group_loaded()
+    t0 = time.perf_counter()
     rawData = TdmsFile.open(name)
+    elapsed = time.perf_counter() - t0
+    mib = os.path.getsize(name) / 1024**2
+    logger.debug(f"tdms.io: open file={name} size={mib:.1f}MiB time={elapsed:.3f}s")
     for group in rawData.groups():
         gname = group.name.replace(" ", "_")
         gname = gname.replace("_et_Ref.", "")
         if gname != group.name:
             logger.warning(
-                "fromtdms: group name rewritten %r -> %r (old TDMS format)",
-                group.name,
-                gname,
+                f"fromtdms: group name rewritten {group.name!r} -> {gname!r} (old TDMS format)"
             )
         Groups[gname] = {}
         if gname != "Infos":
@@ -145,7 +148,9 @@ def _fromtdms(
         )
 
     mdata = TdmsMagnetData(
-        name, Groups, Keys,
+        name,
+        Groups,
+        Keys,
         Data={},
         defs_file=defs_file,
         _tdms_file=rawData,

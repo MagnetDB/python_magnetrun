@@ -114,7 +114,7 @@ class PandasMagnetData(MagnetDataBase):
         self._data_loaded = True  # set before assigning self.Data to avoid recursion
         self.Data = df
         self.Keys = _dataframe_keys(df)
-        logger.debug("_ensure_data_loaded: loaded %s (%d rows)", self.FileName, len(df))
+        logger.debug(f"_ensure_data_loaded: loaded {self.FileName} ({len(df)} rows)")
 
     # --- abstract property -------------------------------------------
 

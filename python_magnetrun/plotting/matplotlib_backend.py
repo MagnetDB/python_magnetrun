@@ -125,7 +125,7 @@ class MatplotlibBackend:
     def save(self, fig: Any, path: Path, *, dpi: int = 300) -> None:
         self.finalize(fig)
         fig.savefig(path, dpi=dpi, bbox_inches="tight")
-        logger.info("Saved figure to %s", path)
+        logger.info(f"Saved figure to {path}")
 
     def finalize(self, fig: Any, *, xlabel: str = "t [s]") -> None:
         """Add legend and x-axis label to all axes."""

@@ -151,14 +151,14 @@ def downsample_arrays(
     valid = ~np.isnan(time) & ~np.isnan(data)
     if not np.all(valid):
         n_nan = int(np.sum(~valid))
-        logger.debug("downsample_arrays: stripping %d NaN entries", n_nan)
+        logger.debug(f"downsample_arrays: stripping {n_nan} NaN entries")
         data = data[valid]
         time = time[valid]
 
     if len(data) == 0 or len(data) <= config.n_out:
         return data, time
 
-    logger.info("Downsampling %d → %d using %s", len(data), config.n_out, config.method)
+    logger.info(f"Downsampling {len(data)} → {config.n_out} using {config.method}")
     indices = _downsample_indices(data, time, config)
     return data[indices], time[indices]
 

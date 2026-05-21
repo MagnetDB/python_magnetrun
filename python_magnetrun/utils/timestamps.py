@@ -97,7 +97,7 @@ def parse_tdms_filename(filename: str) -> datetime | None:
             return datetime.strptime(date_str + t, fmt)
         except ValueError:
             continue
-    logger.warning("parse_tdms_filename: unrecognised tdms date format in %r", filename)
+    logger.warning(f"parse_tdms_filename: unrecognised tdms date format in {filename!r}")
     return None
 
 

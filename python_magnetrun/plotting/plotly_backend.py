@@ -295,7 +295,7 @@ class PlotlyBackend:
                     f"Plotly image export to {path} failed. "
                     "Install kaleido: pip install kaleido"
                 ) from exc
-        logger.info("Saved Plotly figure to %s", path)
+        logger.info(f"Saved Plotly figure to {path}")
 
     def show(self, fig: Any) -> None:
         _require_plotly()

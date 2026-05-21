@@ -231,7 +231,7 @@ def plot_khz_variables(
             backend=backend,
         )
 
-    logger.debug("plot_khz_variables: system=%s, variables=%s", system, variables)
+    logger.debug(f"plot_khz_variables: system={system}, variables={variables}")
 
     b = _resolve_backend(backend)
 
@@ -255,10 +255,10 @@ def plot_khz_variables(
                 data, time = downsample_arrays(
                     data, time, _make_downsample_config(downsample, downsample_method)
                 )
-                logger.info("Downsampled %s: %d -> %d points", variable, orig, len(data))
+                logger.info(f"Downsampled {variable}: {orig} -> {len(data)} points")
             series[variable] = (data, time)
         except (OSError, ValueError, RuntimeError, KeyError) as e:
-            logger.error("Error loading %s: %s", variable, e)
+            logger.error(f"Error loading {variable}: {e}")
 
     if not series:
         raise RuntimeError(f"No data loaded for {system}")
@@ -380,7 +380,7 @@ def plot_rms_variables(
             backend=backend,
         )
 
-    logger.debug("plot_rms_variables: system=%s, variables=%s", system, variables)
+    logger.debug(f"plot_rms_variables: system={system}, variables={variables}")
 
     b = _resolve_backend(backend)
 
@@ -401,7 +401,7 @@ def plot_rms_variables(
                 highlight_vars.append(variable)
             series[variable] = (data, time)
         except (OSError, ValueError, RuntimeError, KeyError) as e:
-            logger.error("Error loading %s: %s", variable, e)
+            logger.error(f"Error loading {variable}: {e}")
 
     if not series:
         raise RuntimeError(f"No data loaded for {system}")
@@ -497,7 +497,7 @@ def plot_khz_variable(
     tuple
         (fig, ax) — ax is None for non-matplotlib backends.
     """
-    logger.debug("plot_khz_variable: system=%s, variable=%s", system, variable)
+    logger.debug(f"plot_khz_variable: system={system}, variable={variable}")
 
     data, time = hybrid_data.read_khz_variable(
         system, variable, hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir
@@ -522,7 +522,7 @@ def plot_khz_variable(
         data, time = downsample_arrays(
             data, time, _make_downsample_config(downsample, downsample_method)
         )
-        logger.info("Downsampled %s: %d -> %d points", variable, orig_len, len(data))
+        logger.info(f"Downsampled {variable}: {orig_len} -> {len(data)} points")
 
     # If an existing matplotlib axes was supplied, inject it into a minimal fig proxy.
     if ax is not None:
@@ -637,7 +637,7 @@ def plot_rms_variable(
         data, time = downsample_arrays(
             data, time, _make_downsample_config(downsample, downsample_method)
         )
-        logger.info("Downsampled %s: %d -> %d points", variable, orig_len, len(data))
+        logger.info(f"Downsampled {variable}: {orig_len} -> {len(data)} points")
 
     if ax is not None:
         fig = ax.get_figure()
@@ -747,7 +747,7 @@ def plot_khz_with_rms(
         colors.append("blue")
         field_styles.append(("-", None, None, None))
     except (OSError, ValueError, RuntimeError, KeyError, struct.error) as e:
-        logger.error("Error loading kHz variable %s: %s", khz_variable, e)
+        logger.error(f"Error loading kHz variable {khz_variable}: {e}")
 
     # RMS series (red, dots).
     rms_col = f"{rms_variable} (RMS)"
@@ -760,7 +760,7 @@ def plot_khz_with_rms(
         colors.append("red")
         field_styles.append(("-", ".", None, None))
     except (OSError, ValueError, RuntimeError, KeyError) as e:
-        logger.error("Error loading RMS variable %s: %s", rms_variable, e)
+        logger.error(f"Error loading RMS variable {rms_variable}: {e}")
 
     if not dfs:
         raise RuntimeError(f"No data loaded for {system}")

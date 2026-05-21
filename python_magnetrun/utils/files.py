@@ -207,7 +207,7 @@ def _tdms_end_from_properties(
                     actual = sum(len(chunk) for chunk in ch.data_chunks())
                     wf_prop = p.get("wf_samples")
                     if wf_prop is not None and int(wf_prop) != actual:
-                        logger.warning(
+                        logger.info(
                             f"{file} {ch.path}: wf_samples={wf_prop} != actual={actual} — using actual count"
                         )
                     duration = actual * float(p["wf_increment"])

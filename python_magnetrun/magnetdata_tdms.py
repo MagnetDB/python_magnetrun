@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import sys
+import time
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -106,7 +107,13 @@ class TdmsMagnetData(MagnetDataBase):
                 f"in {self.FileName!r}. Available: {list(self._tdms_groups)}"
             )
         group = self._tdms_groups[gname]
+        t0 = time.perf_counter()
         df = group.as_dataframe(time_index=False, absolute_time=False, scaled_data=True)
+        elapsed = time.perf_counter() - t0
+        mib = df.memory_usage(deep=True).sum() / 1024**2
+        logger.debug(
+            f"tdms.io: group={gname!r} file={self.FileName} rows={len(df)} size={mib:.1f}MiB time={elapsed:.3f}s"
+        )
         df.rename(
             columns={col: col.replace(" ", "_") for col in df.columns},
             inplace=True,
@@ -118,17 +125,14 @@ class TdmsMagnetData(MagnetDataBase):
                 for ch in self.Groups[gname]:
                     self.Groups[gname][ch]["wf_samples"] = len(df)
             elif len(df) != expected:
-                logger.warning(
-                    "group %r: loaded %d rows but wf_samples=%d — updating",
-                    gname,
-                    len(df),
-                    expected,
+                logger.info(
+                    f"group {gname!r}: loaded {len(df)} rows but wf_samples={expected} — updating"
                 )
                 for ch in self.Groups[gname]:
                     self.Groups[gname][ch]["wf_samples"] = len(df)
         assert isinstance(self.Data, dict)
         self.Data[gname] = df
-        logger.debug("_ensure_group_loaded: loaded group %r (%d rows)", gname, len(df))
+        logger.debug(f"_ensure_group_loaded: loaded group {gname!r} ({len(df)} rows)")
 
     # --- Data property -----------------------------------------------
 
@@ -267,7 +271,7 @@ class TdmsMagnetData(MagnetDataBase):
 
         if isinstance(key, str):
             if "/" in key:
-                (group, channel) = key.split("/")
+                group, channel = key.split("/")
                 channels.append(channel)
             else:
                 group = key
@@ -276,7 +280,7 @@ class TdmsMagnetData(MagnetDataBase):
         elif isinstance(key, list):
             for item in key:
                 if "/" in item:
-                    (group, channel) = item.split("/")
+                    group, channel = item.split("/")
                     channels.append(channel)
                     if group not in groups:
                         groups.append(group)
@@ -389,9 +393,9 @@ class TdmsMagnetData(MagnetDataBase):
                     continue
                 defs_unit_str = field_defs[key].get("unit")
                 if defs_unit_str is not None and defs_unit_str != tdms_unit_str:
-                    logger.warning(
+                    logger.info(
                         f"Units: {key} — TDMS embedded unit {tdms_unit_str!r} differs from "
-                        f"defs_file unit {defs_unit_str!r}; overriding with defs_file value -- aka {defs_unit_str!r}"
+                        f"defs_file unit {defs_unit_str!r}; overwriting with defs_file value -- aka {defs_unit_str!r}"
                     )
 
             self.load_units_from_json(resolved, debug=debug)
@@ -434,7 +438,7 @@ class TdmsMagnetData(MagnetDataBase):
             else:
                 group = entry
                 if "/" in entry:
-                    (group, channel) = entry.split("/")
+                    group, channel = entry.split("/")
                     if channel == "t":
                         self.units[entry] = ("t", ureg.second)
                     elif channel == "timestamp":
@@ -467,7 +471,7 @@ class TdmsMagnetData(MagnetDataBase):
         if key in self.units:
             return self.units[key]
 
-        (group, channel) = key.split("/")
+        group, channel = key.split("/")
         logger.debug(
             f"getUnitKey: key={key} - group={group}, channel={channel} (in_units:{key in self.units}, in_Keys:{key in self.Keys})"
         )
@@ -689,7 +693,7 @@ class TdmsMagnetData(MagnetDataBase):
 
         from .magnetdata_base import FieldMeta, _make_ureg
 
-        (group, channel) = key.split("/")
+        group, channel = key.split("/")
         logger.debug(f"add: key={key} - group={group}, channel={channel}")
         self._ensure_group_loaded(group)
 
@@ -912,7 +916,7 @@ class TdmsMagnetData(MagnetDataBase):
         dfs: list[pd.DataFrame] = []
         for item in keys:
             if item != "t":
-                (group, channel) = item.split("/")
+                group, channel = item.split("/")
                 df = self.getTdmsData(group, channel)
                 dfs.append(df)
                 groups.append(group)
@@ -937,7 +941,7 @@ class TdmsMagnetData(MagnetDataBase):
     def extractDataThreshold(
         self, key: str, threshold: float
     ) -> pd.DataFrame:  # noqa: N802
-        (group, channel) = key.split("/")
+        group, channel = key.split("/")
         self._ensure_group_loaded(group)
         return self.Data[group][channel].loc[self.Data[group][channel] >= threshold]  # type: ignore[index]
 
@@ -1064,7 +1068,7 @@ class TdmsMagnetData(MagnetDataBase):
     def saveData(self, keys: list[str], filename: str) -> int:  # noqa: N802
         dfs = []
         for key in keys:
-            (group, channel) = key.split("/")
+            group, channel = key.split("/")
             dfs.append(self.getTdmsData(group, channel))
         df = pd.concat(dfs)
         df.to_csv(filename, sep="\t", index=False, header=True)
@@ -1101,10 +1105,10 @@ class TdmsMagnetData(MagnetDataBase):
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {y} key (valid keys: {self.Keys})"
             )
 
-        (ysymbol, yunit) = self.getUnitKey(y)
-        (ygroup, ychannel) = y.split("/")
+        ysymbol, yunit = self.getUnitKey(y)
+        ygroup, ychannel = y.split("/")
         if "/" in x:
-            (xgroup, xchannel) = x.split("/")
+            xgroup, xchannel = x.split("/")
         else:
             xgroup = ygroup
             xchannel = x
@@ -1149,7 +1153,7 @@ class TdmsMagnetData(MagnetDataBase):
         if yunit is not None:
             plt.ylabel(f"{ysymbol} [{yunit:~P}]")
 
-        (xsymbol, xunit) = self.getUnitKey(x)
+        xsymbol, xunit = self.getUnitKey(x)
         if xunit is not None:
             plt.xlabel(f"{xsymbol} [{xunit:~P}]")
 
@@ -1158,7 +1162,7 @@ class TdmsMagnetData(MagnetDataBase):
 
         logger.info("magnetdata.stats")
         if key is not None:
-            (group, channel) = key.split("/")
+            group, channel = key.split("/")
             self._ensure_group_loaded(group)
             if group in self.Data:
                 if channel in self.Data[group]:  # type: ignore[index]

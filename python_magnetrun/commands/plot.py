@@ -249,7 +249,7 @@ def _parse_display_units(unit_args: list[str] | None) -> dict[str, str] | None:
     result = {}
     for item in unit_args:
         if "=" not in item:
-            logger.warning("--unit %r ignored: expected FIELD=UNIT format", item)
+            logger.warning(f"--unit {item!r} ignored: expected FIELD=UNIT format")
             continue
         field, _, unit_str = item.partition("=")
         result[field.strip()] = unit_str.strip()

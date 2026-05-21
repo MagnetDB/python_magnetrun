@@ -1210,6 +1210,19 @@ See [CHANGELOG.md](CHANGELOG.md) for breaking changes and the to-do list.
 
 ---
 
+## Todos
+
+- [ ] rewrite notes on mounting NAS data
+- [ ] add notes on rclone setup
+- [ ] add installation notes for Windows 11 (without wsl)
+- [ ] create a test for autofs/rclone solution
+- [ ] add Hybrid data plot in analysis
+- [ ] add notebooks demo (Jupyter, Marimo)
+- [ ] starting from analysis, use Overview to cleanup Pupitre data
+- [ ] are there "standalone" pupitre/Overview files
+- [ ] add support for custom npTDMS version with polar support
+- [ ] use narwhals for dataframe
+
 ## Credits
 
 This package was created with
