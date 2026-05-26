@@ -1190,6 +1190,14 @@ class TdmsMagnetData(MagnetDataBase):
         from tabulate import tabulate
 
         logger.info(f"magnetdata: {self.FileName}, Type={self.Type.name}")
+
+        # Display "Infos" group content first
+        if "Infos" in self.Groups:
+            infos = self.Groups["Infos"]
+            info_rows = [[k, v] for k, v in infos.items()]
+            print(tabulate(info_rows, headers=["Key", "Value"], tablefmt="simple"))
+            print()
+
         headers = [
             "Group",
             "Channel",
@@ -1200,11 +1208,9 @@ class TdmsMagnetData(MagnetDataBase):
         ]
         tables = []
         for group, values in self.Groups.items():
+            if group == "Infos":
+                continue
             for item in values:
-                print(
-                    f"info: group={group}, item={item}, values={values[item]}",
-                    flush=True,
-                )
                 if isinstance(values[item], dict | OrderedDict):
                     table = [
                         group,
