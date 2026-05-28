@@ -309,8 +309,11 @@ def add_time_column_with_offset(
         DataFrame with time column added
     """
     return add_time_columns(
-        df, reference_t0, sampling_rate=sampling_rate,
-        timestamp_col=timestamp_col, time_col=time_col,
+        df,
+        reference_t0,
+        sampling_rate=sampling_rate,
+        timestamp_col=timestamp_col,
+        time_col=time_col,
     )
 
 
@@ -584,18 +587,33 @@ def load_hybrid_data(
             base_dir=base_dir, date_str=date_str, housing=record.housing
         )
 
+        frames: list[pd.DataFrame] = []
         for key in hybrid_keys:
-            data, time = hrun.getData(key, hours=hours_list)
+            result = hrun.getData(key, hours=hours_list)
+            if not (isinstance(result, tuple) and len(result) == 2):
+                logger.warning(
+                    f"load_hybrid_data: key={key} did not return (data, time) tuple"
+                )
+                continue
+            data, time = result
             logger.debug(
                 f"Loaded hybrid data for key={key}, data type={type(data)}, time shape={time.shape}"
             )
+            frames.append(pd.DataFrame({"t": time, key: data}))
 
     except (OSError, ValueError, ImportError) as e:
         logger.error(
             f"load_hybrid_data: failed to create HybridRun for {date_str}: {e}"
         )
         return pd.DataFrame()
-    pass
+
+    if not frames:
+        return pd.DataFrame()
+
+    df = frames[0]
+    for frame in frames[1:]:
+        df = pd.merge(df, frame, on="t", how="outer")
+    return df.sort_values("t").reset_index(drop=True)
 
 
 def load_hybrid_incidents_data(
@@ -651,18 +669,14 @@ def _check_overview_end_state(
         if abs(value) <= 10.0:
             continue
         last_overview = record.sources.overview[-1]
-        logger.warning(
-            f"{last_overview}: {key} last value is above 10.0 A: {value}"
-        )
+        logger.warning(f"{last_overview}: {key} last value is above 10.0 A: {value}")
         if "timestamp" in df_overview.columns:
             last_ts = df_overview["timestamp"].iloc[-1]
             last_ts_local = utc_naive_to_local(last_ts, time_zone)
         elif "t" in df_overview.columns:
             start_dt = parse_tdms_filename(last_overview)
             if start_dt is None:
-                logger.warning(
-                    f"Cannot derive end time from {last_overview}, skipping"
-                )
+                logger.warning(f"Cannot derive end time from {last_overview}, skipping")
                 continue
             last_ts_local = start_dt + timedelta(
                 seconds=float(df_overview["t"].iloc[-1])
@@ -716,7 +730,9 @@ def _load_all_sources(
     # Hybrid kHz
     if record.sources.hybrid_kHz:
         logger.info(f"hybrid_kHz={record.sources.hybrid_kHz}")
-        df_hybrid_kHz = load_hybrid_data(record, housing_config, config.group, keys)
+        df_hybrid_kHz = load_hybrid_data(
+            record, housing_config, config.group, keys, htype="kHz"
+        )
         if not df_hybrid_kHz.empty:
             record.data["hybrid_kHz"] = df_hybrid_kHz
         logger.info(
@@ -746,7 +762,9 @@ def _load_all_sources(
         load_hybrid_incidents_data(
             record, housing_config, config.group, keys, reference_t0
         )
-        logger.debug(f"{record.filename}: loaded hybrid incidents reference_t0={reference_t0}")
+        logger.debug(
+            f"{record.filename}: loaded hybrid incidents reference_t0={reference_t0}"
+        )
 
     # Synchronise pupitre
     if config.synchronize and record.has_data("pupitre"):
@@ -816,7 +834,9 @@ def process_overview_file(
     parts = filename.split("_")
     housing = parts[0]
     mode = parts[1] if len(parts) > 1 else "Overview"
-    logger.info(f"Processing {filename} (housing={housing}, mode={mode}), config={config}")
+    logger.info(
+        f"Processing {filename} (housing={housing}, mode={mode}), config={config}"
+    )
 
     if housing_config is None:
         if housing not in HOUSING_CONFIGS:
