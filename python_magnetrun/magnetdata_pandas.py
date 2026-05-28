@@ -28,7 +28,6 @@ from .utils.timezone import (
 logger = logging.getLogger(__name__)
 
 
-
 def _dataframe_keys(df: pd.DataFrame) -> list[str]:
     """Return DataFrame column names normalized to ``list[str]``."""
     return [str(column) for column in df.columns.tolist()]
@@ -88,7 +87,11 @@ class PandasMagnetData(MagnetDataBase):
         return self._data
 
     @Data.setter
-    def Data(self, value: pd.DataFrame) -> None:
+    def Data(self, value: pd.DataFrame | dict) -> None:
+        if isinstance(value, dict):
+            raise ValueError(
+                "Data setter: dict value not supported for PandasMagnetData; expected a pandas DataFrame"
+            )
         self._data = value
 
     # --- lazy loading ------------------------------------------------
@@ -846,7 +849,7 @@ class PandasMagnetData(MagnetDataBase):
                 f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {y} key (valid keys: {self.Keys})"
             )
 
-        (ysymbol, yunit) = self.getUnitKey(y)
+        ysymbol, yunit = self.getUnitKey(y)
 
         assert isinstance(self.Data, pd.DataFrame)
         df: pd.DataFrame = self.Data.copy()
@@ -880,7 +883,7 @@ class PandasMagnetData(MagnetDataBase):
             )
             plt.ylabel(f"{ysymbol} [{yunit:~P}]")
 
-        (xsymbol, xunit) = self.getUnitKey(x)
+        xsymbol, xunit = self.getUnitKey(x)
         if xunit is not None:
             logger.info(
                 f"plotData: xsymbol={xsymbol}, xunit={xunit:~P}, labeling x-axis accordingly"

@@ -141,7 +141,7 @@ class TdmsMagnetData(MagnetDataBase):
         return self._data
 
     @Data.setter
-    def Data(self, value: dict) -> None:
+    def Data(self, value: pd.DataFrame | dict) -> None:
         if isinstance(value, _LazyGroupDict):
             self._data = value
         else:
@@ -1185,7 +1185,9 @@ class TdmsMagnetData(MagnetDataBase):
                 self._ensure_group_loaded(group)
                 logger.info(f"stats[{group}]: ")
                 df = self.Data[group].describe(include="all")  # type: ignore[index]
-                logger.info(tabulate(df, headers="keys", tablefmt="psql"))
+                logger.info(
+                    tabulate(df.values, headers=list(df.columns), tablefmt="psql")
+                )
         return None
 
     def info(self) -> None:
