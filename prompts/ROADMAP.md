@@ -156,6 +156,25 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - Split into `analysis.metrics`, `analysis.plot` sub-namespaces
 - **Effort:** ~1 day
 
+**3.6 Reader/Container Split** ⬜ **PLANNED**
+- Extract format-parsing logic from container classes into dedicated `readers/` subpackage
+- R1: CSV readers (`PupitreReader`, `BProfileReader`, `EnsightReader`, `FeelppReader`)
+- R2: `TdmsReader` extracted from `TdmsMagnetData._fromtdms()`
+- R3: `HtsReader` + `DataType.HTS` (new format: `;` sep, units-in-header)
+- R4: `HybridReader` + `HybridData` joins `MagnetDataBase` (removes `isinstance(HybridData)` branches — **unblocks Phase E**)
+- R5: Reader registry (`READERS` dict + `detect_type()`) + `load_magnetdata()` cleanup
+- Public API unchanged; migration is incremental per phase
+- **See:** [reader-container-refactoring.plan.md](reader-container-refactoring.plan.md)
+- **Effort:** ~S per phase (R4 is M)
+
+**3.7 Pattern Entries in `*-defs.json`** ⬜ **PLANNED**
+- feelpp/paraview data can have 100s of similarly-named columns (`U_0`…`U_239`)
+- Add `"match"` regex key support to `load_units_from_json()` (two-pass: exact first, patterns second)
+- New `feelpp-defs.json` with pattern entries; `FeelppMagnetData` and `SimulationRun` default to it
+- Backward-compatible: existing exact-match JSON files unchanged
+- **See:** Phase H of [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
+- **Effort:** S (~2 hours)
+
 ---
 
 ### Stream 4: Advanced Features (Future)
@@ -167,13 +186,14 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - **See:** [hybriddata-timestamp-plan.md](hybriddata-timestamp-plan.md)
 - **Effort:** ~0.5 days
 
-**4.2 Cross-Domain Comparison (Phases D-G)**
+**4.2 Cross-Domain Comparison (Phases D-G + H)**
 - Phase B-C (adapters): ✅ Done
-- Phase D: Extend `*-defs.json` with simulation/bfield aliases; `KeyMapping` (reuses `field_defs.build_crossref()`)
-- Phase E: `ComparisonSession` implementation
+- **Phase H:** Pattern entries in `*-defs.json` + `feelpp-defs.json` (independent, do any time — see Stream 3.7)
+- Phase D: Extend `*-defs.json` with simulation/bfield aliases; `KeyMapping` (reuses `field_defs.build_crossref()`); cleaner after Stream 3.6 R4
+- Phase E: `ComparisonSession` implementation; cleaner after Stream 3.6 R4 (`HybridData` in hierarchy)
 - Phase F: `magnetrun compare` subcommand via `comparison/cli.py::register()` — wired into the unified `magnetrun` dispatcher (**no** standalone `magnetrun-compare` entry point; see `cli-consolidation.plan.md`)
 - Phase G: Comprehensive tests
-- **Depends on:** HybridData timestamp support; CLI consolidation (Stream 3.3) should land first or in the same branch
+- **Depends on:** HybridData timestamp support; CLI consolidation (Stream 3.3) should land first or in the same branch; Phase E significantly cleaner after Stream 3.6 R4
 - **See:** [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
 - **Effort:** ~2-3 weeks
 
@@ -263,8 +283,13 @@ graph TD
     D[analysis/ Phase 6: Timestamps ✅] --> E[HybridData Timestamp Support]
     E --> F[Cross-Domain Phase D-G]
 
-    G[CI Pipeline] -.-> H[mypy Enabled]
-    H -.-> I[Type Hints Complete]
+    R1[3.6 R1-R3: CSV/TDMS/HTS readers] --> R4[3.6 R4: HybridData in hierarchy]
+    R4 --> F
+
+    H1[3.7 Pattern defs H1-H3] -.independent.-> F
+
+    G[CI Pipeline] -.-> HH[mypy Enabled]
+    HH -.-> I[Type Hints Complete]
 
     J[Quick Wins] -.independent.-> A
     K[Stream 3: Refactoring ✅] -.parallel.-> A
@@ -273,8 +298,9 @@ graph TD
 
 **Critical Path:** Phase 2B → 2C → 2D (unified plotting)
 **Unblocked:** HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) and hybrid/ refactoring are both complete
-**Independent:** Quick wins, logging migration, CLI consolidation, type hints
-**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.5 outlier dedup ✅ · 3.3 CLI consolidation open · 3.4 namespace open
+**Improves Phase E:** Stream 3.6 R4 (`HybridData` joins hierarchy) removes `isinstance` branches — do before Phase E
+**Independent:** Quick wins, logging migration, CLI consolidation, type hints, Stream 3.7 (pattern defs)
+**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.5 outlier dedup ✅ · 3.3 CLI open · 3.4 namespace open · 3.6 reader split open · 3.7 pattern defs open
 
 ---
 

@@ -24,13 +24,18 @@ python_magnetrun/
 ├── runetl.py                # ETL helpers
 ├── outliers.py              # Canonical outlier detection (OutlierConfig, OutlierDetector, OUTLIER_DEFAULTS)
 ├── field_defs.py / housing_config.py  # Config layer
+├── feelpp-defs.json         # (planned Phase H2) pattern-based defs for feelpp/paraview
 ├── cli.py                   # CLI entry point (renamed from python_magnetrun.py)
 ├── cli_args.py / args.py    # CLI argument parsing (create_outlier_parser, args_to_outlier_config)
 ├── commands/                # Modular CLI subcommands
 ├── analysis/                # Analysis pipeline
+├── readers/                 # (planned Stream 3.6) pure I/O readers — one class per format
 ├── hybrid/                  # FEPC kHz/RMS/Trigger data (outliers.py is a backward-compat shim)
 ├── processing/              # Signal processing (signal.py: normalize_signal, binarize_signal, _otsu_threshold)
 ├── plotting/                # Plotting backends & utilities
+├── simulation/              # SimulationRun adapter (Phase B done)
+├── bfield/                  # BFieldRun adapter (Phase C done)
+├── comparison/              # (planned Phases D-G) ComparisonSession, KeyMapping, CLI
 ├── utils/ / runlogs/ / requests/ / configAlims/
 ```
 
@@ -230,6 +235,41 @@ def plot_data(
 | `processing/hysteresis.py::_VALID_METHODS` | `"isolation_forest"` added | Delegates through to canonical module |
 | `tests/test_processing.py` | Error-message regex updated | `"method must be one of"` (new wording) |
 
+#### 3.6 Reader/Container Split 🔴 OPEN
+
+**Goal:** Extract format-parsing logic from container classes into a `readers/` subpackage.
+Public API unchanged; migration is incremental.
+
+**See:** [reader-container-refactoring.plan.md](reader-container-refactoring.plan.md)
+
+| Phase | Task | Status | Effort |
+|-------|------|--------|--------|
+| R1 | CSV readers extracted from `magnetdata_pandas.py` factory methods | 🔴 Open | S |
+| R2 | `TdmsReader` extracted from `TdmsMagnetData._fromtdms()` | 🔴 Open | S |
+| R3 | `HtsReader` + `DataType.HTS = 4` (new format: `;` sep, units-in-header) | 🔴 Open | S |
+| R4 | `HybridReader` (composite) + `HybridData` joins `MagnetDataBase` hierarchy | 🔴 Open | M |
+| R5 | Reader registry + `load_magnetdata()` uses registry | 🔴 Open | S |
+
+**Key payoff of R4:** removes 4 `NotImplementedError` stubs in `HybridData`; removes all
+`isinstance(data, HybridData)` branches in `processing.py` and plotting code; unblocks Phase E
+by making `HybridData` a proper first-class `MagnetDataBase` subclass.
+
+#### 3.7 Pattern Entries in `*-defs.json` 🔴 OPEN
+
+**Goal:** Allow one JSON entry to cover hundreds of similarly-named columns (`U_0`…`U_239`)
+via a `"match"` regex key. Scoped to `feelpp-defs.json`; pupitre/pigbrother defs unchanged.
+
+**See:** Phase H of [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
+
+| Step | Task | Status | Effort |
+|------|------|--------|--------|
+| H1 | Two-pass `load_units_from_json()` in `magnetdata_base.py` | 🔴 Open | S |
+| H2 | New `python_magnetrun/feelpp-defs.json` with `U_\d+`, `T_\d+` patterns | 🔴 Open | S |
+| H3 | `FeelppMagnetData.fromfeelpp()` + `SimulationRun.from_feelpp()` default to `feelpp-defs.json` | 🔴 Open | S |
+| H4 | Optional `--match` flag on `field add` CLI subcommand | 🔴 Open | S |
+
+**Independent of all other phases** — can be done any time.
+
 #### 3.4 `analysis/__init__.py` Namespace 🔴 OPEN
 
 **Issue:** 80+ names exported flat
@@ -284,12 +324,13 @@ def plot_data(
 - ✅ Phase A0-A3: Protocol extension (commit `de9f374`)
 - ✅ Phase B: `SimulationRun` adapter (commit `fd83fe5`, `simulation/simulation_run.py`)
 - ✅ Phase C: `BFieldRun` adapter (commit `fd83fe5`, `bfield/bfield_run.py`)
-- 🔴 Phase D: Extend `*-defs.json` with simulation/bfield aliases
-- 🔴 Phase E: `ComparisonSession` implementation
-- 🔴 Phase F: `magnetrun-compare` CLI
+- 🔴 Phase H: Pattern entries in `*-defs.json` + `feelpp-defs.json` (independent — see Stream 3.7)
+- 🔴 Phase D: Extend `*-defs.json` with simulation/bfield aliases; `KeyMapping` — cleaner after R4
+- 🔴 Phase E: `ComparisonSession` — cleaner after Stream 3.6 R4 (`HybridData` in hierarchy)
+- 🔴 Phase F: `magnetrun compare` CLI
 - 🔴 Phase G: Comprehensive tests
 
-**Dependencies:** HybridData timestamp support
+**Dependencies:** HybridData timestamp support; Phase E significantly cleaner after Stream 3.6 R4
 **See:** [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
 **Effort:** ~2-3 weeks
 
@@ -498,8 +539,11 @@ def plot_data(
 10. ~~**hybrid/ refactoring**~~ — ✅ Done (all 6 phases; see Stream 3.2)
 11. **CLI consolidation** (~1-2 days; `analysis/cli.py` decomposition done)
 12. **HybridData timestamp support** (~0.5 days; now unblocked)
-13. **Cross-domain Phases D-G** (~2-3 weeks)
-14. **Type hints backfill** (ongoing)
+13. **Pattern entries in `*-defs.json`** (~2 hours; independent — do any time; see Stream 3.7)
+14. **Reader/container split R1–R3** (~S each; independent — no behaviour change)
+15. **Reader/container split R4** (`HybridData` hierarchy; ~M; do before Phase E)
+16. **Cross-domain Phases H, D, E, F, G** (~2-3 weeks; H first as it's independent)
+17. **Type hints backfill** (ongoing)
 
 ---
 
@@ -543,13 +587,18 @@ def plot_data(
 **HybridData timestamps** blocks:
 - Cross-domain Phase E (`ComparisonSession`)
 
+**Stream 3.6 R4 (`HybridData` in hierarchy)** significantly simplifies:
+- Cross-domain Phase E — removes `isinstance(data, HybridData)` branches
+- `HybridRun` delegation — inherits `addData`/`saveData`/`computeData` for free
+
 **No blockers for:**
 - Quick wins
 - CI/CD pipeline
 - Logging migration
 - Type hints backfill
 - HybridData timestamp support (analysis/ Phase 6 done)
-- hybrid/ refactoring (3.2 — outlier dedup done; `OutlierConfig` wrapper is next)
+- Stream 3.6 R1–R3 (CSV/TDMS/HTS readers — additive, no behaviour change)
+- Stream 3.7 Phase H (pattern entries — fully independent)
 - CLI consolidation (3.3; analysis/cli.py decomposition already done)
 
 ---

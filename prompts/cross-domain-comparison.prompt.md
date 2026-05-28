@@ -22,6 +22,7 @@ simulation data (feelpp, ensight, magnettools), and magnetic field measurements
 | `getDomain()` added to `DataLoader` protocol | `hybrid/data_protocol.py` | **Done** — added to protocol |
 | `MagnetRun.get_time_range()` delegation wrapper | `MagnetRun.py` | **Done** — delegates to `self.MagnetData.get_time_range()` |
 | `getDomain()` on `MagnetRun` and `HybridRun` | `MagnetRun.py`, `hybrid/hybrid_run.py` | **Done** — both return `"operational"` |
+| `HybridData` inherits `MagnetDataBase` | `hybrid/hybrid_data.py` — reader/container split Phase R4 | 🔴 Open — unblocks Phase E (removes `isinstance` branches) |
 
 ---
 
@@ -594,8 +595,11 @@ Use synthetic DataFrames (no real files) for all tests except CLI smoke tests.
 | `python_magnetrun/comparison/key_mapping.py` | `KeyMapping` resolver (Phase D) | 🔴 Open |
 | `python_magnetrun/comparison/session.py` | ComparisonSession | 🔴 Open |
 | `python_magnetrun/comparison/cli.py` | `magnetrun-compare` CLI | 🔴 Open |
+| `python_magnetrun/readers/` | Reader/container split subpackage (Phase R) | 🔴 Open |
+| `python_magnetrun/feelpp-defs.json` | Pattern-based field defs for feelpp/paraview (Phase H2) | 🔴 Open |
 | `tests/test_protocol.py` | Protocol compliance tests | ✅ Done |
 | `tests/test_comparison.py` | ComparisonSession unit tests | 🔴 Open |
+| `tests/readers/` | Unit tests for reader classes (Phase R) | 🔴 Open |
 
 ## Files to modify
 
@@ -604,7 +608,11 @@ Use synthetic DataFrames (no real files) for all tests except CLI smoke tests.
 | `python_magnetrun/hybrid/data_protocol.py` | Add `getDomain()` to `DataLoader` protocol | ✅ Done |
 | `python_magnetrun/hybrid/hybrid_run.py` | Add `getDomain() → "operational"` | ✅ Done |
 | `python_magnetrun/MagnetRun.py` | Add `get_time_range()` delegation + `getDomain() → "operational"` | ✅ Done |
-| `python_magnetrun/magnetdata_base.py` | No change needed | ✅ N/A |
+| `python_magnetrun/magnetdata_base.py` | `load_units_from_json()` two-pass pattern support (Phase H1); add `DataType.HTS` (Phase R3) | 🔴 Open |
+| `python_magnetrun/hybrid/hybrid_data.py` | Inherit `MagnetDataBase`; remove `NotImplementedError` stubs (Phase R4) | 🔴 Open |
+| `python_magnetrun/magnetdata_pandas.py` | Factory methods delegate to readers (Phase R1) | 🔴 Open |
+| `python_magnetrun/magnetdata_tdms.py` | `_fromtdms()` delegates to `TdmsReader` (Phase R2) | 🔴 Open |
+| `python_magnetrun/magnetdata.py` | `load_magnetdata()` uses reader registry (Phase R5) | 🔴 Open |
 | `python_magnetrun/analysis/config.py` | **No change** — `CHANNEL_ALIASES` is not added here (see Phase D revision) | ✅ N/A |
 | `pupitre-defs.json`, `pigbrother-defs.json`, `hybrid-defs.json` | Add `"simulation"` and `"bfield"` alias entries (Phase D0) | 🔴 Open |
 | `python_magnetrun/main.py` | Add `from .comparison.cli import register as _r_cmp; _r_cmp(sub)` (Phase F) | 🔴 Open |
@@ -615,6 +623,11 @@ Use synthetic DataFrames (no real files) for all tests except CLI smoke tests.
 ## Implementation order
 
 ```
+Phase H  (pattern defs)      ← 🔴 open; independent, do any time
+Phase R1 (CSV readers)       ← 🔴 open; independent of D–G, no behaviour change
+Phase R2 (TdmsReader)        ← 🔴 open; independent of D–G
+Phase R3 (HtsReader)         ← 🔴 open; additive only (new DataType)
+Phase R4 (HybridData)        ← 🔴 open; unblocks E — removes isinstance(HybridData) branches
 Phase A0 (remove DataProvider duplication)   ← ✅ done
 Phase A1 (extend DataLoader protocol)        ← ✅ done
 Phase A2 (add getDomain/get_time_range to    ← ✅ done
@@ -622,10 +635,97 @@ Phase A2 (add getDomain/get_time_range to    ← ✅ done
 Phase A3 (protocol compliance tests)         ← ✅ done
 Phase B  (SimulationRun)                     ← ✅ done
 Phase C  (BFieldRun)                         ← ✅ done
-Phase D  (KeyMapping)                        ← 🔴 open; independent of E/F but needed for E
-Phase E  (ComparisonSession)                 ← 🔴 open; requires A, B, C, D
+Phase D  (KeyMapping)                        ← 🔴 open; independent of E/F but needed for E; cleaner after R4
+Phase E  (ComparisonSession)                 ← 🔴 open; requires A, B, C, D; cleaner after R4
 Phase F  (CLI)                               ← 🔴 open; requires E
 Phase G  (tests/test_comparison.py)          ← 🔴 open; finalize with F
+Phase R5 (reader registry cleanup)           ← 🔴 open; last, after R1–R4 all pass tests
+```
+
+---
+
+## Phase H — Pattern entries in `*-defs.json`
+
+**Motivation:** feelpp/paraview simulation data may have hundreds of similarly-named
+columns (`U_0`…`U_239`, `T_0`…`T_239`). Listing all as exact entries in a defs JSON
+is impractical. A `"match"` key in an entry allows one definition to cover all matching
+column names via regex.
+
+Scoping: pattern entries live only in format-specific defs files (e.g. `feelpp-defs.json`).
+`pupitre-defs.json` and `pigbrother-defs.json` keep exact entries unchanged.
+
+### H1 — Two-pass `load_units_from_json()` in `magnetdata_base.py`
+
+**File:** `python_magnetrun/magnetdata_base.py`
+
+```python
+import re
+
+exact_defs, pattern_defs = {}, []
+for key, defn in field_defs.items():
+    if key.startswith("_"):
+        continue
+    if "match" in defn:
+        pattern_defs.append((re.compile(defn["match"]), defn))
+    else:
+        exact_defs[key] = defn
+
+# Pass 1: exact matches (current behaviour, unchanged)
+for key, defn in exact_defs.items():
+    if key in self.Keys:
+        _apply_defn(key, defn)
+
+# Pass 2: regex patterns for columns not yet matched
+for col in self.Keys:
+    if col in self.units:
+        continue
+    for pattern, defn in pattern_defs:
+        if pattern.fullmatch(col):
+            _apply_defn(col, defn)
+            break
+```
+
+Backward-compatible: existing exact-match JSON files work unchanged.
+Exact entries always take priority over patterns.
+
+### H2 — Create `feelpp-defs.json`
+
+**File:** `python_magnetrun/feelpp-defs.json`
+
+```json
+{
+  "_comment": "Field definitions for Feel++ / ParaView simulation output. Pattern entries (match key) cover indexed column families.",
+  "t": { "symbol": "t", "unit": "second", "description": "Simulation time" },
+  "U_n": { "match": "^U_\\d+$", "symbol": "U", "unit": "volt",  "description": "Voltage at helix node" },
+  "T_n": { "match": "^T_\\d+$", "symbol": "T", "unit": "degC",  "description": "Temperature at node" }
+}
+```
+
+### H3 — Wire `feelpp-defs.json` into `FeelppMagnetData` and `SimulationRun`
+
+- `FeelppMagnetData.fromfeelpp()` (`magnetdata_pandas.py`): change `defs_file` default from `None` to `"feelpp-defs.json"`
+- `SimulationRun.from_feelpp()` (`simulation/simulation_run.py`): pass `defs_file="feelpp-defs.json"` through to `FeelppMagnetData`
+
+### H4 — `add_field_def()` CLI support for pattern entries
+
+**File:** `python_magnetrun/field_defs.py`
+
+Add optional `--match` argument to the `field add` subcommand so pattern entries can be
+created and managed via CLI without hand-editing JSON.
+
+### Dependencies
+
+H1 and H2 are fully independent. H3 requires Phase B (`SimulationRun`) — already done.
+H4 is a CLI convenience, not a blocker.
+
+### Verification
+
+```python
+md = FeelppMagnetData.fromfeelpp("tests/data/sample_feelpp.csv")  # has U_0…U_99
+md.Units()
+assert "U_0"  in md.units
+assert "U_99" in md.units
+assert md.units["U_0"][1] == ureg.volt
 ```
 
 ---

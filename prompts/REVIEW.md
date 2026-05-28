@@ -32,6 +32,7 @@ Overall the layering is sensible: ABC → implementations → session wrapper �
 
 ## Class Hierarchy
 
+**Current:**
 ```
 MagnetDataBase (ABC)
 ├── PandasMagnetData
@@ -40,10 +41,33 @@ MagnetDataBase (ABC)
 │   └── FeelppMagnetData
 └── TdmsMagnetData
 
+HybridData                  ← standalone (NOT in hierarchy); 4 NotImplementedError stubs
+
 load_magnetdata(filename)   ← standalone factory (magnetdata.py)
 
 MagnetRun                   ← owns a MagnetDataBase instance, uses load_magnetdata
-HybridRun                   ← mirrors MagnetRun by convention, not contract
+HybridRun                   ← satisfies DataLoader protocol
+```
+
+**Target (after reader/container split Phase R4):**
+```
+MagnetDataBase (ABC)
+├── PandasMagnetData
+│   ├── EnsightMagnetData   (may be dissolved — just PandasMagnetData + EnsightReader)
+│   ├── BProfileMagnetData  (may be dissolved — just PandasMagnetData + BProfileReader)
+│   └── FeelppMagnetData    (may be dissolved — just PandasMagnetData + FeelppReader)
+├── TdmsMagnetData
+└── HybridData              ← joins hierarchy; inherits addData/saveData/computeData
+
+readers/ subpackage         ← new; pure I/O, no data manipulation
+  PupitreReader, BProfileReader, EnsightReader, FeelppReader, CsvReader
+  TdmsReader, HtsReader, HybridReader (composite)
+  registry.py: READERS dict + detect_type()
+
+load_magnetdata(filename)   ← uses reader registry (magnetdata.py)
+
+MagnetRun                   ← unchanged
+HybridRun                   ← unchanged; HybridData hierarchy fix removes isinstance branches
 ```
 
 ---
@@ -210,6 +234,8 @@ and `tests/test_hybrid_formula_resolution.py`.
 | `HybridData` timestamp support | Pending (prerequisite `analysis/` Phase 6 is now done) |
 | Cross-domain comparison (`DataLoader` extension, Phase A0–A3) | Done |
 | Cross-domain comparison (Phases D–G: `ComparisonSession`, adapters, CLI) | Pending (Phases B–C done) |
+| Reader/container split (`readers/` subpackage, Phases R1–R5) | Pending — see `reader-container-refactoring.plan.md` |
+| Pattern entries in `*-defs.json` + `feelpp-defs.json` (Phase H) | Pending — extends cross-domain plan |
 | Downsampling refactoring (`DownsampleConfig`, shared module) | Done — see `downsampling-refactoring.plan.md` |
 | Plotting refactoring (`plotting/` subpackage, backend protocol) | Done — see `plotting-refactoring.plan.md` or `holoviews-migration.plan.md` for alternative |
 | `analysis/` internal refactoring (data loading, channel mapping, decomposition) | Done — see `analysis-subpackage-refactoring.plan.md` |
@@ -421,3 +447,24 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     | G | `tests/test_comparison.py` |
 
 12. **Editor backup file** *(done)* — `pigbrother-defs.json~` removed; `*.json~` added to `.gitignore`.
+
+15. **Reader/container split** *(effort: M per phase, independent)* — format-parsing logic (sep, skiprows, encoding)
+    is fused into factory classmethods of container classes, making `magnetdata_pandas.py` and
+    `magnetdata_tdms.py` ~1000+ lines. Extracting a `readers/` subpackage:
+    - R1: `PupitreReader`, `BProfileReader`, `EnsightReader`, `FeelppReader` from `magnetdata_pandas.py`
+    - R2: `TdmsReader` from `TdmsMagnetData._fromtdms()` / `magnetdata.py`
+    - R3: `HtsReader` + `DataType.HTS = 4` (new format, `;` sep, units-in-header)
+    - R4: `HybridReader` (composite) + `HybridData` joins `MagnetDataBase` hierarchy — removes 4 `NotImplementedError` stubs and all `isinstance(data, HybridData)` branches in callers
+    - R5: reader registry (`READERS` dict + `detect_type()`); `load_magnetdata()` uses it
+
+    **Full plan:** [`reader-container-refactoring.plan.md`](reader-container-refactoring.plan.md)
+
+16. **Pattern entries in `*-defs.json`** *(effort: S)* — feelpp/paraview data may have hundreds of
+    similarly-named columns (`U_0`…`U_239`). A `"match"` regex key in a defs entry allows one
+    definition to cover all matching column names via `fullmatch()` in `load_units_from_json()`.
+    - H1: two-pass `load_units_from_json()` in `magnetdata_base.py`
+    - H2: new `feelpp-defs.json` with `U_\d+`, `T_\d+` pattern entries
+    - H3: `FeelppMagnetData.fromfeelpp()` and `SimulationRun.from_feelpp()` default to `feelpp-defs.json`
+    - H4: optional `--match` flag on `field add` CLI subcommand
+
+    **Full plan:** Phase H of [`cross-domain-comparison.prompt.md`](cross-domain-comparison.prompt.md)
