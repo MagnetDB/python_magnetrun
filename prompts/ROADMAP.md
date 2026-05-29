@@ -76,11 +76,34 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 
 **Phase 2B: Time Alignment Layer** 🔶 **PARTIAL**
 
-Current gaps:
-- kHz/RMS uses seconds-from-day-start → needs UTC timestamp conversion on load
-- Need `align_to_common_time(sources: list[DataLoader])` utility for multi-source sync
+**How t0 works per source:**
+- **Pupitre** (`MagnetRun.from_txt`): header timestamp is local time → `local_to_utc_naive()` → `StartTime` = naive UTC. `get_time_range()` returns `(StartTime, StartTime + duration)`.
+- **Pigbrother** (`MagnetRun.fromtdms`): `wf_start_time` TDMS property is already UTC → `ensure_utc_naive()` → `StartTime` = naive UTC. `get_time_range()` reads `wf_start_time` directly.
+- **Hybrid kHz**: `compute_hour_t0(first_bin_file, date_str)` extracts `HH` from filename prefix, combines with directory date, converts to Unix UTC timestamp. `getData()` returns elapsed seconds from this t0 — but **t0 is not exposed to callers**. `HybridRun.get_time_range()` currently returns start-of-day naive datetime (no file lookup).
+- **Hybrid RMS**: internal datetime index is available but discarded; `getData()` returns relative seconds only.
 
-**Effort:** ~1-2 weeks
+A working alignment prototype exists in `examples/plot_hybrid_with_pupitre_tdms.py`, using seconds-from-midnight as common x-axis with per-source `(source_t0 - reference_t0)` offsets.
+
+**Remaining tasks:**
+
+1. **Confirm timezone of kHz filenames** *(pending FEPC designer input)*
+   - `compute_hour_t0` currently treats `HH` as Europe/Paris local time and converts to UTC.
+   - If `HH` is already UTC, remove the `ZoneInfo('Europe/Paris')` conversion in `fepc_reader.py:compute_hour_t0`.
+
+2. **Fix `HybridRun.get_time_range()`**
+   - Derive t0 from first available kHz bin file (hour 00, or first filtered hour if `hours` specified), not from start-of-day.
+   - Return `(t0_utc, last_file_hour_end_utc)` as naive UTC datetimes, consistent with pupitre/pigbrother.
+
+3. **Expose RMS absolute timestamps**
+   - In `HybridData.read_rms_variable()`, preserve the datetime index origin instead of discarding it.
+
+4. **Implement `align_to_common_time(sources: list[DataLoader])`**
+   - Use `source.get_time_range()[0]` (naive UTC) as each source's t0.
+   - Compute `offset = (source_t0 - min_t0).total_seconds()`.
+   - Return aligned time arrays: `source_time + offset` for each source.
+   - Blocked by tasks 1–3 above.
+
+**Effort:** ~1 week (after timezone confirmation)
 
 **Phase 2C: Extend `plot_data()` for Hybrid** ⬜ **PLANNED**
 
