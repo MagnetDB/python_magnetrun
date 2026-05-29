@@ -167,6 +167,33 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - **See:** [reader-container-refactoring.plan.md](reader-container-refactoring.plan.md)
 - **Effort:** ~S per phase (R4 is M)
 
+**3.8 Downsampling Extensions** ⬜ **PLANNED**
+
+Three incremental additions to `utils/downsampling.py`; all phases are **S** effort; no structural changes to callers.
+
+*3.8a — M4 / NaN-M4* (`m4-downsampling.plan.md`)
+- Add `m4` method (4 aggregates per bucket: first/last/min/max — pixel-perfect line chart)
+- Add `nan_m4` method (same, but NaN-aware — gaps preserved; bypasses the NaN-strip path)
+- Uses `M4Downsampler` / `NaNM4Downsampler` already in `tsdownsample`; no new dependency
+- Recommended order: M4 → tests → NaN-M4 → tests → CLI surface (`DOWNSAMPLE_METHODS`)
+- **See:** [m4-downsampling.plan.md](m4-downsampling.plan.md) — **Effort: S+S+S+S**
+
+*3.8b — RDP / Visvalingam-Whyatt* (`rdp-downsampling.plan.md`)
+- Add `rdp` and `vw` geometry-based methods: more points on ramps, fewer on plateaus
+- Adds `epsilon: float | None = None` field to `DownsampleConfig` (also adds `from_n_out_rdp()` binary-search factory)
+- New optional dependency: `simplification>=0.7` (Rust-backed) in `[project.optional-dependencies] rdp`
+- Do after 3.8a so `DownsampleConfig` field change lands in one commit
+- **See:** [rdp-downsampling.plan.md](rdp-downsampling.plan.md) — **Effort: S+S+S+S**
+
+*3.8c — Downsampling Quality Metrics* (`downsampling-metrics.plan.md`)
+- New `utils/downsampling_metrics.py` with `DownsampleMetrics` dataclass (RMSE, MAE, max error, MAPE, Hausdorff, peak error, energy ratio, timing, memory)
+- `evaluate_downsampling(data, time, config)` + `benchmark_configs(configs)` comparison table
+- Segment-aware metrics (plateau vs transition RMSE via existing `binarize_signal`)
+- 3-tier memory measurement: `tracemalloc` (Tier 1, stdlib), subprocess RSS (Tier 2), `memray` (Tier 3, optional)
+- Can be written before M4/RDP (works with existing `stride`/`minmax`); more useful after them
+- New optional dependency: `benchmark = ["memray>=1.0", "psutil>=5.9", "scipy>=1.9"]`
+- **See:** [downsampling-metrics.plan.md](downsampling-metrics.plan.md) — **Effort: S+S+M+S+S**
+
 **3.7 Pattern Entries in `*-defs.json`** ⬜ **PLANNED**
 - feelpp/paraview data can have 100s of similarly-named columns (`U_0`…`U_239`)
 - Add `"match"` regex key support to `load_units_from_json()` (two-pass: exact first, patterns second)
@@ -197,6 +224,15 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - **See:** [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
 - **Effort:** ~2-3 weeks
 
+**4.5 TDMS Export**
+- `PandasMagnetData.to_tdms()` — export pupitre data resampled to 1 Hz; group/channel mapping via `_tdms_groups` key in `pupitre-defs.json`; deduplication of repeated timestamps in `addTime()`
+- `HybridData.to_rms_tdms()` + `to_khz_tdms()` — export RMS and kHz hybrid data; group mapping via `_tdms_groups_rms` / `_tdms_groups_khz` in `hybrid-defs.json`; fallback group per FEPC system for unassigned channels
+- **Prerequisite:** `HybridData.field_meta` initialisation bug (missing `self.field_meta = {}` in `__init__`) — fixed for free by Stream 3.6 R4 (`HybridData` joins `MagnetDataBase`); can also be patched independently in one line
+- Reuses existing `nptdms` (already a dependency); channel names derived from `aliases.pigbrother` when available
+- **See:** [pupitre_to_tdms_export.md](pupitre_to_tdms_export.md), [hybrid_to_tdms_export.md](hybrid_to_tdms_export.md)
+- **Effort:** M (pupitre) + M (hybrid RMS) + M (hybrid kHz)
+- **Independent of Phases D–G** — can be done any time after `addTime()` is stable
+
 **4.3 Pipeline Redesign (polars/narwhals)**
 - Custom npTDMS with polars backend
 - narwhals wrapping for framework-agnostic API
@@ -224,7 +260,7 @@ Priority items that provide immediate value with minimal effort:
 | Fix bare `except:` clauses | 30 min | High reliability gain | ✅ Done |
 | Add `ruff` pre-commit hook | 1 hour | Enforces consistency | ✅ Done |
 | File validation infrastructure | 4 hours | Early error detection | ✅ Done |
-| Add assertions to `test_python_magnetrun.py` | 30 min | Makes CI meaningful | ⬜ Open |
+| Add assertions to `test_python_magnetrun.py` | 30 min | Makes CI meaningful | ✅ Done |
 | Remove `pigbrother-defs.json~` | 5 min | Clean repository | ✅ Done |
 | Add `*.json~` to `.gitignore` | 2 min | Prevent future backups | ✅ Done |
 | Audit TODOs in `requests/cli.py` (rename site→housing, geometry, Parts) | 15 min | Polish | ⬜ Open |
@@ -285,6 +321,7 @@ graph TD
 
     R1[3.6 R1-R3: CSV/TDMS/HTS readers] --> R4[3.6 R4: HybridData in hierarchy]
     R4 --> F
+    R4 -.fixes field_meta bug.-> T[4.5 TDMS Export]
 
     H1[3.7 Pattern defs H1-H3] -.independent.-> F
 
@@ -299,8 +336,8 @@ graph TD
 **Critical Path:** Phase 2B → 2C → 2D (unified plotting)
 **Unblocked:** HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) and hybrid/ refactoring are both complete
 **Improves Phase E:** Stream 3.6 R4 (`HybridData` joins hierarchy) removes `isinstance` branches — do before Phase E
-**Independent:** Quick wins, logging migration, CLI consolidation, type hints, Stream 3.7 (pattern defs)
-**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.5 outlier dedup ✅ · 3.3 CLI open · 3.4 namespace open · 3.6 reader split open · 3.7 pattern defs open
+**Independent:** Quick wins, logging migration, CLI consolidation, type hints, Stream 3.7 (pattern defs), Stream 3.8a/b/c (downsampling extensions — all additive)
+**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.5 outlier dedup ✅ · 3.3 CLI open · 3.4 namespace open · 3.6 reader split open · 3.7 pattern defs open · 3.8 downsampling extensions open
 
 ---
 

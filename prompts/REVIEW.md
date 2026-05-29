@@ -236,6 +236,11 @@ and `tests/test_hybrid_formula_resolution.py`.
 | Cross-domain comparison (Phases D–G: `ComparisonSession`, adapters, CLI) | Pending (Phases B–C done) |
 | Reader/container split (`readers/` subpackage, Phases R1–R5) | Pending — see `reader-container-refactoring.plan.md` |
 | Pattern entries in `*-defs.json` + `feelpp-defs.json` (Phase H) | Pending — extends cross-domain plan |
+| TDMS export (`PandasMagnetData.to_tdms()`) | Pending — see `pupitre_to_tdms_export.md` |
+| TDMS export (`HybridData.to_rms_tdms()` + `to_khz_tdms()`) | Pending — see `hybrid_to_tdms_export.md`; requires `field_meta` fix |
+| M4 / NaN-M4 downsampling methods | Pending — see `m4-downsampling.plan.md`; no new dep |
+| RDP / Visvalingam-Whyatt downsampling methods | Pending — see `rdp-downsampling.plan.md`; adds `epsilon` to `DownsampleConfig`; new `[rdp]` extras |
+| Downsampling quality metrics (`DownsampleMetrics`, `benchmark_configs`) | Pending — see `downsampling-metrics.plan.md`; new `[benchmark]` extras |
 | Downsampling refactoring (`DownsampleConfig`, shared module) | Done — see `downsampling-refactoring.plan.md` |
 | Plotting refactoring (`plotting/` subpackage, backend protocol) | Done — see `plotting-refactoring.plan.md` or `holoviews-migration.plan.md` for alternative |
 | `analysis/` internal refactoring (data loading, channel mapping, decomposition) | Done — see `analysis-subpackage-refactoring.plan.md` |

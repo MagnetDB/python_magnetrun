@@ -93,7 +93,7 @@ HybridRun                   ← satisfies DataLoader protocol
 | `tests/test_hybrid_formula_resolution.py` | ✅ Done | 5 test cases for `HybridRun.getData` formula keys (mocked) |
 | `tests/test-vprocess.py` | ✅ Done | 496 lines; vprocess reader integration tests |
 | `tests/test-cfg-parser.py` | ✅ Done | 135 lines; config parser tests |
-| `test_python_magnetrun.py` assertions | 🔴 Open | Legacy test file has 0 assertions |
+| `test_python_magnetrun.py` assertions | ✅ Done | 7 assertions: `__version__`, `__author__`, `__email__`, `load_magnetdata`, `HousingConfig`, `MagnetRun` |
 | CI pipeline (GitHub Actions) | ✅ Done | `test.yml` (pytest, Ubuntu 3.11–3.14 + Debian Trixie, Codecov) + `docs.yml` already in `.github/workflows/` |
 
 ---
@@ -254,6 +254,49 @@ Public API unchanged; migration is incremental.
 `isinstance(data, HybridData)` branches in `processing.py` and plotting code; unblocks Phase E
 by making `HybridData` a proper first-class `MagnetDataBase` subclass.
 
+#### 3.8 Downsampling Extensions 🔴 OPEN
+
+Three independent additions to `utils/downsampling.py`. All phases are **S** effort. No changes needed in callers (`magnetdata_pandas.py`, `magnetdata_tdms.py`, `analysis/processing.py`, `hybrid/hybrid_run.py`).
+
+**See:** [m4-downsampling.plan.md](m4-downsampling.plan.md), [rdp-downsampling.plan.md](rdp-downsampling.plan.md), [downsampling-metrics.plan.md](downsampling-metrics.plan.md)
+
+##### 3.8a — M4 / NaN-M4
+
+| Phase | Task | Status |
+|-------|------|--------|
+| 1 | Add `m4` branch to `_downsample_indices`; import `M4Downsampler` from `tsdownsample` | 🔴 Open |
+| 2 | Add `nan_m4` early-exit in `downsample_arrays` + `downsample_dataframe` (bypasses NaN-strip path) | 🔴 Open |
+| 3 | Add `'m4'`, `'nan_m4'` to `DOWNSAMPLE_METHODS` in `cli_args.py` | 🔴 Open |
+| 4 | `tests/test_downsampling.py` — 8 new test cases | 🔴 Open |
+
+No new dependency: `M4Downsampler` / `NaNM4Downsampler` already in `tsdownsample`.
+
+##### 3.8b — RDP / Visvalingam-Whyatt
+
+| Phase | Task | Status |
+|-------|------|--------|
+| 1 | Add `epsilon: float \| None = None` to `DownsampleConfig`; add `rdp`/`vw` dispatch + `from_n_out_rdp()` binary-search factory | 🔴 Open |
+| 2 | Add `rdp = ["simplification>=0.7"]` to `pyproject.toml` extras | 🔴 Open |
+| 3 | Add `'rdp'`, `'vw'` to `DOWNSAMPLE_METHODS`; pass `epsilon` from CLI JSON params | 🔴 Open |
+| 4 | `tests/test_downsampling.py` — 9 new test cases | 🔴 Open |
+
+**Recommended:** land after 3.8a so the `DownsampleConfig` field change is in one commit.
+New optional dep: `simplification>=0.7` (Rust-backed polyline simplification).
+
+##### 3.8c — Downsampling Quality Metrics
+
+| Phase | Task | Status |
+|-------|------|--------|
+| 1 | New `utils/downsampling_metrics.py` — `DownsampleMetrics` dataclass + `evaluate_downsampling()` with 3-tier memory measurement | 🔴 Open |
+| 2 | `benchmark_configs(data, time, configs) → pd.DataFrame` comparison table | 🔴 Open |
+| 3 | Segment-aware metrics (`evaluate_downsampling_segments`) — plateau vs transition RMSE via existing `binarize_signal` | 🔴 Open |
+| 4 | CLI: `--benchmark-downsample` flag wired into `analysis/processing.py` | 🔴 Open |
+| 5 | `tests/test_downsampling_metrics.py` — 17 test cases | 🔴 Open |
+
+Memory measurement tiers: Tier 1 `tracemalloc` (stdlib, default), Tier 2 subprocess RSS (`resource`, stdlib, Unix), Tier 3 `memray` (optional, Linux/macOS, captures Rust/C heap).
+New optional dep group: `benchmark = ["memray>=1.0", "psutil>=5.9", "scipy>=1.9"]`.
+Can be written before 3.8a/b (works with existing `stride`/`minmax`); fully meaningful after them.
+
 #### 3.7 Pattern Entries in `*-defs.json` 🔴 OPEN
 
 **Goal:** Allow one JSON entry to cover hundreds of similarly-named columns (`U_0`…`U_239`)
@@ -333,6 +376,47 @@ via a `"match"` regex key. Scoped to `feelpp-defs.json`; pupitre/pigbrother defs
 **Dependencies:** HybridData timestamp support; Phase E significantly cleaner after Stream 3.6 R4
 **See:** [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
 **Effort:** ~2-3 weeks
+
+#### 4.5 TDMS Export 🔴 OPEN
+
+**Goal:** Enable saving pupitre and hybrid data as TDMS files compatible with `TdmsMagnetData` (pigbrother format), for archival and round-trip re-reading via existing TDMS infrastructure.
+
+**See:** [pupitre_to_tdms_export.md](pupitre_to_tdms_export.md), [hybrid_to_tdms_export.md](hybrid_to_tdms_export.md)
+
+**Prerequisite:** `HybridData.field_meta` initialisation bug — `__init__()` is missing `self.field_meta = {}`, causing `AttributeError` after `load_units_from_json()`. Fixed for free by Stream 3.6 R4 (`HybridData` joins `MagnetDataBase`); can also be patched independently in one line.
+
+##### Pupitre → TDMS (`PandasMagnetData.to_tdms()`)
+
+| Step | Task | Status |
+|------|------|--------|
+| 1 | Add `"_tdms_groups"` key to `pupitre-defs.json` (channel group mapping) | 🔴 Open |
+| 2 | Add `load_tdms_groups()` + `get_pigbrother_channel_name()` to `field_defs.py` | 🔴 Open |
+| 3a | Deduplication of repeated timestamps at end of `PandasMagnetData.addTime()` | 🔴 Open |
+| 3b | New `PandasMagnetData.to_tdms(filename, defs_file, groups)` method | 🔴 Open |
+
+Key design decisions:
+- 1 Hz resampling via `df.resample("1s").mean()` — fills gaps with NaN, guarantees uniform `wf_increment = 1.0`
+- Columns `t`, `timestamp`, `Date`, `Time` excluded from output
+- Channel name: `aliases.pigbrother` channel part if available, else column name
+- Unassigned columns → fallback `"Pupitre"` group
+
+##### Hybrid → TDMS (`HybridData.to_rms_tdms()` + `to_khz_tdms()`)
+
+| Step | Task | Status |
+|------|------|--------|
+| 1 | Add `"_tdms_groups_rms"` + `"_tdms_groups_khz"` to `hybrid-defs.json` | 🔴 Open |
+| 2 | Add `load_tdms_groups_rms()`, `load_tdms_groups_khz()`, `get_hybrid_channel_name()` to `field_defs.py` | 🔴 Open |
+| 3 | `HybridData.to_rms_tdms()` — concatenates all RMS files, resamples per system frequency | 🔴 Open |
+| 4 | `HybridData.to_khz_tdms()` — exports kHz channels; `hours=` parameter strongly recommended (1 day = ~86 M samples/channel) | 🔴 Open |
+
+Key design decisions:
+- RMS: `wf_increment = 1/frequency` per system (from `RMSFileReader.metadata["frequency"]`)
+- kHz: `wf_increment = 0.001` (fixed 1 kHz); `wf_start_time` from `compute_hour_t0()` (first bin file)
+- Unassigned channels → fallback group named after FEPC system (`"FEPC-AUX-LNCMI"` etc.)
+- Both methods share the `_tdms_groups_*` + `aliases.pigbrother` channel-naming logic
+
+**Effort:** M + M + M (three independent methods)
+**Dependencies:** `addTime()` stable (pupitre); `HybridData.field_meta` fix (hybrid)
 
 #### 4.3 Pipeline Redesign (polars/narwhals) 🔴 DEFERRED
 
@@ -473,7 +557,7 @@ via a `"match"` regex key. Scoped to `feelpp-defs.json`; pupitre/pigbrother defs
 | Fix bare `except:` clauses | 30 min | High | ✅ Done | — |
 | Add `ruff` pre-commit hook | 1 hour | High | ✅ Done | — |
 | File validation | 4 hours | High | ✅ Done | — |
-| Add assertions to `test_python_magnetrun.py` | 30 min | Medium | 🔴 Open | Add meaningful test assertions |
+| Add assertions to `test_python_magnetrun.py` | 30 min | Medium | ✅ Done | 7 assertions added |
 | Remove `pigbrother-defs.json~` | 5 min | Low | ✅ Done | — |
 | Add `*.json~` to `.gitignore` | 2 min | Low | ✅ Done | — |
 | Audit TODOs in `requests/cli.py` (rename site→housing, geometry, Parts) | 15 min | Low | 🔴 Open | Four TODO comments that need tracking or resolution |
@@ -481,9 +565,9 @@ via a `"match"` regex key. Scoped to `feelpp-defs.json`; pupitre/pigbrother defs
 | Enable `mypy` pre-commit hook | 1 hour | Medium | 🔴 Open | Uncomment in `.pre-commit-config.yaml` (`ruff` already runs via pre-commit; no need to add to CI) |
 
 **Recommended order:**
-1. Add assertions to `test_python_magnetrun.py` (CI already runs; make it meaningful)
-3. Enable `mypy` (enforces type hints)
-4. Quick cleanups (backup file already done; audit TODOs in `requests/cli.py`)
+1. ~~Add assertions to `test_python_magnetrun.py`~~ — ✅ Done
+2. Enable `mypy` (enforces type hints)
+3. Quick cleanups (audit TODOs in `requests/cli.py`)
 
 ---
 
@@ -513,7 +597,7 @@ via a `"match"` regex key. Scoped to `feelpp-defs.json`; pupitre/pigbrother defs
    - Add multi-source alignment tests
 
 5. **Quick wins cleanup**
-   - Add assertions to `test_python_magnetrun.py`
+   - ~~Add assertions to `test_python_magnetrun.py`~~ — ✅ Done
    - Enable `mypy` pre-commit hook
    - Audit TODOs in `requests/cli.py`
 
@@ -539,11 +623,17 @@ via a `"match"` regex key. Scoped to `feelpp-defs.json`; pupitre/pigbrother defs
 10. ~~**hybrid/ refactoring**~~ — ✅ Done (all 6 phases; see Stream 3.2)
 11. **CLI consolidation** (~1-2 days; `analysis/cli.py` decomposition done)
 12. **HybridData timestamp support** (~0.5 days; now unblocked)
-13. **Pattern entries in `*-defs.json`** (~2 hours; independent — do any time; see Stream 3.7)
+13. **M4 / NaN-M4 downsampling** (~S each; no new dep; do any time — see Stream 3.8a)
+13b. **RDP / VW downsampling** (~S; new `simplification` dep; do after 3.8a — see Stream 3.8b)
+13c. **Downsampling quality metrics** (~M total; independent; more useful after 3.8a/b — see Stream 3.8c)
+14. **Pattern entries in `*-defs.json`** (~2 hours; independent — do any time; see Stream 3.7)
 14. **Reader/container split R1–R3** (~S each; independent — no behaviour change)
-15. **Reader/container split R4** (`HybridData` hierarchy; ~M; do before Phase E)
-16. **Cross-domain Phases H, D, E, F, G** (~2-3 weeks; H first as it's independent)
-17. **Type hints backfill** (ongoing)
+15. **Reader/container split R4** (`HybridData` hierarchy; ~M; do before Phase E; also fixes `field_meta` bug)
+16. **TDMS export — pupitre** (`to_tdms()` + deduplication in `addTime()`; ~M; independent)
+17. **TDMS export — hybrid RMS** (`to_rms_tdms()`; ~M; requires `field_meta` fix)
+18. **TDMS export — hybrid kHz** (`to_khz_tdms()`; ~M; requires `field_meta` fix)
+19. **Cross-domain Phases H, D, E, F, G** (~2-3 weeks; H first as it's independent)
+20. **Type hints backfill** (ongoing)
 
 ---
 
@@ -590,6 +680,7 @@ via a `"match"` regex key. Scoped to `feelpp-defs.json`; pupitre/pigbrother defs
 **Stream 3.6 R4 (`HybridData` in hierarchy)** significantly simplifies:
 - Cross-domain Phase E — removes `isinstance(data, HybridData)` branches
 - `HybridRun` delegation — inherits `addData`/`saveData`/`computeData` for free
+- TDMS export (4.5 hybrid) — fixes missing `self.field_meta = {}` in `HybridData.__init__()` for free
 
 **No blockers for:**
 - Quick wins
@@ -599,6 +690,9 @@ via a `"match"` regex key. Scoped to `feelpp-defs.json`; pupitre/pigbrother defs
 - HybridData timestamp support (analysis/ Phase 6 done)
 - Stream 3.6 R1–R3 (CSV/TDMS/HTS readers — additive, no behaviour change)
 - Stream 3.7 Phase H (pattern entries — fully independent)
+- Stream 3.8a M4/NaN-M4 (no new dependency, zero risk)
+- Stream 3.8b RDP/VW (new `simplification` dep; do after 3.8a)
+- Stream 3.8c downsampling metrics (can start before 3.8a/b)
 - CLI consolidation (3.3; analysis/cli.py decomposition already done)
 
 ---
