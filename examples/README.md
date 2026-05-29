@@ -398,9 +398,11 @@ A complete command-line tool with extensive options and error handling.
 **Features:**
 - Full command-line argument parsing
 - Configurable data directories
-- Hour-based filtering
-- Save and/or show plots
-- Comprehensive error handling
+- Hour-based filtering (comma list or colon range)
+- Signal normalization
+- Downsampling (stride, minmax_lttb, and others)
+- Save or show plots (mutually exclusive)
+- Comprehensive error handling and structured logging
 - Automatic file discovery
 
 **Usage:**
@@ -410,22 +412,74 @@ python plot_hybrid_with_pupitre_tdms.py \
     -d 2025-01-27 \
     -s FEPC-AUX-LNCMI \
     -k ALIM1_J1 \
-    --site M10 \
+    --housing M8 \
     --show
 
 # With custom directories
 python plot_hybrid_with_pupitre_tdms.py \
     -d 2025-01-27 \
-    -s FEPC-LNCMI \
-    -k I_H1 \
-    --site M9 \
+    -s FEPC-AUX-LNCMI \
+    -k ALIM1_J1 \
+    --housing M8 \
     --hybrid-dir /path/to/hybrid/data \
-    --pupitre-dir /path/to/pupitre \
-    --pigbrother-dir /path/to/pigbrother \
+    --pupitre_datadir /path/to/pupitre \
+    --pigbrother_datadir /path/to/pigbrother \
     --hours 10,11,12 \
-    --save output.png \
-    --show
+    --save output.png
+
+# Filter hours with colon range notation (10:13 means hours 10, 11, 12)
+python plot_hybrid_with_pupitre_tdms.py \
+    -d 2025-01-27 \
+    -s FEPC-AUX-LNCMI \
+    -k ALIM1_J1 \
+    --housing M8 \
+    --hours 10:13
+
+# Normalize signals for shape comparison
+python plot_hybrid_with_pupitre_tdms.py \
+    -d 2025-01-27 \
+    -s FEPC-AUX-LNCMI \
+    -k ALIM1_J1 \
+    --housing M8 \
+    --normalize --show
+
+# Downsample to 5000 points using stride (fast, no extra dependency)
+python plot_hybrid_with_pupitre_tdms.py \
+    -d 2025-01-27 \
+    -s FEPC-AUX-LNCMI \
+    -k ALIM1_J1 \
+    --housing M8 \
+    --downsample-method stride --downsample-params '{"n_out": 5000}' --show
+
+# Downsample using minmax_lttb (requires tsdownsample)
+python plot_hybrid_with_pupitre_tdms.py \
+    -d 2025-01-27 \
+    -s FEPC-AUX-LNCMI \
+    -k ALIM1_J1 \
+    --housing M8 \
+    --downsample-method minmax_lttb --downsample-params '{"n_out": 10000}' --show
 ```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `-d`/`--date` | — | Date in `YYYY-MM-DD` format (required) |
+| `-s`/`--fepc-system` | — | FEPC system: `FEPC-LNCMI` or `FEPC-AUX-LNCMI` (required) |
+| `-k`/`--key` | — | Variable name to plot, e.g. `ALIM1_J1`, `I_H1` (required) |
+| `--housing` | `M8` | Housing name (M8, M9, M10, …) |
+| `--insert` | `notdefined` | Insert name (e.g. `M25032101`) |
+| `--hybrid-dir` | `$MAGNETRUN_HYBRID_DATA_DIR` | Base directory for hybrid kHz/rms/trigger data |
+| `--pupitre_datadir` | configured default | Directory containing pupitre `.txt` files |
+| `--pigbrother_datadir` | configured default | Directory containing TDMS pigbrother files |
+| `--hours` | all hours | Hours to select: comma list `10,11,12` or colon range `10:13` (stop excluded) |
+| `--normalize` | off | Normalize each signal by its maximum absolute value before plotting |
+| `--downsample-method` | `none` | Downsampling method: `stride`, `minmax_lttb`, `lttb`, `none` |
+| `--downsample-params` | `{}` | JSON params for the chosen method, e.g. `'{"n_out": 5000}'` |
+| `--save FILE` | — | Save plot to FILE; mutually exclusive with `--show` |
+| `--show` | — | Display plot interactively; mutually exclusive with `--save` |
+| `--log-level` | `WARNING` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+| `--log-file` | console | Path to log file |
 
 **Good for:** Production use, automation, detailed analysis
 
@@ -460,25 +514,31 @@ tdms_pattern = f"{pigbrother_dir}/{site}/Overview/{site}_Overview_{yy:02d}{mm:02
 ### 3. Loading Different Data Sources
 
 ```python
+from python_magnetrun.hybrid.hybrid_run import HybridRun
+from python_magnetrun.MagnetRun import load_mrun
+
 # Hybrid data
-hrun = HybridRun.fromdir(base_dir, date_str, fepc_system, site)
+hrun = HybridRun.fromdir(base_dir, date_str, fepc_system=fepc_system, housing=housing)
 
-# Pupitre data
-pupitre = MagnetRun.fromtxt(site, insert, pupitre_file)
-
-# TDMS data
-tdms = MagnetRun.fromtdms(site, insert, tdms_file)
+# Pupitre (.txt) and TDMS (.tdms) data — load_mrun dispatches by extension
+pupitre = load_mrun(pupitre_file, housing=housing, site=insert)
+tdms    = load_mrun(tdms_file,    housing=housing, site=insert)
 ```
 
 ### 4. Data Access and Plotting
 
 ```python
-# Hybrid: high-frequency with downsampling
-data, time = hrun.getData(hybrid_key, downsample=10000, hours=[10, 11, 12])
+from python_magnetrun.utils.downsampling import DownsampleConfig
 
-# Pupitre and TDMS: direct access
-pupitre_values = pupitre.getMData().getData(pupitre_field)
-pupitre_time = pupitre.getMData().getData('t')
+# Hybrid: returns (data_array, time_array); pass a DownsampleConfig or int for n_out
+downsample = DownsampleConfig(method="stride", n_out=5000)
+data, time = hrun.getData(hybrid_key, hours=[10, 11, 12], downsample=downsample)
+
+# Pupitre and TDMS: getData returns a pandas DataFrame
+mdata = pupitre.getMData()
+df = mdata.getData(["t", pupitre_field], downsample=downsample)
+pupitre_time   = df["t"].to_numpy()
+pupitre_values = df[pupitre_field].to_numpy()
 ```
 
 ## Directory Structure Expected

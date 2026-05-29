@@ -13,6 +13,7 @@ The script uses the data directories as defined in python_magnetrun analysis con
 
 import argparse
 import glob
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -21,7 +22,8 @@ import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from python_magnetrun.cli_args import create_base_parser
+from python_magnetrun.analysis.args import args_to_downsample_config
+from python_magnetrun.cli_args import create_base_parser, create_downsampling_parser
 from python_magnetrun.data_dirs import HYBRID_DATA_DIR
 from python_magnetrun.hybrid.hybrid_run import HybridRun
 from python_magnetrun.hybrid.utils import (
@@ -32,6 +34,8 @@ from python_magnetrun.hybrid.utils import (
 )
 from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun, load_mrun
+from python_magnetrun.utils.downsampling import DownsampleConfig
+from python_magnetrun.utils.files import find_files, select_files
 from python_magnetrun.utils.timestamps import (
     parse_tdms_filename,
     parse_txt_filename,
@@ -70,156 +74,13 @@ HYBRID_TO_TDMS_MAP = {
 # =============================================================================
 
 
-def parse_date_from_filename(filename: str | Path) -> datetime:
-    """
-    Parse date from hybrid data directory or Overview filename.
-
-    Parameters
-    ----------
-    filename : str or Path
-        Filename or directory name to parse the date from.
-
-    Returns
-    -------
-    datetime
-        Parsed date.
-
-    Raises
-    ------
-    ValueError
-        If the date cannot be parsed from the filename.
-
-    Examples
-    --------
-    - "2025-01-06" -> returns datetime(2025, 1, 6)
-    - "M9_Overview_250127-1605.tdms" -> returns datetime(2025, 1, 27)
-    """
-    from datetime import datetime
-
-    if isinstance(filename, Path):
-        filename = str(filename)
-
-    # Try YYYY-MM-DD format first
-    try:
-        return datetime.strptime(filename, "%Y-%m-%d")
-    except:  # noqa: E722
-        pass
-
-    # Try to extract from Overview filename: YYMMDD-HHMM
-    import re
-
-    match = re.search(r"(\d{6})-(\d{4})", filename)
-    if match:
-        date_str = match.group(1)  # YYMMDD
-        # Convert YY to YYYY (assuming 2000s)
-        year = 2000 + int(date_str[0:2])
-        month = int(date_str[2:4])
-        day = int(date_str[4:6])
-        return datetime(year, month, day)
-
-    raise ValueError(f"Cannot parse date from: {filename}")
-
-
-def find_pupitre_files(
-    date: datetime,
-    housing: str,
-    pupitre_datadir: str | Path,
-    hours: range | list[int] | None = None,
-) -> list[str]:
-    """
-    Find pupitre files for a given date and housing.
-
-    Parameters
-    ----------
-    date : datetime
-        Date to search for
-    housing : str
-        Housing name (M9, M10, etc.)
-    pupitre_datadir : Path
-        Base directory for pupitre data
-    hours : range, list of int, or None
-        If provided, only return files whose start hour is included.
-        Accepts a list (e.g. [10, 11, 12]) or a range (e.g. range(10, 13)).
-
-    Returns
-    -------
-    list
-        List of matching pupitre file paths
-    """
-    pupitre_datadir = Path(pupitre_datadir)
-    housing_dir = pupitre_datadir / housing
-
-    # Format: 2025.01.27 - 15:39:29.txt
-    date_pattern = f"{date.year}.{date.month:02d}.{date.day:02d}*.txt"
-    pattern = str(housing_dir / date_pattern)
-
-    files = sorted(glob.glob(pattern))
-    if hours is None:
-        return files
-
-    filtered = []
-    for f in files:
-        t0 = t0_from_filename(f)
-        if int(t0 // 3600) in hours:
-            logger.debug("Included pupitre file: %s (t0=%s seconds)", f, t0)
-            filtered.append(f)
-    return filtered
-
-
-def find_tdms_overview_files(
-    date: datetime,
-    housing: str,
-    pigbrother_datadir: str | Path,
-    hours: range | list[int] | None = None,
-) -> list[str]:
-    """
-    Find Overview TDMS files for a given date and housing.
-
-    Parameters
-    ----------
-    date : datetime
-        Date to search for
-    housing : str
-        Housing name (M9, M10, etc.)
-    pigbrother_datadir : Path
-        Base directory for pigbrother data
-    hours : range, list of int, or None
-        If provided, only return files whose start hour is included.
-        Accepts a list (e.g. [10, 11, 12]) or a range (e.g. range(10, 13)).
-
-    Returns
-    -------
-    list
-        List of matching Overview TDMS file paths
-    """
-    pigbrother_datadir = Path(pigbrother_datadir)
-    overview_dir = pigbrother_datadir / housing / "Overview"
-
-    # Format: M9_Overview_250127-*.tdms (YY = year - 2000)
-    year_yy = date.year % 100
-    date_pattern = (
-        f"{housing}_Overview_{year_yy:02d}{date.month:02d}{date.day:02d}-*.tdms"
-    )
-    pattern = str(overview_dir / date_pattern)
-
-    files = sorted(glob.glob(pattern))
-    if hours is None:
-        return files
-
-    filtered = []
-    for f in files:
-        t0 = t0_from_tdms_filename(f)
-        if int(t0 // 3600) in hours:
-            logger.debug("Included TDMS file: %s (t0=%s seconds)", f, t0)
-            filtered.append(f)
-    return filtered
-
-
 def t0_from_filename(filename: str) -> float:
     """Return seconds-since-midnight for a pupitre .txt filename."""
     dt = parse_txt_filename(filename)
     if dt is None:
-        logger.warning("t0_from_filename: could not parse t0 from '%s', using 0", filename)
+        logger.warning(
+            f"t0_from_filename: could not parse t0 from '{filename}', using 0"
+        )
         return 0.0
     return seconds_since_midnight(dt)
 
@@ -229,7 +90,7 @@ def t0_from_tdms_filename(filename: str) -> float:
     dt = parse_tdms_filename(filename)
     if dt is None:
         logger.warning(
-            "t0_from_tdms_filename: could not parse t0 from '%s', using 0", filename
+            f"t0_from_tdms_filename: could not parse t0 from '{filename}', using 0"
         )
         return 0.0
     return seconds_since_midnight(dt)
@@ -259,6 +120,7 @@ def plot_comparison(
     housing: str,
     hours: range | list[int] | None = None,
     normalize: bool = False,
+    downsample: DownsampleConfig | None = None,
 ) -> tuple[Figure, Axes]:
     """
     Plot hybrid, pupitre, and TDMS data on the same graph.
@@ -279,6 +141,8 @@ def plot_comparison(
         Hours to restrict the plot to.
     normalize : bool, optional
         If True, normalize each signal by its maximum absolute value before plotting.
+    downsample : DownsampleConfig or None, optional
+        Downsampling configuration applied to all data sources before plotting.
 
     Returns
     -------
@@ -315,8 +179,8 @@ def plot_comparison(
         #     ),
         #     flush=True,
         # )
-        data, time = hybrid_data.getData(hybrid_key, hours=hours)
-        logger.debug(
+        data, time = hybrid_data.getData(hybrid_key, hours=hours, downsample=downsample)
+        print(
             f"Hybrid data loaded: {len(data)} points, "
             f"time range: {time[0] if len(time) > 0 else 'N/A'} to {time[-1] if len(time) > 0 else 'N/A'} seconds"
         )
@@ -346,13 +210,10 @@ def plot_comparison(
         if "ALIM" in hybrid_key:
             for vkey in ["BITTER_V2", "PH_V8"]:
                 data, time = hybrid_data.getData(
-                    f"kHz/FEPC-AUX-LNCMI/{vkey}", downsample=10000, hours=hours
+                    f"kHz/FEPC-AUX-LNCMI/{vkey}", downsample=downsample, hours=hours
                 )
-                logger.debug(
-                    "Hybrid data loaded: %d points, time range: %s to %s seconds",
-                    len(data),
-                    time[0] if len(time) > 0 else "N/A",
-                    time[-1] if len(time) > 0 else "N/A",
+                print(
+                    f"Hybrid data loaded: {len(data)} points, time range: {time[0] if len(time) > 0 else 'N/A'} to {time[-1] if len(time) > 0 else 'N/A'} seconds"
                 )
                 # Convert time to relative seconds if it's datetime
                 if len(time) > 0:
@@ -393,12 +254,11 @@ def plot_comparison(
             try:
                 mdata = pdata.getMData()
                 if pupitre_field in mdata.getKeys():
-                    pupitre_values = mdata.getData(pupitre_field)
                     pupitre_t0 = t0_from_filename(mdata.FileName)
-                    logger.debug("Pupitre t0 from filename: %s seconds", pupitre_t0)
-                    pupitre_time = mdata.getData("t") + (
-                        pupitre_t0 - t0
-                    )  # Shift to absolute seconds from midnight
+                    logger.debug(f"Pupitre t0 from filename: {pupitre_t0} seconds")
+                    df = mdata.getData(["t", pupitre_field], downsample=downsample)
+                    pupitre_values = df[pupitre_field].to_numpy()
+                    pupitre_time = df["t"].to_numpy() + (pupitre_t0 - t0)
 
                     prefix = "Pupitre" if i == 0 else f"Pupitre {i+1}"
                     label = f"{prefix} ({pupitre_field})"
@@ -417,7 +277,7 @@ def plot_comparison(
                         label=label,
                     )
                 else:
-                    logger.warning("Pupitre field '%s' not found", pupitre_field)
+                    logger.warning(f"Pupitre field '{pupitre_field}' not found")
             except (OSError, ValueError, RuntimeError, KeyError) as e:
                 log_exception(
                     "Warning: Could not plot pupitre data",
@@ -425,7 +285,7 @@ def plot_comparison(
                     logger_instance=logger,
                     include_traceback=False,
                 )
-                logger.debug("  Error at %s: %s", format_exception_location(), e)
+                logger.debug(f"  Error at {format_exception_location()}: {e}")
 
     # Plot TDMS data if available
     if tdms_data and tdms_field:
@@ -435,16 +295,16 @@ def plot_comparison(
                 # Get the appropriate group (usually 'Courants_Alimentations')
                 tdms_keys = mdata.getKeys()
                 if tdms_field in tdms_keys:
-                    tdms_values = mdata.getData(tdms_field)
-
-                    # TDMS typically uses 't' for time
                     tdms_t0 = t0_from_tdms_filename(mdata.FileName)
                     logger.debug("TDMS t0 from filename: %s seconds", tdms_t0)
-                    logger.debug("TDMS keys: %s", mdata.getKeys())
-                    mdata.addTdmsTime(tdms_field.split("/")[0])
-                    logger.debug("TDMS keys after addTdmsTime: %s", mdata.getKeys())
                     group = tdms_field.split("/")[0]
-                    tdms_time = mdata.getData(f"{group}/t") + (tdms_t0 - t0)
+                    mdata.addTdmsTime(group)
+                    df = mdata.getData(
+                        [f"{group}/t", tdms_field], downsample=downsample
+                    )
+                    channel = tdms_field.split("/")[1]
+                    tdms_values = df[channel].to_numpy()
+                    tdms_time = df["t"].to_numpy() + (tdms_t0 - t0)
                     prefix = "TDMS" if i == 0 else f"TDMS {i+1}"
                     label = f"{prefix} ({tdms_field})"
                     if normalize:
@@ -459,9 +319,7 @@ def plot_comparison(
                     )
                 else:
                     logger.warning(
-                        "TDMS field '%s' not found. Available: %s",
-                        tdms_field,
-                        tdms_keys[:10],
+                        f"TDMS field '{tdms_field}' not found. Available: {tdms_keys[:10]}"
                     )
             except (OSError, ValueError, RuntimeError, KeyError) as e:
                 log_exception(
@@ -470,7 +328,7 @@ def plot_comparison(
                     logger_instance=logger,
                     include_traceback=False,
                 )
-                logger.debug("  Error at %s: %s", format_exception_location(), e)
+                logger.debug(f"  Error at {format_exception_location()}: {e}")
 
     ax.set_xlabel("Time (seconds)")
     ax.set_ylabel("Normalized value (a.u.)" if normalize else "Value")
@@ -490,26 +348,35 @@ def plot_comparison(
 def main() -> int:
     """Entry point: parse arguments, load data, and generate the comparison plot."""
     base_parser = create_base_parser(add_input_file=False)
+    downsample_parser = create_downsampling_parser()
     parser = argparse.ArgumentParser(
         description="Plot hybrid kHz data with corresponding pupitre and TDMS data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        parents=[base_parser],
+        parents=[base_parser, downsample_parser],
         epilog="""
 Examples:
   # Plot FEPC-AUX-LNCMI data for a specific date
-  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing Hybrid
+  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing M8
 
   # Specify custom data directories
-  python %(prog)s -d 2025-01-27 -s FEPC-LNCMI -k I_H1 --housing Hybrid \\
+  python %(prog)s -d 2025-01-27 -s FEPC-LNCMI -k I_H1 --housing M8 \\
       --hybrid-dir /path/to/hybrid/data \\
       --pupitre_datadir /path/to/pupitre \\
       --pigbrother_datadir /path/to/pigbrother
 
   # Plot only specific hours (comma-separated list)
-  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing Hybrid --hours 10,11,12
+  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing M8 --hours 10,11,12
 
   # Plot a range of hours (colon notation: start:stop, stop excluded)
-  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing Hybrid --hours 10:13
+  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing M8 --hours 10:13
+
+  # Downsample to 5000 points using stride (fast, no extra dependency)
+  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing M8 \\
+      --downsample-method stride --downsample-params '{"n_out": 5000}'
+
+  # Downsample using minmax_lttb (requires tsdownsample)
+  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing M8 \\
+      --downsample-method minmax_lttb --downsample-params '{"n_out": 10000}'
         """,
     )
 
@@ -590,7 +457,11 @@ Examples:
             hours = range(int(parts[0]), int(parts[1]))
         else:
             hours = [int(h.strip()) for h in args.hours.split(",")]
-        logger.debug("Hours: %s", list(hours))
+        logger.debug(f"Hours: {list(hours)}")
+
+    # Build downsampling config from CLI args (None when --downsample-method none)
+    downsample_config = args_to_downsample_config(args)
+    print(f"Downsample config: {downsample_config}")
 
     # Construct hybrid key
     hybrid_key = f"kHz/{args.fepc_system}/{args.key}"
@@ -603,7 +474,7 @@ Examples:
             base_dir=str(args.hybrid_dir),
             date_str=args.date,
             fepc_system=args.fepc_system,
-            site=args.site,
+            housing=args.housing,
         )
         logger.info("Hybrid data loaded successfully")
         logger.debug(f"Available keys: {hrun.getKeys()[:10]}...")
@@ -620,9 +491,47 @@ Examples:
         )
         return 1
 
-    # Find and load pupitre data
+    # Build time range for select_files
+    h_list = list(hours) if hours is not None else []
+    if h_list:
+        start_ts = f"{date.strftime('%Y-%m-%d')} {min(h_list):02d}:00:00"
+        end_ts = f"{date.strftime('%Y-%m-%d')} {max(h_list) + 1:02d}:00:00"
+    else:
+        start_ts = f"{date.strftime('%Y-%m-%d')} 00:00:00"
+        end_ts = f"{date.strftime('%Y-%m-%d')} 23:59:59"
+
+    # Find TDMS Overview files: glob by date, then filter by time range
+    year_yy = date.year % 100
+    overview_dir = Path(args.pigbrother_datadir) / housing / "Overview"
+    overview_pattern = str(
+        overview_dir
+        / f"{housing}_Overview_{year_yy:02d}{date.month:02d}{date.day:02d}-*.tdms"
+    )
+    tdms_files = select_files(
+        sorted(glob.glob(overview_pattern)), housing, start_ts, end_ts
+    )
+
+    # Find pupitre files: derive glob pattern from first overview file via find_files,
+    # falling back to a date-only pattern when no overview files exist.
+    if tdms_files:
+        stem = os.path.splitext(os.path.basename(tdms_files[0]))[0]
+        parts = stem.split("_")
+        date_part, time_part = parts[2].split("-")
+        pupitre_f, *_ = find_files(
+            tdms_files[0], housing, date_part, time_part, args.pupitre_datadir
+        )
+    else:
+        pupitre_dir = Path(args.pupitre_datadir) / housing
+        pupitre_f = str(
+            pupitre_dir / f"{date.year}.{date.month:02d}.{date.day:02d}*.txt"
+        )
+
+    pupitre_files = select_files(
+        sorted(glob.glob(pupitre_f)), housing, start_ts, end_ts
+    )
+
+    # Load pupitre data
     pupitre_data = []
-    pupitre_files = find_pupitre_files(date, housing, args.pupitre_datadir, hours=hours)
     if pupitre_files:
         print(f"Found {len(pupitre_files)} pupitre file(s)")
         for pupitre_file in pupitre_files:
@@ -641,11 +550,8 @@ Examples:
     else:
         logger.info(f"No pupitre files found for {date.strftime('%Y-%m-%d')}")
 
-    # Find and load TDMS data
+    # Load TDMS data
     tdms_data = []
-    tdms_files = find_tdms_overview_files(
-        date, housing, args.pigbrother_datadir, hours=hours
-    )
     if tdms_files:
         print(f"Found {len(tdms_files)} TDMS Overview file(s)")
         for tdms_file in tdms_files:
@@ -674,6 +580,7 @@ Examples:
         args.housing,
         hours=hours,
         normalize=args.normalize,
+        downsample=downsample_config,
     )
 
     # Save or show plot (show is the default when --save is not given)

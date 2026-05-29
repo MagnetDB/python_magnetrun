@@ -170,7 +170,7 @@ class MagnetRun:
             f"MagnetRun/from_txt: after prepareData - data keys={data.getKeys()}"
         )
         data.Units()
-        (start_date, start_time, end_date, end_time) = res
+        start_date, start_time, end_date, end_time = res
 
         # Combine start_date (YYYY.MM.DD) and start_time (HH:MM:SS) into datetime.
         # The timestamp from pupitre data is local time; convert to naive UTC so it
