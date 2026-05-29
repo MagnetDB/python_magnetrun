@@ -10,7 +10,7 @@ from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.utils.files import expand_input_files
 
-logger = get_logger()
+logger = get_logger(__name__)
 command_line = None
 base_parser = create_base_parser()
 parser = argparse.ArgumentParser("Energy Balance", parents=[base_parser])

@@ -17,7 +17,7 @@ import sys
 from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def demo_pupitre(filepath: str, housing: str = "M10") -> None:

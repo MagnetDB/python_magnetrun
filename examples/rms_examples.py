@@ -14,7 +14,7 @@ import pandas as pd
 from python_magnetrun.hybrid.rms.rms_reader import RMSFileReader, read_rms_file
 from python_magnetrun.log_utils import get_logger, setup_logging
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 # Example 1: Quick read - simplest usage

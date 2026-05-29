@@ -32,7 +32,7 @@ from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.plotting import PlotStyle, get_backend, plot_overlay, plot_subplots
 
 # Setup logger
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def plot_variables(

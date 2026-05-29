@@ -660,55 +660,7 @@ class HybridRun:
                 cnv_dir=opts.cnv_dir,
             )
 
-            # Apply voltage mask when configured for this housing.
-            # The mask isolates real current by zeroing off-state samples.
-            # Mapping is housing- and run-dependent; see hybrid_voltage_mask_map
-            # in <Housing>-housing-config.json and docs/Hybride.md.
-            logger.warning(f"Getting data for system={system}, variable={variable}")
-            try:
-                from ..housing_config import get_housing_config
-                from ..processing.signal import binarize_signal
-
-                logger.warning(
-                    f"Loading housing config for {self.Housing!r} to check for voltage mask..."
-                )
-                hcfg = get_housing_config(self.Housing)
-                logger.warning(
-                    f"Get Housing config for {self.Housing!r} to check for voltage mask    ... got {hcfg!r}"
-                )
-                cfg_key = f"{system}/{variable}"
-                voltage_chan = hcfg.hybrid_voltage_mask_map.get(cfg_key)
-                logger.warning(
-                    f"Looking for voltage mask for {cfg_key!r} in {self.Housing!r} housing config    ... found {voltage_chan!r}"
-                )
-                if voltage_chan:
-                    v_sys, v_var = voltage_chan.split("/", 1)
-                    voltage_data, v_time = self.HybridData.read_khz_variable(
-                        v_sys, v_var, hours=opts.hours, apply_calib=opts.apply_calib
-                    )
-                    logger.warning(
-                        f"voltage_data stats for {voltage_chan!r}: "
-                        f"n={voltage_data.size}, "
-                        f"min={voltage_data.min():.4g}, max={voltage_data.max():.4g}, "
-                        f"mean={voltage_data.mean():.4g}, std={voltage_data.std():.4g}, "
-                        f"n_nonzero={int(np.count_nonzero(voltage_data))}"
-                    )
-                    v_mask = binarize_signal(voltage_data)
-                    logger.warning(
-                        f"voltage mask stats: n_on={int(v_mask.sum())}/{v_mask.size} "
-                        f"({100.0 * v_mask.mean():.1f}% on)"
-                    )
-                    # Project v_mask onto data's time grid via nearest-neighbour lookup.
-                    # searchsorted maps each data timestamp to the closest v_time index,
-                    # then we read off the 0/1 value — no truncation, no length assumption.
-                    idx = np.clip(
-                        np.searchsorted(v_time, time, side="left"), 0, len(v_mask) - 1
-                    )
-                    data_mask = v_mask[idx]
-                    data = data * data_mask
-                    logger.warning(f"Applied voltage mask {voltage_chan!r} to {key!r}")
-            except (ValueError, KeyError) as exc:
-                logger.warning(f"voltage mask skipped for {key!r}: {exc}")  # housing unknown or no mask configured — proceed without
+            data = self._apply_voltage_mask(data, time, system, variable, key, opts)
 
         elif data_type == "rms":
             if variable is None:
@@ -719,6 +671,7 @@ class HybridRun:
                 variable,
                 hours=opts.hours,
             )
+            data = self._apply_voltage_mask(data, time, system, variable, key, opts)
 
         elif data_type == "trigger":
             return self.HybridData.list_trigger_files(system)
@@ -735,6 +688,61 @@ class HybridRun:
             self._add_to_cache(cache_key, data, time, opts)
 
         return data, time
+
+    def _apply_voltage_mask(
+        self,
+        data: np.ndarray,
+        time: np.ndarray,
+        system: str,
+        variable: str,
+        key: str,
+        opts,
+    ) -> np.ndarray:
+        """Zero out samples in *data* that fall outside the voltage-on intervals.
+
+        The voltage channel is always kHz; its binary mask is projected onto
+        *data*'s (possibly lower-rate) time grid via nearest-neighbour lookup.
+        Returns *data* unchanged when no mask is configured or on any error.
+        """
+        try:
+            from ..housing_config import get_housing_config
+            from ..processing.signal import binarize_signal
+
+            hcfg = get_housing_config(self.Housing)
+            cfg_key = f"{system}/{variable}"
+            voltage_chan = hcfg.hybrid_voltage_mask_map.get(cfg_key)
+            logger.warning(
+                f"voltage mask lookup: {cfg_key!r} → {voltage_chan!r}"
+            )
+            if not voltage_chan:
+                return data
+
+            v_sys, v_var = voltage_chan.split("/", 1)
+            voltage_data, v_time = self.HybridData.read_khz_variable(
+                v_sys, v_var, hours=opts.hours, apply_calib=opts.apply_calib
+            )
+            logger.warning(
+                f"voltage_data stats for {voltage_chan!r}: "
+                f"n={voltage_data.size}, "
+                f"min={voltage_data.min():.4g}, max={voltage_data.max():.4g}, "
+                f"mean={voltage_data.mean():.4g}, std={voltage_data.std():.4g}, "
+                f"n_nonzero={int(np.count_nonzero(voltage_data))}"
+            )
+            v_mask = binarize_signal(voltage_data)
+            logger.warning(
+                f"voltage mask stats: n_on={int(v_mask.sum())}/{v_mask.size} "
+                f"({100.0 * v_mask.mean():.1f}% on)"
+            )
+            # Project v_mask onto data's time grid via nearest-neighbour lookup.
+            # Works regardless of whether data is kHz or rms (different rates).
+            idx = np.clip(
+                np.searchsorted(v_time, time, side="left"), 0, len(v_mask) - 1
+            )
+            data = data * v_mask[idx]
+            logger.warning(f"Applied voltage mask {voltage_chan!r} to {key!r}")
+        except (ValueError, KeyError) as exc:
+            logger.warning(f"voltage mask skipped for {key!r}: {exc}")
+        return data
 
     def getKeys(self) -> list[str]:
         """Return list of data keys (MagnetRun compatible)"""

@@ -29,7 +29,7 @@ from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 
 TZ_FRANCE = ZoneInfo("Europe/Paris")
-logger = get_logger()
+logger = get_logger(__name__)
 
 # =============================================================================
 # Configuration — override via MAGNETRUN_* env vars or edit here

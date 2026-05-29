@@ -15,7 +15,7 @@ from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.smoothers import lowess_bell_shape_kern
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True

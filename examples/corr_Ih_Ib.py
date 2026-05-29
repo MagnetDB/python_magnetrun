@@ -12,7 +12,7 @@ from python_magnetrun.cli_args import create_base_parser
 from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True

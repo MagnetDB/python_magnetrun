@@ -28,7 +28,7 @@ from python_magnetcooling.waterflow_factory import from_flow_params
 from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.processing.fit import find_eqn, fit
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def generate_synthetic_data(

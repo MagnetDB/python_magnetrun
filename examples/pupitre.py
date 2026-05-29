@@ -12,7 +12,7 @@ from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.correlations import lag_correlation
 from python_magnetrun.processing.trends import trends
 
-logger = get_logger()
+logger = get_logger(__name__)
 matplotlib.rcParams["text.usetex"] = True
 
 if __name__ == "__main__":

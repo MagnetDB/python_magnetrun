@@ -42,7 +42,7 @@ from python_magnetrun.utils.timestamps import (
     seconds_since_midnight,
 )
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 # =============================================================================
 # Field name mapping dictionaries
@@ -159,7 +159,7 @@ def plot_comparison(
     t0 = 0.0
     if hours is not None and len(hours) > 0:
         t0 = hours[0] * 3600  # Convert first hour to seconds
-        logger.debug(f"Plotting data starting from hour {hours[0]} (t0={t0} seconds)")
+        print(f"Plotting data starting from hour {hours[0]} (t0={t0} seconds)")
 
     # Plot hybrid kHz data
     print(f"Loading hybrid data for key: {hybrid_key}")
@@ -255,7 +255,9 @@ def plot_comparison(
                 mdata = pdata.getMData()
                 if pupitre_field in mdata.getKeys():
                     pupitre_t0 = t0_from_filename(mdata.FileName)
-                    logger.debug(f"Pupitre t0 from filename: {pupitre_t0} seconds")
+                    print(
+                        f"Pupitre t0 from filename: {pupitre_t0} seconds, timerange={pdata.get_time_range()}, hybrid t0={t0} seconds"
+                    )
                     df = mdata.getData(["t", pupitre_field], downsample=downsample)
                     pupitre_values = df[pupitre_field].to_numpy()
                     pupitre_time = df["t"].to_numpy() + (pupitre_t0 - t0)
@@ -277,7 +279,7 @@ def plot_comparison(
                         label=label,
                     )
                 else:
-                    logger.warning(f"Pupitre field '{pupitre_field}' not found")
+                    print(f"Pupitre field '{pupitre_field}' not found")
             except (OSError, ValueError, RuntimeError, KeyError) as e:
                 log_exception(
                     "Warning: Could not plot pupitre data",
@@ -296,7 +298,9 @@ def plot_comparison(
                 tdms_keys = mdata.getKeys()
                 if tdms_field in tdms_keys:
                     tdms_t0 = t0_from_tdms_filename(mdata.FileName)
-                    logger.debug("TDMS t0 from filename: %s seconds", tdms_t0)
+                    print(
+                        f"TDMS t0 from filename: {tdms_t0} seconds, timerange={tdata.get_time_range()}, hybrid t0={t0} seconds"
+                    )
                     group = tdms_field.split("/")[0]
                     mdata.addTdmsTime(group)
                     df = mdata.getData(

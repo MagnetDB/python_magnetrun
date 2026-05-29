@@ -22,7 +22,7 @@ from python_magnetrun.hybrid.trigger.trigger_reader import (
 )
 from python_magnetrun.log_utils import get_logger, setup_logging
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def plot_trigger_variable(

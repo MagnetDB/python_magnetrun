@@ -18,7 +18,7 @@ from python_magnetrun.processing.stats import stats
 from python_magnetrun.utils.files import expand_input_files
 from python_magnetrun.utils.timestamps import parse_filename_timestamp
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def load_record(file: str, args, show: bool = False) -> MagnetDataBase:

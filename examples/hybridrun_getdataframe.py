@@ -21,7 +21,7 @@ from python_magnetrun.data_dirs import HYBRID_DATA_DIR
 from python_magnetrun.hybrid.hybrid_run import HybridRun
 from python_magnetrun.log_utils import get_logger, setup_logging
 
-logger = get_logger()
+logger = get_logger(__name__)
 
 
 def main() -> int:
