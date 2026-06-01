@@ -34,6 +34,7 @@ def __(mo):
 @app.cell
 def __():
     from pathlib import Path
+
     import python_magnetrun
 
     _default = str(
@@ -81,7 +82,7 @@ def __(keys, mo):
         value=keys[:2] if len(keys) >= 2 else keys,
         label="Channels to plot",
     )
-    channel_select
+    channel_select  # noqa: B018
     return (channel_select,)
 
 
@@ -107,7 +108,7 @@ def __(channel_select, df, mo):
         legend_title="Channel",
         hovermode="x unified",
     )
-    fig_ts
+    fig_ts  # noqa: B018
     return fig_ts, go
 
 
@@ -152,7 +153,7 @@ def __(df, go, mo, x_select, y_select):
         yaxis_title=y_key,
         hovermode="closest",
     )
-    fig_xy
+    fig_xy  # noqa: B018
     return fig_xy, x_key, y_key
 
 

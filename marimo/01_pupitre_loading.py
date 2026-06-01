@@ -40,6 +40,7 @@ def __(mo):
 @app.cell
 def __():
     from pathlib import Path
+
     import python_magnetrun
 
     _default = str(
@@ -51,7 +52,7 @@ def __():
 @app.cell
 def __(mo, _default):
     file_input = mo.ui.text(value=_default, label="Path to `.txt` file", full_width=True)
-    file_input
+    file_input  # noqa: B018
     return (file_input,)
 
 
@@ -68,7 +69,7 @@ def __(mo):
         value="M9",
         label="Housing",
     )
-    housing_input
+    housing_input  # noqa: B018
     return (housing_input,)
 
 
@@ -120,7 +121,7 @@ def __(mo, mrun):
     for k in keys:
         try:
             sym, unit = mrun.getUnit(k)
-        except Exception:
+        except (KeyError, RuntimeError):
             sym, unit = k, "—"
         rows.append({"key": k, "symbol": sym, "unit": unit})
 

@@ -61,6 +61,7 @@ def __(mo):
 @app.cell
 def __():
     from pathlib import Path
+
     import python_magnetrun
 
     _default = str(
@@ -108,7 +109,7 @@ def __(keys, mo):
         value=keys[0],
         label="Channel",
     )
-    channel_select
+    channel_select  # noqa: B018
     return (channel_select,)
 
 
@@ -123,7 +124,7 @@ def __(df_raw, mo):
         label=f"Target n_out (raw has {n_raw} points)",
         full_width=True,
     )
-    n_out_slider
+    n_out_slider  # noqa: B018
     return n_out_slider, n_raw
 
 
@@ -140,9 +141,9 @@ def __(channel_select, df_raw, mo, n_out_slider):
     from plotly.subplots import make_subplots
 
     from python_magnetrun.utils.downsampling import (
-        DownsampleConfig,
-        HAS_TSDOWNSAMPLE,
         HAS_SIMPLIFICATION,
+        HAS_TSDOWNSAMPLE,
+        DownsampleConfig,
         downsample_dataframe,
     )
 
@@ -210,7 +211,7 @@ def __(channel_select, df_raw, mo, n_out_slider):
         title=f"Downsampling comparison — {_key}",
         hovermode="x unified",
     )
-    _fig
+    _fig  # noqa: B018
     return (
         DownsampleConfig,
         HAS_SIMPLIFICATION,
