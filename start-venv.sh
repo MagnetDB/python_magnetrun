@@ -78,4 +78,13 @@ if [ ! -d $VENVDIR ]; then
     trap - ERR
 fi
 
-# add option to properly quit gmsh-env using deactivate
+# check direnv allow status
+if command -v direnv &>/dev/null; then
+    rc_allowed=$(direnv status 2>/dev/null | grep "RC allowed" | awk '{print $3}')
+    if [ "$rc_allowed" != "true" ]; then
+        echo "direnv: .envrc not yet allowed. Run: direnv allow ."
+    else
+        echo "direnv: .envrc is allowed."
+    fi
+fi
+
