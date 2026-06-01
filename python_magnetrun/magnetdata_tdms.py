@@ -65,6 +65,26 @@ class TdmsMagnetData(MagnetDataBase):
         _tdms_file: Any = None,
         _tdms_groups: dict | None = None,
     ) -> None:
+        """Initialise a :class:`TdmsMagnetData` instance.
+
+        :param filename: path to the ``.tdms`` file.
+        :param Groups: group/channel metadata dict, keyed by group name.
+            Each value is a dict of channel dicts containing at minimum
+            ``wf_increment``, ``wf_start_time``, ``wf_samples``, and
+            ``wf_start_offset``.
+        :param Keys: list of ``"Group/Channel"`` key strings.
+        :param Data: pre-loaded ``{group: DataFrame}`` dict; ``None`` enables
+            lazy loading via *_tdms_groups*.
+        :param defs_file: path to a JSON field-definition file; passed to
+            :meth:`~.MagnetDataBase.Units`.
+        :param time_zone: IANA local timezone used to convert filename-derived
+            timestamps to naive UTC (default ``"Europe/Paris"``).  Not applied
+            to ``wf_start_time`` values, which are already UTC.
+        :param _tdms_file: open :class:`nptdms.TdmsFile` handle for lazy
+            loading; ``None`` when all data is pre-loaded.
+        :param _tdms_groups: ``{group_name: TdmsGroup}`` mapping used by
+            :meth:`_ensure_group_loaded`; ``None`` when data is pre-loaded.
+        """
         # Initialise backing store before super().__init__ so that the Data
         # property is valid if any base-class code accesses it.
         lazy: _LazyGroupDict = _LazyGroupDict(self)
@@ -248,6 +268,15 @@ class TdmsMagnetData(MagnetDataBase):
     # --- core data access --------------------------------------------
 
     def getTdmsData(self, group: str, channel: str | list[str] | None) -> pd.DataFrame:
+        """Return data for *group*, optionally restricted to *channel*(s).
+
+        :param group: TDMS group name.
+        :param channel: channel name, list of channel names, or ``None`` to
+            return all channels in the group.
+        :returns: :class:`~pandas.DataFrame` for the requested group/channel(s).
+        :raises Exception: if :attr:`Data` is not a dict (internal consistency
+            error).
+        """
         if not isinstance(self.Data, dict):
             raise Exception(
                 f"MagnetData/getTdmsData: {self.FileName} - expect Data to be a dict"
@@ -262,6 +291,22 @@ class TdmsMagnetData(MagnetDataBase):
         key: list[str] | str | None = None,
         downsample: DownsampleConfig | None = None,
     ) -> pd.DataFrame:
+        """Return data for the given key(s), optionally downsampled.
+
+        *key* must reference a single TDMS group (directly or via
+        ``"Group/Channel"`` notation); cross-group requests are not supported.
+        Unit metadata is attached to ``df.attrs["units"]``.
+
+        :param key: ``"Group"`` string, ``"Group/Channel"`` string, or a list
+            thereof (all referencing the same group).  ``None`` is not
+            supported for TDMS data.
+        :param downsample: downsampling configuration; ``None`` returns
+            unmodified data.
+        :returns: :class:`~pandas.DataFrame` with unit metadata in
+            ``df.attrs["units"]``.
+        :raises RuntimeError: if *key* references more than one group, or zero
+            groups.
+        """
         from .utils.downsampling import downsample_dataframe
 
         logger.debug(f"getData: key={key}, downsample={downsample}")
@@ -314,11 +359,25 @@ class TdmsMagnetData(MagnetDataBase):
         return df
 
     def getKeys(self) -> list[str]:
+        """Return the list of available ``"Group/Channel"`` key strings.
+
+        :returns: list of key strings.
+        """
         return self.Keys
 
     # --- units -------------------------------------------------------
 
     def PigBrotherUnits(self, key: str, debug: bool = False) -> tuple:  # noqa: N802
+        """Return a ``(symbol, unit)`` pair for *key* via keyword matching.
+
+        Matches substrings of *key* against a hard-coded table of pigbrother
+        channel naming conventions (``"Courant"``, ``"Tension"``, etc.).
+
+        :param key: channel name (or ``"Group/Channel"`` string).
+        :param debug: unused; kept for interface compatibility.
+        :returns: ``(symbol, pint_unit)`` tuple when a match is found, or
+            empty tuple ``()`` when no keyword matches.
+        """
         from pint import UnitRegistry
 
         logger.debug(f"PigBrotherUnits: key={key}")
@@ -455,6 +514,16 @@ class TdmsMagnetData(MagnetDataBase):
             logger.debug(f"Units: {self.Keys}")
 
     def getUnitKey(self, key: str) -> tuple:
+        """Return the ``(symbol, unit)`` pair for *key*.
+
+        Resolution order: :attr:`units` dict → hard-coded defaults for ``"t"``
+        and ``"timestamp"`` → :meth:`PigBrotherUnits` keyword matching.
+
+        :param key: ``"Group/Channel"`` key string.
+        :returns: ``(symbol, pint_unit)`` tuple.
+        :raises RuntimeError: if *key* is not in :attr:`Keys` and has no
+            hard-coded default.
+        """
         logger.debug(f"getUnitKey: key={key}")
         if key not in self.Keys:
             from pint import UnitRegistry
@@ -689,6 +758,21 @@ class TdmsMagnetData(MagnetDataBase):
         description: str,
         debug: bool = False,
     ) -> int:
+        """Evaluate *formula* and add the result as a new channel *key*.
+
+        :param key: ``"Group/Channel"`` name for the new channel.
+        :param formula: pandas ``eval``-compatible expression; cross-group
+            references use ``"OtherGroup/channel"`` syntax and the data is
+            copied into the target group before evaluation.
+        :param symbol: short physical symbol for axis labels.
+        :param unit: pint ``Unit`` object, unit string, or ``None``.
+        :param label: human-readable axis label.
+        :param description: longer free-text description.
+        :param debug: emit extra debug log messages when ``True``.
+        :returns: ``0`` on success, non-zero when validation fails.
+        :raises RuntimeError: if pandas ``eval`` raises
+            :class:`~pandas.errors.UndefinedVariableError`.
+        """
         from pint.errors import UndefinedUnitError
 
         from .magnetdata_base import FieldMeta, _make_ureg
@@ -756,6 +840,11 @@ class TdmsMagnetData(MagnetDataBase):
         description: str,
         debug: bool = False,
     ) -> int:
+        """Not supported for TDMS data.
+
+        :raises RuntimeError: always — use :meth:`addData` with a formula
+            expression for TDMS derived channels instead.
+        """
         raise RuntimeError(
             f"computeData: key={key} not implemented for pigbrother file"
         )
@@ -763,6 +852,14 @@ class TdmsMagnetData(MagnetDataBase):
     # --- time utilities ----------------------------------------------
 
     def getStartDate(self, group: str | None = None) -> tuple:  # noqa: N802
+        """Return start/end date and time strings derived from TDMS ``wf_start_time``.
+
+        :param group: TDMS group name; ``None`` selects the first non-``Infos``
+            group with channel data.
+        :returns: ``(start_date, start_time, end_date, end_time)`` strings in
+            ``"%Y.%m.%d"`` / ``"%H:%M:%S"`` format, or empty tuple when no
+            usable group is found.
+        """
         if group is None:
             group = next(
                 (g for g in self.Groups if g != "Infos" and self.Groups[g]),
@@ -794,6 +891,15 @@ class TdmsMagnetData(MagnetDataBase):
         )
 
     def getDuration(self, group: str | None = None) -> float:  # noqa: N802
+        """Return the acquisition duration in seconds for *group*.
+
+        Computed as ``wf_increment × wf_samples`` from the first channel's
+        properties.
+
+        :param group: TDMS group name; ``None`` selects the first non-``Infos``
+            group.
+        :returns: duration in seconds.
+        """
         if group is None:
             group = next(
                 (g for g in self.Groups if g != "Infos" and self.Groups[g]),
@@ -910,6 +1016,18 @@ class TdmsMagnetData(MagnetDataBase):
     # --- extract -----------------------------------------------------
 
     def extractData(self, keys: list[str]) -> pd.DataFrame:  # noqa: N802
+        """Return a DataFrame containing the requested ``"Group/Channel"`` columns.
+
+        Concatenates channels across groups; the special key ``"t"`` is added
+        from the first group's time column when all referenced channels belong
+        to the same group.
+
+        :param keys: list of ``"Group/Channel"`` key strings; ``"t"`` is also
+            accepted.
+        :returns: concatenated :class:`~pandas.DataFrame`.
+        :raises RuntimeError: if ``"t"`` is requested but the channels span
+            multiple groups.
+        """
         logger.debug(f"extractData: filename={self.FileName}, keys={keys}")
         groups: list[str] = []
         channels: list[str] = []
@@ -941,6 +1059,12 @@ class TdmsMagnetData(MagnetDataBase):
     def extractDataThreshold(
         self, key: str, threshold: float
     ) -> pd.DataFrame:  # noqa: N802
+        """Return rows from *key*'s group where *key*'s channel ≥ *threshold*.
+
+        :param key: ``"Group/Channel"`` key string to filter on.
+        :param threshold: minimum channel value (inclusive).
+        :returns: filtered :class:`~pandas.Series` (single-channel view).
+        """
         group, channel = key.split("/")
         self._ensure_group_loaded(group)
         return self.Data[group][channel].loc[self.Data[group][channel] >= threshold]  # type: ignore[index]
@@ -1066,6 +1190,12 @@ class TdmsMagnetData(MagnetDataBase):
     # --- persist / display -------------------------------------------
 
     def saveData(self, keys: list[str], filename: str) -> int:  # noqa: N802
+        """Save selected ``"Group/Channel"`` columns to *filename* as TSV.
+
+        :param keys: list of ``"Group/Channel"`` key strings to export.
+        :param filename: destination file path.
+        :returns: ``0`` on success.
+        """
         dfs = []
         for key in keys:
             group, channel = key.split("/")
@@ -1089,6 +1219,29 @@ class TdmsMagnetData(MagnetDataBase):
         linestyle: str | None = None,
         markevery: int | None = None,
     ) -> None:
+        """Plot *y* versus *x* on a matplotlib *ax* using TDMS group data.
+
+        Both *x* and *y* must belong to the same TDMS group (or *x* may be
+        ``"t"`` / ``"timestamp"`` with the group inferred from *y*).
+
+        :param x: x-axis key (``"Group/Channel"``, ``"t"``, or
+            ``"timestamp"``).
+        :param y: y-axis key in ``"Group/Channel"`` form.
+        :param ax: matplotlib ``Axes`` object to draw on.
+        :param alpha: line opacity, 0–1 (default ``1``).
+        :param label: legend label; ``None`` uses the channel name.
+        :param normalize: divide *y* by its absolute maximum when ``True``.
+        :param offset: unused (kept for interface compatibility).
+        :param time_zone: IANA timezone for local-time display of
+            ``"timestamp"`` x-axis (default ``"Europe/Paris"``).
+        :param color: matplotlib colour string; ``None`` uses the default cycle.
+        :param marker: matplotlib marker string; ``None`` uses no markers.
+        :param linestyle: matplotlib linestyle string; ``None`` uses the default.
+        :param markevery: draw a marker every *n* data points; ``None`` for
+            every point.
+        :raises RuntimeError: if *x* and *y* belong to different groups, or
+            if either key is invalid.
+        """
         import matplotlib
         import matplotlib.pyplot as plt
 
@@ -1158,6 +1311,14 @@ class TdmsMagnetData(MagnetDataBase):
             plt.xlabel(f"{xsymbol} [{xunit:~P}]")
 
     def stats(self, key: str | None = None) -> pd.DataFrame | None:
+        """Print or return descriptive statistics for TDMS channel data.
+
+        :param key: ``"Group/Channel"`` key string to describe; ``None``
+            describes all groups (output is printed to the log, not returned).
+        :returns: :class:`~pandas.DataFrame` of statistics when *key* is given,
+            otherwise ``None``.
+        :raises RuntimeError: if *key*'s group or channel cannot be found.
+        """
         from tabulate import tabulate
 
         logger.info("magnetdata.stats")
@@ -1191,6 +1352,12 @@ class TdmsMagnetData(MagnetDataBase):
         return None
 
     def info(self) -> None:
+        """Print a formatted summary of TDMS groups, channels, and their properties.
+
+        Prints the ``Infos`` group key/value pairs first, then a table of
+        group names, channel names, sample counts, increments, start times,
+        and start offsets.  Output is written to stdout via :func:`print`.
+        """
         from collections import OrderedDict
 
         from tabulate import tabulate

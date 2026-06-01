@@ -73,7 +73,7 @@ from .args import (
     args_to_processing_config,
     parse_arguments,
 )
-from .processing import print_record_summary, process_overview_file
+from .processing import benchmark_downsample_channel, print_record_summary, process_overview_file
 
 # =============================================================================
 # Helpers
@@ -389,6 +389,37 @@ def _run_combined_analysis(
     )
     combined_metrics: dict = {}
     downsample_config = args_to_downsample_config(parsed_args)
+
+    # === DOWNSAMPLING BENCHMARK ===
+    if getattr(parsed_args, "benchmark_downsample", False) and not df_overview.empty:
+        import json
+
+        bm_key = keys[0] if keys else df_overview.columns[0]
+        params = {}
+        if getattr(parsed_args, "downsample_params", None):
+            try:
+                params = json.loads(parsed_args.downsample_params)
+            except ValueError:
+                pass
+        n_out = int(params.get("n_out", 10_000))
+        memory_tier = getattr(parsed_args, "memory_tier", 1)
+        # compute_memory only when --memory-tier was explicitly provided
+        compute_memory = getattr(parsed_args, "memory_tier", None) is not None and memory_tier > 0
+        tkey = getattr(parsed_args, "tkey", "t")
+        if tkey not in df_overview.columns:
+            tkey = "t"
+        save_csv = None
+        if getattr(parsed_args, "save", False) and getattr(parsed_args, "output_dir", None):
+            save_csv = str(parsed_args.output_dir / f"{combined_title}_benchmark_downsample.csv")
+        benchmark_downsample_channel(
+            df_overview,
+            bm_key,
+            tkey=tkey,
+            n_out=n_out,
+            compute_memory=compute_memory,
+            memory_tier=memory_tier,
+            save_csv=save_csv,
+        )
 
     for key in keys:
         if key not in df_overview.columns:

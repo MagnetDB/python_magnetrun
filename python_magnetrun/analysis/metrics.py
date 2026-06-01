@@ -38,6 +38,17 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from ..utils.scalar_metrics import (
+    calc_correlation,
+    calc_euclidean,
+    calc_mae,
+    calc_mahalanobis,
+    calc_mahalanobis_multivariate,
+    calc_max_error,
+    calc_mape,
+    calc_rmse,
+)
+
 # Module logger
 logger = logging.getLogger("python_magnetrun.analysis.metrics")
 
@@ -53,19 +64,29 @@ class DistanceResult:
     Attributes
     ----------
     euclidean : float
-        Euclidean distance
+        Euclidean distance (L2 norm of the difference vector).
     mae : float
-        Mean Absolute Error
+        Mean Absolute Error.
     mape : float
-        Mean Absolute Percentage Error
+        Mean Absolute Percentage Error.
     correlation : float
-        Pearson correlation coefficient
+        Pearson correlation coefficient.
+    rmse : float
+        Root-mean-square error.
+    max_error : float
+        Worst-case absolute error (Chebyshev / ∞-norm).
+    mahalanobis : float
+        Mahalanobis distance between the two signal distributions
+        (number of pooled standard deviations between the means).
     """
 
     euclidean: float
     mae: float
     mape: float
     correlation: float
+    rmse: float = field(default=float("nan"))
+    max_error: float = field(default=float("nan"))
+    mahalanobis: float = field(default=float("nan"))
 
     def to_dict(self) -> dict[str, float]:
         """Convert to dictionary."""
@@ -74,6 +95,9 @@ class DistanceResult:
             "mae": self.mae,
             "mape": self.mape,
             "correlation": self.correlation,
+            "rmse": self.rmse,
+            "max_error": self.max_error,
+            "mahalanobis": self.mahalanobis,
         }
 
 
@@ -157,135 +181,16 @@ class TLCCResult:
 # =============================================================================
 # Basic distance metrics
 # =============================================================================
-def calc_euclidean(actual: np.ndarray, predicted: np.ndarray) -> float:
-    """
-    Calculate Euclidean distance between two arrays.
-
-    Parameters
-    ----------
-    actual : np.ndarray
-        Actual/reference values
-    predicted : np.ndarray
-        Predicted/comparison values
-
-    Returns
-    -------
-    float
-        Euclidean distance (sqrt of sum of squared differences)
-
-    Examples
-    --------
-    >>> actual = np.array([1.0, 2.0, 3.0])
-    >>> predicted = np.array([1.1, 2.1, 3.1])
-    >>> calc_euclidean(actual, predicted)
-    0.1732...
-    """
-    actual = np.asarray(actual)
-    predicted = np.asarray(predicted)
-    return float(np.sqrt(np.sum((actual - predicted) ** 2)))
+# calc_euclidean, calc_correlation are imported from utils.scalar_metrics above.
 
 
-def calc_mae(actual: np.ndarray, predicted: np.ndarray) -> float:
-    """
-    Calculate Mean Absolute Error between two arrays.
-
-    Parameters
-    ----------
-    actual : np.ndarray
-        Actual/reference values
-    predicted : np.ndarray
-        Predicted/comparison values
-
-    Returns
-    -------
-    float
-        Mean Absolute Error
-
-    Examples
-    --------
-    >>> actual = np.array([1.0, 2.0, 3.0])
-    >>> predicted = np.array([1.1, 2.2, 2.9])
-    >>> calc_mae(actual, predicted)
-    0.133...
-    """
-    actual = np.asarray(actual)
-    predicted = np.asarray(predicted)
-    return float(np.mean(np.abs(actual - predicted)))
+# calc_mae, calc_mape, calc_rmse, calc_max_error, calc_mahalanobis,
+# and calc_mahalanobis_multivariate are imported from utils.scalar_metrics
+# at the top of this module and re-exported as part of the analysis.metrics
+# public API.  Do not re-implement them here.
 
 
-def calc_mape(actual: np.ndarray, predicted: np.ndarray) -> float:
-    """
-    Calculate Mean Absolute Percentage Error between two arrays.
-
-    Parameters
-    ----------
-    actual : np.ndarray
-        Actual/reference values (must not contain zeros)
-    predicted : np.ndarray
-        Predicted/comparison values
-
-    Returns
-    -------
-    float
-        Mean Absolute Percentage Error
-
-    Warnings
-    --------
-    Will produce inf/nan if actual contains zeros.
-
-    Examples
-    --------
-    >>> actual = np.array([100.0, 200.0, 300.0])
-    >>> predicted = np.array([110.0, 190.0, 310.0])
-    >>> calc_mape(actual, predicted)
-    0.05...
-    """
-    actual = np.asarray(actual)
-    predicted = np.asarray(predicted)
-
-    # Avoid division by zero
-    with np.errstate(divide="ignore", invalid="ignore"):
-        mape = np.mean(np.abs((actual - predicted) / actual))
-
-    return float(mape)
-
-
-def calc_correlation(actual: np.ndarray, predicted: np.ndarray) -> float:
-    """
-    Calculate Pearson correlation coefficient between two arrays.
-
-    Parameters
-    ----------
-    actual : np.ndarray
-        Actual/reference values
-    predicted : np.ndarray
-        Predicted/comparison values
-
-    Returns
-    -------
-    float
-        Pearson correlation coefficient (-1 to 1)
-
-    Examples
-    --------
-    >>> actual = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    >>> predicted = np.array([1.1, 2.0, 3.1, 3.9, 5.0])
-    >>> calc_correlation(actual, predicted)
-    0.998...
-    """
-    actual = np.asarray(actual)
-    predicted = np.asarray(predicted)
-
-    a_diff = actual - np.mean(actual)
-    p_diff = predicted - np.mean(predicted)
-
-    numerator = np.sum(a_diff * p_diff)
-    denominator = np.sqrt(np.sum(a_diff**2)) * np.sqrt(np.sum(p_diff**2))
-
-    if denominator == 0:
-        return 0.0
-
-    return float(numerator / denominator)
+# calc_correlation is imported from utils.scalar_metrics above.
 
 
 def compute_all_distances(
@@ -317,6 +222,9 @@ def compute_all_distances(
         mae=calc_mae(actual, predicted),
         mape=calc_mape(actual, predicted),
         correlation=calc_correlation(actual, predicted),
+        rmse=calc_rmse(actual, predicted),
+        max_error=calc_max_error(actual, predicted),
+        mahalanobis=calc_mahalanobis(actual, predicted),
     )
 
 

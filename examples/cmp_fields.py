@@ -14,28 +14,13 @@ from python_magnetrun.cli_args import create_base_parser
 from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.smoothers import lowess_bell_shape_kern
+from python_magnetrun.utils.scalar_metrics import calc_correlation, calc_euclidean, calc_mape
 
 logger = get_logger(__name__)
 
 # print("matplotlib=", matplotlib.rcParams.keys())
 matplotlib.rcParams["text.usetex"] = True
 # matplotlib.rcParams['text.latex.unicode'] = True key not available
-
-
-def calc_euclidean(actual, predic):
-    return np.sqrt(np.sum((actual - predic) ** 2))
-
-
-def calc_mape(actual, predic):
-    return np.mean(np.abs((actual - predic) / actual))
-
-
-def calc_correlation(actual, predic):
-    a_diff = actual - np.mean(actual)
-    p_diff = predic - np.mean(predic)
-    numerator = np.sum(a_diff * p_diff)
-    denominator = np.sqrt(np.sum(a_diff**2)) * np.sqrt(np.sum(p_diff**2))
-    return numerator / denominator
 
 
 if __name__ == "__main__":

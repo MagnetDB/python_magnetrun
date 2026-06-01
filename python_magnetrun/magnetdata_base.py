@@ -38,6 +38,14 @@ class FieldMeta(NamedTuple):
 
 
 class DataType(IntEnum):
+    """Discriminator enum for the underlying data format.
+
+    :cvar PUPITRE: pupitre ``.txt`` / ``.csv`` files backed by a pandas DataFrame.
+    :cvar TDMS: pigbrother ``.tdms`` files backed by a dict of DataFrames.
+    :cvar ENSIGHT: Ensight CSV files (pandas-backed, same as PUPITRE).
+    :cvar HYBRID: hybrid data combining multiple sources.
+    """
+
     PUPITRE = 0
     TDMS = 1
     ENSIGHT = 2
@@ -129,6 +137,19 @@ class MagnetDataBase(ABC):
         start_timestamp: datetime | None = None,
         end_timestamp: datetime | None = None,
     ) -> None:
+        """Initialise common attributes shared by all subclasses.
+
+        :param filename: path or logical name of the source file.
+        :param Groups: format-specific group metadata dict (empty for pandas
+            data; keyed by group name for TDMS data).
+        :param Keys: list of available channel/column names.
+        :param defs_file: path to a JSON field-definition file used by
+            :meth:`Units` to populate units; ``None`` disables JSON loading.
+        :param start_timestamp: naive UTC datetime of the first sample; ``None``
+            when not yet determined.
+        :param end_timestamp: naive UTC datetime of the last sample; ``None``
+            when not yet determined.
+        """
         self.FileName = filename
         self.Groups = Groups
         self.Keys = Keys
@@ -273,6 +294,10 @@ class MagnetDataBase(ABC):
     # Cleanup / reshape — no-op by default; pandas subclass overrides
 
     def cleanupData_legacy(self) -> int:  # noqa: N802
+        """Legacy cleanup hook; no-op at this level.
+
+        :returns: always ``0``.
+        """
         return 0
 
     def cleanupData(  # noqa: N802
@@ -282,13 +307,34 @@ class MagnetDataBase(ABC):
         keys_to_add: dict[str, dict[str, Any]] | None = None,
         debug: bool = False,
     ) -> int:
+        """Apply ETL transformations to the dataset (no-op at base level).
+
+        Concrete subclasses override this to remove, rename, or add columns.
+
+        :param keys_to_remove: column/channel names to drop.
+        :param keys_to_rename: ``{old_name: new_name}`` mapping for renames.
+        :param keys_to_add: ``{key: field_def}`` pairs for derived columns,
+            where each *field_def* contains ``formula``, ``symbol``, ``unit``,
+            ``label``, and ``description`` keys.
+        :param debug: emit extra debug log messages when ``True``.
+        :returns: ``0`` on success.
+        """
         return 0
 
     def removeData(self, keys: list) -> int:  # noqa: N802
+        """Remove columns from the dataset (no-op at base level).
+
+        :param keys: list of column/channel names to drop.
+        :returns: ``0`` on success.
+        """
         return 0
 
     @abstractmethod
     def renameData(self, columns: dict) -> None:  # noqa: N802
+        """Rename columns/channels in the dataset.
+
+        :param columns: ``{old_name: new_name}`` mapping.
+        """
         ...
 
     # Compute / add — raise by default; subclasses override
@@ -303,6 +349,19 @@ class MagnetDataBase(ABC):
         description: str,
         debug: bool = False,
     ) -> int:
+        """Evaluate *formula* and add the result as a new column/channel *key*.
+
+        :param key: name for the new column (or ``"Group/Channel"`` for TDMS).
+        :param formula: pandas-compatible expression string (e.g.
+            ``"Power = Icoil1 * Ucoil1"``).
+        :param symbol: short physical symbol (e.g. ``"P"``).
+        :param unit: pint ``Unit``, unit string, or ``None``.
+        :param label: human-readable axis label.
+        :param description: longer free-text description.
+        :param debug: emit extra debug log messages when ``True``.
+        :returns: ``0`` on success, non-zero on validation failure.
+        :raises NotImplementedError: if not overridden by a subclass.
+        """
         raise NotImplementedError(f"{self.__class__.__name__}.addData not implemented")
 
     def computeData(  # noqa: N802
@@ -316,11 +375,32 @@ class MagnetDataBase(ABC):
         description: str,
         debug: bool = False,
     ) -> int:
+        """Apply a callable *method* row-wise and store the result as *key*.
+
+        :param method: callable invoked as ``method(*row_values)`` for each row.
+        :param key: name for the new column.
+        :param kparams: list of existing column names passed as positional
+            arguments to *method*.
+        :param symbol: short physical symbol.
+        :param unit: pint ``Unit``, unit string, or ``None``.
+        :param label: human-readable axis label.
+        :param description: longer free-text description.
+        :param debug: emit extra debug log messages when ``True``.
+        :returns: ``0`` on success, non-zero on failure.
+        :raises NotImplementedError: if not overridden by a subclass.
+        """
         raise NotImplementedError(
             f"{self.__class__.__name__}.computeData not implemented"
         )
 
     def saveData(self, keys: list[str], filename: str) -> int:  # noqa: N802
+        """Save selected columns to *filename* as a tab-separated file.
+
+        :param keys: column/channel names to export.
+        :param filename: destination file path.
+        :returns: ``0`` on success.
+        :raises NotImplementedError: if not overridden by a subclass.
+        """
         raise NotImplementedError(f"{self.__class__.__name__}.saveData not implemented")
 
     def plotData(  # noqa: N802
@@ -338,23 +418,72 @@ class MagnetDataBase(ABC):
         linestyle: str | None = None,
         markevery: int | None = None,
     ) -> None:
+        """Plot *y* versus *x* on a matplotlib *ax*.
+
+        :param x: x-axis column/channel name (``"t"`` or ``"timestamp"``
+            are also accepted).
+        :param y: y-axis column/channel name.
+        :param ax: matplotlib ``Axes`` object to draw on.
+        :param alpha: line opacity (0–1, default ``1``).
+        :param label: legend label; ``None`` uses the column name.
+        :param normalize: divide *y* by its absolute maximum when ``True``.
+        :param offset: unused offset parameter (kept for interface compatibility).
+        :param time_zone: IANA timezone for local-time display of ``timestamp``
+            columns (default ``"Europe/Paris"``).
+        :param color: matplotlib colour string; ``None`` uses the default cycle.
+        :param marker: matplotlib marker string; ``None`` uses no markers.
+        :param linestyle: matplotlib linestyle string; ``None`` uses the default.
+        :param markevery: plot a marker every *n* data points; ``None`` for
+            every point.
+        :raises NotImplementedError: if not overridden by a subclass.
+        """
         raise NotImplementedError(f"{self.__class__.__name__}.plotData not implemented")
 
     def stats(self, key: str | None = None) -> pd.DataFrame | None:
+        """Return or print descriptive statistics for the dataset.
+
+        :param key: restrict statistics to this column/channel; ``None``
+            computes stats for all columns.
+        :returns: :class:`~pandas.DataFrame` of statistics, or ``None``.
+        :raises NotImplementedError: if not overridden by a subclass.
+        """
         raise NotImplementedError(f"{self.__class__.__name__}.stats not implemented")
 
     # Time utilities — return empty / zero by default; subclasses override
 
     def getStartDate(self, group: str | None = None) -> tuple:  # noqa: N802
+        """Return ``(start_date, start_time, end_date, end_time)`` strings.
+
+        :param group: group name (required for TDMS data; unused for pandas
+            data).
+        :returns: 4-tuple of strings in ``"%Y.%m.%d"`` / ``"%H:%M:%S"``
+            format, or empty tuple when unavailable.
+        """
         return ()
 
     def getDuration(self, group: str | None = None) -> float:  # noqa: N802
+        """Return the duration of the dataset in seconds.
+
+        :param group: group name (required for TDMS data; unused for pandas
+            data).
+        :returns: duration in seconds, or ``0.0`` when unavailable.
+        """
         return 0.0
 
     def addTime(self, time_zone: str = "Europe/Paris") -> int:  # noqa: N802
+        """Compute elapsed-time and absolute-timestamp columns (no-op at base level).
+
+        :param time_zone: IANA timezone of the source date/time data.
+        :returns: ``0`` on success.
+        """
         return 0
 
     def shiftTime(self, dt: float) -> int:  # noqa: N802
+        """Shift the ``t`` column by *dt* seconds (no-op at base level).
+
+        :param dt: time offset in seconds to add to every ``t`` value.
+        :returns: ``0`` on success.
+        """
         return 0
 
     # Phase 2B hook — concrete implementations added in subclasses
@@ -377,6 +506,13 @@ class MagnetDataBase(ABC):
     def extractDataThreshold(
         self, key: str, threshold: float
     ) -> pd.DataFrame:  # noqa: N802
+        """Return rows where *key* ≥ *threshold*.
+
+        :param key: column/channel name to filter on.
+        :param threshold: minimum value (inclusive).
+        :returns: filtered :class:`~pandas.DataFrame`.
+        :raises NotImplementedError: if not overridden by a subclass.
+        """
         raise NotImplementedError(
             f"{self.__class__.__name__}.extractDataThreshold not implemented"
         )
@@ -384,6 +520,18 @@ class MagnetDataBase(ABC):
     def extractTimeData(  # noqa: N802
         self, timerange: str, group: str | None = None, time_zone: str = "Europe/Paris"
     ) -> pd.DataFrame:
+        """Return rows whose ``timestamp`` falls within *timerange*.
+
+        :param timerange: ``"YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS"``
+            expressed in local time (*time_zone*).  Both boundaries are
+            inclusive.
+        :param group: TDMS group name (required for TDMS data; unused for
+            pandas data).
+        :param time_zone: IANA timezone of the datetime strings in *timerange*
+            (default ``"Europe/Paris"``).
+        :returns: filtered :class:`~pandas.DataFrame`.
+        :raises NotImplementedError: if not overridden by a subclass.
+        """
         raise NotImplementedError(
             f"{self.__class__.__name__}.extractTimeData not implemented"
         )

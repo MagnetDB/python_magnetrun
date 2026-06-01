@@ -228,7 +228,7 @@ def create_hybrid_parser() -> argparse.ArgumentParser:
     return parser
 
 
-DOWNSAMPLE_METHODS = ("none", "stride", "minmax", "minmax_lttb", "lttb")
+DOWNSAMPLE_METHODS = ("none", "stride", "minmax", "minmax_lttb", "lttb", "m4", "nan_m4", "rdp", "vw")
 """Valid downsampling method names for ``--downsample-method``."""
 
 
@@ -244,12 +244,17 @@ def create_downsampling_parser() -> argparse.ArgumentParser:
 
     * ``n_out`` *(int)*: target number of output points (default: 10 000).
     * ``bucket_size`` *(int)*: only used by the ``minmax`` method.
+    * ``epsilon`` *(float)*: geometry tolerance for ``rdp`` and ``vw`` methods.
 
     Examples::
 
         --downsample-method stride --downsample-params '{"n_out": 5000}'
         --downsample-method minmax_lttb
         --downsample-method minmax --downsample-params '{"n_out": 8000, "bucket_size": 50}'
+        --downsample-method m4 --downsample-params '{"n_out": 4000}'
+        --downsample-method nan_m4
+        --downsample-method rdp --downsample-params '{"n_out": 5000, "epsilon": 0.01}'
+        --downsample-method vw --downsample-params '{"n_out": 5000, "epsilon": 0.001}'
 
     :return: ArgumentParser with downsampling arguments
     :rtype: argparse.ArgumentParser
@@ -262,8 +267,8 @@ def create_downsampling_parser() -> argparse.ArgumentParser:
         metavar="METHOD",
         help=(
             "downsampling algorithm applied before plotting: "
-            "none (disabled, default), stride, minmax, minmax_lttb, lttb. "
-            "minmax_lttb and lttb require the tsdownsample package."
+            "none (disabled, default), stride, minmax, minmax_lttb, lttb, m4, nan_m4, rdp, vw. "
+            "m4/nan_m4/lttb/minmax_lttb require tsdownsample; rdp/vw require simplification."
         ),
     )
     parser.add_argument(
@@ -274,8 +279,31 @@ def create_downsampling_parser() -> argparse.ArgumentParser:
         help=(
             "JSON object of method-specific parameters. "
             "Supported keys: n_out (int, default 10000), "
-            "bucket_size (int, minmax only). "
+            "bucket_size (int, minmax only), epsilon (float, rdp/vw only). "
             "Example: '{\"n_out\": 5000}'"
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-downsample",
+        action="store_true",
+        default=False,
+        help=(
+            "Run all available downsampling methods on the first loaded channel "
+            "and print a quality comparison table. "
+            "n_out is taken from --downsample-params (default: 10000)."
+        ),
+    )
+    parser.add_argument(
+        "--memory-tier",
+        type=int,
+        choices=[1, 2, 3],
+        default=1,
+        metavar="TIER",
+        help=(
+            "Memory measurement strategy used by --benchmark-downsample: "
+            "1=tracemalloc (default, zero deps), "
+            "2=subprocess RSS isolation (~100ms overhead, captures native heap), "
+            "3=memray native tracing (optional dep, Linux/macOS only)."
         ),
     )
     return parser

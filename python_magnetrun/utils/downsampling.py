@@ -8,7 +8,12 @@ by ``HybridRun``, ``PandasMagnetData``, ``TdmsMagnetData``, and the
 
 Optional dependency: ``tsdownsample`` (declared in the ``hybrid`` extras group
 in ``pyproject.toml``).  The package remains fully importable without it; only
-the ``minmax_lttb`` and ``lttb`` methods require it at runtime.
+the ``minmax_lttb``, ``lttb``, ``m4``, and ``nan_m4`` methods require it at
+runtime.
+
+Optional dependency: ``simplification`` (declared in the ``rdp`` extras group).
+The ``rdp`` and ``vw`` methods require it at runtime.
+Install with: ``pip install python_magnetrun[rdp]``
 """
 
 from __future__ import annotations
@@ -22,12 +27,20 @@ import pandas as pd
 logger = logging.getLogger(__name__)
 
 try:
-    from tsdownsample import MinMaxLTTBDownsampler
+    from tsdownsample import LTTBDownsampler, M4Downsampler, MinMaxLTTBDownsampler, NaNM4Downsampler
 
     HAS_TSDOWNSAMPLE = True
 except ImportError:
     HAS_TSDOWNSAMPLE = False
     logger.debug("tsdownsample not available — downsampling will use simple stride")
+
+try:
+    from simplification.cutil import simplify_coords_idx, simplify_coords_vw_idx
+
+    HAS_SIMPLIFICATION = True
+except ImportError:
+    HAS_SIMPLIFICATION = False
+    logger.debug("simplification not available — rdp/vw methods will use simple stride")
 
 
 @dataclass(frozen=True)
@@ -36,19 +49,27 @@ class DownsampleConfig:
 
     Parameters
     ----------
-    n_out:
+    n_out : int
         Target number of output points.
-    method:
-        Algorithm: ``'minmax_lttb'`` | ``'lttb'`` | ``'minmax'`` | ``'stride'``.
-        Falls back to ``'stride'`` when ``tsdownsample`` is not installed.
-    bucket_size:
+    method : str
+        Algorithm: ``'minmax_lttb'`` | ``'lttb'`` | ``'minmax'`` | ``'m4'``
+        | ``'nan_m4'`` | ``'rdp'`` | ``'vw'`` | ``'stride'``.
+        Falls back to ``'stride'`` when the required optional dependency is not
+        installed.
+    bucket_size : int, optional
         Used by the ``'minmax'`` method only; auto-computed from *n_out* when
         ``None``.
+    epsilon : float, optional
+        Geometry tolerance for ``'rdp'`` and ``'vw'`` methods.  Larger values
+        produce more aggressive simplification.  Required when method is
+        ``'rdp'`` or ``'vw'`` unless using
+        :meth:`DownsampleConfig.from_n_out_rdp`.
     """
 
     n_out: int
     method: str = "stride"
     bucket_size: int | None = None
+    epsilon: float | None = None
 
     @classmethod
     def from_percent(
@@ -73,6 +94,65 @@ class DownsampleConfig:
         n_out = max(1, int(data_len * percent / 100.0))
         return cls(n_out=n_out, method=method)
 
+    @classmethod
+    def from_n_out_rdp(
+        cls,
+        data: np.ndarray,
+        time: np.ndarray,
+        n_out: int,
+        method: str = "rdp",
+        tol: float = 0.1,
+        max_iter: int = 30,
+    ) -> "DownsampleConfig":
+        """Find epsilon such that RDP/VW returns approximately *n_out* points.
+
+        Binary-searches epsilon in ``[eps_lo, eps_hi]`` until the simplified
+        output is within ``tol * n_out`` of the target.
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            1-D data array.
+        time : numpy.ndarray
+            1-D time array of the same length.
+        n_out : int
+            Desired output size.
+        method : str
+            ``'rdp'`` or ``'vw'``.
+        tol : float
+            Convergence tolerance as a fraction of *n_out* (default 0.10 = 10 %).
+        max_iter : int
+            Maximum binary-search iterations.
+
+        Returns
+        -------
+        DownsampleConfig
+            Config with the best-effort epsilon found.
+
+        Raises
+        ------
+        ImportError
+            If ``simplification`` is not installed.
+        """
+        if not HAS_SIMPLIFICATION:
+            raise ImportError(
+                "simplification package is required for from_n_out_rdp(); "
+                "install with: pip install python_magnetrun[rdp]"
+            )
+        fn = simplify_coords_idx if method == "rdp" else simplify_coords_vw_idx
+        coords = np.column_stack([time.astype(float), data.astype(float)])
+        eps_lo, eps_hi = 1e-9, float(np.ptp(data))
+        for _ in range(max_iter):
+            eps = (eps_lo + eps_hi) / 2
+            n = len(fn(coords, eps))
+            if abs(n - n_out) <= tol * n_out:
+                return cls(n_out=n_out, method=method, epsilon=eps)
+            if n > n_out:
+                eps_lo = eps
+            else:
+                eps_hi = eps
+        return cls(n_out=n_out, method=method, epsilon=(eps_lo + eps_hi) / 2)
+
 
 def _downsample_indices(
     data: np.ndarray,
@@ -95,13 +175,39 @@ def _downsample_indices(
                 config.method,
             )
         elif config.method == "minmax_lttb":
-            downsampler = MinMaxLTTBDownsampler()
-            return downsampler.downsample(time, data, n_out=config.n_out)
+            return MinMaxLTTBDownsampler().downsample(time, data, n_out=config.n_out)
         else:
-            from tsdownsample import LTTBDownsampler
+            return LTTBDownsampler().downsample(time, data, n_out=config.n_out)
 
-            downsampler = LTTBDownsampler()
-            return downsampler.downsample(time, data, n_out=config.n_out)
+    if config.method == "m4":
+        if not HAS_TSDOWNSAMPLE:
+            logger.warning(
+                "method='m4' requires tsdownsample (install with: pip install python_magnetrun[hybrid]); "
+                "falling back to 'stride'",
+            )
+        else:
+            return M4Downsampler().downsample(time, data, n_out=config.n_out)
+
+    if config.method in ("rdp", "vw"):
+        if not HAS_SIMPLIFICATION:
+            logger.warning(
+                "method=%r requires simplification (pip install python_magnetrun[rdp]); "
+                "falling back to 'stride'",
+                config.method,
+            )
+        else:
+            if config.epsilon is None:
+                raise ValueError(
+                    f"DownsampleConfig.epsilon must be set when method='{config.method}'. "
+                    "Use DownsampleConfig(n_out=..., method='rdp', epsilon=0.01) or "
+                    "call DownsampleConfig.from_n_out_rdp() to auto-search epsilon."
+                )
+            coords = np.column_stack([time.astype(float), data.astype(float)])
+            fn = simplify_coords_idx if config.method == "rdp" else simplify_coords_vw_idx
+            indices = fn(coords, config.epsilon).astype(np.intp)
+            if len(indices) > config.n_out:
+                indices = indices[: config.n_out]
+            return indices
 
     if config.method == "minmax":
         bucket_size = config.bucket_size or max(1, n // (config.n_out // 2))
@@ -148,6 +254,17 @@ def downsample_arrays(
     tuple
         ``(downsampled_data, downsampled_time)``
     """
+    # NaNM4 handles NaN natively — skip strip so gaps are preserved in output
+    if config.method == "nan_m4":
+        if not HAS_TSDOWNSAMPLE:
+            logger.warning("method='nan_m4' requires tsdownsample; falling back to 'stride'")
+            config = DownsampleConfig(n_out=config.n_out, method="stride")
+        else:
+            if len(data) <= config.n_out:
+                return data, time
+            indices = NaNM4Downsampler().downsample(time, data, n_out=config.n_out)
+            return data[indices], time[indices]
+
     valid = ~np.isnan(time) & ~np.isnan(data)
     if not np.all(valid):
         n_nan = int(np.sum(~valid))
@@ -206,12 +323,29 @@ def downsample_dataframe(
             config.method, config.n_out,
         )
 
+    ref_col = value_cols[0] if value_cols else time_col
+
+    # NaNM4 handles NaN natively — skip the NaN-strip path so gaps are preserved
+    if config.method == "nan_m4":
+        if not HAS_TSDOWNSAMPLE:
+            logger.warning("method='nan_m4' requires tsdownsample; falling back to 'stride'")
+            config = DownsampleConfig(n_out=config.n_out, method="stride")
+        else:
+            if len(df) <= config.n_out:
+                result = df.copy()
+                result.attrs["downsample_config"] = config
+                return result
+            time_arr = df[time_col].to_numpy(dtype=float)
+            data_arr = df[ref_col].to_numpy(dtype=float)
+            indices = NaNM4Downsampler().downsample(time_arr, data_arr, n_out=config.n_out)
+            result = df.iloc[indices].reset_index(drop=True)
+            result.attrs["downsample_config"] = config
+            return result
+
     if len(df) <= config.n_out:
         result = df.copy()
         result.attrs["downsample_config"] = config
         return result
-
-    ref_col = value_cols[0] if value_cols else time_col
 
     # Strip NaN rows on time and reference column
     valid_mask = df[time_col].notna()

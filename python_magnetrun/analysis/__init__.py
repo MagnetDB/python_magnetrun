@@ -91,7 +91,11 @@ from .metrics import (
     # Distance functions
     calc_euclidean,
     calc_mae,
+    calc_mahalanobis,
+    calc_mahalanobis_multivariate,
     calc_mape,
+    calc_max_error,
+    calc_rmse,
     # Convenience
     compare_series,
     compute_all_distances,
@@ -261,7 +265,11 @@ __all__ = [
     # Metrics distance functions
     "calc_euclidean",
     "calc_mae",
+    "calc_mahalanobis",
+    "calc_mahalanobis_multivariate",
     "calc_mape",
+    "calc_max_error",
+    "calc_rmse",
     "calc_correlation",
     "compute_all_distances",
     # Metrics cross-correlation functions

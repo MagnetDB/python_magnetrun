@@ -88,6 +88,9 @@ celerybeat-schedule
 .env
 .envrc.local
 
+# marimo notebooks with sensitive data
+marimo/00_nas_setup.py
+
 # virtualenv
 .venv
 venv/

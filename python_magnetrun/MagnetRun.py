@@ -1,4 +1,10 @@
-"""Main module."""
+"""MagnetRun — high-level container for a single magnet experimental run.
+
+Combines a housing/site identity with a :class:`.MagnetDataBase` data object
+and a UTC start timestamp.  Use :func:`load_mrun` (or the classmethod
+constructors) to create instances; do not instantiate directly unless you
+already have a :class:`.MagnetDataBase` object.
+"""
 
 import logging
 from datetime import datetime
@@ -89,12 +95,17 @@ def load_mrun(
 
 
 class MagnetRun:
-    """
-    Magnet Run
+    """High-level container for a single magnet experimental run.
 
-    Housing: name of the housing
-    Site: name of site (magnetdb sense)
-    MagnetData: pandas dataframe
+    Wraps a :class:`.MagnetDataBase` data object together with the housing/site
+    identity and the UTC start timestamp of the acquisition.
+
+    :ivar Housing: name of the magnet housing (e.g. ``"M9"``).
+    :ivar Site: name of the site in the magnetdb sense (e.g. ``"M9Ch1Lips"``).
+    :ivar MagnetData: the underlying data object; ``None`` when no data is
+        associated.
+    :ivar StartTime: naive UTC :class:`~datetime.datetime` of the first sample,
+        or ``None`` when not available.
     """
 
     def __init__(
@@ -104,7 +115,15 @@ class MagnetRun:
         data: MagnetDataBase | None = None,
         start_time: datetime | None = None,
     ):
-        """default constructor"""
+        """Initialise a MagnetRun.
+
+        :param housing: name of the magnet housing (default ``"unknown"``).
+        :param site: site name in the magnetdb sense (default ``""``).
+        :param data: pre-loaded :class:`.MagnetDataBase` object; may be
+            ``None`` to create an empty run.
+        :param start_time: naive UTC start timestamp (no tzinfo); ``None``
+            when unknown.
+        """
         self.Housing = housing
         self.Site = site
         self.MagnetData = data
@@ -118,7 +137,16 @@ class MagnetRun:
         filename: str,
         time_zone: str = "Europe/Paris",
     ) -> "MagnetRun":
-        """create from a tdms file"""
+        """Create a :class:`MagnetRun` from a pigbrother TDMS file.
+
+        :param housing: name of the magnet housing.
+        :param site: site name in the magnetdb sense.
+        :param filename: path to the ``.tdms`` file.
+        :param time_zone: IANA local timezone used only for logging; TDMS
+            timestamps are already UTC (default ``"Europe/Paris"``).
+        :returns: a fully initialised :class:`MagnetRun` with ``StartTime``
+            set to the naive UTC ``wf_start_time`` of the first group.
+        """
         # print(f"MagnetRun:fromtdms: {filename}", flush=True)
         # with open(filename, "r") as f:
         logger.debug(
@@ -155,7 +183,20 @@ class MagnetRun:
         keys_to_add: dict[str, dict[str, Any]] | None = None,
         time_zone: str = "Europe/Paris",
     ) -> "MagnetRun":
-        """create from a txt file"""
+        """Create a :class:`MagnetRun` from a pupitre ``.txt`` file.
+
+        :param housing: name of the magnet housing.
+        :param site: site name in the magnetdb sense.
+        :param filename: path to the ``.txt`` file.
+        :param keys_to_remove: column names to drop during ETL (optional).
+        :param keys_to_rename: ``{old: new}`` mapping for column renames (optional).
+        :param keys_to_add: ``{key: field_def}`` mapping of derived columns to
+            compute (optional).
+        :param time_zone: IANA local timezone of the ``Date``/``Time`` columns
+            (default ``"Europe/Paris"``); used to convert to naive UTC.
+        :returns: a fully initialised :class:`MagnetRun` with ``StartTime`` set
+            to the naive UTC equivalent of the first data row's date/time.
+        """
         logger.debug(
             f"MagnetRun/fromtxt: housing={housing}, site={site}, filename={filename}"
         )
@@ -182,13 +223,27 @@ class MagnetRun:
 
     @classmethod
     def fromcsv(cls, housing: str, site: str, filename: str) -> "MagnetRun":
-        """create from a csv file"""
+        """Create a :class:`MagnetRun` from a CSV file.
+
+        :param housing: name of the magnet housing.
+        :param site: site name in the magnetdb sense.
+        :param filename: path to the ``.csv`` file.
+        :returns: a :class:`MagnetRun` with data loaded; ``StartTime`` is
+            ``None`` (CSV files carry no reliable timestamp).
+        """
         data = load_magnetdata(filename)
         return cls(housing, site, data)
 
     @classmethod
     def fromStringIO(cls, housing: str, site: str, name: str) -> "MagnetRun":
-        """create from a stringIO"""
+        """Create a :class:`MagnetRun` from an in-memory string (StringIO).
+
+        :param housing: name of the magnet housing.
+        :param site: site name in the magnetdb sense.
+        :param name: raw text content in pupitre ``.txt`` format.
+        :returns: a :class:`MagnetRun` with data loaded from the string.
+        :raises RuntimeError: if the string cannot be parsed as pupitre data.
+        """
         logger.info(f"MagnetRun/fromStringIO: housing={housing}, site={site}")
         from io import StringIO
 
@@ -223,7 +278,10 @@ class MagnetRun:
         return f"{self.__class__.__name__}(Housing={self.Housing!r}, Site={self.Site!r}, MagnetData={self.MagnetData!r})"
 
     def getInsert(self) -> str:
-        """returns Insert"""
+        """Return the insert name derived from the data filename (stem without extension).
+
+        :returns: filename stem of the underlying data file.
+        """
         import os
 
         filename = self.MagnetData.FileName  # type: ignore[union-attr]
@@ -232,14 +290,24 @@ class MagnetRun:
         return filename.replace(f_extension, "")
 
     def getSite(self) -> str:
-        """returns Site"""
+        """Return the site name.
+
+        :returns: site name string.
+        """
         return self.Site
 
     def getHousing(self) -> str:
-        """returns Housing"""
+        """Return the housing name.
+
+        :returns: housing name string.
+        """
         return self.Housing
 
     def getDomain(self) -> str:
+        """Return the domain label for this run.
+
+        :returns: always ``"operational"``.
+        """
         return "operational"
 
     def get_time_range(self):
@@ -247,22 +315,36 @@ class MagnetRun:
         return self.MagnetData.get_time_range()
 
     def setSite(self, site: str) -> None:
-        """set Site"""
+        """Set the site name.
+
+        :param site: new site name.
+        """
         self.Site = site
 
     def setHousing(self, housing: str) -> None:
-        """set Housing"""
+        """Set the housing name.
+
+        :param housing: new housing name.
+        """
         self.Housing = housing
 
     def getType(self) -> int:
-        """returns Data Type"""
+        """Return the data-type discriminator of the underlying data object.
+
+        :returns: :class:`.DataType` integer value.
+        :raises RuntimeError: if no :class:`.MagnetDataBase` is associated.
+        """
         if self.MagnetData is not None:
             return self.MagnetData.Type
         else:
             raise RuntimeError("MagnetRun.getType: no MagnetData associated")
 
     def getMData(self) -> MagnetDataBase:
-        """return Magnet Data object"""
+        """Return the underlying :class:`.MagnetDataBase` object.
+
+        :returns: the associated data object.
+        :raises RuntimeError: if no data object is attached.
+        """
         if self.MagnetData is not None:
             return self.MagnetData
         else:
@@ -273,28 +355,51 @@ class MagnetRun:
         key: str = "",
         downsample: DownsampleConfig | None = None,
     ) -> Any:
-        """return Data, optionally downsampled"""
+        """Return data for the given key, optionally downsampled.
+
+        :param key: channel/column name, or ``""`` to return all data.
+        :param downsample: downsampling configuration; ``None`` returns
+            unmodified data.
+        :returns: a :class:`~pandas.DataFrame` (or list thereof for TDMS data).
+        :raises RuntimeError: if no :class:`.MagnetDataBase` is associated.
+        """
         if self.MagnetData is not None:
             return self.MagnetData.getData(key, downsample=downsample)
         else:
             raise RuntimeError("MagnetRun.getData: no MagnetData associated")
 
     def getUnit(self, key: str = "") -> tuple:
-        """return Unit"""
+        """Return the ``(symbol, unit)`` pair for the given key.
+
+        :param key: channel/column name.
+        :returns: tuple ``(symbol, pint_unit)`` for *key*.
+        :raises RuntimeError: if no :class:`.MagnetDataBase` is associated.
+        """
         if self.MagnetData is not None:
             return self.MagnetData.getUnitKey(key)
         else:
             raise RuntimeError("MagnetRun.getData: no MagnetData associated")
 
     def getKeys(self) -> list[str]:
-        """return list of Data keys"""
+        """Return the list of available channel/column names.
+
+        :returns: list of key strings from the underlying data object.
+        :raises RuntimeError: if no :class:`.MagnetDataBase` is associated.
+        """
         if self.MagnetData is not None:
             return self.MagnetData.Keys
         else:
             raise RuntimeError("MagnetRun.getKeys: no MagnetData associated")
 
     def getStats(self, field: str | None = None) -> pd.DataFrame | None:
-        """return basic stats"""
+        """Return descriptive statistics for the dataset.
+
+        :param field: column/channel name to restrict statistics to; ``None``
+            computes stats for all columns.
+        :returns: a :class:`~pandas.DataFrame` of statistics, or ``None``
+            when the underlying implementation prints rather than returns.
+        :raises RuntimeError: if no :class:`.MagnetDataBase` is associated.
+        """
         if self.MagnetData is not None:
             return self.MagnetData.stats(field)
         else:
@@ -306,8 +411,12 @@ class MagnetRun:
     ) -> pd.DataFrame | list[pd.DataFrame]:
         """Return data as DataFrame(s), optionally downsampled.
 
-        For pupitre data returns a single DataFrame.
-        For pigbrother/TDMS data returns a list of DataFrames, one per group.
+        :param downsample: downsampling configuration; ``None`` returns
+            unmodified data.
+        :returns: a single :class:`~pandas.DataFrame` for pupitre data, or a
+            list of DataFrames (one per TDMS group) for pigbrother data.
+        :raises RuntimeError: if no :class:`.MagnetDataBase` is associated or
+            the data type is not supported.
         """
         if self.MagnetData is None:
             raise RuntimeError("MagnetRun.getDataFrame: no MagnetData associated")
@@ -324,6 +433,9 @@ class MagnetRun:
             )
 
     def saveData(self, filename: str) -> None:
-        """save Data to file"""
+        """Save all data columns to a tab-separated file.
+
+        :param filename: destination file path (written as TSV).
+        """
         if self.MagnetData is not None:
             self.MagnetData.saveData(self.MagnetData.getKeys(), filename)

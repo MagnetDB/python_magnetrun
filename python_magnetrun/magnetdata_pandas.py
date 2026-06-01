@@ -63,6 +63,22 @@ class PandasMagnetData(MagnetDataBase):
         time_zone: str = "Europe/Paris",
         _read_kwargs: dict | None = None,
     ) -> None:
+        """Initialise a :class:`PandasMagnetData` instance.
+
+        :param filename: path to the source file (or ``"stringIO"`` for
+            in-memory data).
+        :param Groups: group metadata dict (always ``{}`` for pandas data).
+        :param Keys: list of column names.
+        :param Data: pre-loaded :class:`~pandas.DataFrame`; when ``None`` the
+            DataFrame is loaded lazily from disk on first access.
+        :param defs_file: path to a JSON field-definition file; passed to
+            :meth:`~.MagnetDataBase.Units`.
+        :param time_zone: IANA local timezone of the source date/time columns
+            (default ``"Europe/Paris"``); used to convert ``start_timestamp``
+            to naive UTC.
+        :param _read_kwargs: keyword arguments forwarded to
+            :func:`pandas.read_csv` during lazy loading.
+        """
         # Initialise backing store before super().__init__ so that the Data
         # property is usable from _validate_start_timestamp (called below).
         self._data: pd.DataFrame = (
@@ -128,7 +144,14 @@ class PandasMagnetData(MagnetDataBase):
     # --- core data access --------------------------------------------
 
     def getPandasData(self, key: list[str] | str | None) -> pd.DataFrame:
-        """Return Data or a selection by *key*."""
+        """Return the full DataFrame or a column selection.
+
+        :param key: column name (str), list of column names, or ``None`` to
+            return the full DataFrame.
+        :returns: :class:`~pandas.DataFrame` for the requested key(s).
+        :raises KeyError: if any requested key is not in :attr:`Keys`.
+        :raises RuntimeError: if the underlying data is not a DataFrame.
+        """
         self._ensure_data_loaded()
         if key is None:
             if not isinstance(self.Data, pd.DataFrame):
@@ -153,6 +176,18 @@ class PandasMagnetData(MagnetDataBase):
         key: list[str] | str | None = None,
         downsample: DownsampleConfig | None = None,
     ) -> pd.DataFrame:
+        """Return data for the given key(s), optionally downsampled.
+
+        Unit metadata is attached to ``df.attrs["units"]`` so plotting
+        helpers can label axes without a separate lookup.
+
+        :param key: column name, list of column names, or ``None`` for all
+            columns.
+        :param downsample: downsampling configuration; ``None`` returns
+            unmodified data.
+        :returns: :class:`~pandas.DataFrame` with unit metadata in
+            ``df.attrs["units"]``.
+        """
         from .utils.downsampling import downsample_dataframe
 
         df = self.getPandasData(key)
@@ -174,6 +209,10 @@ class PandasMagnetData(MagnetDataBase):
         return df
 
     def getKeys(self) -> list[str]:
+        """Return the list of available column names.
+
+        :returns: list of column name strings.
+        """
         return self.Keys
 
     # --- units -------------------------------------------------------
@@ -250,6 +289,16 @@ class PandasMagnetData(MagnetDataBase):
                 logger.debug(f"{key}: symbol={symbol}, unit={unit:~P}")
 
     def getUnitKey(self, key: str) -> tuple:
+        """Return the ``(symbol, unit)`` pair for *key*.
+
+        Falls back to hard-coded defaults for ``"t"`` and ``"timestamp"``
+        even when those columns are not in :attr:`Keys`.
+
+        :param key: column name.
+        :returns: ``(symbol, pint_unit)`` tuple.
+        :raises RuntimeError: if *key* is not in :attr:`Keys` and has no
+            hard-coded default.
+        """
         if key not in self.Keys:
             from .magnetdata_base import _make_ureg
 
@@ -316,6 +365,19 @@ class PandasMagnetData(MagnetDataBase):
         keys_to_add: dict[str, dict[str, Any]] | None = None,
         debug: bool = False,
     ) -> int:
+        """Apply ETL transformations (add, rename, remove columns) and normalise the DataFrame.
+
+        After the explicit operations the method also drops all-zero columns
+        (except those in a protected set such as flow/rpm/pressure channels)
+        and exact-duplicate columns.
+
+        :param keys_to_remove: column names to drop.
+        :param keys_to_rename: ``{old: new}`` mapping for column renames.
+        :param keys_to_add: ``{key: field_def}`` mapping of derived columns
+            to compute via :meth:`addData`.
+        :param debug: emit extra debug log messages when ``True``.
+        :returns: ``0`` on success.
+        """
         self._ensure_data_loaded()
         logger.debug(f"Clean up Data: filename={self.FileName}, keys={self.Keys}")
         assert isinstance(self.Data, pd.DataFrame)
@@ -425,6 +487,12 @@ class PandasMagnetData(MagnetDataBase):
         return 0
 
     def removeData(self, keys: list) -> int:  # noqa: N802
+        """Drop columns from the DataFrame.
+
+        :param keys: column names to remove; missing keys are logged as
+            warnings and silently skipped.
+        :returns: ``0`` on success.
+        """
         assert isinstance(self.Data, pd.DataFrame)
         for key in keys:
             if key in self.Keys:
@@ -437,6 +505,14 @@ class PandasMagnetData(MagnetDataBase):
         return 0
 
     def renameData(self, columns: dict) -> None:  # noqa: N802
+        """Rename DataFrame columns in-place.
+
+        :param columns: ``{old_name: new_name}`` mapping.  Keys not present in
+            the DataFrame are logged as warnings and skipped.
+        :raises ValueError: if any target name already exists in the DataFrame
+            (unless the source key is itself being renamed away in the same
+            call).
+        """
         assert isinstance(self.Data, pd.DataFrame)
         missing = [old for old in columns if old not in self.Keys]
         if missing:
@@ -564,6 +640,19 @@ class PandasMagnetData(MagnetDataBase):
         description: str,
         debug: bool = False,
     ) -> int:
+        """Evaluate *formula* via :meth:`~pandas.DataFrame.eval` and add the result as column *key*.
+
+        :param key: new column name (must not already exist in the DataFrame).
+        :param formula: pandas ``eval``-compatible expression string, e.g.
+            ``"Power = Icoil1 * Ucoil1"``.
+        :param symbol: short physical symbol for axis labels.
+        :param unit: pint ``Unit`` object, unit string, or ``None``.
+        :param label: human-readable axis label.
+        :param description: longer free-text description.
+        :param debug: emit extra debug log messages when ``True``.
+        :returns: ``0`` on success, ``1`` if *key* already exists or formula
+            validation fails.
+        """
         from pint.errors import UndefinedUnitError
 
         from .magnetdata_base import FieldMeta, _make_ureg
@@ -613,6 +702,20 @@ class PandasMagnetData(MagnetDataBase):
         description: str,
         debug: bool = False,
     ) -> int:
+        """Apply *method* row-wise over *kparams* columns and store the result as *key*.
+
+        :param method: callable invoked as ``method(*values)`` for each row.
+        :param key: new column name (must not already exist).
+        :param kparams: list of existing column names passed as positional
+            arguments to *method*.
+        :param symbol: short physical symbol.
+        :param unit: pint ``Unit``, unit string, or ``None``.
+        :param label: human-readable axis label.
+        :param description: longer free-text description.
+        :param debug: emit extra debug log messages when ``True``.
+        :returns: ``0`` on success, ``1`` if *key* exists or *kparams*
+            validation fails.
+        """
         from pint.errors import UndefinedUnitError
 
         from .magnetdata_base import FieldMeta, _make_ureg
@@ -656,6 +759,14 @@ class PandasMagnetData(MagnetDataBase):
     # --- time utilities ----------------------------------------------
 
     def getStartDate(self, group: str | None = None) -> tuple:  # noqa: N802
+        """Return start/end date and time strings from the ``Date``/``Time`` columns.
+
+        :param group: unused for pandas data; accepted for interface
+            compatibility.
+        :returns: ``(start_date, start_time, end_date, end_time)`` strings
+            from the first and last data rows, or empty tuple when
+            ``Date``/``Time`` columns are absent.
+        """
         res: tuple = ()
         if "Date" in self.Keys and "Time" in self.Keys:
             start_date = self.Data["Date"].iloc[0]  # type: ignore[index]
@@ -666,6 +777,13 @@ class PandasMagnetData(MagnetDataBase):
         return res
 
     def getDuration(self, group: str | None = None) -> float:  # noqa: N802
+        """Return the duration of the dataset in seconds.
+
+        :param group: unused for pandas data; accepted for interface
+            compatibility.
+        :returns: ``t[-1] - t[0]`` in seconds when the ``t`` column is
+            present, otherwise ``0.0``.
+        """
         if "t" in self.Keys:
             assert isinstance(self.Data, pd.DataFrame)
             return float(self.Data["t"].iloc[-1] - self.Data["t"].iloc[0])  # type: ignore[index]
@@ -731,6 +849,12 @@ class PandasMagnetData(MagnetDataBase):
         return 0
 
     def shiftTime(self, dt: float) -> int:  # noqa: N802
+        """Shift the ``t`` column by *dt* seconds.
+
+        :param dt: time offset in seconds to add to every ``t`` value.
+        :returns: ``0`` on success.
+        :raises RuntimeError: if no ``t`` column is present in the DataFrame.
+        """
         if "t" in self.Keys:
             self.Data["t"] = self.Data["t"] + dt  # type: ignore[index]
         else:
@@ -769,6 +893,13 @@ class PandasMagnetData(MagnetDataBase):
     # --- extract -----------------------------------------------------
 
     def extractData(self, keys: list[str]) -> pd.DataFrame:  # noqa: N802
+        """Return a DataFrame containing only the requested columns.
+
+        :param keys: list of column names to extract.
+        :returns: :class:`~pandas.DataFrame` with columns in *keys* order.
+        :raises RuntimeError: if any key in *keys* is not present in
+            :attr:`Keys`.
+        """
         logger.debug(f"extractData: filename={self.FileName}, keys={keys}")
         for key in keys:
             if key not in self.Keys:
@@ -781,6 +912,13 @@ class PandasMagnetData(MagnetDataBase):
     def extractDataThreshold(
         self, key: str, threshold: float
     ) -> pd.DataFrame:  # noqa: N802
+        """Return rows where *key* ≥ *threshold*.
+
+        :param key: column name to filter on.
+        :param threshold: minimum value (inclusive).
+        :returns: filtered :class:`~pandas.DataFrame`.
+        :raises RuntimeError: if *key* is not present in :attr:`Keys`.
+        """
         assert isinstance(self.Data, pd.DataFrame)
         if key not in self.Keys:
             raise RuntimeError(
@@ -814,6 +952,12 @@ class PandasMagnetData(MagnetDataBase):
     # --- persist / display -------------------------------------------
 
     def saveData(self, keys: list[str], filename: str) -> int:  # noqa: N802
+        """Save selected columns to *filename* as a tab-separated file.
+
+        :param keys: column names to export.
+        :param filename: destination file path.
+        :returns: ``0`` on success.
+        """
         assert isinstance(self.Data, pd.DataFrame)
         self.Data[keys].to_csv(filename, sep="\t", index=False, header=True)
         return 0
@@ -833,6 +977,25 @@ class PandasMagnetData(MagnetDataBase):
         linestyle: str | None = None,
         markevery: int | None = None,
     ) -> None:
+        """Plot *y* versus *x* on a matplotlib *ax*.
+
+        :param x: x-axis column name; ``"t"`` and ``"timestamp"`` are also
+            accepted.
+        :param y: y-axis column name.
+        :param ax: matplotlib ``Axes`` object to draw on.
+        :param alpha: line opacity, 0–1 (default ``1``).
+        :param label: legend label; ``None`` uses the column name.
+        :param normalize: divide *y* by its absolute maximum when ``True``.
+        :param offset: unused (kept for interface compatibility).
+        :param time_zone: IANA timezone for local-time display of
+            ``"timestamp"`` x-axis (default ``"Europe/Paris"``).
+        :param color: matplotlib colour string; ``None`` uses the default cycle.
+        :param marker: matplotlib marker string; ``None`` uses no markers.
+        :param linestyle: matplotlib linestyle string; ``None`` uses the default.
+        :param markevery: draw a marker every *n* data points; ``None`` for
+            every point.
+        :raises RuntimeError: if *x* or *y* is not a valid column name.
+        """
         import matplotlib
         import matplotlib.pyplot as plt
 
@@ -891,6 +1054,14 @@ class PandasMagnetData(MagnetDataBase):
             plt.xlabel(f"{xsymbol} [{xunit:~P}]")
 
     def stats(self, key: str | None = None) -> pd.DataFrame | None:
+        """Print descriptive statistics for the dataset.
+
+        :param key: restrict output to this column; ``None`` describes all
+            columns (result is printed, not returned).
+        :returns: ``None`` always (statistics are printed to stdout).
+        :raises RuntimeError: if *key* is given but not present in
+            :attr:`Keys`.
+        """
         from tabulate import tabulate
 
         logger.info("magnetdata.stats")
@@ -912,6 +1083,11 @@ class PandasMagnetData(MagnetDataBase):
         return None
 
     def info(self) -> None:
+        """Print a formatted summary table of keys, descriptions, symbols, and units.
+
+        Loads field descriptions from :attr:`defs_file` when set.  Output is
+        written to stdout via :func:`print`.
+        """
         from tabulate import tabulate
 
         print(f"magnetdata: {self.FileName}, Type={self.Type.name}")
@@ -991,7 +1167,13 @@ class PandasMagnetData(MagnetDataBase):
 
     @classmethod
     def fromcsv(cls, name: str, defs_file: str | None = None) -> PandasMagnetData:
-        """Create from a CSV file."""
+        """Create a :class:`PandasMagnetData` from a CSV file.
+
+        :param name: path to the ``.csv`` file.
+        :param defs_file: path to a JSON field-definition file for units;
+            ``None`` disables JSON unit loading.
+        :returns: a fully initialised :class:`PandasMagnetData` instance.
+        """
         from .utils.validation import validate_csv_format
 
         validate_csv_format(name)
@@ -1010,7 +1192,17 @@ class PandasMagnetData(MagnetDataBase):
         skiprows: int = 1,
         defs_file: str | None = None,
     ) -> PandasMagnetData:
-        """Create from a StringIO / in-memory string."""
+        """Create a :class:`PandasMagnetData` from a StringIO / in-memory string.
+
+        :param name: raw text content in pupitre ``.txt`` format.
+        :param sep: column separator regex passed to :func:`pandas.read_csv`
+            (default ``r"\\s+"``).
+        :param skiprows: number of header rows to skip (default ``1``).
+        :param defs_file: path to a JSON field-definition file for units;
+            ``None`` disables JSON unit loading.
+        :returns: a :class:`PandasMagnetData` instance backed by in-memory
+            data; returns an instance with an empty DataFrame on parse error.
+        """
         from io import StringIO
 
         Data = pd.DataFrame()
@@ -1044,7 +1236,14 @@ class EnsightMagnetData(PandasMagnetData):
 
     @classmethod
     def fromensight(cls, name: str, defs_file: str | None = None) -> EnsightMagnetData:
-        """Create from a CSV ensight file."""
+        """Create an :class:`EnsightMagnetData` from an Ensight CSV file.
+
+        :param name: path to the Ensight ``.csv`` file (first two rows are
+            skipped as Ensight header).
+        :param defs_file: path to a JSON field-definition file for units;
+            ``None`` disables JSON unit loading.
+        :returns: a fully initialised :class:`EnsightMagnetData` instance.
+        """
         from .utils.validation import validate_file_exists
 
         validate_file_exists(name)
@@ -1063,7 +1262,14 @@ class BProfileMagnetData(PandasMagnetData):
     def frombprofile(
         cls, name: str, defs_file: str | None = None
     ) -> BProfileMagnetData:
-        """Create from a bprofile CSV file (Index, Position, Profile columns)."""
+        """Create a :class:`BProfileMagnetData` from a B-profile CSV file.
+
+        :param name: path to a whitespace-separated file with ``Index``,
+            ``Position``, and ``Profile`` columns.
+        :param defs_file: path to a JSON field-definition file for units;
+            ``None`` disables JSON unit loading.
+        :returns: a fully initialised :class:`BProfileMagnetData` instance.
+        """
         from .utils.validation import validate_csv_format
 
         validate_csv_format(name)
@@ -1082,7 +1288,14 @@ class FeelppMagnetData(PandasMagnetData):
     def fromfeelpp(
         cls, name: str, skiprows: int = 0, defs_file: str | None = None
     ) -> FeelppMagnetData:
-        """Create from a feelpp simulation CSV file."""
+        """Create a :class:`FeelppMagnetData` from a Feel++ simulation CSV file.
+
+        :param name: path to the Feel++ ``.csv`` file.
+        :param skiprows: number of header rows to skip (default ``0``).
+        :param defs_file: path to a JSON field-definition file for units;
+            ``None`` disables JSON unit loading.
+        :returns: a fully initialised :class:`FeelppMagnetData` instance.
+        """
         from .utils.validation import validate_csv_format
 
         validate_csv_format(name)

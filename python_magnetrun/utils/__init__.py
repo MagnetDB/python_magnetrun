@@ -1,4 +1,21 @@
 from .downsampling import DownsampleConfig, downsample_arrays, downsample_dataframe
+from .scalar_metrics import (
+    calc_correlation,
+    calc_euclidean,
+    calc_mae,
+    calc_mahalanobis,
+    calc_mahalanobis_multivariate,
+    calc_mape,
+    calc_max_error,
+    calc_rmse,
+)
+from .downsampling_metrics import (
+    DownsampleMetrics,
+    SegmentMetrics,
+    benchmark_configs,
+    evaluate_downsampling,
+    evaluate_downsampling_segments,
+)
 from .files import SUPPORTED_EXTENSIONS, get_extension
 from .timestamps import (
     TXT_TIMESTAMP_FORMATS,
@@ -29,6 +46,19 @@ __all__ = [
     "DownsampleConfig",
     "downsample_arrays",
     "downsample_dataframe",
+    "calc_correlation",
+    "calc_euclidean",
+    "calc_mae",
+    "calc_mahalanobis",
+    "calc_mahalanobis_multivariate",
+    "calc_mape",
+    "calc_max_error",
+    "calc_rmse",
+    "DownsampleMetrics",
+    "SegmentMetrics",
+    "benchmark_configs",
+    "evaluate_downsampling",
+    "evaluate_downsampling_segments",
     "SUPPORTED_EXTENSIONS",
     "get_extension",
     "TXT_TIMESTAMP_FORMATS",

@@ -28,6 +28,7 @@ Python `MagnetRun` contains utilities to view and analyze Magnet runs from LNCMI
   - [Statistics and plateau detection](#statistics-and-plateau-detection)
   - [Derived quantities](#derived-quantities)
 - [Analysis](#analysis)
+- [Downsampling utilities](#downsampling-utilities)
 - [ETL and Pipelines](#etl-and-pipelines)
 - [Object Storage (RustFS)](#object-storage-rustfs)
 - [Running Tests](#running-tests)
@@ -195,7 +196,10 @@ Hybrid data does not require network mounting; simply point `--hybrid_datadir` t
 - Piecewise linear regression (`piecewise_regression`, `pwlf`)
 - Field factor identification via OLS regression
 - Time-series synchronization between data sources
-- Distance and similarity metrics (Euclidean, MAE, MAPE, DTW, TLCC)
+- Scalar distance metrics (Euclidean, RMSE, MAE, MAPE, max error, Pearson, Mahalanobis) shared across analysis and downsampling in `python_magnetrun.utils.scalar_metrics`
+- Distance and similarity metrics for cross-source comparison (Euclidean, MAE, MAPE, DTW, TLCC, Mahalanobis) in `python_magnetrun.analysis.metrics`
+- Downsampling utilities (`DownsampleConfig`, `downsample_arrays`, `downsample_dataframe`) with pluggable algorithms (`stride`, `lttb`, `minmax_lttb`, `minmax`)
+- Downsampling quality evaluation (`evaluate_downsampling`, `benchmark_configs`, `evaluate_downsampling_segments`) with per-segment (plateau vs transition) metrics and optional memory profiling
 - Extract data from `srv-data-lncmi`
 - Prepare data for injection into `magnetdb`
 - Field-definition management (`*-defs.json`) with cross-format aliases
@@ -990,10 +994,23 @@ sync_result = synchronize_data(df_overview, df_pupitre, key="Référence_GR1")
 
 ### Distance and similarity metrics
 
+The scalar primitives live in `python_magnetrun.utils.scalar_metrics` and are
+re-exported by `python_magnetrun.analysis.metrics` for backwards compatibility.
+Import from whichever location makes sense for your context — both paths are stable.
+
 ```python
-from python_magnetrun.analysis import (
-    calc_euclidean, calc_mae, calc_mape,
+# Canonical low-level path (no analysis-layer dependency)
+from python_magnetrun.utils.scalar_metrics import (
+    calc_euclidean, calc_rmse, calc_mae, calc_mape, calc_max_error,
     calc_correlation,
+    calc_mahalanobis,            # 1-D mean-difference / pooled-std distance
+    calc_mahalanobis_multivariate,  # point-wise Mahalanobis on paired samples
+)
+
+# High-level analysis path (adds DTW, TLCC, DistanceResult, …)
+from python_magnetrun.analysis.metrics import (
+    calc_euclidean, calc_mae, calc_mape, calc_correlation,
+    compute_all_distances,   # → DistanceResult
     compute_dtw_distance,
     compute_tlcc,
 )
@@ -1001,18 +1018,18 @@ from python_magnetrun.analysis import (
 series1 = df_overview["Référence_GR1"].values
 series2 = df_pupitre["IH"].values
 
-# Standard distance metrics
-print(calc_euclidean(series1, series2).value)
-print(calc_mae(series1, series2).value)
-print(calc_mape(series1, series2).value)    # percentage
-print(calc_correlation(series1, series2).value)
+# Compute all basic distances at once
+result = compute_all_distances(series1, series2)
+print(result.euclidean, result.rmse, result.mae, result.mape)
+print(result.mahalanobis)
 
 # Dynamic Time Warping (for shorter series, ≤ 5000 pts)
 dtw = compute_dtw_distance(series1, series2)
 print(f"DTW similarity score: {dtw.similarity_score:.4f}")
 
 # Time-Lagged Cross-Correlation
-tlcc = compute_tlcc(series1, series2, max_lag=50)
+tlcc = compute_tlcc(series1, series2, seconds=5, fps=30)
+print(f"Optimal lag: {tlcc.optimal_lag}")
 ```
 
 ### Breakpoint detection and run signature
@@ -1097,6 +1114,134 @@ The regression output reports `fh` and `fB` coefficients. Cross-reference with f
 
 > [!NOTE]
 > Ih and Ib are piecewise collinear. Use `--algo piecewise_regression` or `--algo pwlf` once the number of breakpoints is known for better results.
+
+---
+
+## Downsampling utilities
+
+`python_magnetrun.utils` provides a unified downsampling layer used by every
+data source (Pupitre, PigBrother, Hybrid kHz) and the analysis pipeline.
+
+### Downsampling data
+
+```python
+from python_magnetrun.MagnetRun import load_mrun
+from python_magnetrun.utils import DownsampleConfig, downsample_arrays, downsample_dataframe
+
+# Load a PigBrother overview file
+mrun = load_mrun("M9_Overview_240511-1150.tdms", housing="M9")
+df = mrun.getMData().Data["Courants_Alimentations"]  # DataFrame for one TDMS group
+
+time = df.index.to_numpy(dtype=float)               # [s] elapsed time
+data = df["Courant_GR1"].to_numpy(dtype=float)      # [A]
+
+# Reduce to 5 000 points using MinMax-LTTB (requires tsdownsample)
+config = DownsampleConfig(n_out=5_000, method="minmax_lttb")
+data_ds, time_ds = downsample_arrays(data, time, config)
+
+# Build from a percentage of the dataset length
+config_pct = DownsampleConfig.from_percent(len(data), percent=5.0, method="lttb")
+
+# Downsample an entire group DataFrame at once
+df_ds = downsample_dataframe(df, time_col="t", config=config)
+```
+
+Available methods:
+
+| Method | Description | Extra dependency |
+|---|---|---|
+| `stride` | Uniform stride (every k-th point) | — |
+| `minmax` | Min/max per bucket — preserves peaks | `tsdownsample` |
+| `lttb` | Largest-Triangle-Three-Buckets | `tsdownsample` |
+| `minmax_lttb` | MinMax pre-filter + LTTB selection | `tsdownsample` |
+
+Install optional backend:
+
+```bash
+pip install tsdownsample
+```
+
+### Evaluating downsampling quality
+
+`evaluate_downsampling` reconstructs the signal from the downsampled points
+(linear interpolation back onto the original time grid) and returns a full
+quality report as a `DownsampleMetrics` dataclass.
+
+```python
+from python_magnetrun.MagnetRun import load_mrun
+from python_magnetrun.utils import (
+    DownsampleConfig,
+    evaluate_downsampling,
+    evaluate_downsampling_segments,
+    benchmark_configs,
+)
+
+mrun = load_mrun("M9_Overview_240511-1150.tdms", housing="M9")
+df = mrun.getMData().Data["Courants_Alimentations"]
+time = df.index.to_numpy(dtype=float)
+data = df["Courant_GR1"].to_numpy(dtype=float)
+
+config = DownsampleConfig(n_out=5_000, method="minmax_lttb")
+metrics = evaluate_downsampling(data, time, config)
+
+print(metrics.summary())
+# minmax_lttb: 36000→5000 (ratio=7.2x), RMSE=0.0031, max_err=0.012, t=4.1ms
+
+print(metrics.compression_ratio)   # 7.2
+print(metrics.rmse)                # reconstruction RMSE [A]
+print(metrics.hausdorff_distance)  # max directed Hausdorff in normalised (t,y) space
+print(metrics.energy_ratio)        # ‖reconstructed‖²/‖original‖², ideal = 1.0
+print(metrics.peak_max_error)      # |max(reconstructed) - max(original)| / range
+```
+
+With optional memory profiling:
+
+```python
+# Tier 1 (default): tracemalloc — Python heap only, zero overhead
+metrics = evaluate_downsampling(data, time, config, compute_memory=True)
+print(metrics.peak_memory_bytes, metrics.memory_overhead_ratio)
+
+# Tier 2: subprocess isolation — captures Python + native (Rust/C) heap; ~100 ms
+metrics = evaluate_downsampling(data, time, config, compute_memory=True, memory_tier=2)
+
+# Tier 3: memray native tracing — most accurate; requires `pip install memray`
+metrics = evaluate_downsampling(data, time, config, compute_memory=True, memory_tier=3)
+```
+
+### Per-segment quality (plateau vs transition)
+
+`evaluate_downsampling_segments` splits the reconstruction error into
+plateau (steady-state) and transition (ramp) regions using `binarize_signal`,
+which is especially meaningful for magnet run data that alternates between ramp
+and flat-top phases.
+
+```python
+base_metrics, seg_metrics = evaluate_downsampling_segments(
+    data, time, config,
+    threshold=None,   # None → automatic Otsu threshold
+    window=50,        # smoothing window for binarisation
+)
+
+print(f"Plateau RMSE:    {seg_metrics.plateau_rmse:.4g}  (fraction={seg_metrics.plateau_fraction:.0%})")
+print(f"Transition RMSE: {seg_metrics.transition_rmse:.4g}  (fraction={seg_metrics.transition_fraction:.0%})")
+```
+
+### Benchmarking multiple configurations
+
+`benchmark_configs` runs `evaluate_downsampling` for each config and returns
+a tidy `DataFrame` for easy comparison or export:
+
+```python
+configs = [
+    DownsampleConfig(n_out=1_000, method="stride"),
+    DownsampleConfig(n_out=1_000, method="minmax_lttb"),
+    DownsampleConfig(n_out=5_000, method="minmax_lttb"),
+    DownsampleConfig(n_out=5_000, method="lttb"),
+]
+
+df_bench = benchmark_configs(data, time, configs)
+print(df_bench[["compression_ratio", "rmse", "max_error", "elapsed_s"]])
+```
 
 ---
 

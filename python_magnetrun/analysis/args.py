@@ -197,7 +197,8 @@ def args_to_downsample_config(args: argparse.Namespace):
 
     n_out: int = int(params.get("n_out", 10_000))
     bucket_size: int | None = params.get("bucket_size", None)
-    return DownsampleConfig(n_out=n_out, method=method, bucket_size=bucket_size)
+    epsilon: float | None = params.get("epsilon", None)
+    return DownsampleConfig(n_out=n_out, method=method, bucket_size=bucket_size, epsilon=epsilon)
 
 
 def parse_arguments(args: list[str] | None = None) -> argparse.Namespace:

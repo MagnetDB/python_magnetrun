@@ -1174,4 +1174,75 @@ def print_record_summary(record: OverviewRecord) -> None:
             print(f"  - {key}: {value}")
 
     print(f"Pupitre params: teb={summary['teb']:.2f}, BP={summary['BP']:.2f}")
+
+
+def benchmark_downsample_channel(
+    df: "pd.DataFrame",
+    key: str,
+    tkey: str = "t",
+    n_out: int = 10_000,
+    compute_memory: bool = False,
+    memory_tier: int = 1,
+    save_csv: str | None = None,
+) -> "pd.DataFrame":
+    """Benchmark all available downsampling methods on one channel.
+
+    Constructs a default set of :class:`~python_magnetrun.utils.DownsampleConfig`
+    objects covering all installed methods at the same *n_out*, then calls
+    :func:`~python_magnetrun.utils.benchmark_configs` and prints the result.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        DataFrame containing the channel data.
+    key : str
+        Column name of the channel to benchmark.
+    tkey : str, optional
+        Time column name (default: ``'t'``).
+    n_out : int, optional
+        Target number of output points for all methods (default: 10 000).
+    compute_memory : bool, optional
+        When ``True``, measure peak memory allocation for each method.
+        Defaults to ``False``.
+    memory_tier : int, optional
+        Memory measurement tier (1/2/3); only used when *compute_memory* is
+        ``True``.
+    save_csv : str, optional
+        If provided, save the comparison table to this CSV path.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per method; columns match :class:`~python_magnetrun.utils.DownsampleMetrics`.
+    """
+    import numpy as np
+    import pandas as pd
+
+    from ..utils.downsampling import DownsampleConfig, HAS_TSDOWNSAMPLE
+    from ..utils.downsampling_metrics import benchmark_configs
+
+    data = df[key].to_numpy(dtype=float)
+    time = df[tkey].to_numpy(dtype=float)
+
+    configs = [
+        DownsampleConfig(n_out=n_out, method="stride"),
+        DownsampleConfig(n_out=n_out, method="minmax"),
+    ]
+    if HAS_TSDOWNSAMPLE:
+        configs += [
+            DownsampleConfig(n_out=n_out, method="minmax_lttb"),
+            DownsampleConfig(n_out=n_out, method="lttb"),
+        ]
+
+    result = benchmark_configs(data, time, configs, compute_memory=compute_memory, memory_tier=memory_tier)
+
+    cols = ["compression_ratio", "rmse", "max_error", "hausdorff_distance", "elapsed_s"]
+    print(f"\nDownsampling benchmark — key={key!r}, n_out={n_out}")
+    print(result[cols].to_string())
+
+    if save_csv:
+        result.to_csv(save_csv)
+        logger.info(f"Benchmark saved to {save_csv}")
+
+    return result
     print("=" * 60, flush=True)

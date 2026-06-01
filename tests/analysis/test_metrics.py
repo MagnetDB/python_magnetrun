@@ -60,7 +60,8 @@ class TestDistanceResult:
         d = result.to_dict()
         assert d["euclidean"] == 1.0
         assert d["correlation"] == 0.95
-        assert len(d) == 4
+        # rmse, max_error, mahalanobis are optional fields with NaN defaults
+        assert {"euclidean", "mae", "mape", "correlation", "rmse", "max_error", "mahalanobis"} == set(d)
 
 
 class TestDTWResult:
