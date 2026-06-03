@@ -43,12 +43,12 @@ while getopts "d:sp:h" opt; do
     esac
 done
 
-if [ ! -d $VENVDIR ]; then
+if [ ! -d "$VENVDIR" ]; then
    echo "create Python Virtualenv: VENVDIR=${VENVDIR}"
    if [ "$USE_SYSTEM_PACKAGES" == "1" ]; then
-      python -m venv --system-site-packages $VENVDIR
+      python -m venv --system-site-packages "$VENVDIR"
    else
-      python -m venv $VENVDIR
+      python -m venv "$VENVDIR"
     fi
 
     cleanup() {
@@ -59,7 +59,7 @@ if [ ! -d $VENVDIR ]; then
     }
     trap cleanup ERR
 
-    . $VENVDIR/bin/activate
+    . "$VENVDIR"/bin/activate
     pip install black
     for entry in "${PREREQ_PACKAGES[@]}"; do
         pkg="${entry%%:*}"
