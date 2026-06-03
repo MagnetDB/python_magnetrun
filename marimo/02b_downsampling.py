@@ -1,78 +1,82 @@
 import marimo
 
-__generated_with = "0.10.0"
-app = marimo.App(width="medium", title="Part 1 — Downsampling Comparison")
+__generated_with = "0.23.8"
+app = marimo.App(width="medium")
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        r"""
-        # Downsampling: Why It Matters
+def _(mo):
+    mo.md(r"""
+    # Downsampling: Why It Matters
 
-        Raw magnet-run files can contain millions of points.  Rendering them
-        naively freezes the browser.  Downsampling reduces the point count while
-        preserving the visual appearance of the signal.
+    Raw magnet-run files can contain millions of points.  Rendering them
+    naively freezes the browser.  Downsampling reduces the point count while
+    preserving the visual appearance of the signal.
 
-        This notebook lets you compare **raw vs RDP vs M4** side-by-side with
-        an interactive slider.
-        """
-    )
+    This notebook lets you compare **raw vs RDP vs M4** side-by-side with
+    an interactive slider.
+    """)
     return
 
 
 @app.cell
-def __():
+def _():
     import marimo as mo
+
     return (mo,)
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        r"""
-        ## Algorithm overview
+def _(mo):
+    mo.md(r"""
+    ## Algorithm overview
 
-        | Method | Type | Parameter | Characteristic |
-        |--------|------|-----------|----------------|
-        | `stride` | count-based | `n_out` | uniform, fast |
-        | `minmax` | count-based | `n_out` | preserves envelope (2 pts/bucket) |
-        | `lttb` | count-based | `n_out` | perceptual fidelity (requires tsdownsample) |
-        | `minmax_lttb` | count-based | `n_out` | best perceptual fidelity (requires tsdownsample) |
-        | **`m4`** | count-based | `n_out` | pixel-perfect line chart, 4 pts/bucket (requires tsdownsample) |
-        | **`nan_m4`** | count-based | `n_out` | m4 but preserves NaN gaps (requires tsdownsample) |
-        | **`rdp`** | geometry-based | `epsilon` | plateau-aware, fewer pts on flat regions (requires simplification) |
-        | **`vw`** | geometry-based | `epsilon` | area-based variant of RDP (requires simplification) |
+    | Method | Type | Parameter | Characteristic |
+    |--------|------|-----------|----------------|
+    | `stride` | count-based | `n_out` | uniform, fast |
+    | `minmax` | count-based | `n_out` | preserves envelope (2 pts/bucket) |
+    | `lttb` | count-based | `n_out` | perceptual fidelity (requires tsdownsample) |
+    | `minmax_lttb` | count-based | `n_out` | best perceptual fidelity (requires tsdownsample) |
+    | **`m4`** | count-based | `n_out` | pixel-perfect line chart, 4 pts/bucket (requires tsdownsample) |
+    | **`nan_m4`** | count-based | `n_out` | m4 but preserves NaN gaps (requires tsdownsample) |
+    | **`rdp`** | geometry-based | `epsilon` | plateau-aware, fewer pts on flat regions (requires simplification) |
+    | **`vw`** | geometry-based | `epsilon` | area-based variant of RDP (requires simplification) |
 
-        Geometry-based methods (`rdp`, `vw`) allocate more points where the
-        signal is changing fast and fewer points where it is flat — ideal for
-        magnet run data with long constant-field plateaus.
-        """
-    )
+    Geometry-based methods (`rdp`, `vw`) allocate more points where the
+    signal is changing fast and fewer points where it is flat — ideal for
+    magnet run data with long constant-field plateaus.
+    """)
     return
 
 
 @app.cell
-def __(mo):
-    mo.md("## Load a file")
+def _(mo):
+    mo.md("""
+    ## Load a file
+    """)
     return
 
 
 @app.cell
-def __():
+def _():
     from pathlib import Path
 
     import python_magnetrun
 
-    _default = str(
-        Path(python_magnetrun.__file__).parent.parent / "tests" / "data" / "sample_pupitre.txt"
+    _default_path = str(
+        Path(python_magnetrun.__file__).parent.parent
+        / "tests"
+        / "data"
+        / "sample_pupitre.txt"
     )
-    return Path, _default, python_magnetrun
+    return (_default_path,)
 
 
 @app.cell
-def __(mo, _default):
-    file_input = mo.ui.text(value=_default, label="Path to `.txt` file", full_width=True)
+def _(default_path, mo):
+    file_input = mo.ui.text(
+        value=default_path, label="Path to `.txt` file", full_width=True
+    )
     housing_input = mo.ui.dropdown(
         options=["M9", "M10", "M14", "M19", "unknown"],
         value="M9",
@@ -83,7 +87,7 @@ def __(mo, _default):
 
 
 @app.cell
-def __(file_input, housing_input):
+def _(file_input, housing_input):
     from python_magnetrun.MagnetRun import load_mrun
 
     mrun = load_mrun(
@@ -93,17 +97,20 @@ def __(file_input, housing_input):
     )
     keys = mrun.getKeys()
     df_raw = mrun.getDataFrame()
-    return df_raw, keys, load_mrun, mrun
+    return df_raw, keys
 
 
 @app.cell
-def __(mo):
-    mo.md("---\n## Choose channel and target point count")
+def _(mo):
+    mo.md("""
+    ---
+    ## Choose channel and target point count
+    """)
     return
 
 
 @app.cell
-def __(keys, mo):
+def _(keys, mo):
     channel_select = mo.ui.dropdown(
         options=keys,
         value=keys[0],
@@ -114,7 +121,7 @@ def __(keys, mo):
 
 
 @app.cell
-def __(df_raw, mo):
+def _(df_raw, mo):
     n_raw = len(df_raw)
     n_out_slider = mo.ui.slider(
         start=10,
@@ -125,17 +132,20 @@ def __(df_raw, mo):
         full_width=True,
     )
     n_out_slider  # noqa: B018
-    return n_out_slider, n_raw
+    return (n_out_slider,)
 
 
 @app.cell
-def __(mo):
-    mo.md("---\n## Side-by-side comparison (available methods)")
+def _(mo):
+    mo.md("""
+    ---
+    ## Side-by-side comparison (available methods)
+    """)
     return
 
 
 @app.cell
-def __(channel_select, df_raw, mo, n_out_slider):
+def _(channel_select, df_raw, mo, n_out_slider):
     import numpy as np
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
@@ -180,7 +190,8 @@ def __(channel_select, df_raw, mo, n_out_slider):
 
     _n_methods = len(_configs)
     _fig = make_subplots(
-        rows=_n_methods, cols=1,
+        rows=_n_methods,
+        cols=1,
         shared_xaxes=True,
         subplot_titles=[label for label, _ in _configs],
         vertical_spacing=0.04,
@@ -199,11 +210,14 @@ def __(channel_select, df_raw, mo, n_out_slider):
 
         _fig.add_trace(
             go.Scatter(
-                x=_t_plot, y=_y_plot, mode="lines",
+                x=_t_plot,
+                y=_y_plot,
+                mode="lines",
                 name=f"{_label} ({_n_pts} pts)",
                 showlegend=True,
             ),
-            row=_row, col=1,
+            row=_row,
+            col=1,
         )
 
     _fig.update_layout(
@@ -212,38 +226,28 @@ def __(channel_select, df_raw, mo, n_out_slider):
         hovermode="x unified",
     )
     _fig  # noqa: B018
-    return (
-        DownsampleConfig,
-        HAS_SIMPLIFICATION,
-        HAS_TSDOWNSAMPLE,
-        downsample_dataframe,
-        go,
-        make_subplots,
-        np,
-    )
+    return
 
 
 @app.cell
-def __(mo):
-    mo.md(
-        r"""
-        ---
-        ## When to use each method
+def _(mo):
+    mo.md(r"""
+    ---
+    ## When to use each method
 
-        | Scenario | Recommended method |
-        |----------|--------------------|
-        | Quick preview, any file | `stride` |
-        | Preserve min/max envelope | `minmax` |
-        | Best visual fidelity, fixed count | `minmax_lttb` or `m4` |
-        | NaN gaps must stay visible | `nan_m4` |
-        | Plateau-heavy runs, file size matters | `rdp` or `vw` |
+    | Scenario | Recommended method |
+    |----------|--------------------|
+    | Quick preview, any file | `stride` |
+    | Preserve min/max envelope | `minmax` |
+    | Best visual fidelity, fixed count | `minmax_lttb` or `m4` |
+    | NaN gaps must stay visible | `nan_m4` |
+    | Plateau-heavy runs, file size matters | `rdp` or `vw` |
 
-        **Rule of thumb for `epsilon` (RDP/VW):** start at 1 % of the signal
-        range and adjust until the number of output points meets your target.
-        Use `DownsampleConfig.from_n_out_rdp()` to let the library search for
-        you.
-        """
-    )
+    **Rule of thumb for `epsilon` (RDP/VW):** start at 1 % of the signal
+    range and adjust until the number of output points meets your target.
+    Use `DownsampleConfig.from_n_out_rdp()` to let the library search for
+    you.
+    """)
     return
 
 
