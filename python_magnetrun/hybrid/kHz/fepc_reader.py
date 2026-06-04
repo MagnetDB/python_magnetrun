@@ -111,8 +111,8 @@ def compute_hour_t0(
     """
     Compute t0 (Unix UTC timestamp) for the start of the hour encoded in filename.
 
-    Filename format: HHxxx.bin, e.g. '10HOST_1_LIST_0.bin' → hour 10
-    t0 = HH:00:00 local time (tz_name) converted to UTC Unix timestamp.
+    Filename format: HHxxx.bin, e.g. '09HOST_1_LIST_0.bin' → UTC hour 9
+    The HH prefix encodes a **UTC hour**; t0 = HH:00:00 UTC as a Unix timestamp.
 
     Parameters
     ----------
@@ -121,12 +121,12 @@ def compute_hour_t0(
     date_str : str
         Recording date as ISO string, e.g. '2024-01-15'
     tz_name : str
-        Timezone name (default: 'Europe/Paris')
+        Unused — kept for backwards-compatibility. The filename hour is always UTC.
 
     Returns
     -------
     float
-        Unix timestamp (seconds since 1970-01-01 00:00:00 UTC) for HH:00:00 local
+        Unix timestamp (seconds since 1970-01-01 00:00:00 UTC) for HH:00:00 UTC
     """
     import datetime
     from zoneinfo import ZoneInfo
@@ -138,13 +138,14 @@ def compute_hour_t0(
         raise ValueError(f"Cannot extract hour from filename '{name}': {e}") from e
 
     date = datetime.date.fromisoformat(date_str)
-    tz = ZoneInfo(tz_name)
-    dt = datetime.datetime(date.year, date.month, date.day, hour, 0, 0, tzinfo=tz)
+    dt_utc = datetime.datetime(date.year, date.month, date.day, hour, 0, 0,
+                               tzinfo=ZoneInfo("UTC"))
 
     logger.debug(
-        f"compute_hour_t0: filepath={filepath}, date_str={date_str}, tz_name={tz_name}, computed t0={dt.isoformat()} (local), {dt.astimezone(ZoneInfo('UTC')).isoformat()} (UTC)"
+        f"compute_hour_t0: filepath={filepath}, date_str={date_str},"
+        f" UTC hour={hour}, t0={dt_utc.isoformat()}"
     )
-    return dt.astimezone(ZoneInfo('UTC')).timestamp()
+    return dt_utc.timestamp()
 
 
 def parse_cfg_file(cfg_path: str) -> FEPCConfig:

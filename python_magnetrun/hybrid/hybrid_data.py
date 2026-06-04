@@ -487,13 +487,24 @@ class HybridData:
         bin_files = sorted(khz_dir.glob(bin_pattern))
 
         if hours is not None:
-            # Filter by hour
+            # Filename hour is UTC; user-supplied hours are French local time.
+            # Convert each file's UTC hour to French local hour before comparing.
+            import datetime as _dt
+            from zoneinfo import ZoneInfo
+
+            _tz_paris = ZoneInfo("Europe/Paris")
+            _tz_utc = ZoneInfo("UTC")
+            _date = _dt.date.fromisoformat(self.date_str)
             filtered_files = []
             for f in bin_files:
-                # Extract hour from filename (XXHOST_...)
                 try:
-                    hour = int(f.name[:2])
-                    if hour in hours:
+                    utc_hour = int(f.name[:2])
+                    _dt_utc = _dt.datetime(
+                        _date.year, _date.month, _date.day,
+                        utc_hour, 0, 0, tzinfo=_tz_utc,
+                    )
+                    local_hour = _dt_utc.astimezone(_tz_paris).hour
+                    if local_hour in hours:
                         filtered_files.append(f)
                 except ValueError:
                     pass
@@ -659,7 +670,7 @@ class HybridData:
 
     def _parse_rms_filename_hour(self, filepath: Path) -> int | None:
         """
-        Parse the start hour from an RMS filename
+        Parse the start hour from an RMS filename.
 
         Filename format: {system}_YYYY-MM-DD_HHMM—YYYY-MM-DD_HHMM.rms
         Example: FEPC-LNCMI_2025-01-06_0000—2025-01-06_0100.rms -> returns 0
@@ -672,7 +683,7 @@ class HybridData:
         Returns
         -------
         int or None
-            Start hour (0-23) or None if parsing fails
+            Start hour (0-23) in **UTC**, or None if parsing fails.
         """
         import re
 
@@ -734,11 +745,25 @@ class HybridData:
                 )
             files_to_load = [rms_files[file_idx]]
         elif hours is not None:
-            # Filter files by hour
+            # Filename hour is UTC; user-supplied hours are French local time.
+            # Convert each file's UTC hour to French local hour before comparing.
+            import datetime as _dt
+            from zoneinfo import ZoneInfo
+
+            _tz_paris = ZoneInfo("Europe/Paris")
+            _tz_utc = ZoneInfo("UTC")
+            _date = _dt.date.fromisoformat(self.date_str)
             files_to_load = []
             for f in rms_files:
-                hour = self._parse_rms_filename_hour(f)
-                if hour is not None and hour in hours:
+                utc_hour = self._parse_rms_filename_hour(f)
+                if utc_hour is None:
+                    continue
+                _dt_utc = _dt.datetime(
+                    _date.year, _date.month, _date.day,
+                    utc_hour, 0, 0, tzinfo=_tz_utc,
+                )
+                local_hour = _dt_utc.astimezone(_tz_paris).hour
+                if local_hour in hours:
                     files_to_load.append(f)
             if not files_to_load:
                 raise ValueError(f"No RMS files found for hours {hours}")

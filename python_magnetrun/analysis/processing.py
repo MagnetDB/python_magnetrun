@@ -569,15 +569,32 @@ def load_hybrid_data(
     base_dir = str(first_file.parents[3])
     date_str = first_file.parents[1].name  # "YYYY-MM-DD"
 
+    # kHz/RMS filenames encode UTC hours; convert to French local so getData()
+    # receives the hours in the same timezone as the user-facing API expects.
+    import datetime as _dt
+    import re as _re
+    from zoneinfo import ZoneInfo
+
+    _tz_paris = ZoneInfo("Europe/Paris")
+    _tz_utc = ZoneInfo("UTC")
+    _date = _dt.date.fromisoformat(date_str)
+
+    def _utc_hour_to_local(utc_h: int) -> int:
+        return _dt.datetime(
+            _date.year, _date.month, _date.day, utc_h, 0, 0, tzinfo=_tz_utc
+        ).astimezone(_tz_paris).hour
+
     hours_set: set[int] = set()
     if htype == "kHz":
         for f in record.sources.hybrid_kHz:
             with contextlib.suppress(ValueError):
-                hours_set.add(int(Path(f).name[:2]))
+                hours_set.add(_utc_hour_to_local(int(Path(f).name[:2])))
     elif htype == "rms":
         for f in record.sources.hybrid_rms:
             with contextlib.suppress(ValueError):
-                hours_set.add(int(Path(f).name[:2]))
+                m = _re.search(r"\d{4}-\d{2}-\d{2}_(\d{2})\d{2}[—-]", Path(f).stem)
+                if m:
+                    hours_set.add(_utc_hour_to_local(int(m.group(1))))
     hours_list: list[int] | None = sorted(hours_set) or None
 
     try:

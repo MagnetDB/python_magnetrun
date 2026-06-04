@@ -657,6 +657,19 @@ class FileDiscovery:
         end_time_str = _local_end_dt.strftime("%H:%M")
         hours = range(_local_dt.hour, _local_end_dt.hour + 1)
 
+        # kHz/RMS/trigger filenames encode UTC hours; convert French local hours
+        # to UTC so the file-name filter matches correctly (handles CET/CEST).
+        from zoneinfo import ZoneInfo
+
+        _tz_paris = ZoneInfo("Europe/Paris")
+        _tz_utc = ZoneInfo("UTC")
+        _local_date = _local_dt.date()
+        utc_hours = {
+            datetime(_local_date.year, _local_date.month, _local_date.day,
+                     h, 0, 0, tzinfo=_tz_paris).astimezone(_tz_utc).hour
+            for h in hours
+        }
+
         try:
             from ..hybrid.hybrid_data import HybridData
 
@@ -681,19 +694,19 @@ class FileDiscovery:
                 for key, files in hdata._info.khz_files.items()
                 if not key.endswith("_cfg")
                 for f in files
-                if _khz_hour(f) in hours
+                if _khz_hour(f) in utc_hours
             )
             file_set.hybrid_rms = natsorted(
                 str(f)
                 for files in hdata._info.rms_files.values()
                 for f in files
-                if _rms_hour(f) in hours
+                if _rms_hour(f) in utc_hours
             )
             file_set.hybrid_trigger = natsorted(
                 str(f)
                 for files in hdata._info.trigger_files.values()
                 for f in files
-                if _trigger_hour(f) in hours
+                if _trigger_hour(f) in utc_hours
             )
             logger.info(
                 f"Hybrid data for {date_str} {time_str}–{end_time_str} (local)"
