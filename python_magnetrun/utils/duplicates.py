@@ -25,8 +25,12 @@ def find_duplicates(
 
     counts = df[key].value_counts()
     if (counts > 1).any():
+        total_duplicates = (counts[counts > 1] - 1).sum()
         logger.warning(
-            f"Duplicates found in {key}: tutu {counts[counts > 1].to_dict()}"
+            f"Duplicates found in {key}: {name} — {total_duplicates} duplicate(s) removed"
         )
+        logger.debug(f"Duplicate counts for {key} in {name}:\n{counts[counts > 1]}")
+        if strict:
+            raise RuntimeError(f"Strict mode: duplicates found in {key} for {name}")
     df_clean = df.drop_duplicates(subset=[key])
     return df_clean
