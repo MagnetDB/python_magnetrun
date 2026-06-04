@@ -569,7 +569,7 @@ cfg = update_housing_config("M9-housing-config.json", {"gr1_current": "IB"})
 
 ```bash
 python3 -m python_magnetrun.cli \
-    data/M9_2019.02.14-23_00_38.txt info --list
+    data/M9_2019.02.14---23_00_38.txt info --list
 ```
 
 or use data from predefined directories:
@@ -601,7 +601,7 @@ python3 examples/get-record.py \
 
 ```bash
 python3 -m python_magnetrun.cli \
-    srvdata/M9_2019.02.14---23:00:38.txt \
+    data/M9_2019.02.14---23_00_38.txt \
     plot --vs_time Field
 ```
 
