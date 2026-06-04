@@ -97,6 +97,9 @@ venv/
 magnetrun-env/
 ENV/
 
+# direnv
+.envrc
+
 # Spyder project settings
 .spyderproject
 .spyproject
