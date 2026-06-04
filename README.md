@@ -39,6 +39,30 @@ Python `MagnetRun` contains utilities to view and analyze Magnet runs from LNCMI
 
 ## Installation
 
+### Getting the source code
+
+Clone the repository from GitHub, including the `python_magnetcooling` submodule:
+
+```bash
+git clone --recurse-submodules https://github.com/MagnetDB/python_magnetrun.git
+cd python_magnetrun
+```
+
+If you already cloned without `--recurse-submodules`, initialise the submodule afterwards:
+
+```bash
+git submodule update --init --recursive
+```
+
+To get a specific release, check out a tag after cloning:
+
+```bash
+git checkout v1.2.3   # replace with the desired tag
+git submodule update --recursive
+```
+
+> [!NOTE] To get a list of existing branches and tags, run `git tag` and `git branch -a`.
+
 ### Using a Python virtual environment
 
 **Linux / macOS:**
@@ -126,59 +150,213 @@ Pass `--hybrid_datadir` and `--hybrid_date` to any `plot` subcommand to overlay 
 
 ## Mounting Data Directories
 
-### `Pupitre` — SSHFS
+All acquisition data (Pupitre, PigBrother, Hybrid) is stored on a NAS server under a common root.  The NAS sub-directory layout is:
 
-Mount the `Pupitre` file server as a local directory:
+| Acquisition system | NAS sub-path | Environment variable |
+|---|---|---|
+| Pupitre (`.txt`) | `records/srv-data-install` | `MAGNETRUN_PUPITRE_DATA_DIR` |
+| PigBrother (`.tdms`) | `records/pbsurv` | `MAGNETRUN_PIGBROTHER_DATA_DIR` |
+| Hybrid (kHz / RMS) | `records/CEA` | `MAGNETRUN_HYBRID_DATA_DIR` |
+
+Two mounting strategies are supported depending on your setup:
+
+| Strategy | Mount root | Typical use |
+|---|---|---|
+| **rclone** | `~/LNCMIG-Data/records` | Laptop / remote workstation |
+| **autofs** | `/mnt/LNCMIG-Data/records` | LNCMI on-premise workstation |
+
+> [!TIP]
+> The interactive Marimo notebook `marimo/00_nas_setup.py` walks you through the full setup, checks prerequisites, and writes `~/.config/python_magnetrun/data_dirs.json` automatically.
+
+---
+
+### Option A — rclone (laptop / remote workstation)
+
+rclone mounts the NAS over SFTP and exposes it as a local FUSE filesystem.
+
+#### 1. Install rclone and fuse3
 
 ```bash
-sshfs -o uid=$(id -u),gid=$(id -g) -o IdentityFile=~/.ssh/id_ecdsa \
-    $SRVDATA_SERVER:$SRVDATA_DIR ~/LNCMIG-Data/
+# Debian / Ubuntu
+sudo apt install rclone fuse3
+```
+
+See <https://rclone.org/downloads/> for other platforms.
+
+#### 2. Create an SSH key (if you don't have one)
+
+```bash
+ssh-keygen -t ed25519 -C "$(hostname)-rclone"
+# Accept the default path (~/.ssh/id_ed25519).
+# Leave the passphrase blank for unattended daemon mounts.
+```
+
+Install the public key on the NAS and verify access:
+
+```bash
+ssh-copy-id -i ~/.ssh/id_ed25519.pub <user>@<nas-host>
+ssh -i ~/.ssh/id_ed25519 <user>@<nas-host>   # should log in without password
+```
+
+#### 3. Configure the rclone remote
+
+```bash
+rclone config
+# n  → new remote
+# name:  LNCMIG
+# type:  sftp
+# host:  <NAS hostname or IP>
+# user:  <your login>
+# key_file: ~/.ssh/id_ed25519
+```
+
+#### 4. Mount the NAS
+
+```bash
+mkdir -p ~/LNCMIG-Data/records
+rclone mount LNCMIG:/records ~/LNCMIG-Data/records \
+    --vfs-cache-mode writes --daemon
 ```
 
 To unmount:
 
 ```bash
-fusermount -u ~/LNCMIG-Data/
+fusermount3 -u ~/LNCMIG-Data/records
 ```
 
 > [!NOTE]
-> SSHFS can be unstable. If it stops, just relaunch the command above.
+> After mounting, the data directories become:
+> - Pupitre: `~/LNCMIG-Data/records/srv-data-install`
+> - PigBrother: `~/LNCMIG-Data/records/pbsurv`
+> - Hybrid: `~/LNCMIG-Data/records/CEA`
 
-Alternatively, retrieve files programmatically without mounting:
+#### 5. Auto-mount at login with systemd (Linux)
+
+Create a systemd **user** service so the NAS is mounted automatically whenever you log in:
 
 ```bash
-python3 -m python_magnetrun.requests.cli --user email --datadir datadir [--save]
+mkdir -p ~/.config/systemd/user
 ```
 
-### `PigBrother` — CIFS
+Write `~/.config/systemd/user/rclone-lncmig.service`:
 
-Create the target directories first, then mount:
+```ini
+[Unit]
+Description=rclone mount — LNCMIG NAS
+After=network-online.target
+Wants=network-online.target
 
-```bash
-mkdir -p pigbrotherdata pigbrothercolddata
+[Service]
+Type=notify
+ExecStartPre=/bin/mkdir -p %h/LNCMIG-Data/records
+ExecStart=rclone mount LNCMIG:/records %h/LNCMIG-Data/records \
+    --vfs-cache-mode writes \
+    --log-level INFO
+ExecStop=fusermount3 -u %h/LNCMIG-Data/records
+Restart=on-failure
+RestartSec=10
 
-# Main data share
-sudo mount -v -t cifs //pigbrother_server_ip/d ./pigbrotherdata \
-    -o user=pbsurv,password=passwd
-
-# Cold data share
-sudo mount -v -t cifs //pigbrother_server_ip/df ./pigbrothercolddata \
-    -o user=pbsurv,password=passwd
+[Install]
+WantedBy=default.target
 ```
 
-To unmount:
+Enable and start it:
 
 ```bash
-sudo umount ./pigbrotherdata
-sudo umount ./pigbrothercolddata
+systemctl --user daemon-reload
+systemctl --user enable --now rclone-lncmig.service
+```
+
+Check status:
+
+```bash
+systemctl --user status rclone-lncmig.service
+journalctl --user -u rclone-lncmig.service -f   # live logs
 ```
 
 > [!NOTE]
-> Replace `pigbrother_server_ip`, `pbsurv`, and `passwd` with the actual server address and credentials.
+> `%h` expands to your home directory inside the unit file.
+> The service uses `Type=notify` which requires rclone ≥ 1.57 (the `--rc` / sd-notify support).
+> If you are on an older version, change `Type=notify` to `Type=forking` and add `--daemon` to `ExecStart`.
 
-### Hybrid data — local path
+#### Auto-mount at login with Task Scheduler (Windows)
 
-Hybrid data does not require network mounting; simply point `--hybrid_datadir` to the local base directory that follows the layout described in [Data Sources → Hybrid data](#hybrid-data-khz--rms--trigger).
+On Windows, rclone mount requires **WinFsp** (the Windows FUSE driver).  Install it first:
+
+1. Download and install WinFsp from <https://winfsp.dev/rel/>.
+2. Install rclone for Windows from <https://rclone.org/downloads/> and add it to `%PATH%`.
+3. Configure the remote the same way as on Linux (`rclone config`).
+
+The simplest way to auto-mount at logon is a **Task Scheduler** task.  Open PowerShell as a normal user and run:
+
+```powershell
+$action  = New-ScheduledTaskAction -Execute "rclone" `
+               -Argument 'mount LNCMIG:/records Z: --vfs-cache-mode writes'
+$trigger = New-ScheduledTaskTrigger -AtLogOn
+$settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit 0 `
+               -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
+Register-ScheduledTask -TaskName "rclone-lncmig" `
+    -Action $action -Trigger $trigger -Settings $settings `
+    -RunLevel Limited -Force
+```
+
+This mounts the NAS as drive **`Z:`**.  Adjust the drive letter to taste.
+
+Start it immediately without logging out:
+
+```powershell
+Start-ScheduledTask -TaskName "rclone-lncmig"
+```
+
+To remove the task:
+
+```powershell
+Unregister-ScheduledTask -TaskName "rclone-lncmig" -Confirm:$false
+```
+
+> [!NOTE]
+> Update `MAGNETRUN_*_DATA_DIR` paths to use the Windows drive letter, e.g.
+> `Z:\srv-data-install`, `Z:\pbsurv`, `Z:\CEA`.
+> For a proper Windows service (survives without a logged-in session) use
+> [NSSM](https://nssm.cc/) or [WinSW](https://github.com/winsw/winsw) to wrap the same `rclone mount` command.
+
+---
+
+### Option B — autofs (on-premise workstation)
+
+autofs mounts the NAS automatically on first access and unmounts it after a period of inactivity.  Ask your sysadmin to configure `/etc/auto.master` and the relevant map file.  Once set up, the NAS appears at `/mnt/LNCMIG-Data/records` without any manual mount step.
+
+---
+
+### Configuring data directory paths
+
+After mounting (either way), tell `python_magnetrun` where to find each data source.
+
+**Persistent config file** — the recommended approach; written once and read on every import:
+
+```bash
+mkdir -p ~/.config/python_magnetrun
+cat > ~/.config/python_magnetrun/data_dirs.json << 'EOF'
+{
+  "MAGNETRUN_PUPITRE_DATA_DIR":    "~/LNCMIG-Data/records/srv-data-install",
+  "MAGNETRUN_PIGBROTHER_DATA_DIR": "~/LNCMIG-Data/records/pbsurv",
+  "MAGNETRUN_HYBRID_DATA_DIR":     "~/LNCMIG-Data/records/CEA"
+}
+EOF
+```
+
+For autofs workstations, replace `~/LNCMIG-Data/records` with `/mnt/LNCMIG-Data/records`.
+
+**Shell environment** — override or supplement the config file:
+
+```bash
+# add to ~/.bashrc or ~/.envrc (direnv)
+export MAGNETRUN_PUPITRE_DATA_DIR="$HOME/LNCMIG-Data/records/srv-data-install"
+export MAGNETRUN_PIGBROTHER_DATA_DIR="$HOME/LNCMIG-Data/records/pbsurv"
+export MAGNETRUN_HYBRID_DATA_DIR="$HOME/LNCMIG-Data/records/CEA"
+```
+
+Once set, `load_mrun()` and all CLI commands resolve bare filenames against these directories automatically (see [Python API → Loading data](#loading-data)).
 
 ---
 
@@ -1357,8 +1535,8 @@ See [CHANGELOG.md](CHANGELOG.md) for breaking changes and the to-do list.
 
 ## Todos
 
-- [ ] rewrite notes on mounting NAS data
-- [ ] add notes on rclone setup
+- [x] rewrite notes on mounting NAS data
+- [x] add notes on rclone setup
 - [ ] add installation notes for Windows 11 (without wsl)
 - [ ] create a test for autofs/rclone solution
 - [ ] add Hybrid data plot in analysis
