@@ -1367,9 +1367,17 @@ class TdmsMagnetData(MagnetDataBase):
         # Display "Infos" group content first
         if "Infos" in self.Groups:
             infos = self.Groups["Infos"]
-            info_rows = [[k, v] for k, v in infos.items()]
-            print(tabulate(info_rows, headers=["Key", "Value"], tablefmt="simple"))
-            print()
+            if isinstance(infos, dict):
+                info_rows = [[k, v] for k, v in infos.items()]
+            else:
+                # TdmsGroup stored directly — read scalar value from each channel
+                info_rows = []
+                for ch in infos.channels():
+                    data = ch.read_data()
+                    info_rows.append([ch.name, data[0] if len(data) > 0 else ""])
+            if info_rows:
+                print(tabulate(info_rows, headers=["Key", "Value"], tablefmt="simple"))
+                print()
 
         headers = [
             "Group",
