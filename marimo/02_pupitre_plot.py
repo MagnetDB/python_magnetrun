@@ -57,7 +57,7 @@ def _(default_path, mo):
         value="M9",
         label="Housing",
     )
-    mo.hstack([file_input, housing_input])
+    mo.vstack([file_input, housing_input])
     return file_input, housing_input
 
 
@@ -84,7 +84,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(keys, mo):
     channel_select = mo.ui.multiselect(
         options=keys,
