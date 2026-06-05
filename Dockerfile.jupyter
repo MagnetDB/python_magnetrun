@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 LABEL maintainer="christophe.trophime@lncmi.cnrs.fr"
 LABEL description="JupyterLab environment for python_magnetrun"
@@ -25,11 +25,11 @@ COPY python_magnetcooling/ ./python_magnetcooling/
 
 # Install python_magnetcooling first (as it's a dependency)
 RUN cd python_magnetcooling && \
-    pip install --no-cache-dir -e ".[dev]" && \
+    pip install --no-cache-dir -e ".[all]" && \
     cd ..
 
-# Install python_magnetrun with development dependencies
-RUN pip install --no-cache-dir -e ".[dev]"
+# Install python_magnetrun with all dependencies
+RUN pip install --no-cache-dir -e ".[all]"
 
 # Create notebooks directory
 RUN mkdir -p /workspace/notebooks
