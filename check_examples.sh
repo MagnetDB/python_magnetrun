@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Verify examples from docs/examples_checklist.md
-# Skips Python API section (items 31-46)
+# Verify examples from README.md / docs/examples_checklist.md
+# Skips Python API section and commands that require external data files.
 
 set -uo pipefail
 
@@ -52,37 +52,38 @@ echo ""
 echo "--- Basic Usage ---"
 
 # 1: List available fields
-run_cmd 1 python3 -m python_magnetrun.cli \
-    --housing M9 "2019.02.14 - 23:00:38.txt" info --list
+run_cmd 1 magnetrun info \
+    --housing M9 "2019.02.14 - 23:00:38.txt" --list
 
-# 2: Select records by criteria
+# 2: Select records by criteria (example script — not the main CLI)
 run_cmd 2 python3 "$EXAMPLES/get-record.py" --housing M8 '2025.*.txt' \
     select --duration 60 --field 18.
 
-# 3: Plot vs time
-run_cmd 3 python3 -m python_magnetrun.cli \
-    "data/M9_2019.02.14---23_00_38.txt" plot --vs_time "Field"
+# 3: Plot vs time (single field)
+run_cmd 3 magnetrun plot \
+    "data/M9_2019.02.14---23_00_38.txt" --vs_time "Field"
 
-# 4: Plot with pigbrother (pigbrother TDMS resolved via env, only txt passed)
-run_cmd 4 python3 -m python_magnetrun.cli \
+# 4: Plot key vs key with mixed file types (TDMS resolved via env)
+run_cmd 4 magnetrun plot \
     --housing M10 '2025.01.27 - *.txt' M10_Overview_250127-1605.tdms \
-    plot --key_vs_key timestamp-IH \
-         --key_vs_key "Courants_Alimentations/timestamp-Courants_Alimentations/Référence_GR2"
+    --key_vs_key timestamp-IH \
+    --key_vs_key "Courants_Alimentations/timestamp-Courants_Alimentations/Référence_GR2"
 
 # 5: Hybrid plot — requires external files not in repo
 skip_cmd 5 "requires external hybrid data" \
-    "python3 -m python_magnetrun.cli --housing M8 M8_Overview_250522-0802.tdms '"2025.05.22 - 08:02:56.txt"' --hybrid_date 2025-05-22 "
+    "magnetrun plot --housing M8 M8_Overview_250522-0802.tdms '2025.05.22 - 08:02:56.txt' --hybrid_date 2025-05-22"
 
 echo ""
 echo "--- Statistics and plateau detection ---"
 
-# 6: Stats
-run_cmd 6 python3 -m python_magnetrun.cli 'data/*.txt' stats
+# 6: Stats (all txt files in data/)
+run_cmd 6 magnetrun stats 'data/*.txt'
 
-# 7: Stats with plateau
-run_cmd 7 python3 -m python_magnetrun.cli --housing M8 '2025.*.txt' stats --plateau
+# 7: Stats with plateau detection
+run_cmd 7 magnetrun stats \
+    --housing M8 '2025.*.txt' --plateau
 
-# 8: Aggregate
+# 8: Aggregate (example script — not the main CLI)
 run_cmd 8 python3 "$EXAMPLES/get-record.py" --housing M9 '2025.*.txt' \
     aggregate --fields teb --show
 
@@ -90,85 +91,86 @@ echo ""
 echo "--- Derived quantities ---"
 
 # 9: Add formula with symbol/unit/label/description
-run_cmd 9 python3 -m python_magnetrun.cli \
+run_cmd 9 magnetrun add \
     "data/M10_2020.10.23---20_10_41.txt" \
-    add --formula '"PowerH = IH * UH / 1.e+6"' \
+    --formula "PowerH = IH * UH / 1.e+6" \
     --symbol P_H --unit megawatt \
-    --label '"Insert Power"' \
-    --description '"Insert electrical power in MW"' \
-    --plot --save "$PWD"/power.png
+    --label "Insert Power" \
+    --description "Insert electrical power in MW" \
+    --plot --save "$PWD/power.png"
 
-# 10: pigbrother add formula (pigbrother TDMS resolved via env)
-run_cmd 10 python3 -m python_magnetrun.cli \
+# 10: Add formula on a PigBrother TDMS file (resolved via env)
+run_cmd 10 magnetrun add \
     --housing M10 M10_Overview_201003-0956.tdms \
-    add --formula '"Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6"' \
+    --formula "Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6" \
     --symbol P --unit megawatt \
-    --label '"Bitter Power"' \
-    --description '"Bitter electrical power in MW"' \
+    --label "Bitter Power" \
+    --description "Bitter electrical power in MW" \
     --plot
 
 echo ""
-echo "--- Field Definitions CLI (magnetrun-config field) ---"
+echo "--- Field Definitions CLI (magnetrun config field) ---"
 
-run_cmd 11 magnetrun-config field "$PKGDIR/pupitre-defs.json" list
+run_cmd 11 magnetrun config field "$PKGDIR/pupitre-defs.json" list
 
-run_cmd 12 magnetrun-config field "$PKGDIR/pupitre-defs.json" \
-    add NewSensor I ampere --description '"New coil current"'
+run_cmd 12 magnetrun config field "$PKGDIR/pupitre-defs.json" \
+    add NewSensor I ampere --description "New coil current"
 
-run_cmd 13 magnetrun-config field "$PKGDIR/pupitre-defs.json" \
+run_cmd 13 magnetrun config field "$PKGDIR/pupitre-defs.json" \
     delete NewSensor
 
-run_cmd 14 magnetrun-config field "$PKGDIR/pupitre-defs.json" \
-    update Field --symbol Bz --description '"Resistive Magnets Axial field"'
+run_cmd 14 magnetrun config field "$PKGDIR/pupitre-defs.json" \
+    update Field --symbol Bz --description "Resistive Magnets Axial field"
 
-run_cmd 15 magnetrun-config field "$PKGDIR/pupitre-defs.json" \
+run_cmd 15 magnetrun config field "$PKGDIR/pupitre-defs.json" \
     alias-add Idcct1 hybrid "FEPC-AUX-LNCMI/ALIM1_J1"
 
-run_cmd 16 magnetrun-config field "$PKGDIR/pupitre-defs.json" \
+run_cmd 16 magnetrun config field "$PKGDIR/pupitre-defs.json" \
     alias-show Idcct1
 
-run_cmd 17 magnetrun-config field "$PKGDIR/pupitre-defs.json" crossref \
+run_cmd 17 magnetrun config field "$PKGDIR/pupitre-defs.json" crossref \
     --format "pupitre=$PKGDIR/pupitre-defs.json" \
     --format "pigbrother=$PKGDIR/pigbrother-defs.json" \
     --format "hybrid=$PKGDIR/hybrid-defs.json"
 
 echo ""
-echo "--- Housing Config CLI (magnetrun-config housing) ---"
+echo "--- Housing Config CLI (magnetrun config housing) ---"
 
-run_cmd 18 magnetrun-config housing "$PKGDIR/M9-housing-config.json" show
+run_cmd 18 magnetrun config housing "$PKGDIR/M9-housing-config.json" show
 
-run_cmd 19 magnetrun-config housing M11-housing-config.json create M11 --from-builtin M9
+run_cmd 19 magnetrun config housing M11-housing-config.json create M11 --from-builtin M9
 
-run_cmd 20 magnetrun-config housing M11-housing-config.json update \
+run_cmd 20 magnetrun config housing M11-housing-config.json update \
     --gr1-current IB --gr2-current IH
 
 echo ""
 echo "--- Analysis CLI ---"
 
-run_cmd 21 python3 -m python_magnetrun.analysis.cli \
+run_cmd 21 magnetrun analysis \
     data/M9_Default_200921-123303_Courants50Hz.tdms --show
 
 # 22-23: require generic input.tdms
 skip_cmd 22 "requires generic input.tdms" \
-    "python3 -m python_magnetrun.analysis.cli input.tdms --synchronize --lag ..."
+    "magnetrun analysis input.tdms --synchronize --lag ..."
 skip_cmd 23 "requires generic input.tdms" \
-    "python3 -m python_magnetrun.analysis.cli input.tdms --json-log analysis.json ..."
+    "magnetrun analysis input.tdms --json-log analysis.json ..."
 
 echo ""
-echo "--- Advanced Usage: Breakpoint detection ---"
+echo "--- Advanced Usage: Breakpoint detection and run signature ---"
 
-run_cmd 24 python3 "$TESTS/test-signature.py" \
-    --housing M9 "2025.01.27 - 15:39:29.txt" --window=10 --threshold 1.e-2
+# 24: magnetrun signature (promoted from test-signature.py)
+run_cmd 24 magnetrun signature \
+    --housing M9 "2025.01.27 - 15:39:29.txt" --threshold 1e-2
 
-# 25: pigbrother analysis (TDMS resolved via env)
-run_cmd 25 python3 -m python_magnetrun.analysis.cli \
+# 25: analysis with synchronize on PigBrother overview files (TDMS resolved via env)
+run_cmd 25 magnetrun analysis \
     --housing M10 'M10_Overview_250211-*.tdms' \
-    --key Référence_GR1 --show --synchronize
+    --synchronize --show
 
 echo ""
 echo "--- Advanced Usage: Anomaly detection ---"
 
-# 26-28: require tdms data files
+# 26-28: require TDMS data files
 skip_cmd 26 "requires TDMS data file" \
     "python3 $TESTS/test-anomalies.py <file>.tdms --group Courants_Alimentations ..."
 skip_cmd 27 "requires TDMS data file" \
@@ -190,11 +192,12 @@ run_cmd 30 python3 "$EXAMPLES/corr_Ih_Ib.py" \
 echo ""
 echo "--- Advanced Usage: Field factor identification ---"
 
-# 31: requires file from home directory
-run_cmd 31 python3 $TESTS/test-fieldfactor.py --housing M10 "data/M10_2020.10.23---20_10_41.txt"
+run_cmd 31 python3 "$TESTS/test-fieldfactor.py" \
+    --housing M10 "data/M10_2020.10.23---20_10_41.txt"
 
+# ---------------------------------------------------------------------------
 # Clean up generated files
-rm -f M11-site-config.json analysis.json analysis.log
+rm -f M11-housing-config.json M11-site-config.json analysis.json analysis.log power.png
 
 echo ""
 echo "========================================"
