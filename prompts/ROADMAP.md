@@ -1,6 +1,6 @@
 # Development Roadmap — python_magnetrun
 
-*Updated: 2026-05-12*
+*Updated: 2026-06-05*
 
 This document outlines strategic priorities and upcoming work. For detailed implementation status, see [CHECK_IMPLEMENTATION.md](CHECK_IMPLEMENTATION.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -28,6 +28,7 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 - ✅ `analysis/` subpackage refactoring (all 6 phases: data loading, downsampling, channel mapping, function decomposition, time-column utility)
 - ✅ Outlier deduplication (canonical `python_magnetrun/outliers.py`; `hybrid/outliers.py` is a shim; `hysteresis.py` thin-delegates; `tests/test_outliers.py` 142 tests; `ISOLATION_FOREST` added to `OutlierMethod`)
 - ✅ `hybrid/` subpackage refactoring — all 6 phases (`OutlierConfig` dataclass, `OUTLIER_DEFAULTS`, `processing/signal.py`, cache-eviction docstring, all-NaN / file-existence guards, typed exceptions; 866 tests pass)
+- ✅ Reader/container split (`readers/` subpackage; `PupitreReader`, `BProfileReader`, `EnsightReader`, `FeelppReader`, `CsvReader`, `TdmsReader`, `HtsReader`, `HybridReader`; `DataType.HTS = 4`; `HybridData` joins `MagnetDataBase` hierarchy, fixing `field_meta` init bug; `READERS`/`CONTAINERS` registry + `detect_type()`; 46 new tests; 971 pass)
 
 ---
 
@@ -184,21 +185,19 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - Canonical module moved to `python_magnetrun/outliers.py` (as part of 3.2); `hybrid/outliers.py` is a shim
 - **See:** [outlier-consolidation.plan.md](outlier-consolidation.plan.md)
 
-**3.4 `analysis/__init__.py` Namespace**
-- 80+ names exported flat
-- Split into `analysis.metrics`, `analysis.plot` sub-namespaces
-- **Effort:** ~1 day
+**3.4 `analysis/__init__.py` Namespace** ✅ **COMPLETE** *(branch `rework_analysis`)*
+- Metrics and plotting removed from flat namespace; accessible only via `analysis.metrics.*` and `analysis.plotting.*`
+- Remaining flat exports: config, loaders, synchronization, processing, downsampling (analysis-level conveniences)
 
-**3.6 Reader/Container Split** ⬜ **PLANNED**
-- Extract format-parsing logic from container classes into dedicated `readers/` subpackage
-- R1: CSV readers (`PupitreReader`, `BProfileReader`, `EnsightReader`, `FeelppReader`)
-- R2: `TdmsReader` extracted from `TdmsMagnetData._fromtdms()`
-- R3: `HtsReader` + `DataType.HTS` (new format: `;` sep, units-in-header)
-- R4: `HybridReader` + `HybridData` joins `MagnetDataBase` (removes `isinstance(HybridData)` branches — **unblocks Phase E**)
-- R5: Reader registry (`READERS` dict + `detect_type()`) + `load_magnetdata()` cleanup
-- Public API unchanged; migration is incremental per phase
+**3.6 Reader/Container Split** ✅ **COMPLETE** *(branch `rework_analysis`)*
+- `python_magnetrun/readers/` subpackage created with `Reader` protocol, 8 reader classes, and `READERS`/`CONTAINERS` registry
+- R1: `PupitreReader`, `BProfileReader`, `EnsightReader`, `FeelppReader`, `CsvReader` — factory classmethods in `magnetdata_pandas.py` now delegate to readers
+- R2: `TdmsReader` — `_fromtdms()` delegates validate + t-offset lookup; `required_group` centralised on reader
+- R3: `HtsReader` + `DataType.HTS = 4` (`;`-sep, units-in-header format with `extracted_units()`)
+- R4: `HybridData` inherits `MagnetDataBase`; `Data`/`Type` as abstract properties; `extractData`/`renameData` stubs; `getData` accepts `downsample` kwarg; `field_meta` init bug fixed for free; `HybridReader` composite reader
+- R5: `readers/registry.py` (`READERS`, `CONTAINERS`, `detect_type()`); `load_magnetdata()` accepts `fmt=` override and uses registry dispatch
 - **See:** [reader-container-refactoring.plan.md](reader-container-refactoring.plan.md)
-- **Effort:** ~S per phase (R4 is M)
+- **971 tests pass** (925 existing + 46 new in `tests/readers/`)
 
 **3.8 Downsampling Extensions**
 
@@ -232,6 +231,27 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - **See:** Phase H of [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
 - **Effort:** S (~2 hours)
 
+**3.9 Hybrid Subpackage Code Quality** ⬜ **OPEN** *(from [docs/hybrid_refactoring_notes.md](../docs/hybrid_refactoring_notes.md))*
+
+Items 2 and 3 from the notes are already tracked as B0.5 and B2.5 in Phase 2B. Items 12 and 13 (docs-only cross-refs and a rename) are in Quick Wins.
+
+*Small (S) — low risk, do any time:*
+- **S1 — `safe_float` module-level** (notes item 5): hoist the two nested `safe_float` definitions to module level in [hybrid/kHz/fepc_reader.py](../python_magnetrun/hybrid/kHz/fepc_reader.py) (lines 298 and 435).
+- **S2 — Consolidate `_resolve_backend`** (notes items 6/15): move the three-line helper to `plotting/_utils.py`; import it in [hybrid/plotting.py](../python_magnetrun/hybrid/plotting.py) and [plotting/timeseries.py](../python_magnetrun/plotting/timeseries.py).
+
+*Medium (M) — low-to-medium risk:*
+- **M1 — Unify `log_exception` + `format_exception_location`** (notes items 9/11): standardise on the `log_utils.py` signature (explicit `logger` arg); update six call sites in `hybrid/cli.py`; delete the duplicate in [hybrid/utils.py](../python_magnetrun/hybrid/utils.py).
+- **M2 — Standardise `range` schema** (notes item 14): adopt dict schema `{"start": …, "end": …}` for both `compute_lag` and `lag_correlation` in [analysis/synchronization.py](../python_magnetrun/analysis/synchronization.py); update caller in `analysis/processing.py:_compute_lag_correlation` (currently uses tuple).
+- **M3 — Deprecate `processing.correlations` lag functions** (notes item 8): add deprecation shims in [processing/correlations.py](../python_magnetrun/processing/correlations.py) that forward to `analysis.synchronization` equivalents; unify `range` schema (dict) and update callers.
+- **M4 — Share CNV calibration helper** (notes items 7/16): extract `_apply_cnv_calibration(data, cnv_path) -> np.ndarray` into `hybrid/utils.py`; reuse it in `hybrid/kHz/fepc_reader.py:apply_calibration` and `hybrid/trigger/trigger_reader.py:apply_calibration`.
+
+*Large (L) — medium risk, plan separately before starting:*
+- **L1 — Extract `_plot_variable_impl` / `_plot_variables_impl`** (notes items 3/4): unify ~80% identical bodies of `plot_khz_variable`/`plot_rms_variable` and `plot_khz_variables`/`plot_rms_variables` in [hybrid/plotting.py](../python_magnetrun/hybrid/plotting.py); fix RMS versions missing `downsample` param and unlabelled y-axes.
+- **L2 — Extract `_BinaryFileReaderBase`** (notes item 1): abstract base class for `RMSFileReader` ([hybrid/rms/rms_reader.py](../python_magnetrun/hybrid/rms/rms_reader.py)) and `VProcessFileReader` ([hybrid/vprocess/vprocess_reader.py](../python_magnetrun/hybrid/vprocess/vprocess_reader.py)); merge `RMSVariable`/`VProcessVariable` into a single `ChannelVariable` dataclass; subclass only encoding and timestamp-conversion differences.
+
+**Note:** trigger/VProcess integration into `HybridData` (notes item 10) is tracked as Stream 4.6.
+**Effort:** S items ~30 min each · M items ~0.5 day each · L items ~1–2 days each
+
 ---
 
 ### Stream 4: Advanced Features (Future)
@@ -246,8 +266,8 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 **4.2 Cross-Domain Comparison (Phases D-G + H)**
 - Phase B-C (adapters): ✅ Done
 - **Phase H:** Pattern entries in `*-defs.json` + `feelpp-defs.json` (independent, do any time — see Stream 3.7)
-- Phase D: Extend `*-defs.json` with simulation/bfield aliases; `KeyMapping` (reuses `field_defs.build_crossref()`); cleaner after Stream 3.6 R4
-- Phase E: `ComparisonSession` implementation; cleaner after Stream 3.6 R4 (`HybridData` in hierarchy)
+- Phase D: Extend `*-defs.json` with simulation/bfield aliases; `KeyMapping` (reuses `field_defs.build_crossref()`)
+- Phase E: `ComparisonSession` implementation; cleaner now that Stream 3.6 R4 is complete (`HybridData` in hierarchy)
 - Phase F: `magnetrun compare` subcommand via `comparison/cli.py::register()` — wired into the unified `magnetrun` dispatcher (**no** standalone `magnetrun-compare` entry point; see `cli-consolidation.plan.md`)
 - Phase G: Comprehensive tests
 - **Depends on:** HybridData timestamp support; CLI consolidation (Stream 3.3) should land first or in the same branch; Phase E significantly cleaner after Stream 3.6 R4
@@ -257,11 +277,18 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 **4.5 TDMS Export**
 - `PandasMagnetData.to_tdms()` — export pupitre data resampled to 1 Hz; group/channel mapping via `_tdms_groups` key in `pupitre-defs.json`; deduplication of repeated timestamps in `addTime()`
 - `HybridData.to_rms_tdms()` + `to_khz_tdms()` — export RMS and kHz hybrid data; group mapping via `_tdms_groups_rms` / `_tdms_groups_khz` in `hybrid-defs.json`; fallback group per FEPC system for unassigned channels
-- **Prerequisite:** `HybridData.field_meta` initialisation bug (missing `self.field_meta = {}` in `__init__`) — fixed for free by Stream 3.6 R4 (`HybridData` joins `MagnetDataBase`); can also be patched independently in one line
+- **Prerequisite:** `HybridData.field_meta` initialisation bug — ✅ **fixed by Stream 3.6 R4** (`HybridData` now inherits `MagnetDataBase.__init__` which sets `self.field_meta = {}`)
 - Reuses existing `nptdms` (already a dependency); channel names derived from `aliases.pigbrother` when available
 - **See:** [pupitre_to_tdms_export.md](pupitre_to_tdms_export.md), [hybrid_to_tdms_export.md](hybrid_to_tdms_export.md)
 - **Effort:** M (pupitre) + M (hybrid RMS) + M (hybrid kHz)
 - **Independent of Phases D–G** — can be done any time after `addTime()` is stable
+
+**4.6 Trigger & VProcess Integration into `HybridData`** ⬜ **PLANNED**
+- Add `read_trigger_variable`, `read_vprocess_variable`, `plot_trigger_variable`, `plot_vprocess_variable` to the `HybridData` interface in [hybrid/hybrid_data.py](../python_magnetrun/hybrid/hybrid_data.py)
+- Currently trigger and vprocess readers exist and work independently but are unreachable via the unified `HybridData` API (notes item 10)
+- **Depends on:** Stream 3.9 L2 (`_BinaryFileReaderBase`) for a clean, non-duplicated integration
+- **Effort:** XL
+- **See:** [docs/hybrid_refactoring_notes.md](../docs/hybrid_refactoring_notes.md) item 10
 
 **4.3 Pipeline Redesign (polars/narwhals)**
 - Custom npTDMS with polars backend
@@ -296,6 +323,8 @@ Priority items that provide immediate value with minimal effort:
 | Audit TODOs in `requests/cli.py` (rename site→housing, geometry, Parts) | 15 min | Polish | ⬜ Open |
 | Enable `mypy` pre-commit hook | 1 hour | Type checking in CI | ⬜ Open |
 | Enable `mypy` in pre-commit / CI | 1 hour | Type checking enforced | ⬜ Open |
+| Add cross-refs between `remove_outliers` variants (notes item 12) | S | Readability | ⬜ Open |
+| Rename `commands/plot.py:_handle_output` → `_save_or_show_figure` (notes item 13) | S | Readability | ⬜ Open |
 
 ---
 
@@ -355,9 +384,9 @@ graph TD
     D[analysis/ Phase 6: Timestamps ✅] --> E[HybridData Timestamp Support]
     E --> F[Cross-Domain Phase D-G]
 
-    R1[3.6 R1-R3: CSV/TDMS/HTS readers] --> R4[3.6 R4: HybridData in hierarchy]
+    R1[3.6 R1-R5: readers/ subpackage ✅] --> R4[3.6 R4: HybridData in hierarchy ✅]
     R4 --> F
-    R4 -.fixes field_meta bug.-> T[4.5 TDMS Export]
+    R4 -.fixed field_meta bug.-> T[4.5 TDMS Export]
 
     H1[3.7 Pattern defs H1-H3] -.independent.-> F
 
@@ -371,9 +400,9 @@ graph TD
 
 **Critical Path:** Phase 2B → 2C → 2D (unified plotting)
 **Unblocked:** HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) and hybrid/ refactoring are both complete
-**Improves Phase E:** Stream 3.6 R4 (`HybridData` joins hierarchy) removes `isinstance` branches — do before Phase E
+**Improves Phase E:** Stream 3.6 R4 (`HybridData` joins hierarchy) ✅ complete — Phase E can now be implemented cleanly
 **Independent:** Quick wins, logging migration, CLI consolidation, type hints, Stream 3.7 (pattern defs), Stream 3.8a/b/c (downsampling extensions — all additive)
-**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.3 CLI ✅ · 3.5 outlier dedup ✅ · 3.8a M4/NaN-M4 ✅ · 3.8b RDP/VW ✅ · 3.8c metrics ✅ · 3.4 namespace open · 3.6 reader split open · 3.7 pattern defs open
+**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.3 CLI ✅ · 3.4 namespace ✅ · 3.5 outlier dedup ✅ · 3.6 reader split ✅ · 3.8a M4/NaN-M4 ✅ · 3.8b RDP/VW ✅ · 3.8c metrics ✅ · 3.7 pattern defs open · 3.9 code quality open
 
 ---
 

@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 __all__ = [
+    "LabelStyle",
     "PlotStyle",
     "PlotColors",
     "PlotConfig",
@@ -22,6 +23,38 @@ BUNDLED_CONFIG_PATH: Path = Path(__file__).parent / "plot_config.json"
 
 
 @dataclass
+class LabelStyle:
+    """Font properties for a single text element (title, axis label, annotation).
+
+    All fields default to ``None`` (use the backend's own default).
+    ``style`` and ``weight`` are applied by the matplotlib backend only;
+    Plotly backends emit a ``logging.warning`` and ignore them.
+
+    Parameters
+    ----------
+    family : str, optional
+        Font family, e.g. ``"serif"``, ``"sans-serif"``, ``"monospace"``.
+    style : str, optional
+        Font style: ``"normal"``, ``"italic"``, or ``"oblique"``.
+        **Plotly**: not supported — triggers a warning when set.
+    weight : str, optional
+        Font weight: ``"normal"``, ``"bold"``, ``"light"``, etc.
+        **Plotly**: not supported — triggers a warning when set.
+    size : int, optional
+        Font size in points.  ``None`` falls back to the ``PlotStyle``
+        ``title_fontsize`` / ``label_fontsize`` field.
+    color : str, optional
+        Font colour (CSS colour string or hex, e.g. ``"#333333"``).
+    """
+
+    family: str | None = None
+    style: str | None = None
+    weight: str | None = None
+    size: int | None = None
+    color: str | None = None
+
+
+@dataclass
 class PlotStyle:
     """Configuration for plot styling."""
 
@@ -32,6 +65,10 @@ class PlotStyle:
     legend_loc: str = "best"
     title_fontsize: int = 12
     label_fontsize: int = 10
+    title_style: LabelStyle | None = None
+    xlabel_style: LabelStyle | None = None
+    ylabel_style: LabelStyle | None = None
+    annotation_style: LabelStyle | None = None
 
 
 @dataclass
@@ -101,6 +138,10 @@ class PlotConfig:
         # figsize is stored as a list in JSON; convert back to tuple
         if "figsize" in style_data:
             style_data["figsize"] = tuple(style_data["figsize"])
+        # Reconstruct nested LabelStyle objects from dicts (JSON deserialisation).
+        for key in ("title_style", "xlabel_style", "ylabel_style", "annotation_style"):
+            if isinstance(style_data.get(key), dict):
+                style_data[key] = LabelStyle(**style_data[key])
         return cls(style=PlotStyle(**style_data), colors=PlotColors(**colors_data))
 
 

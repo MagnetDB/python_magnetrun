@@ -24,11 +24,43 @@ from typing import Any
 
 import numpy as np
 
-from .style import PlotStyle
+from .style import LabelStyle, PlotStyle
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["PlotlyResamplerBackend"]
+
+
+def _plotly_font_dict(
+    label_style: LabelStyle | None,
+    fallback_size: int,
+    *,
+    context: str = "label",
+) -> dict:
+    """Build a Plotly font dict from a :class:`LabelStyle`.
+
+    ``style`` and ``weight`` are not supported by Plotly and trigger a warning.
+    """
+    if label_style is None:
+        return {"size": fallback_size}
+    font: dict = {"size": label_style.size if label_style.size is not None else fallback_size}
+    if label_style.family is not None:
+        font["family"] = label_style.family
+    if label_style.color is not None:
+        font["color"] = label_style.color
+    if label_style.style is not None:
+        logger.warning(
+            "LabelStyle.style=%r for %r is not supported by the Plotly backend and will be ignored.",
+            label_style.style,
+            context,
+        )
+    if label_style.weight is not None:
+        logger.warning(
+            "LabelStyle.weight=%r for %r is not supported by the Plotly backend and will be ignored.",
+            label_style.weight,
+            context,
+        )
+    return font
 
 try:
     from plotly_resampler import FigureResampler, FigureWidgetResampler
@@ -94,7 +126,9 @@ class PlotlyResamplerBackend:
             template="plotly_white",
         )
         cls = FigureWidgetResampler if self._widget else FigureResampler
-        return cls(base)
+        fig = cls(base)
+        fig._magnetrun_style = s
+        return fig
 
     def add_series(
         self,
@@ -243,6 +277,8 @@ class PlotlyResamplerBackend:
             col=1,
         )
         # Text annotation with arrow
+        s: PlotStyle = getattr(fig, "_magnetrun_style", None) or PlotStyle()
+        annot_font = _plotly_font_dict(s.annotation_style, fallback_size=10, context="annotation")
         fig.add_annotation(
             x=t,
             y=f,
@@ -254,20 +290,29 @@ class PlotlyResamplerBackend:
             bgcolor="rgba(255,255,0,0.7)",
             bordercolor="gray",
             borderwidth=1,
+            font=annot_font,
             row=ax_idx + 1,
             col=1,
         )
 
     def finalize(self, fig: Any, *, xlabel: str = "t [s]") -> None:
-        """Add x-axis label to the bottom row."""
+        """Add x-axis label and apply text styling to the figure."""
         _require_resampler()
+        s: PlotStyle = getattr(fig, "_magnetrun_style", None) or PlotStyle()
         _xlabel = getattr(fig, "_magnetrun_xlabel", xlabel)
         n_rows = (
             fig._get_subplot_rows_columns()[0][-1]
             if hasattr(fig, "_get_subplot_rows_columns")
             else 1
         )
-        fig.update_xaxes(title_text=_xlabel, row=n_rows, col=1)
+        xl_font = _plotly_font_dict(s.xlabel_style, s.label_fontsize, context="xlabel")
+        fig.update_xaxes(title_text=_xlabel, title_font=xl_font, row=n_rows, col=1)
+
+        yl_font = _plotly_font_dict(s.ylabel_style, s.label_fontsize, context="ylabel")
+        fig.update_yaxes(title_font=yl_font)
+
+        t_font = _plotly_font_dict(s.title_style, s.title_fontsize, context="title")
+        fig.update_layout(title_font=t_font)
 
     def save(self, fig: Any, path: Path, *, dpi: int = 300) -> None:
         raise NotImplementedError(

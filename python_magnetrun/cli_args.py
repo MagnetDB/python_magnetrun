@@ -158,6 +158,23 @@ def create_common_plot_parser() -> argparse.ArgumentParser:
             "--field_style Référence_A2=-@0.5"
         ),
     )
+    parser.add_argument(
+        "--label_style",
+        metavar="ELEMENT=KEY:VALUE[,KEY:VALUE,...]",
+        action="append",
+        default=None,
+        help=(
+            "font style for a text element; repeatable. "
+            "ELEMENT is one of: title, xlabel, ylabel, annotation. "
+            "Keys: size (int), family (str), style (normal|italic|oblique), "
+            "weight (normal|bold|light), color (CSS colour). "
+            "Note: style and weight are ignored by the Plotly backend. "
+            "Examples: --label_style title=size:16,family:serif,weight:bold "
+            "--label_style xlabel=size:12,color:navy "
+            "--label_style ylabel=style:italic "
+            "--label_style annotation=size:9,color:#666"
+        ),
+    )
     return parser
 
 

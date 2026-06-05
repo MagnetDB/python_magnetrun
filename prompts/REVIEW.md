@@ -1,6 +1,6 @@
 # Package Review: `python_magnetrun`
 
-Date: 2026-05-12 (updated)
+Date: 2026-06-05 (updated)
 
 ---
 
@@ -8,19 +8,27 @@ Date: 2026-05-12 (updated)
 
 ```
 python_magnetrun/
-├── magnetdata_base.py       # ABC
-├── magnetdata_pandas.py     # Pandas impl
+├── magnetdata_base.py       # ABC (DataType enum: PUPITRE/TDMS/ENSIGHT/HYBRID/HTS)
+├── magnetdata_pandas.py     # Pandas impl — factory methods delegate to readers/
 ├── magnetdata_tdms.py       # TDMS impl
-├── magnetdata.py            # Factory + backward-compat shim
+├── magnetdata.py            # Factory entry point (load_magnetdata, _fromtdms)
 ├── MagnetRun.py             # Session container
 ├── runetl.py                # ETL helpers
 ├── outliers.py              # Canonical outlier detection (OutlierConfig, OutlierDetector, …)
 ├── field_defs.py / housing_config.py  # Config layer
-├── cli.py                   # CLI entry point (renamed from python_magnetrun.py)
-├── cli_args.py / args.py    # CLI argument parsing (create_outlier_parser, args_to_outlier_config)
+├── cli.py                   # CLI entry point
+├── cli_args.py / args.py    # CLI argument parsing
 ├── commands/                # Modular CLI subcommands
+├── readers/                 # Pure I/O readers — one class per format (Stream 3.6 ✅)
+│   ├── base.py              #   Reader protocol (runtime-checkable)
+│   ├── csv_readers.py       #   PupitreReader, BProfileReader, EnsightReader, FeelppReader, CsvReader
+│   ├── tdms_reader.py       #   TdmsReader (validate + t-offset config)
+│   ├── hts_reader.py        #   HtsReader (new: ; sep, units-in-header)
+│   ├── hybrid_reader.py     #   HybridReader (composite discovery)
+│   └── registry.py          #   READERS/CONTAINERS dicts + detect_type()
 ├── analysis/                # Analysis pipeline
 ├── hybrid/                  # FEPC kHz/RMS/Trigger data (outliers.py is a shim → python_magnetrun.outliers)
+│   └── hybrid_data.py       #   HybridData now inherits MagnetDataBase (Stream 3.6 R4 ✅)
 ├── processing/              # Signal processing (signal.py: normalize_signal, binarize_signal)
 ├── plotting/                # Plotting backends & utilities
 ├── utils/ / runlogs/ / requests/ / configAlims/
@@ -32,42 +40,28 @@ Overall the layering is sensible: ABC → implementations → session wrapper �
 
 ## Class Hierarchy
 
-**Current:**
+**Current (Stream 3.6 complete):**
 ```
 MagnetDataBase (ABC)
 ├── PandasMagnetData
 │   ├── EnsightMagnetData
 │   ├── BProfileMagnetData
 │   └── FeelppMagnetData
-└── TdmsMagnetData
-
-HybridData                  ← standalone (NOT in hierarchy); 4 NotImplementedError stubs
-
-load_magnetdata(filename)   ← standalone factory (magnetdata.py)
-
-MagnetRun                   ← owns a MagnetDataBase instance, uses load_magnetdata
-HybridRun                   ← satisfies DataLoader protocol
-```
-
-**Target (after reader/container split Phase R4):**
-```
-MagnetDataBase (ABC)
-├── PandasMagnetData
-│   ├── EnsightMagnetData   (may be dissolved — just PandasMagnetData + EnsightReader)
-│   ├── BProfileMagnetData  (may be dissolved — just PandasMagnetData + BProfileReader)
-│   └── FeelppMagnetData    (may be dissolved — just PandasMagnetData + FeelppReader)
 ├── TdmsMagnetData
-└── HybridData              ← joins hierarchy; inherits addData/saveData/computeData
+└── HybridData              ← joined hierarchy (Stream 3.6 R4 ✅); field_meta init bug fixed
 
-readers/ subpackage         ← new; pure I/O, no data manipulation
+readers/ subpackage         ← pure I/O, no data manipulation (Stream 3.6 ✅)
   PupitreReader, BProfileReader, EnsightReader, FeelppReader, CsvReader
-  TdmsReader, HtsReader, HybridReader (composite)
-  registry.py: READERS dict + detect_type()
+  TdmsReader, HtsReader (DataType.HTS = 4), HybridReader (composite)
+  registry.py: READERS/CONTAINERS dicts + detect_type()
 
-load_magnetdata(filename)   ← uses reader registry (magnetdata.py)
+load_magnetdata(filename, fmt=)  ← uses detect_type() from registry (magnetdata.py)
 
-MagnetRun                   ← unchanged
-HybridRun                   ← unchanged; HybridData hierarchy fix removes isinstance branches
+MagnetRun                   ← owns a MagnetDataBase instance
+HybridRun                   ← satisfies DataLoader protocol
+
+Thin subclasses (EnsightMagnetData, BProfileMagnetData, FeelppMagnetData) may optionally
+be dissolved in a future cleanup — they differ only in their reader and _TYPE.
 ```
 
 ---
@@ -204,6 +198,14 @@ and `tests/test_hybrid_formula_resolution.py`.
 | Plot logic | `commands/plot.py`, legacy `viewcsv.py` | Refactored — `plotting/` subpackage created |
 | Argument parsing for smoothing/logging | `cli_args.py` builders vs. `processing/cli.py` inline argparse | Planned — see `cli-consolidation.plan.md` |
 | Outlier detection | `hybrid/outliers.py` (canonical) + `processing/hysteresis.py::remove_outliers` (inline IQR/zscore/MAD) + `examples/outliers.py` (rolling-MAD inline) + 2 CLI-style test scripts | Done — canonical moved to `python_magnetrun/outliers.py`; `hybrid/outliers.py` is a shim; `OutlierConfig` dataclass + `OUTLIER_DEFAULTS` added; `create_outlier_parser`/`args_to_outlier_config` in `cli_args.py`; `hybrid_data.py` plot methods accept `OutlierConfig`; signal functions in `processing/signal.py`; `test_outliers.py` (142 tests); `isolation_forest` in `OutlierMethod` |
+| `RMSFileReader` / `VProcessFileReader` near-identical classes | `hybrid/rms/rms_reader.py`, `hybrid/vprocess/vprocess_reader.py` | Open — Stream 3.9 L2 (`_BinaryFileReaderBase` + single `ChannelVariable` dataclass) |
+| UTC→local hour conversion — 4 independent implementations | `hybrid_data.py` (×2), `analysis/processing.py`, `analysis/loaders.py` | Partial — Phase 2B B0.5 adds `utc_hour_to_local()` to `hybrid/utils.py` and consolidates 3 sites; `analysis/loaders.py` already UTC |
+| `plot_khz_variable` / `plot_rms_variable` ~80 % identical pipeline | `hybrid/plotting.py:444` and `:564` | Open — Stream 3.9 L1; highlight-mode double-read bug in RMS tracked as Phase 2B B2.5 |
+| `plot_khz_variables` / `plot_rms_variables` ~75 % identical | `hybrid/plotting.py:152` and `:314` | Open — Stream 3.9 L1 (same `_plot_variables_impl` extraction); RMS missing `downsample` param |
+| `_resolve_backend` exact duplicate | `hybrid/plotting.py:50`, `plotting/timeseries.py:34` | Open — Stream 3.9 S2 |
+| `log_exception` / `format_exception_location` — incompatible or duplicated signatures | `hybrid/utils.py:32`/`:97`, `log_utils.py:305`/`:361` | Open — Stream 3.9 M1 |
+| `apply_calibration` — 3 independent implementations | `hybrid/kHz/fepc_reader.py:821`, `hybrid/trigger/trigger_reader.py:705`, `processing/distance.py:24` (different domain) | Open — Stream 3.9 M4 (shared `_apply_cnv_calibration` helper) |
+| `compute_lag` / `lag_correlation` — duplicated with incompatible `range` key schema | `processing/correlations.py`, `analysis/synchronization.py` | Open — Stream 3.9 M2/M3; `processing/correlations.py` to be deprecated via shims |
 
 ---
 
@@ -225,7 +227,7 @@ and `tests/test_hybrid_formula_resolution.py`.
 | `addData`/`computeData` metadata (`symbol`, `unit`, `label`, `description`) | Done |
 | `HybridRun.getData` formula-key resolution (`hybrid_formula_map`) | Done — see `hybrid-formula-key-resolution.plan.md` |
 | `Ih`/`Ib` defined via `Idcct` in housing configs | Done |
-| CLI consolidation (8 → 3 entry points, `magnetrun` dispatcher, `register()` pattern) | Planned — see `cli-consolidation.plan.md` |
+| CLI consolidation (8 → 3 entry points, `magnetrun` dispatcher, `register()` pattern) | Done — see `cli-consolidation.plan.md` |
 | Outlier deduplication (`hybrid/outliers.py` canonical, thin delegates, proper tests) | Done — `examples/outliers.py` deleted; `hysteresis.py` delegates to `detect_outliers()`; `tests/test_outliers.py` (142 tests); `ISOLATION_FOREST` added to `OutlierMethod` |
 | `saveData` abstraction in `MagnetRun` | Done |
 | Hardcoded default path in `cli_args.py` | Done |
@@ -234,14 +236,16 @@ and `tests/test_hybrid_formula_resolution.py`.
 | `HybridData` timestamp support | Pending (prerequisite `analysis/` Phase 6 is now done) |
 | Cross-domain comparison (`DataLoader` extension, Phase A0–A3) | Done |
 | Cross-domain comparison (Phases D–G: `ComparisonSession`, adapters, CLI) | Pending (Phases B–C done) |
-| Reader/container split (`readers/` subpackage, Phases R1–R5) | Pending — see `reader-container-refactoring.plan.md` |
+| Reader/container split (`readers/` subpackage, Phases R1–R5) | Done — see `reader-container-refactoring.plan.md`; `HybridData` in hierarchy; `field_meta` bug fixed; 46 new tests |
 | Pattern entries in `*-defs.json` + `feelpp-defs.json` (Phase H) | Pending — extends cross-domain plan |
 | TDMS export (`PandasMagnetData.to_tdms()`) | Pending — see `pupitre_to_tdms_export.md` |
-| TDMS export (`HybridData.to_rms_tdms()` + `to_khz_tdms()`) | Pending — see `hybrid_to_tdms_export.md`; requires `field_meta` fix |
-| M4 / NaN-M4 downsampling methods | Pending — see `m4-downsampling.plan.md`; no new dep |
-| RDP / Visvalingam-Whyatt downsampling methods | Pending — see `rdp-downsampling.plan.md`; adds `epsilon` to `DownsampleConfig`; new `[rdp]` extras |
-| Downsampling quality metrics (`DownsampleMetrics`, `benchmark_configs`) | Pending — see `downsampling-metrics.plan.md`; new `[benchmark]` extras |
+| TDMS export (`HybridData.to_rms_tdms()` + `to_khz_tdms()`) | Pending — see `hybrid_to_tdms_export.md`; `field_meta` fix now done (3.6 R4) |
+| M4 / NaN-M4 downsampling methods | Done — see `m4-downsampling.plan.md` |
+| RDP / Visvalingam-Whyatt downsampling methods | Done — see `rdp-downsampling.plan.md` |
+| Downsampling quality metrics (`DownsampleMetrics`, `benchmark_configs`) | Done — see `downsampling-metrics.plan.md` |
 | Downsampling refactoring (`DownsampleConfig`, shared module) | Done — see `downsampling-refactoring.plan.md` |
+| Hybrid code quality — `_BinaryFileReaderBase`, `_plot_variable_impl`, UTC utility, `log_exception` unification (Stream 3.9, 16 findings) | Open — see `docs/hybrid_refactoring_notes.md` |
+| Trigger & VProcess integration into `HybridData` (Stream 4.6) | Pending — depends on Stream 3.9 L2 (`_BinaryFileReaderBase`) |
 | Plotting refactoring (`plotting/` subpackage, backend protocol) | Done — see `plotting-refactoring.plan.md` or `holoviews-migration.plan.md` for alternative |
 | `analysis/` internal refactoring (data loading, channel mapping, decomposition) | Done — see `analysis-subpackage-refactoring.plan.md` |
 | `hybrid/` internal refactoring (outlier dedup, `OutlierConfig`, signal processing) | Done — all 6 phases complete; see `hybrid-subpackage-refactoring.plan.md` |
@@ -255,18 +259,27 @@ shim replacement, `getUnitKey` fix, `saveData` delegation, hardcoded-path remova
 an abstract property with lazy loading (`PandasMagnetData._ensure_data_loaded` + `TdmsMagnetData._LazyGroupDict`
 + context-manager support), Protocol unification (`DataLoader` only, Phase 2A complete), timestamp
 convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC), downsampling refactoring
-(`DownsampleConfig`, shared `utils/downsampling.py`, `tsdownsample` extras), plotting refactoring
-(subpackage, backends, label/legend uniformization), file validation infrastructure (committed and
-integrated), resilient pupitre-file loading (encoding fallback, `on_bad_lines="warn"`, empty-data
-guard, truncation check), `addData`/`computeData` metadata parameters (`symbol`, `unit`, `label`,
-`description` → `FieldMeta`), and `HybridRun.getData` formula-key resolution (`_resolve_hybrid_formula`).
+(`DownsampleConfig`, shared `utils/downsampling.py`, `tsdownsample` extras; M4/NaN-M4, RDP/VW, and
+quality metrics all complete), plotting refactoring (subpackage, backends, label/legend uniformization),
+file validation infrastructure (committed and integrated), resilient pupitre-file loading (encoding
+fallback, `on_bad_lines="warn"`, empty-data guard, truncation check), `addData`/`computeData` metadata
+parameters (`symbol`, `unit`, `label`, `description` → `FieldMeta`), `HybridRun.getData` formula-key
+resolution (`_resolve_hybrid_formula`), CLI consolidation (13-subcommand `magnetrun` dispatcher,
+`register()` pattern, `main.py`), and reader/container split (`readers/` subpackage, `HybridData`
+joins `MagnetDataBase`, `DataType.HTS`, registry + `detect_type()`; `field_meta` init bug fixed;
+971 tests pass).
+A cross-module review (`docs/hybrid_refactoring_notes.md`) identified 16 code-quality findings in the
+`hybrid/` subpackage and broader package; tracked as Stream 3.9 (S/M/L items — safe_float, _resolve_backend,
+log_exception, range schema, CNV calibration, plot unification, _BinaryFileReaderBase) and Stream 4.6
+(XL — trigger/VProcess integration into `HybridData`) in ROADMAP.
 An optional HoloViews-based plotting system (~8 d) would replace the current three-backend
 implementation with `hv.extension()` + Panel + datashader and subsume `analysis/` downsampling Phase 2.
 
 **Package is production-ready for core use cases.** Remaining work in priority order:
 (1) known regressions (multiple-file plotting); (2) CI already in place (`test.yml` + `docs.yml`; `ruff` via pre-commit); (3) logging migration completion;
 (4) `hybrid/` internal refactoring — **all 6 phases complete** (`hybrid-subpackage-refactoring.plan.md`);
-(5) CLI consolidation (`cli-consolidation.plan.md`);
+(5) CLI consolidation — ✅ done (`cli-consolidation.plan.md`);
+(6) hybrid code quality — Stream 3.9 S/M/L items + Stream 4.6 trigger/VProcess integration (see `docs/hybrid_refactoring_notes.md`);
 (7) `HybridData` timestamp support (prerequisite `analysis/` Phase 6 complete — unblocked);
 (8) cross-domain Phases D–G (`ComparisonSession`, CLI);
 (9) optional HoloViews migration; (10) pipeline redesign (polars/narwhals).
@@ -428,17 +441,14 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     - Phase 5: `normalize_signal`, `binarize_signal`, `_otsu_threshold` moved to `python_magnetrun/processing/signal.py`; `processing/__init__.py` exports public names; `hybrid/utils.py` and `hybrid/hybrid_run.py` updated
     - Phase 6: cache eviction extracted to `_evict_oldest_cache_entry()`; all-NaN guard in `read_khz_variable`; file-existence guard in `read_rms_variable`; `load_khz_config` raises `FileNotFoundError` instead of returning `None`; `_build_groups` wraps key-discovery in try/except; `saveData` guards against group-key; 866 tests pass
 
-13. **CLI consolidation** *(effort: ~1–2 d)* — tracked in
+13. **CLI consolidation** *(done)* — tracked in
     **[`prompts/cli-consolidation.plan.md`](cli-consolidation.plan.md)**.
-    Reduces 8 entry points to 3 (`magnetrun`, `magnetrun-fetch`, `magnetrun-config`) by
-    adopting the `register(subparsers)` pattern already used by `magnetrun-config`.
-    Key changes: new `magnetrun` dispatcher in `python_magnetrun/main.py`; `input_file`
-    moves from top-level to each subcommand parser (eliminating `_normalize_argv`);
-    new `magnetrun signature` subcommand promoted from `tests/test-signature.py`;
-    `srvdata-to-magnetrun` renamed to `magnetrun-fetch` (standalone);
-    `magnetrun compare` subcommand registered from `comparison/cli.py` (no separate entry point).
-    **Note:** `analysis/cli.py` decomposition (Phase 5.3) is complete — only the
-    `register(subparsers)` wiring into the unified dispatcher remains.
+    Single `magnetrun` dispatcher in `python_magnetrun/main.py` with 13 subcommands (info, add,
+    plot, select, stats, signature, analysis, processing, hybrid, logparser, fetch, config +
+    compare placeholder). `register(subparsers)` pattern on all modules; `input_file` per
+    subcommand (eliminating `_normalize_argv`); old entry points kept as deprecated aliases in
+    `pyproject.toml` for one release cycle.
+    `magnetrun compare` remains pending (blocked on `comparison/cli.py` — Phase F of cross-domain comparison).
 
 14. **Cross-domain comparison — Phases B–G** *(effort: XL)* — depends on item 11.
 
@@ -453,14 +463,12 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
 
 12. **Editor backup file** *(done)* — `pigbrother-defs.json~` removed; `*.json~` added to `.gitignore`.
 
-15. **Reader/container split** *(effort: M per phase, independent)* — format-parsing logic (sep, skiprows, encoding)
-    is fused into factory classmethods of container classes, making `magnetdata_pandas.py` and
-    `magnetdata_tdms.py` ~1000+ lines. Extracting a `readers/` subpackage:
-    - R1: `PupitreReader`, `BProfileReader`, `EnsightReader`, `FeelppReader` from `magnetdata_pandas.py`
-    - R2: `TdmsReader` from `TdmsMagnetData._fromtdms()` / `magnetdata.py`
-    - R3: `HtsReader` + `DataType.HTS = 4` (new format, `;` sep, units-in-header)
-    - R4: `HybridReader` (composite) + `HybridData` joins `MagnetDataBase` hierarchy — removes 4 `NotImplementedError` stubs and all `isinstance(data, HybridData)` branches in callers
-    - R5: reader registry (`READERS` dict + `detect_type()`); `load_magnetdata()` uses it
+15. **Reader/container split** *(done — Stream 3.6)* — `python_magnetrun/readers/` subpackage created:
+    - R1: `PupitreReader`, `BProfileReader`, `EnsightReader`, `FeelppReader`, `CsvReader` — factory classmethods delegate to readers
+    - R2: `TdmsReader` — `_fromtdms()` uses `TdmsReader.validate()` + `t_offset_for()`; `required_group` on reader
+    - R3: `HtsReader` + `DataType.HTS = 4` (`;`-sep, `extracted_units()` parses `"Col [unit]"` headers)
+    - R4: `HybridData(MagnetDataBase)` — `Data`/`Type` as abstract properties; `extractData`/`renameData` stubs; `getData` accepts `downsample` kwarg; `field_meta` init bug fixed; `HybridReader` composite
+    - R5: `readers/registry.py` (`READERS`, `CONTAINERS`, `detect_type()`); `load_magnetdata()` accepts `fmt=`; 46 new tests in `tests/readers/`; 971 tests pass
 
     **Full plan:** [`reader-container-refactoring.plan.md`](reader-container-refactoring.plan.md)
 
@@ -473,3 +481,17 @@ Effort key: **S** = ~1 h, **M** = half-day, **L** = 1–2 days, **XL** = several
     - H4: optional `--match` flag on `field add` CLI subcommand
 
     **Full plan:** Phase H of [`cross-domain-comparison.prompt.md`](cross-domain-comparison.prompt.md)
+
+17. **Hybrid subpackage code quality** *(effort: S→XL — see priority table in [`docs/hybrid_refactoring_notes.md`](../docs/hybrid_refactoring_notes.md))* — 16 findings from cross-module review. Tracked as **Stream 3.9** (S/M/L items) and **Stream 4.6** (XL) in ROADMAP. Items B0.5 and B2.5 are in Phase 2B; items 12 (cross-refs) and 13 (rename `_handle_output`) are in Quick Wins.
+
+    | Priority | Item | Effort | Notes |
+    |---|---|---|---|
+    | S1 | Hoist `safe_float` to module level in `hybrid/kHz/fepc_reader.py` | S | Defined twice (lines 298, 435) |
+    | S2 | Consolidate `_resolve_backend` into `plotting/_utils.py` | S | Exact duplicate in `hybrid/plotting.py` and `plotting/timeseries.py` |
+    | M1 | Unify `log_exception` / `format_exception_location` signatures | M | 6 call sites in `hybrid/cli.py` to update; copy in `hybrid/utils.py` to delete |
+    | M2 | Standardise `range` schema in `analysis.synchronization` (dict) | M | `compute_lag` uses tuple, `lag_correlation` uses dict — same module |
+    | M3 | Deprecate `processing/correlations.py` lag functions via shims | M | Forward to `analysis.synchronization` equivalents |
+    | M4 | Share `_apply_cnv_calibration` helper (kHz + trigger) | M | `np.loadtxt` + `np.interp` duplicated in `fepc_reader.py` and `trigger_reader.py` |
+    | L1 | Extract `_plot_variable_impl` / `_plot_variables_impl` in `hybrid/plotting.py` | L | Unifies kHz/RMS pipelines; adds `downsample` param to RMS variants |
+    | L2 | Extract `_BinaryFileReaderBase` for `RMSFileReader` / `VProcessFileReader` | L | Single `ChannelVariable` dataclass; subclass for encoding + timestamp |
+    | XL | Integrate trigger & VProcess into `HybridData` (Stream 4.6) | XL | Depends on L2; `read_trigger_variable`, `plot_trigger_variable`, etc. |

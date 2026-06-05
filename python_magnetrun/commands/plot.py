@@ -13,7 +13,7 @@ from ..hybrid import HybridRun
 from ..magnetdata_base import DataType
 from ..MagnetRun import MagnetRun
 from ..plotting.backend import get_backend
-from ..plotting.style import PlotConfig, load_plot_config
+from ..plotting.style import LabelStyle, PlotConfig, PlotStyle, load_plot_config
 from ..plotting.timeseries import plot_overlay, plot_subplots, plot_xy
 from ..utils.downsampling import DownsampleConfig
 
@@ -88,6 +88,125 @@ def _parse_field_styles(
         short = field.split("/")[-1] if "/" in field else field
         result.setdefault(short, parsed)
     return result
+
+
+_LABEL_STYLE_ELEMENTS = frozenset({"title", "xlabel", "ylabel", "annotation"})
+_LABEL_STYLE_KEYS = frozenset({"size", "family", "style", "weight", "color"})
+
+
+def parse_label_style_spec(spec: str) -> LabelStyle:
+    """Parse a ``KEY:VALUE[,KEY:VALUE,...]`` string into a :class:`LabelStyle`.
+
+    Parameters
+    ----------
+    spec : str
+        Comma-separated ``key:value`` pairs, e.g.
+        ``"size:14,family:serif,weight:bold"``.
+
+    Returns
+    -------
+    LabelStyle
+        Populated from the parsed key/value pairs.
+
+    Raises
+    ------
+    ValueError
+        On unknown keys, malformed pairs, or an invalid ``size`` value.
+    """
+    kwargs: dict = {}
+    for pair in spec.split(","):
+        pair = pair.strip()
+        if ":" not in pair:
+            raise ValueError(
+                f"--label_style: expected KEY:VALUE pair, got {pair!r}. "
+                "Use comma-separated key:value pairs, e.g. 'size:14,family:serif'."
+            )
+        key, value = pair.split(":", 1)
+        key = key.strip()
+        value = value.strip()
+        if key not in _LABEL_STYLE_KEYS:
+            raise ValueError(
+                f"--label_style: unknown key {key!r}. "
+                f"Valid keys: {sorted(_LABEL_STYLE_KEYS)}"
+            )
+        if key == "size":
+            try:
+                kwargs["size"] = int(value)
+            except ValueError as err:
+                raise ValueError(
+                    f"--label_style: size must be an integer, got {value!r}"
+                ) from err
+        else:
+            kwargs[key] = value
+    return LabelStyle(**kwargs)
+
+
+def _parse_label_styles(
+    label_style_args: list[str] | None,
+) -> dict[str, LabelStyle]:
+    """Parse a list of ``ELEMENT=SPEC`` strings into a ``{element: LabelStyle}`` dict.
+
+    Parameters
+    ----------
+    label_style_args : list[str], optional
+        Raw CLI values from ``--label_style``, e.g.
+        ``["title=size:16,family:serif", "xlabel=size:12"]``.
+
+    Returns
+    -------
+    dict[str, LabelStyle]
+        Keys are element names (``"title"``, ``"xlabel"``, ``"ylabel"``,
+        ``"annotation"``).
+    """
+    result: dict[str, LabelStyle] = {}
+    if not label_style_args:
+        return result
+    for item in label_style_args:
+        if "=" not in item:
+            raise ValueError(
+                f"--label_style expects ELEMENT=SPEC, got {item!r}"
+            )
+        element, spec = item.split("=", 1)
+        element = element.strip()
+        if element not in _LABEL_STYLE_ELEMENTS:
+            raise ValueError(
+                f"--label_style: unknown element {element!r}. "
+                f"Valid elements: {sorted(_LABEL_STYLE_ELEMENTS)}"
+            )
+        result[element] = parse_label_style_spec(spec)
+    return result
+
+
+def _apply_label_styles(style: PlotStyle, label_styles: dict[str, LabelStyle]) -> PlotStyle:
+    """Return a new :class:`PlotStyle` with *label_styles* applied.
+
+    Parameters
+    ----------
+    style : PlotStyle
+        Base style (not mutated).
+    label_styles : dict[str, LabelStyle]
+        Mapping from element name to :class:`LabelStyle`; produced by
+        :func:`_parse_label_styles`.  Unknown keys are silently ignored.
+
+    Returns
+    -------
+    PlotStyle
+        Copy of *style* with the relevant ``*_style`` fields overridden.
+    """
+    if not label_styles:
+        return style
+    import dataclasses
+
+    overrides: dict = {}
+    if "title" in label_styles:
+        overrides["title_style"] = label_styles["title"]
+    if "xlabel" in label_styles:
+        overrides["xlabel_style"] = label_styles["xlabel"]
+    if "ylabel" in label_styles:
+        overrides["ylabel_style"] = label_styles["ylabel"]
+    if "annotation" in label_styles:
+        overrides["annotation_style"] = label_styles["annotation"]
+    return dataclasses.replace(style, **overrides)
 
 
 def _get_df_with_time(mdata, plot_args: list[str]) -> tuple[pd.DataFrame, list[str]]:
@@ -317,6 +436,10 @@ def _plot_vs_time_backend(
     same_color_per_type: bool = getattr(args, "same_color_per_type", False)
     display_units = _parse_display_units(getattr(args, "display_unit", None))
     field_styles = _parse_field_styles(getattr(args, "field_style", None))
+    _label_styles = _parse_label_styles(getattr(args, "label_style", None))
+    if _label_styles:
+        import dataclasses
+        cfg = dataclasses.replace(cfg, style=_apply_label_styles(cfg.style, _label_styles))
 
     # Pre-compute disambiguated labels from the first file's FieldMeta, identical
     # to the matplotlib path: JSON label > symbol_suffix > field name.
@@ -615,6 +738,11 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
     cfg = _resolve_plot_config(args)
     backend_name = getattr(args, "backend", "matplotlib")
     b = get_backend(backend_name)
+
+    _label_styles = _parse_label_styles(getattr(args, "label_style", None))
+    if _label_styles:
+        import dataclasses
+        cfg = dataclasses.replace(cfg, style=_apply_label_styles(cfg.style, _label_styles))
 
     title = getattr(args, "title", None) or os.path.basename(input_files[0])
     if not getattr(args, "title", None) and len(input_files) > 1:

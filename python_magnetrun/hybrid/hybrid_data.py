@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 from natsort import natsorted
 
-from ..magnetdata_base import DataType
+from ..magnetdata_base import DataType, MagnetDataBase
 from ..outliers import OutlierConfig
 
 # Local imports
@@ -87,36 +87,42 @@ class HybridDataInfo:
     trigger_files: dict[str, list[Path]] = field(default_factory=dict)
 
 
-class HybridData:
-    """
-    Unified interface for hybrid magnet data (kHz, RMS, Trigger)
+class HybridData(MagnetDataBase):
+    """Unified interface for hybrid magnet data (kHz, RMS, Trigger).
 
-    Similar interface to MagnetData class for consistency.
+    Inherits from :class:`~python_magnetrun.magnetdata_base.MagnetDataBase`
+    so that it participates in the common ``DataLoader`` protocol alongside
+    :class:`~python_magnetrun.magnetdata_pandas.PandasMagnetData` and
+    :class:`~python_magnetrun.magnetdata_tdms.TdmsMagnetData`.
 
     Parameters
     ----------
     base_dir : str or Path
-        Base directory containing kHz, rms, trigger subdirectories
+        Base directory containing kHz, rms, trigger subdirectories.
     date_str : str
-        Date string in YYYY-MM-DD format
+        Date string in YYYY-MM-DD format.
     fepc_system : str, optional
-        FEPC system name: 'FEPC-LNCMI' or 'FEPC-AUX-LNCMI' (default: both)
+        FEPC system name: ``'FEPC-LNCMI'`` or ``'FEPC-AUX-LNCMI'``
+        (default: both).
     endian : str, optional
-        Endianness for binary data: 'big' or 'little' (default: 'big')
+        Endianness for binary data: ``'big'`` or ``'little'`` (default:
+        ``'big'``).
+    defs_file : str, optional
+        Path to a JSON field-definition file for units.
 
     Attributes
     ----------
     FileName : str
-        Identifier string for this data (similar to MagnetData)
+        Identifier string derived from *date_str*.
     Groups : dict
-        Groups of data channels organized by type
-    Keys : list
-        List of available data keys
-    Type : int
-        Data type identifier (3 for HybridData)
+        Groups of data channels organised by type.
+    Keys : list[str]
+        List of available data keys.
     Data : dict
-        Dictionary containing loaded data
+        Cache dict — starts empty; populated by individual ``read_*`` calls.
     """
+
+    _TYPE: DataType = DataType.HYBRID
 
     def __init__(
         self,
@@ -126,20 +132,15 @@ class HybridData:
         endian: str = "big",
         defs_file: str | None = None,
     ):
+        # Hybrid-specific attributes (needed by _discover_data called below)
         self.base_dir = Path(base_dir)
         self.date_str = date_str
         self.date = datetime.strptime(date_str, "%Y-%m-%d").date()
         self.fepc_system = fepc_system
         self.endian = endian
-        self.defs_file: str | None = defs_file
 
-        # MagnetData-like attributes
-        self.FileName = f"HybridData_{date_str}"
-        self.Groups: dict[str, dict] = {}
-        self.Keys: list[str] = []
-        self.Type = DataType.HYBRID
-        self.Data: dict[str, Any] = {}
-        self.units: dict[str, tuple] = {}
+        # Backing store for the Data property
+        self._data: dict[str, Any] = {}
 
         # Internal storage (use Any for type hints since modules might not be available)
         self._khz_configs: dict[str, Any] = {}  # FEPCConfig instances
@@ -149,8 +150,31 @@ class HybridData:
             base_dir=self.base_dir,
         )
 
-        # Discover available data
+        # Initialise base-class attributes: FileName, Groups, Keys, units,
+        # field_meta, defs_file, start_timestamp, end_timestamp.
+        # Groups and Keys start empty; _discover_data() populates them.
+        super().__init__(f"HybridData_{date_str}", {}, [], defs_file=defs_file)
+
+        # Discover available data — overwrites self.Groups and self.Keys
         self._discover_data()
+
+    # ------------------------------------------------------------------
+    # Abstract property implementations (MagnetDataBase requirements)
+    # ------------------------------------------------------------------
+
+    @property
+    def Data(self) -> dict[str, Any]:  # type: ignore[override]
+        """Cache dict for loaded data (starts empty; populated on demand)."""
+        return self._data
+
+    @Data.setter
+    def Data(self, value: dict[str, Any] | pd.DataFrame) -> None:  # type: ignore[override]
+        self._data = value  # type: ignore[assignment]
+
+    @property
+    def Type(self) -> DataType:
+        """Data-type discriminator (always ``DataType.HYBRID``)."""
+        return self._TYPE
 
     def _discover_data(self) -> None:
         """Discover available data files for the given date"""
@@ -297,10 +321,6 @@ class HybridData:
             f"rms={self._info.rms_available}, "
             f"trigger={self._info.trigger_available})"
         )
-
-    def getType(self) -> int:
-        """Return data type identifier"""
-        return self.Type
 
     def getKeys(self) -> list[str]:
         logger.debug(f"HybridData/getKeys: keys={self.Keys}")
@@ -903,24 +923,29 @@ class HybridData:
     # MagnetData-like Interface Methods
     # -------------------------------------------------------------------------
 
-    def getData(
+    def getData(  # type: ignore[override]
         self,
         key: str | None = None,
+        downsample=None,
+        *,
         hours: range | list[int] | None = None,
     ) -> Any:
-        """
-        Get data for a specific key (MagnetData-compatible interface)
+        """Return data for a specific key.
 
         Parameters
         ----------
         key : str, optional
-            Data key in format 'type/system' or 'type/system/variable'
+            Data key in format ``'type/system'`` or ``'type/system/variable'``.
+        downsample : DownsampleConfig, optional
+            Ignored for HybridData — downsampling is handled inside each
+            sub-reader (e.g. :meth:`read_khz_variable`).
         hours : range or list of int, optional
-            Hours to read (default: all available)
+            Hours to read (default: all available); keyword-only.
 
         Returns
         -------
-        Data (type depends on the requested data)
+        Any
+            Data type depends on the requested key.
         """
         if key is None:
             return self.Data
@@ -1084,6 +1109,41 @@ class HybridData:
         )
         logger.debug(f"HybridData.addData: registered derived key {key!r} (lazy)")
         return 0
+
+    def extractData(self, keys: list[str]) -> pd.DataFrame:
+        """Not supported for HybridData — use :meth:`getData` per key instead.
+
+        Parameters
+        ----------
+        keys : list[str]
+            Requested keys (unused).
+
+        Raises
+        ------
+        NotImplementedError
+            Always, because HybridData has no single backing DataFrame.
+        """
+        raise NotImplementedError(
+            "HybridData.extractData: not applicable to multi-source data; "
+            "call getData(key) for each key individually"
+        )
+
+    def renameData(self, columns: dict) -> None:
+        """Not supported for HybridData.
+
+        Parameters
+        ----------
+        columns : dict
+            Rename mapping (unused).
+
+        Raises
+        ------
+        NotImplementedError
+            Always, because HybridData has no single backing DataFrame.
+        """
+        raise NotImplementedError(
+            "HybridData.renameData: not applicable to multi-source data"
+        )
 
     # -------------------------------------------------------------------------
     # Plotting Methods (delegating to plotting module)

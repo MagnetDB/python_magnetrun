@@ -8,9 +8,12 @@ This module provides:
 - Configuration management for different measurement sites (M8, M9, M10)
 - Data loading from TDMS overview, archive, and pupitre files
 - Time synchronization between different data sources
-- Distance and similarity metrics (DTW alignment)
-- Visualization utilities
 - Core data processing logic
+
+Metrics and plotting live in their own sub-namespaces::
+
+    from python_magnetrun.analysis.metrics import calc_mahalanobis, compare_series
+    from python_magnetrun.analysis.plotting import plot_data, plot_comparison
 
 Example usage::
 
@@ -80,57 +83,6 @@ from .loaders import (
     convert_to_timestamp,
     discover_files,
     load_files_data,
-)
-from .metrics import (
-    CorrelationResult,
-    # Dataclasses
-    DistanceResult,
-    DTWResult,
-    TLCCResult,
-    calc_correlation,
-    # Distance functions
-    calc_euclidean,
-    calc_mae,
-    calc_mahalanobis,
-    calc_mahalanobis_multivariate,
-    calc_mape,
-    calc_max_error,
-    calc_rmse,
-    # Convenience
-    compare_series,
-    compute_all_distances,
-    # DTW functions
-    compute_dtw_distance,
-    compute_dtw_distance_fast,
-    compute_pearson_correlation,
-    compute_rolling_tlcc,
-    compute_tlcc,
-    compute_windowed_tlcc,
-    # Cross-correlation functions
-    crosscorr,
-    dtw_with_paa,
-    plot_dtw_alignment,
-    # Plotting
-    plot_tlcc,
-)
-from .plotting import (
-    DEFAULT_COLORS,
-    # Constants
-    DEFAULT_STYLE,
-    PlotColors,
-    # Dataclasses
-    PlotStyle,
-    create_figure_grid,
-    estimate_downsample_percent,
-    plot_comparison,
-    # Main plotting functions
-    plot_data,
-    plot_incidents_markers,
-    plot_regimes,
-    plot_time_series,
-    save_figure,
-    # Utilities
-    setup_matplotlib_defaults,
 )
 from .processing import (
     # Main dataclasses
@@ -257,57 +209,10 @@ __all__ = [
     "add_time_column",
     "add_time_columns",
     "get_timestamp_info",
-    # Metrics dataclasses
-    "DistanceResult",
-    "DTWResult",
-    "CorrelationResult",
-    "TLCCResult",
-    # Metrics distance functions
-    "calc_euclidean",
-    "calc_mae",
-    "calc_mahalanobis",
-    "calc_mahalanobis_multivariate",
-    "calc_mape",
-    "calc_max_error",
-    "calc_rmse",
-    "calc_correlation",
-    "compute_all_distances",
-    # Metrics cross-correlation functions
-    "crosscorr",
-    "compute_tlcc",
-    "compute_windowed_tlcc",
-    "compute_rolling_tlcc",
-    "compute_pearson_correlation",
-    # Metrics DTW functions
-    "compute_dtw_distance",
-    "compute_dtw_distance_fast",
-    "dtw_with_paa",
-    # Metrics plotting
-    "plot_tlcc",
-    "plot_dtw_alignment",
-    # Metrics convenience
-    "compare_series",
-    # Plotting dataclasses
-    "PlotStyle",
-    "PlotColors",
-    # Plotting constants
-    "DEFAULT_STYLE",
-    "DEFAULT_COLORS",
     # Downsampling (canonical, from utils.downsampling)
     "DownsampleConfig",
     "downsample_arrays",
     "downsample_dataframe",
-    "estimate_downsample_percent",
-    # Plotting main functions
-    "plot_data",
-    "plot_comparison",
-    "plot_regimes",
-    "plot_incidents_markers",
-    "plot_time_series",
-    # Plotting utilities
-    "setup_matplotlib_defaults",
-    "create_figure_grid",
-    "save_figure",
     # Processing configuration
     "ProcessingConfig",
     # Processing dataclasses

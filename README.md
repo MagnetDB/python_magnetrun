@@ -25,6 +25,7 @@ Python `MagnetRun` contains utilities to view and analyze Magnet runs from LNCMI
   - [Plotting vs time](#plotting-vs-time)
   - [Plotting key vs key](#plotting-key-vs-key)
   - [Customising plot style per field](#customising-plot-style-per-field)
+  - [Customising text styles](#customising-text-styles)
   - [Plot colour palette](#plot-colour-palette)
   - [Statistics and plateau detection](#statistics-and-plateau-detection)
   - [Derived quantities](#derived-quantities)
@@ -377,6 +378,7 @@ Once set, `load_mrun()` and all CLI commands resolve bare filenames against thes
 - Time-series synchronization between data sources
 - Scalar distance metrics (Euclidean, RMSE, MAE, MAPE, max error, Pearson, Mahalanobis) shared across analysis and downsampling in `python_magnetrun.utils.scalar_metrics`
 - Distance and similarity metrics for cross-source comparison (Euclidean, MAE, MAPE, DTW, TLCC, Mahalanobis) in `python_magnetrun.analysis.metrics`
+- Per-element font customization (`LabelStyle`) for title, x/y-axis labels, and annotations via `PlotStyle` or `--label_style` CLI argument
 - Downsampling utilities (`DownsampleConfig`, `downsample_arrays`, `downsample_dataframe`) with pluggable algorithms (`stride`, `lttb`, `minmax_lttb`, `minmax`)
 - Downsampling quality evaluation (`evaluate_downsampling`, `benchmark_configs`, `evaluate_downsampling_segments`) with per-segment (plateau vs transition) metrics and optional memory profiling
 - Extract data from `srv-data-lncmi`
@@ -722,7 +724,7 @@ magnetrun plot "2026.03.31 - 13:22:40.txt" --housing M9 \
 # Two pairs from different files – first pair square markers every 20 points,
 # second pair dashed line
 magnetrun plot \
-    srvdata/M10_2025.01.27---*.txt \
+    data/M10_2025.01.27---*.txt \
     pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms \
     --key_vs_key IH-UH \
     --key_vs_key Courants_Alimentations/Référence_A2-Tensions_Aimant/Interne1 \
@@ -785,6 +787,83 @@ magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
     --backend plotly \
     --field_style "Référence_A1=--@0.7" \
     --field_style "Référence_A2=-o:20"
+```
+
+### Customising text styles
+
+Use `--label_style ELEMENT=KEY:VALUE[,KEY:VALUE,...]` (repeatable) to set the
+**font family, style, weight, size, and colour** of any text element in the figure.
+
+**Elements:**
+
+| `ELEMENT` | Target |
+|---|---|
+| `title` | Figure suptitle |
+| `xlabel` | Bottom x-axis label |
+| `ylabel` | All y-axis labels |
+| `annotation` | Inline annotations (events, incidents) |
+
+**Keys:**
+
+| `KEY` | Type | Values | Plotly |
+|---|---|---|---|
+| `size` | int | point size, e.g. `14` | ✓ |
+| `family` | str | `serif`, `sans-serif`, `monospace`, any font name | ✓ |
+| `color` | str | CSS colour or hex, e.g. `navy`, `#333333` | ✓ |
+| `style` | str | `normal`, `italic`, `oblique` | ⚠ ignored (warning logged) |
+| `weight` | str | `normal`, `bold`, `light` | ⚠ ignored (warning logged) |
+
+All keys are optional within a spec; unset keys keep the backend default.
+
+**CLI examples:**
+
+```bash
+# Larger bold serif title, navy x-axis label, italic y-axis label
+magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
+    --vs_time Courants_Alimentations/Référence_A1 \
+    --label_style "title=size:16,family:serif,weight:bold" \
+    --label_style "xlabel=size:12,color:navy" \
+    --label_style "ylabel=style:italic"
+
+# Small grey annotations
+magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
+    --vs_time Courants_Alimentations/Référence_A1 \
+    --label_style "annotation=size:8,color:#666666"
+
+# Works with all backends
+magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
+    --vs_time Courants_Alimentations/Référence_A1 \
+    --backend plotly \
+    --label_style "title=size:18,family:Arial" \
+    --label_style "xlabel=size:13"
+```
+
+**Python API:**
+
+`LabelStyle` is a dataclass imported from `python_magnetrun.plotting.style`.
+Pass it via `PlotStyle` to any plotting function:
+
+```python
+from python_magnetrun.plotting.style import LabelStyle, PlotStyle
+from python_magnetrun.plotting.timeseries import plot_subplots
+
+style = PlotStyle(
+    title_style=LabelStyle(family="serif", size=16, weight="bold"),
+    xlabel_style=LabelStyle(size=12, color="navy"),
+    ylabel_style=LabelStyle(style="italic", size=11),
+    annotation_style=LabelStyle(size=8, color="#666666"),
+)
+
+fig = plot_subplots(df, fields=["IH", "IB"], style=style)
+```
+
+`--label_style` overrides the same fields on top of any `--plot-config` base:
+
+```bash
+# Load a base style from a file, then sharpen the title font on the command line
+magnetrun plot … \
+    --plot-config my_style.json \
+    --label_style "title=size:18,family:serif"
 ```
 
 ### Plot colour palette

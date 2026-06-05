@@ -9,7 +9,11 @@
     "grid_alpha": 0.3,
     "legend_loc": "best",
     "title_fontsize": 12,
-    "label_fontsize": 10
+    "label_fontsize": 10,
+    "title_style": null,
+    "xlabel_style": null,
+    "ylabel_style": null,
+    "annotation_style": null
   },
   "colors": {
     "overview": "blue",

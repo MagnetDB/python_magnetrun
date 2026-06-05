@@ -1,4 +1,12 @@
 from .downsampling import DownsampleConfig, downsample_arrays, downsample_dataframe
+from .downsampling_metrics import (
+    DownsampleMetrics,
+    SegmentMetrics,
+    benchmark_configs,
+    evaluate_downsampling,
+    evaluate_downsampling_segments,
+)
+from .files import SUPPORTED_EXTENSIONS, get_extension
 from .scalar_metrics import (
     calc_correlation,
     calc_euclidean,
@@ -9,14 +17,6 @@ from .scalar_metrics import (
     calc_max_error,
     calc_rmse,
 )
-from .downsampling_metrics import (
-    DownsampleMetrics,
-    SegmentMetrics,
-    benchmark_configs,
-    evaluate_downsampling,
-    evaluate_downsampling_segments,
-)
-from .files import SUPPORTED_EXTENSIONS, get_extension
 from .timestamps import (
     TXT_TIMESTAMP_FORMATS,
     parse_filename_timestamp,

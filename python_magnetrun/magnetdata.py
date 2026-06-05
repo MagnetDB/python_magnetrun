@@ -41,10 +41,11 @@ __all__ = [
 def load_magnetdata(
     filename: str,
     defs_file: str | None = None,
+    fmt: str | None = None,
 ) -> MagnetDataBase:
     """Load a magnet data file and return the appropriate MagnetDataBase subclass.
 
-    Dispatches on file extension:
+    Dispatches via :func:`~python_magnetrun.readers.registry.detect_type`:
 
     - ``.tdms`` → :class:`TdmsMagnetData`
     - ``.txt``  → :class:`PandasMagnetData`
@@ -52,22 +53,28 @@ def load_magnetdata(
 
     :param filename: path to the data file
     :param defs_file: optional path to a field definitions JSON file
+    :param fmt: explicit format override (``DataType`` member name, e.g.
+        ``"tdms"``); when provided, extension detection is skipped
     :return: the loaded data object
     :raises ValueError: if the file extension is not recognised
     """
-    ext = os.path.splitext(filename)[-1].lower()
-    if ext == ".tdms":
-        if defs_file is not None:
-            return _fromtdms(filename, defs_file=defs_file)
-        return _fromtdms(filename)
-    elif ext == ".txt":
-        return PandasMagnetData.fromtxt(
-            filename, defs_file=defs_file or "pupitre-defs.json"
-        )
-    elif ext == ".csv":
+    from .readers.registry import DataType, detect_type
+
+    data_type = detect_type(os.fspath(filename), fmt=fmt)
+
+    if data_type == DataType.TDMS:
+        return _fromtdms(filename, defs_file=defs_file or "pigbrother-defs.json")
+    elif data_type == DataType.PUPITRE:
+        ext = os.path.splitext(filename)[-1].lower()
+        if ext == ".txt":
+            return PandasMagnetData.fromtxt(
+                filename, defs_file=defs_file or "pupitre-defs.json"
+            )
         return PandasMagnetData.fromcsv(filename, defs_file=defs_file)
     else:
-        raise ValueError(f"load_magnetdata: unsupported file extension {ext!r}")
+        raise ValueError(
+            f"load_magnetdata: unsupported format {data_type.name!r} for {filename!r}"
+        )
 
 
 def _fromtdms(
@@ -87,7 +94,7 @@ def _fromtdms(
     """
     from nptdms import TdmsFile
 
-    from .utils.validation import validate_tdms_format
+    from .readers.tdms_reader import TdmsReader
 
     logger.debug(f"load_magnetdata/_fromtdms: {name}")
 
@@ -101,13 +108,10 @@ def _fromtdms(
     f_extension = os.path.splitext(name)[-1]
     if f_extension != ".tdms":
         raise RuntimeError(f"_fromtdms: expect a tdms filename - got {name}")
-    validate_tdms_format(name)
 
-    t_offset: float = 0.0
-    if "Overview" in name:
-        t_offset = 1 / 2.0
-    elif "Archive" in name:
-        t_offset = (1 / 120.0) / 2.0
+    reader = TdmsReader()
+    reader.validate(name)
+    t_offset: float = reader.t_offset_for(name)
 
     # Keep handle open — data arrays are read lazily via _ensure_group_loaded()
     t0 = time.perf_counter()
@@ -142,9 +146,9 @@ def _fromtdms(
         else:
             Groups[gname] = group
 
-    if "Courants_Alimentations" not in Groups:
+    if reader.required_group not in Groups:
         raise RuntimeError(
-            f"_fromtdms: Courants_Alimentations group not found in {name}"
+            f"_fromtdms: {reader.required_group} group not found in {name}"
         )
 
     mdata = TdmsMagnetData(

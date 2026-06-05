@@ -1194,14 +1194,14 @@ def print_record_summary(record: OverviewRecord) -> None:
 
 
 def benchmark_downsample_channel(
-    df: "pd.DataFrame",
+    df: pd.DataFrame,
     key: str,
     tkey: str = "t",
     n_out: int = 10_000,
     compute_memory: bool = False,
     memory_tier: int = 1,
     save_csv: str | None = None,
-) -> "pd.DataFrame":
+) -> pd.DataFrame:
     """Benchmark all available downsampling methods on one channel.
 
     Constructs a default set of :class:`~python_magnetrun.utils.DownsampleConfig`
@@ -1232,10 +1232,8 @@ def benchmark_downsample_channel(
     pandas.DataFrame
         One row per method; columns match :class:`~python_magnetrun.utils.DownsampleMetrics`.
     """
-    import numpy as np
-    import pandas as pd
 
-    from ..utils.downsampling import DownsampleConfig, HAS_TSDOWNSAMPLE
+    from ..utils.downsampling import HAS_TSDOWNSAMPLE
     from ..utils.downsampling_metrics import benchmark_configs
 
     data = df[key].to_numpy(dtype=float)

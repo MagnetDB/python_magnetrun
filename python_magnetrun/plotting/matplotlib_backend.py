@@ -9,11 +9,41 @@ from typing import Any
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .style import PlotStyle
+from .style import LabelStyle, PlotStyle
 
 logger = logging.getLogger(__name__)
 
 __all__ = ["MatplotlibBackend"]
+
+
+def _mpl_text_kwargs(label_style: LabelStyle | None, fallback_size: int) -> dict[str, Any]:
+    """Build matplotlib text keyword arguments from a :class:`LabelStyle`.
+
+    Parameters
+    ----------
+    label_style : LabelStyle, optional
+        Source style; ``None`` returns only ``{"fontsize": fallback_size}``.
+    fallback_size : int
+        Used when ``label_style`` is ``None`` or ``label_style.size`` is ``None``.
+
+    Returns
+    -------
+    dict
+        Keyword arguments suitable for ``set_xlabel``, ``set_ylabel``,
+        ``set_title``, ``annotate``, etc.
+    """
+    if label_style is None:
+        return {"fontsize": fallback_size}
+    kwargs: dict[str, Any] = {"fontsize": label_style.size if label_style.size is not None else fallback_size}
+    if label_style.family is not None:
+        kwargs["fontfamily"] = label_style.family
+    if label_style.style is not None:
+        kwargs["fontstyle"] = label_style.style
+    if label_style.weight is not None:
+        kwargs["fontweight"] = label_style.weight
+    if label_style.color is not None:
+        kwargs["color"] = label_style.color
+    return kwargs
 
 
 class MatplotlibBackend:
@@ -36,6 +66,7 @@ class MatplotlibBackend:
         fig, axes = plt.subplots(n, 1, sharex=share_x, figsize=(width, height_per * n))
         ax_list = [axes] if n == 1 else list(axes)
         fig._magnetrun_axes = ax_list
+        fig._magnetrun_style = s
         if s.grid:
             for ax in ax_list:
                 ax.grid(True, alpha=s.grid_alpha)
@@ -111,6 +142,8 @@ class MatplotlibBackend:
         label: str,
         detail: dict | None = None,
     ) -> None:
+        s: PlotStyle = getattr(fig, "_magnetrun_style", None) or PlotStyle()
+        annot_kwargs = _mpl_text_kwargs(s.annotation_style, fallback_size=8)
         ax = self._get_ax(fig, ax_idx)
         ax.axvline(t, linestyle="--", color="gray", alpha=0.6)
         ax.annotate(
@@ -118,8 +151,8 @@ class MatplotlibBackend:
             xy=(t, f),
             xytext=(5, -15),
             textcoords="offset points",
-            fontsize=8,
             rotation=90,
+            **annot_kwargs,
         )
 
     def save(self, fig: Any, path: Path, *, dpi: int = 300) -> None:
@@ -128,7 +161,8 @@ class MatplotlibBackend:
         logger.info(f"Saved figure to {path}")
 
     def finalize(self, fig: Any, *, xlabel: str = "t [s]") -> None:
-        """Add legend and x-axis label to all axes."""
+        """Add legend, axis labels, and text styling to all axes."""
+        s: PlotStyle = getattr(fig, "_magnetrun_style", None) or PlotStyle()
         axes = getattr(fig, "_magnetrun_axes", None) or fig.axes
         for ax in axes:
             handles, labels = ax.get_legend_handles_labels()
@@ -141,6 +175,20 @@ class MatplotlibBackend:
         _ylabel = getattr(fig, "_magnetrun_ylabel", None)
         if axes and _ylabel and not axes[0].get_ylabel():
             axes[0].set_ylabel(_ylabel)
+
+        # Apply LabelStyle font properties to already-set text elements.
+        xl_kwargs = _mpl_text_kwargs(s.xlabel_style, fallback_size=s.label_fontsize)
+        yl_kwargs = _mpl_text_kwargs(s.ylabel_style, fallback_size=s.label_fontsize)
+        for ax in axes:
+            if ax.get_xlabel():
+                ax.xaxis.label.set(**xl_kwargs)
+            if ax.get_ylabel():
+                ax.yaxis.label.set(**yl_kwargs)
+
+        # Apply title style to the suptitle (fig-level text object, if present).
+        if fig.texts:
+            t_kwargs = _mpl_text_kwargs(s.title_style, fallback_size=s.title_fontsize)
+            fig.texts[0].set(**t_kwargs)
 
     def show(self, fig: Any) -> None:
         self.finalize(fig)

@@ -1142,28 +1142,19 @@ class PandasMagnetData(MagnetDataBase):
         :meth:`_ensure_data_loaded` (triggered by :meth:`addTime`,
         :meth:`cleanupData`, or :meth:`getPandasData`).
         """
-        from .utils.validation import (
-            FileFormatError,
-            check_pupitre_truncation,
-            validate_txt_format,
-        )
+        from .readers.csv_readers import PupitreReader
+        from .utils.validation import FileFormatError, check_pupitre_truncation
 
         if os.path.splitext(name)[-1] != ".txt":
             raise FileFormatError(f"{name}: expected .txt extension")
-        validate_txt_format(name)
-        _csv_kwargs = {
-            "sep": r"\s+",
-            "engine": "python",
-            "skiprows": 1,
-            "on_bad_lines": "warn",
-        }
-        with _open_text_with_fallback(name) as f:
-            stub = pd.read_csv(f, **_csv_kwargs, nrows=1)
+        reader = PupitreReader()
+        reader.validate(name)
+        stub = reader.read_stub(name)
         if stub.empty:
             raise FileFormatError(f"{name}: no data rows found (header-only file)")
         Keys = _dataframe_keys(stub)
         check_pupitre_truncation(name, Keys)
-        return cls(name, {}, Keys, stub, defs_file=defs_file, _read_kwargs=_csv_kwargs)
+        return cls(name, {}, Keys, stub, defs_file=defs_file, _read_kwargs=reader.read_kwargs())
 
     @classmethod
     def fromcsv(cls, name: str, defs_file: str | None = None) -> PandasMagnetData:
@@ -1174,14 +1165,12 @@ class PandasMagnetData(MagnetDataBase):
             ``None`` disables JSON unit loading.
         :returns: a fully initialised :class:`PandasMagnetData` instance.
         """
-        from .utils.validation import validate_csv_format
+        from .readers.csv_readers import CsvReader
 
-        validate_csv_format(name)
-        with _open_text_with_fallback(name) as f:
-            Data = pd.read_csv(
-                f, sep=",", engine="python", skiprows=0, on_bad_lines="warn"
-            )
-            Keys = _dataframe_keys(Data)
+        reader = CsvReader()
+        reader.validate(name)
+        Data = reader.read(name)
+        Keys = _dataframe_keys(Data)
         return cls(name, {}, Keys, Data, defs_file=defs_file)
 
     @classmethod
@@ -1244,12 +1233,12 @@ class EnsightMagnetData(PandasMagnetData):
             ``None`` disables JSON unit loading.
         :returns: a fully initialised :class:`EnsightMagnetData` instance.
         """
-        from .utils.validation import validate_file_exists
+        from .readers.csv_readers import EnsightReader
 
-        validate_file_exists(name)
-        with open(name) as f:
-            Data = pd.read_csv(f, sep=",", engine="python", skiprows=2)
-            Keys = _dataframe_keys(Data)
+        reader = EnsightReader()
+        reader.validate(name)
+        Data = reader.read(name)
+        Keys = _dataframe_keys(Data)
         return cls(name, {}, Keys, Data, defs_file=defs_file)
 
 
@@ -1270,12 +1259,12 @@ class BProfileMagnetData(PandasMagnetData):
             ``None`` disables JSON unit loading.
         :returns: a fully initialised :class:`BProfileMagnetData` instance.
         """
-        from .utils.validation import validate_csv_format
+        from .readers.csv_readers import BProfileReader
 
-        validate_csv_format(name)
-        with open(name) as f:
-            Data = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=0)
-            Keys = _dataframe_keys(Data)
+        reader = BProfileReader()
+        reader.validate(name)
+        Data = reader.read(name)
+        Keys = _dataframe_keys(Data)
         return cls(name, {}, Keys, Data, defs_file=defs_file)
 
 
@@ -1296,10 +1285,10 @@ class FeelppMagnetData(PandasMagnetData):
             ``None`` disables JSON unit loading.
         :returns: a fully initialised :class:`FeelppMagnetData` instance.
         """
-        from .utils.validation import validate_csv_format
+        from .readers.csv_readers import FeelppReader
 
-        validate_csv_format(name)
-        with open(name) as f:
-            Data = pd.read_csv(f, sep=",", engine="python", skiprows=skiprows)
-            Keys = _dataframe_keys(Data)
+        reader = FeelppReader(skip_rows=skiprows)
+        reader.validate(name)
+        Data = reader.read(name)
+        Keys = _dataframe_keys(Data)
         return cls(name, {}, Keys, Data, defs_file=defs_file)

@@ -9,8 +9,6 @@ import pytest
 
 from python_magnetrun.utils.downsampling import DownsampleConfig
 from python_magnetrun.utils.downsampling_metrics import (
-    DownsampleMetrics,
-    SegmentMetrics,
     benchmark_configs,
     evaluate_downsampling,
     evaluate_downsampling_segments,

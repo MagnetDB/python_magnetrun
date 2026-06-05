@@ -44,12 +44,14 @@ class DataType(IntEnum):
     :cvar TDMS: pigbrother ``.tdms`` files backed by a dict of DataFrames.
     :cvar ENSIGHT: Ensight CSV files (pandas-backed, same as PUPITRE).
     :cvar HYBRID: hybrid data combining multiple sources.
+    :cvar HTS: HTS files — ``;``-separated with units embedded in column headers.
     """
 
     PUPITRE = 0
     TDMS = 1
     ENSIGHT = 2
     HYBRID = 3
+    HTS = 4
 
 
 _ureg = None

@@ -43,9 +43,8 @@ from ..utils.scalar_metrics import (
     calc_euclidean,
     calc_mae,
     calc_mahalanobis,
-    calc_mahalanobis_multivariate,
-    calc_max_error,
     calc_mape,
+    calc_max_error,
     calc_rmse,
 )
 
