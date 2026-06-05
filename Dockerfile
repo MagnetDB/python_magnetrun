@@ -1,5 +1,7 @@
-# Global ARG — must be declared before any FROM to be usable in FROM instructions
+# Global ARGs — must be declared before any FROM to be usable in FROM instructions
 ARG BASE_IMAGE=debian:trixie-slim
+ARG CUDA_VERSION=12.6.0
+ARG UBUNTU_VERSION=24.04
 
 # ── base ──────────────────────────────────────────────────────
 FROM ${BASE_IMAGE} AS base
@@ -91,9 +93,6 @@ USER magnetrun
 RUN pip install --no-cache-dir PyOpenGL PyOpenGL-accelerate
 
 # ── nvidia: NVIDIA GPU (nvidia/cuda base, ubuntu only) ────────
-ARG CUDA_VERSION=12.6.0
-ARG UBUNTU_VERSION=24.04
-
 FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION} AS nvidia
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

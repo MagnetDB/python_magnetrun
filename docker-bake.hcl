@@ -221,7 +221,7 @@ target "nvidia-ubuntu2604" {
   inherits = ["_common"]
   target   = "nvidia"
   args     = {
-    CUDA_VERSION   = CUDA_VERSION
+    CUDA_VERSION   = "13.3.0"
     UBUNTU_VERSION = "26.04"
   }
   tags = ["magnetrun:nvidia-ubuntu26.04-${TAG}"]

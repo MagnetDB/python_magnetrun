@@ -153,6 +153,52 @@ from any host path:
 
 ---
 
+### Runtime: user and secrets
+
+#### User mapping
+
+Run as the host user to avoid file-ownership mismatches on mounted volumes:
+
+```sh
+--user $(id -u):$(id -g) -e HOME=/tmp
+```
+
+`-e HOME=/tmp` gives tools that expand `$HOME` a writable, existing directory.
+`/tmp` is always present in the container and requires no extra flags.
+
+**Upgrading to a proper home directory**
+
+If you need a real, writable `$HOME` (e.g. persistent matplotlib cache, user
+config), replace the above with:
+
+```sh
+--user $(id -u):$(id -g) \
+-e HOME=$HOME \
+--mount type=tmpfs,destination=$HOME
+```
+
+The `tmpfs` mount creates `$HOME` as an ephemeral in-memory filesystem owned by
+the container user. It disappears when the container stops — suitable for caches
+and temporary config. For persistent data, bind-mount specific sub-directories:
+
+```sh
+-v $HOME/.cache/matplotlib:$HOME/.cache/matplotlib
+```
+
+#### Secrets
+
+Pass secrets from the host `.env` file (managed by direnv — see
+[direnv-setup.md](direnv-setup.md)):
+
+```sh
+--env-file .env
+```
+
+`.env` is never committed; it holds `USERDB_API_KEY`, `MAGNETDB_API_KEY`, and
+the other variables listed in `direnv-setup.md`.
+
+---
+
 ### software-gl — X11 window, CPU (Mesa) rendering
 
 ```sh
@@ -246,6 +292,10 @@ Set `MAGNETRUN_IMAGE` to pick the image and `MPLBACKEND` to pick the backend:
 magnetrun() {
   local image="${MAGNETRUN_IMAGE:-magnetrun:software-gl-trixie-latest}"
 
+  # Pass secrets if .env exists (see direnv-setup.md)
+  local env_args=()
+  [ -f .env ] && env_args=(--env-file .env)
+
   local data_host
   if [ -d /mnt/LNCMIG-Data ]; then
     data_host=/mnt/LNCMIG-Data
@@ -254,6 +304,9 @@ magnetrun() {
   fi
 
   docker run -it --rm \
+    --user "$(id -u):$(id -g)" \
+    -e HOME=/tmp \
+    "${env_args[@]}" \
     -e DISPLAY="$DISPLAY" \
     -e MPLBACKEND="${MPLBACKEND:-TkAgg}" \
     -v /tmp/.X11-unix:/tmp/.X11-unix \
