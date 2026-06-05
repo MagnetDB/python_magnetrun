@@ -9,6 +9,7 @@ Usage:
     python -m python_magnetrun.hybrid.cli --base-dir /data/hybrid --date 2025-01-06
 """
 
+import argparse
 import logging
 
 from ..log_utils import setup_logging
@@ -256,6 +257,115 @@ def main() -> None:
             log_exception(
                 "Error plotting kHz with RMS", e, use_print=True, include_traceback=True
             )
+
+
+def _run(args: "argparse.Namespace") -> int:
+    """Dispatcher-compatible entry: receives already-parsed Namespace."""
+    log_level = getattr(logging, getattr(args, "log_level", "WARNING").upper(), logging.WARNING)
+    setup_logging(level=log_level, log_file=getattr(args, "log_file", None))
+    logger.setLevel(log_level)
+
+    if getattr(args, "list_dates", False):
+        run_list_dates(args)
+        return 0
+
+    if not getattr(args, "date", None):
+        import sys
+        print("Error: --date is required. Use --list-dates to see available dates.", file=sys.stderr)
+        return 1
+
+    try:
+        data = HybridData(
+            args.base_dir,
+            args.date,
+            fepc_system=getattr(args, "fepc_system", None),
+            endian=getattr(args, "endian", "big"),
+        )
+    except (OSError, ValueError, RuntimeError) as e:
+        log_exception("Error creating HybridData", e, use_print=True, include_traceback=True)
+        return 1
+
+    data.print_summary()
+
+    if getattr(args, "khz_vars", None):
+        run_show_khz_vars(data, args.khz_vars)
+    if getattr(args, "rms_vars", None):
+        run_show_rms_vars(data, args.rms_vars)
+
+    hours = None
+    if getattr(args, "hours", None):
+        try:
+            hours = parse_hours(args.hours)
+        except ValueError:
+            logger.error(f"Invalid hours format '{args.hours}'.")
+            return 1
+
+    outlier_config = args_to_outlier_config(args)
+
+    if getattr(args, "plot_khz", None):
+        if not getattr(args, "fepc_system", None):
+            logger.error("--fepc-system is required for plotting")
+            return 1
+        try:
+            variables = [v.strip() for v in args.plot_khz.split(",")]
+            if len(variables) == 1:
+                data.plot_khz_variable(args.fepc_system, variables[0], hours=hours,
+                                       apply_calib=not getattr(args, "no_calib", False),
+                                       save=getattr(args, "save", None), outlier_config=outlier_config)
+            else:
+                data.plot_khz_variables(args.fepc_system, variables, hours=hours,
+                                        apply_calib=not getattr(args, "no_calib", False),
+                                        save=getattr(args, "save", None), outlier_config=outlier_config,
+                                        layout=getattr(args, "layout", "subplots"))
+        except (OSError, ValueError, RuntimeError) as e:
+            log_exception("Error plotting kHz variable", e, use_print=True, include_traceback=True)
+            return 1
+
+    if getattr(args, "plot_rms", None):
+        if not getattr(args, "fepc_system", None):
+            logger.error("--fepc-system is required for plotting")
+            return 1
+        try:
+            variables = [v.strip() for v in args.plot_rms.split(",")]
+            if len(variables) == 1:
+                data.plot_rms_variable(args.fepc_system, variables[0],
+                                       save=getattr(args, "save", None), outlier_config=outlier_config)
+            else:
+                data.plot_rms_variables(args.fepc_system, variables,
+                                        save=getattr(args, "save", None), outlier_config=outlier_config,
+                                        layout=getattr(args, "layout", "subplots"))
+        except (OSError, ValueError, RuntimeError) as e:
+            log_exception("Error plotting RMS variable", e, use_print=True, include_traceback=True)
+            return 1
+
+    if getattr(args, "plot_both", None):
+        if not getattr(args, "fepc_system", None):
+            logger.error("--fepc-system is required for plotting")
+            return 1
+        try:
+            rms_var = getattr(args, "rms_var", None) or args.plot_both
+            data.plot_khz_with_rms(args.fepc_system, args.plot_both, rms_variable=rms_var,
+                                   hours=hours, apply_calib=not getattr(args, "no_calib", False),
+                                   save=getattr(args, "save", None))
+        except (OSError, ValueError, RuntimeError) as e:
+            log_exception("Error plotting kHz with RMS", e, use_print=True, include_traceback=True)
+            return 1
+
+    return 0
+
+
+def register(sub: "argparse._SubParsersAction") -> None:
+    """Register the ``hybrid`` subcommand on *sub*."""
+    from .args import create_parser
+
+    hybrid_parser = create_parser()
+    p = sub.add_parser(
+        "hybrid",
+        parents=[hybrid_parser],
+        add_help=False,
+        help="read and plot hybrid magnet data (kHz, RMS, Trigger)",
+    )
+    p.set_defaults(_handler=_run)
 
 
 if __name__ == "__main__":

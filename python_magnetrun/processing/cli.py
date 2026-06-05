@@ -5,6 +5,7 @@ see:
 https://xavierbourretsicotte.github.io/loess.html
 """
 
+import argparse
 import logging
 import os
 import sys
@@ -279,6 +280,156 @@ def main():
         #     df = mrun.getData()
         #     for t in range(args.trange):
         #         lag_correlation(df, args.target, key, t)
+
+
+def _run(args: "argparse.Namespace") -> int:
+    """Dispatcher-compatible entry: receives already-parsed Namespace."""
+    setup_logging(
+        level=logging.DEBUG if getattr(args, "debug", False) else logging.WARNING,
+        fmt=SIMPLE_FORMAT,
+    )
+    logger.debug(f"args: {args}")
+
+    threshold = 0.5
+    twindows = 10
+    command = getattr(args, "proc_command", None) or getattr(args, "command", None)
+    if command == "filter":
+        threshold = args.threshold
+        twindows = args.twindows
+
+    smoothing_f = 0.7
+    smoothing_tau = 400
+    smoothing_iter = 3
+    if command == "smooth":
+        params = args.smooth_params.split(";")
+        if args.method == "ag":
+            smoothing_f = float(params[0])
+            smoothing_iter = int(params[1])
+        elif args.method in ("bell_kernel", "statsmodel_sm"):
+            smoothing_tau = float(params[0])
+        else:
+            smoothing_tau = float(params[0])
+            smoothing_f = float(params[1])
+            smoothing_iter = int(params[2])
+
+    supported_formats = [".txt", ".tdms"]
+    f_extension = os.path.splitext(args.input_file)[-1]
+    if f_extension not in supported_formats:
+        logger.error("so far only txt file support is implemented")
+        return 1
+
+    site = "tutut"
+    housing = getattr(args, "housing", None) or "notdefined"
+    filename = os.path.basename(args.input_file)
+    if filename.startswith("M"):
+        try:
+            idx = filename.index("_")
+            housing = filename[:idx]
+        except ValueError:
+            logger.warning("no housing detected — use --housing")
+
+    match f_extension:
+        case ".txt":
+            mrun = MagnetRun.fromtxt(housing, site, args.input_file)
+        case ".tdms":
+            mrun = MagnetRun.fromtdms(housing, site, args.input_file)
+        case _:
+            raise RuntimeError(f"unsupported extension '{f_extension}'")
+
+    mdata = mrun.getMData()
+    dkeys = mrun.getKeys()
+    inplace = False
+    skeys = getattr(args, "keys", []) or []
+
+    if command == "filter":
+        for key in skeys:
+            filterpikes(mrun, key, inplace, threshold, twindows, args.debug, args.show, args.input_file)
+
+    if command == "smooth":
+        logger.info(f"smooth: {skeys}")
+        for key in skeys:
+            if mdata.Type == DataType.PUPITRE:
+                selected_df = mrun.getMData().extractData(["t", key])
+            else:
+                (group, channel) = key.split("/")
+                selected_df = addtime(mdata, group, channel)
+
+            Meanval = selected_df[key].mean()
+            x = selected_df["t"].to_numpy()
+            y = selected_df[key].to_numpy()
+
+            plt.figure(figsize=(10, 6))
+            plt.scatter(x, y, facecolors="none", edgecolor="darkblue", label=key)
+
+            if args.method == "ag":
+                try:
+                    yest = lowess_ag(x, y, f=smoothing_f, iter=smoothing_iter)
+                    plt.plot(x, yest, color="orange", label="Loess: A. Gramfort")
+                except (ValueError, RuntimeError) as e:
+                    logger.error(f"Failed to build lowess_ag: {e}")
+            if args.method == "bell_kernel":
+                try:
+                    yest_bell = lowess_bell_shape_kern(x, y, smoothing_tau)
+                    plt.plot(x, yest_bell, color="red", label="Loess: bell shape kernel")
+                except (ValueError, RuntimeError) as e:
+                    logger.error(f"Failed to build bell: {e}")
+            if args.method == "statsmodel_sm":
+                try:
+                    yest_sm = lowess_sm(x, y, f=smoothing_f, iter=smoothing_iter)
+                    plt.plot(x, yest_sm, color="magenta", label="Loess: statsmodel")
+                except (ValueError, RuntimeError) as e:
+                    logger.error(f"Failed to build sm: {e}")
+
+            plt.grid()
+            plt.legend()
+            plt.title(f"Loess regression comparisons {args.method}")
+            if args.show:
+                plt.show()
+            else:
+                imagefile = filename + "-" + "-".join(skeys)
+                start_date = ""
+                start_time = ""
+                if "Date" in dkeys and "Time" in dkeys:
+                    start_date = mrun.getMData().getData("Date").iloc[0]
+                    start_time = mrun.getMData().getData("Time").iloc[0]
+                plt.savefig(f"{imagefile}_{start_date}---{start_time}-smoothed-{key}.png", dpi=300)
+            plt.close()
+
+    if command == "lag":
+        logger.warning("lag: not implemented yet")
+
+    return 0
+
+
+def register(sub: "argparse._SubParsersAction") -> None:
+    """Register the ``processing`` subcommand on *sub*."""
+
+    p = sub.add_parser("processing", help="filter/smooth/lag a single run file")
+    p.add_argument("input_file", help="input file (.txt or .tdms)")
+    p.add_argument("--show", action="store_true", help="display graphs")
+    p.add_argument("--debug", action="store_true", help="activate debug mode")
+    p.add_argument("--housing", help="housing (e.g. M9)", default=None)
+
+    sub2 = p.add_subparsers(title="processing commands", dest="proc_command")
+
+    pf = sub2.add_parser("filter", help="filter spikes")
+    pf.add_argument("--threshold", type=float, default=0.5)
+    pf.add_argument("--twindows", type=int, default=10)
+    pf.add_argument("--keys", nargs="+", default="Tin1")
+
+    ps = sub2.add_parser("smooth", help="smooth data")
+    ps.add_argument("--keys", nargs="+", default="Tin1")
+    ps.add_argument(
+        "--method", choices=["ag", "bell_kernel", "statsmodel_sm", "all"], default="bell_kernel"
+    )
+    ps.add_argument("--smooth_params", nargs="?", default="400")
+
+    pl = sub2.add_parser("lag", help="lag correlation (not yet implemented)")
+    pl.add_argument("--keys", nargs="+", default="Tin1")
+    pl.add_argument("--target", type=str, default="tsb")
+    pl.add_argument("--trange", type=int, default=100)
+
+    p.set_defaults(_handler=_run)
 
 
 if __name__ == "__main__":

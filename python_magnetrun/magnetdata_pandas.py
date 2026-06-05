@@ -350,7 +350,7 @@ class PandasMagnetData(MagnetDataBase):
             )
             self.start_timestamp = data_ts
         elif self.start_timestamp != data_ts:
-            logger.warning(
+            logger.info(
                 f"_validate_start_timestamp: {self.FileName!r} — filename timestamp {self.start_timestamp} "
                 f"differs from data timestamp {data_ts}; using data value -- aka {data_ts}"
             )

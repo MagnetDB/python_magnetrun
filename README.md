@@ -25,6 +25,7 @@ Python `MagnetRun` contains utilities to view and analyze Magnet runs from LNCMI
   - [Plotting vs time](#plotting-vs-time)
   - [Plotting key vs key](#plotting-key-vs-key)
   - [Customising plot style per field](#customising-plot-style-per-field)
+  - [Plot colour palette](#plot-colour-palette)
   - [Statistics and plateau detection](#statistics-and-plateau-detection)
   - [Derived quantities](#derived-quantities)
 - [Analysis](#analysis)
@@ -424,30 +425,30 @@ cp /path/to/my-pupitre-defs.json ~/.config/magnetrun/pupitre-defs.json
 # All subsequent calls to load_defs("pupitre-defs.json") will use your copy.
 ```
 
-Manage defs files with the `magnetrun-config field` CLI (bare names work after
+Manage defs files with `magnetrun config field` (bare names work after
 installation — no need to specify the full path to the bundled file):
 
 ```bash
 # List all field definitions (including aliases)
-magnetrun-config field pupitre-defs.json list
+magnetrun config field pupitre-defs.json list
 
 # Add a new field
-magnetrun-config field pupitre-defs.json add NewSensor I ampere \
+magnetrun config field pupitre-defs.json add NewSensor I ampere \
     --description "New coil current"
 
 # Update an existing field
-magnetrun-config field pupitre-defs.json update Field \
+magnetrun config field pupitre-defs.json update Field \
     --symbol Bz --description "Axial field"
 
 # Add a cross-format alias
-magnetrun-config field pupitre-defs.json alias-add Idcct1 hybrid \
+magnetrun config field pupitre-defs.json alias-add Idcct1 hybrid \
     "FEPC-AUX-LNCMI/ALIM1_J1"
 
 # Show aliases for one field
-magnetrun-config field pupitre-defs.json alias-show Idcct1
+magnetrun config field pupitre-defs.json alias-show Idcct1
 
 # Build a cross-reference index across all three formats
-magnetrun-config field pupitre-defs.json crossref \
+magnetrun config field pupitre-defs.json crossref \
     --format pupitre=pupitre-defs.json \
     --format pigbrother=pigbrother-defs.json \
     --format hybrid=hybrid-defs.json
@@ -506,27 +507,27 @@ To persist a customized config for a housing, copy it to the user config dir:
 
 ```bash
 # Start from the bundled template
-magnetrun-config housing M9-housing-config.json create M9 --from-builtin M9
+magnetrun config housing M9-housing-config.json create M9 --from-builtin M9
 
 # Copy to user config dir so get_housing_config("M9") picks it up automatically
 cp M9-housing-config.json ~/.config/magnetrun/M9-housing-config.json
 
 # Edit in place
-magnetrun-config housing ~/.config/magnetrun/M9-housing-config.json update \
+magnetrun config housing ~/.config/magnetrun/M9-housing-config.json update \
     --gr1-current IB --gr2-current IH
 ```
 
-Manage with the `magnetrun-config housing` CLI:
+Manage with `magnetrun config housing`:
 
 ```bash
 # Show a housing config
-magnetrun-config housing M9-housing-config.json show
+magnetrun config housing M9-housing-config.json show
 
 # Create a new housing config initialised from M9 defaults
-magnetrun-config housing M11-housing-config.json create M11 --from-builtin M9
+magnetrun config housing M11-housing-config.json create M11 --from-builtin M9
 
 # Update role fields in place
-magnetrun-config housing M9-housing-config.json update \
+magnetrun config housing M9-housing-config.json update \
     --gr1-current IB --gr2-current IH
 ```
 
@@ -565,18 +566,44 @@ cfg = update_housing_config("M9-housing-config.json", {"gr1_current": "IB"})
 
 ## Basic Usage
 
+All commands share a single entry point:
+
+```
+magnetrun <subcommand> [files...] [options]
+```
+
+| Subcommand | Purpose |
+|---|---|
+| `info` | list available fields or convert to CSV |
+| `add` | compute and attach a derived field |
+| `plot` | plot fields vs time or field vs field |
+| `select` | extract/export data by time range or key |
+| `stats` | compute statistics and detect plateaux |
+| `signature` | detect regime transitions (U/P/D) |
+| `analysis` | full cross-source analysis workflow |
+| `processing` | filter, smooth, or lag a run file |
+| `hybrid` | read and plot kHz / RMS / Trigger data |
+| `logparser` | parse pigbrother acquisition log files |
+| `fetch` | fetch run data from the server |
+| `config` | manage housing and field-definition configs |
+
+Run `magnetrun --help` or `magnetrun <subcommand> --help` for full option lists.
+
+> [!NOTE]
+> The old `python-magnetrun`, `srvdata-to-magnetrun`, `magnetrun-analysis`,
+> `hybrid-magnetrun`, `magnetrun-config`, and `magnetrun-processing` entry points
+> still work as deprecated aliases and will be removed in a future release.
+
 ### List available fields
 
 ```bash
-python3 -m python_magnetrun.cli \
-    data/M9_2019.02.14---23_00_38.txt info --list
+magnetrun info data/M9_2019.02.14---23_00_38.txt --list
 ```
 
 or use data from predefined directories:
 
 ```bash
-python3 -m python_magnetrun.cli \
-    --housing M9 "2019.02.14 - 23:00:38.txt" info --list
+magnetrun info --housing M9 "2019.02.14 - 23:00:38.txt" --list
 ```
 
 ### Select records by criteria
@@ -588,21 +615,12 @@ python3 examples/get-record.py \
     srvdata/M8*.txt select --duration 60 --field 18.
 ```
 
-or use data from predefined directories:
-
-```bash
-python3 examples/get-record.py \
-    --housing M8 "2025.*.txt" select --duration 60 --field 18.
-```
-
 ### Plotting vs time
 
 #### Single field
 
 ```bash
-python3 -m python_magnetrun.cli \
-    data/M9_2019.02.14---23_00_38.txt \
-    plot --vs_time Field
+magnetrun plot data/M9_2019.02.14---23_00_38.txt --vs_time Field
 ```
 
 #### Multiple fields from a PigBrother TDMS overview
@@ -610,55 +628,46 @@ python3 -m python_magnetrun.cli \
 Two fields on one axes — each drawn in a **distinct colour** from the default palette:
 
 ```bash
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms \
-    --housing M9 \
-    plot --vs_time Courants_Alimentations/Référence_A1 \
-                  Courants_Alimentations/Référence_A2
+magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
+    --vs_time Courants_Alimentations/Référence_A1 \
+              Courants_Alimentations/Référence_A2
 ```
 
 #### Separate subplots
 
 ```bash
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms \
-    --housing M9 \
-    plot --vs_time Courants_Alimentations/Référence_A1 \
-                  Courants_Alimentations/Référence_A2 \
+magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
+    --vs_time Courants_Alimentations/Référence_A1 \
+              Courants_Alimentations/Référence_A2 \
     --subplots
 ```
 
 #### Normalise before overlaying
 
 ```bash
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms \
-    --housing M9 \
-    plot --vs_time Courants_Alimentations/Référence_A1 \
-                  Courants_Alimentations/Référence_A2 \
+magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
+    --vs_time Courants_Alimentations/Référence_A1 \
+              Courants_Alimentations/Référence_A2 \
     --normalize
 ```
 
 #### Override display units
 
 ```bash
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms \
-    --housing M9 \
-    plot --vs_time Courants_Alimentations/Courant_A1 \
-    --unit Courant_A1=kiloampere
+magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
+    --vs_time Courants_Alimentations/Courant_A1 \
+    --display-unit Courant_A1=kiloampere
 ```
 
 #### Compare PigBrother, Pupitre, and hybrid (kHz) currents
 
 ```bash
-python3 -m python_magnetrun.cli \
+magnetrun plot \
     M9_Overview_240509-1634.tdms \
     M9_2024.05.09---16_34_03.txt \
     --hybrid_datadir /path/to/hybrid \
     --hybrid_date 2024-05-09 \
     --fepc_system FEPC-LNCMI \
-    plot \
     --vs_time Courants_Alimentations/Courant_GR1 \
     --vs_time IH \
     --vs_time_hybrid "kHz/FEPC-LNCMI/I_H1"
@@ -675,46 +684,29 @@ python3 -m python_magnetrun.cli \
 Plot `IH` vs `UH` from a Pupitre file:
 
 ```bash
-python3 -m python_magnetrun.cli \
-    "2026.03.31 - 13:22:40.txt" \
-    --housing M9 \
-    plot --key_vs_key "IH-UH"
+magnetrun plot "2026.03.31 - 13:22:40.txt" --housing M9 --key_vs_key "IH-UH"
 ```
 
 Plot with **markers only** (no connecting lines), using the default `o` marker:
 
 ```bash
-python3 -m python_magnetrun.cli \
-    "2026.03.31 - 13:22:40.txt" \
-    --housing M9 \
-    plot --key_vs_key "IH-UH" --no-lines
+magnetrun plot "2026.03.31 - 13:22:40.txt" --housing M9 \
+    --key_vs_key "IH-UH" --no-lines
 ```
 
 Plot with a custom marker **and** connecting lines:
 
 ```bash
-python3 -m python_magnetrun.cli \
-    "2026.03.31 - 13:22:40.txt" \
-    --housing M9 \
-    plot --key_vs_key "IH-UH" --marker "+"
-```
-
-Plot with markers only using a specific symbol:
-
-```bash
-python3 -m python_magnetrun.cli \
-    "2026.03.31 - 13:22:40.txt" \
-    --housing M9 \
-    plot --key_vs_key "IH-UH" --marker "s" --no-lines
+magnetrun plot "2026.03.31 - 13:22:40.txt" --housing M9 \
+    --key_vs_key "IH-UH" --marker "+"
 ```
 
 Compare PigBrother and Pupitre current vs voltage side by side:
 
 ```bash
-python3 -m python_magnetrun.cli \
+magnetrun plot \
     srvdata/M10_2025.01.27---*.txt \
     pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms \
-    plot \
     --key_vs_key IH-UH \
     --key_vs_key Courants_Alimentations/Référence_GR1-Tensions_Aimant/Interne1
 ```
@@ -724,19 +716,14 @@ key is the **y-column** of the pair (the part after `-` in `X-Y`):
 
 ```bash
 # IH-UH plotted as circle markers only (no connecting line)
-python3 -m python_magnetrun.cli \
-    "2026.03.31 - 13:22:40.txt" \
-    --housing M9 \
-    plot \
-    --key_vs_key "IH-UH" \
-    --field_style "UH=o"
+magnetrun plot "2026.03.31 - 13:22:40.txt" --housing M9 \
+    --key_vs_key "IH-UH" --field_style "UH=o"
 
 # Two pairs from different files – first pair square markers every 20 points,
 # second pair dashed line
-python3 -m python_magnetrun.cli \
+magnetrun plot \
     srvdata/M10_2025.01.27---*.txt \
     pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250127-1605.tdms \
-    plot \
     --key_vs_key IH-UH \
     --key_vs_key Courants_Alimentations/Référence_A2-Tensions_Aimant/Interne1 \
     --field_style "UH=-s:20" \
@@ -761,75 +748,43 @@ Examples:
 
 ```bash
 # A1 with solid line only; A2 with circle markers every 10 points (no line)
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms --housing M9 \
-    plot --vs_time Courants_Alimentations/Référence_A1 \
-                  Courants_Alimentations/Référence_A2 \
+magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
+    --vs_time Courants_Alimentations/Référence_A1 \
+              Courants_Alimentations/Référence_A2 \
     --field_style "Référence_A1=-" \
     --field_style "Référence_A2=o:10"
 
 # A1 dashed; A2 solid line with square markers every 5 points
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms --housing M9 \
-    plot --vs_time Courants_Alimentations/Référence_A1 \
-                  Courants_Alimentations/Référence_A2 \
+magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
+    --vs_time Courants_Alimentations/Référence_A1 \
+              Courants_Alimentations/Référence_A2 \
     --field_style "Référence_A1=--" \
     --field_style "Référence_A2=-s:5"
 
-# A1 solid line at 50% opacity; A2 dashed at 80% opacity
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms --housing M9 \
-    plot --vs_time Courants_Alimentations/Référence_A1 \
-                  Courants_Alimentations/Référence_A2 \
+# A1 solid at 50% opacity; A2 dashed at 80% opacity
+magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
+    --vs_time Courants_Alimentations/Référence_A1 \
+              Courants_Alimentations/Référence_A2 \
     --field_style "Référence_A1=-@0.5" \
     --field_style "Référence_A2=--@0.8"
-
-# Combined: A2 solid line + circle markers every 5 points at 60% opacity
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms --housing M9 \
-    plot --vs_time Courants_Alimentations/Référence_A1 \
-                  Courants_Alimentations/Référence_A2 \
-    --field_style "Référence_A2=-o:5@0.6"
 ```
 
-The `FIELD` key in `--field_style` can be either the short channel name
-(`Référence_A2`) or the full `Group/Channel` form
-(`Courants_Alimentations/Référence_A2`).
+The `FIELD` key can be the short channel name (`Référence_A2`) or the full
+`Group/Channel` form (`Courants_Alimentations/Référence_A2`).
 
 The same `--field_style` options work with the **Plotly backend** (and
 `--subplots` / `--normalize`).  Matplotlib marker names are translated
 automatically: `o` → `circle`, `s` → `square`, `D` → `diamond`, `^` →
-`triangle-up`, etc.  Linestyles map to Plotly dashes: `-` → `solid`, `--` →
-`dash`, `-.` → `dashdot`, `:` → `dot`.  When `markevery` is used with Plotly
-the data is sub-sampled before rendering since Plotly has no native equivalent.
-`@ALPHA` maps to Plotly `opacity`.
+`triangle-up`, etc.
 
 ```bash
-# Plotly overlay – A1 dashed at 70% opacity, A2 solid line + circle markers every 20 points
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms --housing M9 \
-    plot --vs_time Courants_Alimentations/Référence_A1 \
-                  Courants_Alimentations/Référence_A2 \
+# Plotly overlay – A1 dashed at 70% opacity, A2 solid + circle markers every 20 points
+magnetrun plot M9_Overview_260331-1316.tdms --housing M9 \
+    --vs_time Courants_Alimentations/Référence_A1 \
+              Courants_Alimentations/Référence_A2 \
     --backend plotly \
     --field_style "Référence_A1=--@0.7" \
     --field_style "Référence_A2=-o:20"
-
-# Plotly stacked subplots – markers only (no line) on one field
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms --housing M9 \
-    plot --vs_time Courants_Alimentations/Référence_A1 \
-                  Courants_Alimentations/Référence_A2 \
-    --backend plotly --subplots \
-    --field_style "Référence_A2=o:50"
-
-# Plotly with normalisation – combined with per-field style and alpha
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms --housing M9 \
-    plot --vs_time Courants_Alimentations/Référence_A1 \
-                  Courants_Alimentations/Référence_A2 \
-    --backend plotly --normalize \
-    --field_style "Référence_A1=-." \
-    --field_style "Référence_A2=-s:10@0.5"
 ```
 
 ### Plot colour palette
@@ -841,21 +796,19 @@ Use `--same-color-per-type` to assign one fixed colour per file type instead
 (`.txt` → green, `.tdms` → red):
 
 ```bash
-python3 -m python_magnetrun.cli \
-    M9_Overview_260331-1316.tdms \
-    "2026.03.31 - 13:22:40.txt" \
+magnetrun plot M9_Overview_260331-1316.tdms "2026.03.31 - 13:22:40.txt" \
     --housing M9 \
-    plot --vs_time Courants_Alimentations/Courant_GR1 \
-         --vs_time IH \
+    --vs_time Courants_Alimentations/Courant_GR1 \
+    --vs_time IH \
     --same-color-per-type
 ```
 
-Customise the palette via a plot-config JSON (see `magnetrun-config plot init`):
+Customise the palette via a plot-config JSON (see `magnetrun config plot init`):
 
 ```bash
-magnetrun-config plot init           # writes plot_config.json in the current directory
+magnetrun config plot init           # writes plot_config.json in the current directory
 # edit palette, colors, style …
-python3 -m python_magnetrun.cli … plot … --plot-config plot_config.json
+magnetrun plot … --plot-config plot_config.json
 ```
 
 ### Statistics and plateau detection
@@ -863,13 +816,13 @@ python3 -m python_magnetrun.cli … plot … --plot-config plot_config.json
 Compute statistics for all M8 records:
 
 ```bash
-python3 -m python_magnetrun.cli srvdata/M8*.txt stats
+magnetrun stats M8*.txt --housing M8
 ```
 
 Detect plateaux:
 
 ```bash
-python3 -m python_magnetrun.cli srvdata/M8*.txt stats --plateau --keys Field
+magnetrun stats M8*.txt --housing M8 --plateau --keys Field
 ```
 
 #### Plateau detection parameters
@@ -895,8 +848,7 @@ Run with `--log-level DEBUG` to see per-group statistics and the distribution of
 Aggregate a specific field across records:
 
 ```bash
-python3 examples/get-record.py \
-    srvdata/M*---*.txt aggregate --fields teb --show
+python3 examples/get-record.py --housing M9 *.txt aggregate --fields teb --show
 ```
 
 ### Derived quantities
@@ -904,17 +856,15 @@ python3 examples/get-record.py \
 Compute and plot power dissipated in Helices from a Pupitre file:
 
 ```bash
-python3 -m python_magnetrun.cli \
-    srvdata/M10_2020.10.03---09:56:20.txt \
-    add --formula "PowerH = IH * UH / 1.e+6" --plot
+magnetrun add data/M10_2020.10.23---20_10_41.txt --housing M10 \
+    --formula "PowerH = IH * UH / 1.e+6" --plot
 ```
 
 Compute power from a PigBrother TDMS file:
 
 ```bash
-python3 -m python_magnetrun.cli \
-    pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_201003-0956.tdms \
-    add --formula "Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6" \
+magnetrun add M10_Overview_201003-0956.tdms --housing M10 \
+    --formula "Tensions_Aimant/Power_internes = Tensions_Aimant/ALL_internes * Courants_Alimentations/Courant_GR2 / 1.e+6" \
     --plot
 ```
 
@@ -929,17 +879,16 @@ The `python_magnetrun.analysis` module provides higher-level tools for cross-sou
 Process one or more TDMS overview files:
 
 ```bash
-python3 -m python_magnetrun.analysis.cli M9_Overview_*.tdms --show
+magnetrun analysis M9_Overview_*.tdms --housing M9 --show
 ```
 
 With optional synchronization, lag computation, and distance metrics:
 
 ```bash
-python3 -m python_magnetrun.analysis.cli input.tdms \
+magnetrun analysis input.tdms --housing M9 \
     --synchronize \
     --lag \
     --distance \
-    --downsample 10 \
     --show --save \
     --debug --log-file analysis.log
 ```
@@ -947,8 +896,7 @@ python3 -m python_magnetrun.analysis.cli input.tdms \
 Write structured JSON logs for pipeline integration:
 
 ```bash
-python3 -m python_magnetrun.analysis.cli input.tdms \
-    --json-log analysis.json --quiet
+magnetrun analysis input.tdms --housing M9 --json-log analysis.json --quiet
 ```
 
 ---
@@ -1218,17 +1166,21 @@ Each run is assigned a signature based on detected breakpoints:
 - **D** — ramp down
 
 ```bash
-python3 tests/test-signature.py \
-    data/M10_2025.01.27---15:39:29.txt \
-    --window=10 --threshold 1.e-2
+magnetrun signature data/M10_2025.01.27---15_39_29.txt --threshold 1e-2
+```
+
+Save the regime CSV alongside the file:
+
+```bash
+magnetrun signature data/M10_2025.01.27---15_39_29.txt --threshold 1e-2 --save
 ```
 
 Detect breakpoints in PigBrother overview files and synchronize:
 
 ```bash
-python3 -m python_magnetrun.analysis.cli \
+magnetrun analysis \
     pigbrotherdata/Fichiers_Data/M10/Overview/M10_Overview_250211-*.tdms \
-    --show [--synchronize]
+    --show --synchronize
 ```
 
 ### Anomaly detection
@@ -1532,19 +1484,6 @@ pytest --on-demand tests/test-tin.py
 See [CHANGELOG.md](CHANGELOG.md) for breaking changes and the to-do list.
 
 ---
-
-## Todos
-
-- [x] rewrite notes on mounting NAS data
-- [x] add notes on rclone setup
-- [ ] add installation notes for Windows 11 (without wsl)
-- [ ] create a test for autofs/rclone solution
-- [ ] add Hybrid data plot in analysis
-- [ ] add notebooks demo (Jupyter, Marimo)
-- [ ] starting from analysis, use Overview to cleanup Pupitre data
-- [ ] are there "standalone" pupitre/Overview files
-- [ ] add support for custom npTDMS version with polar support
-- [ ] use narwhals for dataframe
 
 ## Credits
 

@@ -29,6 +29,7 @@ Output dictionaries:
 - files_with_errors: Maps Archive/Overview files to associated DAQ errors
 """
 
+import argparse
 import logging
 import re
 from collections.abc import Iterator
@@ -1257,6 +1258,42 @@ jeu. 03-10-2019 09:02:49: Error -200279 occurred at GR1&2.lvlib:Acquisition.lvli
             "details": serialized_details,
         }
     logger.info(json.dumps(export_defaut, indent=2, ensure_ascii=False))
+
+
+def _run(args: "argparse.Namespace") -> int:
+    """Dispatcher-compatible entry: receives already-parsed Namespace."""
+    logging.basicConfig(level=getattr(logging, getattr(args, "log_level", "INFO")))
+
+
+    if getattr(args, "input_file", None):
+        filepath = args.input_file
+        parser_obj = LogParser(filepath).parse()
+    else:
+        return 1
+
+    summary = parser_obj.summary()
+    logger.info("LOG ANALYSIS SUMMARY")
+    if summary["date_range"]:
+        start, end = summary["date_range"]
+        logger.info(f"Date range: {start} → {end}")
+    logger.info(f"Total entries: {summary['total_entries']}")
+    return 0
+
+
+def register(sub: "argparse._SubParsersAction") -> None:
+    """Register the ``logparser`` subcommand on *sub*."""
+
+    p = sub.add_parser(
+        "logparser",
+        help="parse LabVIEW/DAQmx acquisition log files (pigbrother)",
+    )
+    p.add_argument("input_file", nargs="?", help="path to LOG_ACQ_ENET.txt")
+    p.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+    )
+    p.set_defaults(_handler=_run)
 
 
 if __name__ == "__main__":

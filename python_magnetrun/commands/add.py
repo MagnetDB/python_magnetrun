@@ -1,5 +1,6 @@
 """Add command: add computed or formula-based fields to MagnetRun data."""
 
+import argparse
 import logging
 
 from ..commands.plot import _handle_output, _resolve_plot_config
@@ -126,3 +127,53 @@ def add_field(mrun, args):
                 for key in args.vs_time[0]:
                     extra_fields.append(key)
             _plot_fields(mdata, [nkey] + extra_fields, nkey, args, cfg)
+
+
+def _run(args: "argparse.Namespace") -> int:
+
+    from ..log_utils import setup_logging
+    from ._shared import load_inputs
+
+    log_level = getattr(__import__("logging"), getattr(args, "log_level", "WARNING").upper(), 30)
+    setup_logging(level=log_level, log_file=getattr(args, "log_file", None))
+
+    input_files, inputs, _extensions = load_inputs(args)
+    if not inputs:
+        logger.error("No files loaded.")
+        return 1
+
+    for file in input_files:
+        if file not in inputs:
+            continue
+        mrun = inputs[file]["data"]
+        add_field(mrun, args)
+
+    return 0
+
+
+def register(sub: "argparse._SubParsersAction") -> None:
+
+    from ..cli_args import (
+        create_base_parser,
+        create_common_plot_parser,
+        create_managed_plots_parser,
+    )
+
+    base = create_base_parser(add_input_file=False)
+    plot_parser = create_common_plot_parser()
+    managed_plots_parser = create_managed_plots_parser()
+
+    p = sub.add_parser(
+        "add",
+        parents=[base, plot_parser, managed_plots_parser],
+        help="add computed or formula-based fields",
+    )
+    p.add_argument("input_file", nargs="+", help="input file(s)")
+    p.add_argument("--formula", type=str, default="", help="formula for the new column")
+    p.add_argument("--symbol", type=str, default="", help="physical symbol (e.g. 'B')")
+    p.add_argument("--unit", type=str, default="", help="unit string (e.g. 'tesla')")
+    p.add_argument("--label", type=str, default="", help="human-readable label")
+    p.add_argument("--description", type=str, default="", help="description of the field")
+    p.add_argument("--compute", action="store_true")
+    p.add_argument("--plot", action="store_true")
+    p.set_defaults(_handler=_run)

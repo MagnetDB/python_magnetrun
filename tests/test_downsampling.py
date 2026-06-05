@@ -67,7 +67,7 @@ def test_m4_returns_n_out_points():
 def test_m4_indices_are_sorted():
     t, y = _sin_wave(1000)
     cfg = DownsampleConfig(n_out=200, method="m4")
-    t_out, _ = downsample_arrays(y, t, cfg)
+    _, t_out = downsample_arrays(y, t, cfg)
     assert np.all(np.diff(t_out) >= 0)
 
 
@@ -75,7 +75,7 @@ def test_m4_indices_are_sorted():
 def test_m4_no_op_when_data_le_n_out():
     t, y = _sin_wave(100)
     cfg = DownsampleConfig(n_out=200, method="m4")
-    t_out, y_out = downsample_arrays(y, t, cfg)
+    y_out, t_out = downsample_arrays(y, t, cfg)
     np.testing.assert_array_equal(t_out, t)
     np.testing.assert_array_equal(y_out, y)
 
@@ -117,7 +117,7 @@ def test_nan_m4_preserves_nan_in_output():
     y_nan = y.copy()
     y_nan[100:110] = np.nan
     cfg = DownsampleConfig(n_out=200, method="nan_m4")
-    _, y_out = downsample_arrays(y_nan, t, cfg)
+    y_out, _ = downsample_arrays(y_nan, t, cfg)
     assert np.any(np.isnan(y_out))
 
 
@@ -150,7 +150,7 @@ def test_nan_m4_fallback_stride_no_tsdownsample():
 def test_rdp_with_epsilon_reduces_points():
     t, y = _sin_wave(1000)
     cfg = DownsampleConfig(n_out=1000, method="rdp", epsilon=0.01)
-    t_out, y_out = downsample_arrays(y, t, cfg)
+    y_out, t_out = downsample_arrays(y, t, cfg)
     assert len(t_out) < 1000
     assert len(t_out) > 0
 
@@ -159,7 +159,7 @@ def test_rdp_with_epsilon_reduces_points():
 def test_rdp_indices_sorted():
     t, y = _sin_wave(1000)
     cfg = DownsampleConfig(n_out=1000, method="rdp", epsilon=0.01)
-    t_out, _ = downsample_arrays(y, t, cfg)
+    _, t_out = downsample_arrays(y, t, cfg)
     assert np.all(np.diff(t_out) >= 0)
 
 
@@ -185,7 +185,7 @@ def test_rdp_raises_without_epsilon():
 def test_rdp_plateau_awareness():
     t, y = _plateau_spike(1000)
     cfg = DownsampleConfig(n_out=1000, method="rdp", epsilon=0.001)
-    t_out, _ = downsample_arrays(y, t, cfg)
+    _, t_out = downsample_arrays(y, t, cfg)
     n_plateau = int(np.sum(t_out <= 0.45))
     n_spike = int(np.sum((t_out >= 0.45) & (t_out <= 0.55)))
     assert n_spike / max(n_plateau, 1) > (0.10 / 0.45)
@@ -195,8 +195,8 @@ def test_rdp_plateau_awareness():
 def test_vw_with_epsilon():
     t, y = _sin_wave(1000)
     cfg = DownsampleConfig(n_out=1000, method="vw", epsilon=0.01)
-    t_out, _ = downsample_arrays(y, t, cfg)
-    assert len(t_out) < 1000
+    y_out, _ = downsample_arrays(y, t, cfg)
+    assert len(y_out) < 1000
 
 
 @patch("python_magnetrun.utils.downsampling.HAS_SIMPLIFICATION", False)

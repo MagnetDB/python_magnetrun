@@ -1,5 +1,6 @@
 """Select command: extract and export MagnetRun data to CSV."""
 
+import argparse
 import logging
 import os
 
@@ -223,3 +224,70 @@ def output_time(file, inputs, extensions, times):
             file_name = file.replace(f_extension, f"-{group}")
             file_name = file_name + select_args_str + ".csv"
             df.to_csv()
+
+
+def _run(args: "argparse.Namespace") -> int:
+    import logging
+
+    from ..log_utils import setup_logging
+    from ._shared import load_inputs
+
+    log_level = getattr(logging, getattr(args, "log_level", "WARNING").upper(), logging.WARNING)
+    setup_logging(level=log_level, log_file=getattr(args, "log_file", None))
+
+    input_files, inputs, extensions = load_inputs(args)
+    if not inputs:
+        logger.error("No files loaded.")
+        return 1
+
+    if getattr(args, "output_time", None):
+        times = args.output_time
+        for file in input_files:
+            if file in inputs:
+                output_time(file, inputs, extensions, times)
+
+    if getattr(args, "output_timerange", None):
+        for file in input_files:
+            if file in inputs:
+                output_timerange(file, inputs, extensions, args)
+
+    if getattr(args, "output_key", None):
+        for file in input_files:
+            if file in inputs:
+                output_keys(file, inputs, extensions, args)
+
+    if getattr(args, "extract_pairkeys", None):
+        for file in input_files:
+            if file in inputs:
+                extract_pairkeys(file, inputs, extensions, args)
+
+    if getattr(args, "convert", False):
+        for file in input_files:
+            if file in inputs:
+                convert_to_csv(file, inputs)
+
+    return 0
+
+
+def register(sub: "argparse._SubParsersAction") -> None:
+    from ..cli_args import create_base_parser, create_common_smoothing_parser
+
+    base = create_base_parser(add_input_file=False)
+    smoothing_parser = create_common_smoothing_parser()
+
+    p = sub.add_parser(
+        "select",
+        parents=[base, smoothing_parser],
+        help="extract or export run data",
+    )
+    p.add_argument("input_file", nargs="+", help="input file(s)")
+    p.add_argument("--output_time", nargs="+", help="output key(s) for time")
+    p.add_argument(
+        "--output_timerange",
+        help="time range to extract (YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS, local)",
+        action="append",
+    )
+    p.add_argument("--output_key", nargs="+", help="key(s) to extract", action="append")
+    p.add_argument("--extract_pairkeys", nargs="+", help="key pair(s) to dump", action="append")
+    p.add_argument("--convert", action="store_true", help="convert file to CSV")
+    p.set_defaults(_handler=_run)

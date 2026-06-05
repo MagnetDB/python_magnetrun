@@ -2,33 +2,33 @@
 
 ## Goal
 
-Reduce 8 entry points to 3, replacing `python-magnetrun`, `magnetrun-analysis`,
-`magnetrun-processing`, `hybrid-magnetrun`, and `magnetrun-pigbrother-logparser`
-with a single `magnetrun` dispatcher; rename `srvdata-to-magnetrun` to
-`magnetrun-fetch`; leave `magnetrun-config` unchanged.
+Reduce 8 entry points to **1**, replacing all existing entry points with a
+single `magnetrun` dispatcher.  `fetch` and `config` become subcommands rather
+than separate executables — they are in the same package, so there is no reason
+to keep them separate.  Deprecated aliases are kept for one release cycle.
 
 ## Target entry points
 
 ```toml
 [project.scripts]
-magnetrun        = "python_magnetrun.main:main"          # new unified dispatcher
-magnetrun-fetch  = "python_magnetrun.requests.cli:main"  # renamed (was srvdata-to-magnetrun)
-magnetrun-config = "python_magnetrun.config_cli:main"    # unchanged
+magnetrun = "python_magnetrun.main:main"   # single entry point
 
 # deprecated aliases — keep for one release cycle, then remove
-python-magnetrun             = "python_magnetrun.cli:main"
-srvdata-to-magnetrun         = "python_magnetrun.requests.cli:main"
-magnetrun-analysis           = "python_magnetrun.analysis.cli:main"
-magnetrun-processing         = "python_magnetrun.processing.cli:main"
-hybrid-magnetrun             = "python_magnetrun.hybrid.cli:main"
+python-magnetrun               = "python_magnetrun.cli:main"
+srvdata-to-magnetrun           = "python_magnetrun.requests.cli:main"
+magnetrun-fetch                = "python_magnetrun.requests.cli:main"
+magnetrun-analysis             = "python_magnetrun.analysis.cli:main"
+magnetrun-processing           = "python_magnetrun.processing.cli:main"
+hybrid-magnetrun               = "python_magnetrun.hybrid.cli:main"
+magnetrun-config               = "python_magnetrun.config_cli:main"
 magnetrun-pigbrother-logparser = "python_magnetrun.tdms.log_parser:main"
 ```
 
 ## `magnetrun` subcommands
 
-All subcommands follow the pattern `magnetrun <subcommand> files... [options]`.
-The subcommand comes **first** — files are positional arguments of each subcommand
-parser, not the top-level parser.
+All subcommands follow the pattern `magnetrun <subcommand> [args] [options]`.
+The subcommand comes **first** — files are positional arguments of each
+subcommand parser, not the top-level parser.
 
 ```
 magnetrun info       files... [base-opts]
@@ -41,7 +41,9 @@ magnetrun analysis   files... [analysis-opts]
 magnetrun processing file    filter|smooth|lag [processing-opts]
 magnetrun hybrid     [hybrid-opts]
 magnetrun logparser  [log-opts]
-magnetrun compare    [compare-opts]                                        # new; see cross-domain-comparison.prompt.md Phase F
+magnetrun compare    [compare-opts]                # new; see cross-domain-comparison.prompt.md Phase F
+magnetrun fetch      [fetch-opts]                  # was srvdata-to-magnetrun / magnetrun-fetch
+magnetrun config     <domain> [config-opts]        # was magnetrun-config (already has sub-subparsers for domain)
 ```
 
 ## Key structural gain: remove `_normalize_argv`
@@ -137,12 +139,58 @@ def main() -> None:
     from .tdms.log_parser import register as _r_log;    _r_log(sub)
     from .comparison.cli  import register as _r_cmp;    _r_cmp(sub)
 
+    # infrastructure commands (were separate executables)
+    from .requests.cli import register as _r_fetch;  _r_fetch(sub)
+    from .config_cli   import register as _r_cfg;    _r_cfg(sub)
+
     args = parser.parse_args()
     sys.exit(args._handler(args))
 
 
 if __name__ == "__main__":
     main()
+```
+
+### `magnetrun fetch` — adding `register()` to `requests/cli.py`
+
+`requests/cli.py` has a flat `main()` with a single `ArgumentParser`.  Adding
+`register()` is straightforward:
+
+```python
+def register(sub: "argparse._SubParsersAction") -> None:
+    p = sub.add_parser("fetch", help="fetch run data from server")
+    # move all add_argument calls from main() to here
+    p.set_defaults(_handler=_run)
+
+def _run(args: argparse.Namespace) -> int:
+    ...   # body of current main()
+    return 0
+
+def main() -> None:  # deprecated alias
+    import argparse, sys
+    p = argparse.ArgumentParser()
+    # rebuild standalone parser (or call register on a temporary subparsers)
+    sys.exit(_run(p.parse_args()))
+```
+
+### `magnetrun config` — adding `register()` to `config_cli.py`
+
+`config_cli.py` already has internal sub-subparsers for `domain`.  Wrap them:
+
+```python
+def register(sub: "argparse._SubParsersAction") -> None:
+    p = sub.add_parser("config", help="manage housing and insert configuration")
+    domain_sub = p.add_subparsers(dest="domain", required=True)
+    _register_domain_subparsers(domain_sub)   # extract current body of main()
+    p.set_defaults(_handler=_run)
+
+def main() -> None:  # deprecated alias — kept for one release cycle
+    import argparse, sys
+    parser = argparse.ArgumentParser(prog="magnetrun-config", ...)
+    domain_sub = parser.add_subparsers(dest="domain", required=True)
+    _register_domain_subparsers(domain_sub)
+    args = parser.parse_args()
+    sys.exit(_run(args))
 ```
 
 ## Implementation order
@@ -152,9 +200,11 @@ if __name__ == "__main__":
    move `input_file` positional from top-level to each subcommand parser
 3. **`analysis/cli.py`**, **`processing/cli.py`**, **`hybrid/cli.py`**,
    **`tdms/log_parser.py`** — add `register()` to each
-4. **`python_magnetrun/main.py`** — write the unified dispatcher
-5. **`pyproject.toml`** — add `magnetrun` and `magnetrun-fetch`, keep deprecated aliases
-6. **`cli.py`** — remove `_normalize_argv`; reduce to a deprecated shim or delete
+4. **`requests/cli.py`** — extract `_run()` + add `register()`; keep `main()` as deprecated shim
+5. **`config_cli.py`** — extract `_register_domain_subparsers()` + add `register()`; keep `main()` as deprecated shim
+6. **`python_magnetrun/main.py`** — write the unified dispatcher (imports all `register()` fns)
+7. **`pyproject.toml`** — replace all scripts with `magnetrun` only; keep old names as deprecated aliases
+8. **`cli.py`** — remove `_normalize_argv`; reduce to a deprecated shim or delete
 
 ## Files touched
 
@@ -172,7 +222,9 @@ if __name__ == "__main__":
 | `python_magnetrun/hybrid/cli.py` | Add `register()` |
 | `python_magnetrun/tdms/log_parser.py` | Add `register()` |
 | `python_magnetrun/comparison/cli.py` | Create with `register()` (see `cross-domain-comparison.prompt.md` Phase F — no standalone entry point) |
+| `python_magnetrun/requests/cli.py` | Extract `_run()` + add `register("fetch")`; keep `main()` as deprecated shim |
+| `python_magnetrun/config_cli.py` | Extract `_register_domain_subparsers()` + add `register("config")`; keep `main()` as deprecated shim |
 | `python_magnetrun/cli.py` | Remove `_normalize_argv`; deprecate or remove `main()` |
 | `python_magnetrun/args.py` | Split: move subcommand parsers into individual `register()` fns |
-| `pyproject.toml` | Add `magnetrun`, `magnetrun-fetch`; mark old names deprecated |
+| `pyproject.toml` | Single `magnetrun` entry point; all old names as deprecated aliases |
 | `tests/test-signature.py` | Keep test; `__main__` block can be removed once CLI is live |

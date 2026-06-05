@@ -55,6 +55,8 @@ Example programmatic usage::
 
 from __future__ import annotations
 
+import argparse
+import contextlib
 import sys
 from pathlib import Path
 from typing import cast
@@ -397,10 +399,8 @@ def _run_combined_analysis(
         bm_key = keys[0] if keys else df_overview.columns[0]
         params = {}
         if getattr(parsed_args, "downsample_params", None):
-            try:
+            with contextlib.suppress(ValueError):
                 params = json.loads(parsed_args.downsample_params)
-            except ValueError:
-                pass
         n_out = int(params.get("n_out", 10_000))
         memory_tier = getattr(parsed_args, "memory_tier", 1)
         # compute_memory only when --memory-tier was explicitly provided
@@ -678,6 +678,55 @@ def main(args: list[str] | None = None) -> int:
     except (ImportError, OSError, RuntimeError) as e:
         logger.exception(f"Analysis failed: {e}")
         return 1
+
+
+def _run(args: argparse.Namespace) -> int:
+    """Dispatcher-compatible entry: receives already-parsed Namespace."""
+    logger = _setup_logging(args)
+    housing = args.housing
+
+    try:
+        config = args_to_processing_config(args)
+        input_files = _collect_input_files(args, config)
+        logger.info(f"Processing {len(input_files)} input files")
+
+        if args.save:
+            args.output_dir.mkdir(parents=True, exist_ok=True)
+
+        results, all_dfs, channels_dict, pupitre_dict, hybrid_dict, keys, housing = (
+            _load_records(input_files, config, args, housing, logger)
+        )
+
+        combined_metrics: dict = {}
+        if not args.dry_run and results and all_dfs and keys:
+            combined_metrics = _run_combined_analysis(
+                results, all_dfs, keys, housing,
+                channels_dict, pupitre_dict, hybrid_dict, args, config, logger,
+            )
+
+        return _emit_metrics(results, input_files, combined_metrics, args, logger)
+
+    except KeyboardInterrupt:
+        logger.info("Analysis interrupted by user")
+        return 130
+    except (ImportError, OSError, RuntimeError) as e:
+        logger.exception(f"Analysis failed: {e}")
+        return 1
+
+
+def register(sub: argparse._SubParsersAction) -> None:
+    """Register the ``analysis`` subcommand on *sub*."""
+
+    from .args import create_argument_parser
+
+    analysis_parser = create_argument_parser()
+    p = sub.add_parser(
+        "analysis",
+        parents=[analysis_parser],
+        add_help=False,
+        help="analyse TDMS and pupitre run files",
+    )
+    p.set_defaults(_handler=_run)
 
 
 if __name__ == "__main__":

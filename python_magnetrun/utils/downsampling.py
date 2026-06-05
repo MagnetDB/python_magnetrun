@@ -103,7 +103,7 @@ class DownsampleConfig:
         method: str = "rdp",
         tol: float = 0.1,
         max_iter: int = 30,
-    ) -> "DownsampleConfig":
+    ) -> DownsampleConfig:
         """Find epsilon such that RDP/VW returns approximately *n_out* points.
 
         Binary-searches epsilon in ``[eps_lo, eps_hi]`` until the simplified
@@ -164,7 +164,9 @@ def _downsample_indices(
     Assumes NaN entries have already been stripped by the caller.
     """
     n = len(data)
-    if n <= config.n_out:
+    # For rdp/vw, n_out is only a post-filter cap — epsilon drives reduction,
+    # so skip the early-exit even when n <= n_out.
+    if n <= config.n_out and config.method not in ("rdp", "vw"):
         return np.arange(n)
 
     if config.method in ("minmax_lttb", "lttb"):
@@ -272,7 +274,11 @@ def downsample_arrays(
         data = data[valid]
         time = time[valid]
 
-    if len(data) == 0 or len(data) <= config.n_out:
+    if len(data) == 0:
+        return data, time
+    # For rdp/vw, n_out is only a post-filter cap; allow them to run even
+    # when the data length does not exceed n_out.
+    if len(data) <= config.n_out and config.method not in ("rdp", "vw"):
         return data, time
 
     logger.info(f"Downsampling {len(data)} → {config.n_out} using {config.method}")
@@ -342,7 +348,7 @@ def downsample_dataframe(
             result.attrs["downsample_config"] = config
             return result
 
-    if len(df) <= config.n_out:
+    if len(df) <= config.n_out and config.method not in ("rdp", "vw"):
         result = df.copy()
         result.attrs["downsample_config"] = config
         return result
@@ -353,7 +359,7 @@ def downsample_dataframe(
         valid_mask &= df[ref_col].notna()
     df_clean = df[valid_mask].reset_index(drop=True)
 
-    if len(df_clean) <= config.n_out:
+    if len(df_clean) <= config.n_out and config.method not in ("rdp", "vw"):
         df_clean = df_clean.copy()
         df_clean.attrs["downsample_config"] = config
         return df_clean

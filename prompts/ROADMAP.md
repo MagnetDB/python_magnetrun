@@ -79,31 +79,42 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 **How t0 works per source:**
 - **Pupitre** (`MagnetRun.from_txt`): header timestamp is local time → `local_to_utc_naive()` → `StartTime` = naive UTC. `get_time_range()` returns `(StartTime, StartTime + duration)`.
 - **Pigbrother** (`MagnetRun.fromtdms`): `wf_start_time` TDMS property is already UTC → `ensure_utc_naive()` → `StartTime` = naive UTC. `get_time_range()` reads `wf_start_time` directly.
-- **Hybrid kHz**: `compute_hour_t0(first_bin_file, date_str)` extracts `HH` from filename prefix, combines with directory date, converts to Unix UTC timestamp. `getData()` returns elapsed seconds from this t0 — but **t0 is not exposed to callers**. `HybridRun.get_time_range()` currently returns start-of-day naive datetime (no file lookup).
-- **Hybrid RMS**: internal datetime index is available but discarded; `getData()` returns relative seconds only.
+- **Hybrid kHz**: `compute_hour_t0(first_bin_file, date_str)` extracts `HH` from filename (already UTC — `tz_name` arg is a no-op). `getData()` returns elapsed seconds from this t0. `HybridRun.get_time_range()` currently returns start-of-day (no file lookup).
+- **Hybrid RMS**: internal datetime index is available but discarded; `getData()` returns seconds relative to first sample only.
 
-A working alignment prototype exists in `examples/plot_hybrid_with_pupitre_tdms.py`, using seconds-from-midnight as common x-axis with per-source `(source_t0 - reference_t0)` offsets.
+A working prototype exists in `examples/plot_hybrid_with_pupitre_tdms.py` but has two latent timezone bugs: (a) `hours` is treated as local time inside `read_khz_variable` / `read_rms_variable` but as UTC in the demonstrator's offset formula; (b) per-source offsets use filename-parsed local time instead of `get_time_range()[0]` (UTC).  Both bugs cause a DST-sized (~2 h) misalignment in summer sessions.
+
+**See:** [phase2b-time-alignment.plan.md](phase2b-time-alignment.plan.md) for full analysis and implementation plan.
 
 **Remaining tasks:**
 
-1. **Confirm timezone of kHz filenames** *(pending FEPC designer input)*
-   - `compute_hour_t0` currently treats `HH` as Europe/Paris local time and converts to UTC.
-   - If `HH` is already UTC, remove the `ZoneInfo('Europe/Paris')` conversion in `fepc_reader.py:compute_hour_t0`.
+1. **B0.5 — Standardise `hours` = UTC** *(was: "confirm timezone", already resolved in `compute_hour_t0`)*
+   - `read_khz_variable` and `read_rms_variable` convert UTC filename hours → local before comparing against `hours`; change to direct UTC comparison.
+   - Add `utc_hour_to_local()` to `hybrid/utils.py` for display/UI use only.
+   - Update `analysis/processing.py:load_hybrid_data` (remove `_utc_hour_to_local` closure).
+   - `analysis/loaders.py` already uses UTC — no change.
 
-2. **Fix `HybridRun.get_time_range()`**
-   - Derive t0 from first available kHz bin file (hour 00, or first filtered hour if `hours` specified), not from start-of-day.
-   - Return `(t0_utc, last_file_hour_end_utc)` as naive UTC datetimes, consistent with pupitre/pigbrother.
+2. **B1 — Fix `HybridRun.get_time_range()`**
+   - Derive t0 from first available kHz bin file's UTC hour; return `(t0_utc_naive, last_hour_end_utc_naive)`.
+   - Add `_khz_first_last_utc(hdata)` helper reusing `compute_hour_t0` logic.
 
-3. **Expose RMS absolute timestamps**
-   - In `HybridData.read_rms_variable()`, preserve the datetime index origin instead of discarding it.
+3. **B2 — Fix RMS time origin**
+   - In `HybridData.read_rms_variable()`, change `time = (time_ns - time_ns[0]) / 1e9` to seconds since UTC midnight of the recording date.
 
-4. **Implement `align_to_common_time(sources: list[DataLoader])`**
-   - Use `source.get_time_range()[0]` (naive UTC) as each source's t0.
-   - Compute `offset = (source_t0 - min_t0).total_seconds()`.
-   - Return aligned time arrays: `source_time + offset` for each source.
-   - Blocked by tasks 1–3 above.
+4. **B2.5 — Fix `plot_rms_variable` double-read bug** *(from `docs/hybrid_refactoring_notes.md` item 3)*
+   - In highlight mode, use stashed `orig_data`/`orig_time` instead of re-calling `read_rms_variable()` twice.
 
-**Effort:** ~1 week (after timezone confirmation)
+5. **B3 — Add `align_to_common_time(sources, reference=None)`**
+   - In `utils/timestamps.py`: compute `offset = (source.get_time_range()[0] - ref).total_seconds()` per source.
+   - Caller adds offset to the time array from `getData()`.
+
+6. **B4 — Refactor demonstrator**
+   - Replace `t0 = hours[0] * 3600` and `t0_from_filename` / `t0_from_tdms_filename` with `align_to_common_time([hrun, *pupitre, *tdms])`.
+   - X-axis label shows UTC origin from `hrun.get_time_range()[0]`.
+
+**Effort:** ~1 day (B0.5 + B2 + B2.5 can run in parallel with B1)
+
+**Sequencing:** B0.5 → B1 → B3 → B4; B2 and B2.5 independent (run in parallel)
 
 **Phase 2C: Extend `plot_data()` for Hybrid** ⬜ **PLANNED**
 
@@ -158,14 +169,13 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - **See:** [hybrid-subpackage-refactoring.plan.md](hybrid-subpackage-refactoring.plan.md)
 - **866 tests pass, 6 skipped**
 
-**3.3 CLI Consolidation**
-- Reduce 8 entry points to 3: `magnetrun` (unified dispatcher), `magnetrun-fetch` (renamed from `srvdata-to-magnetrun`), `magnetrun-config` (unchanged)
-- Add `magnetrun signature` subcommand (promoted from `tests/test-signature.py`)
-- Add `magnetrun compare` subcommand via `comparison/cli.py::register()` — **no** separate `magnetrun-compare` entry point
-- `register(subparsers)` pattern, subcommand-first argv (eliminates `_normalize_argv` hack)
-- `analysis/cli.py` function decomposition (Phase 5.3) **already done** — only `register(subparsers)` wiring remains
+**3.3 CLI Consolidation** ✅ **COMPLETE** *(branch `rework_analysis`)*
+- Single `magnetrun` dispatcher with 13 subcommands: info, add, plot, select, stats, signature, analysis, processing, hybrid, logparser, fetch, config (+ compare placeholder)
+- `register(subparsers)` pattern on all modules; subcommand-first argv; `_normalize_argv` removed from `cli.py`
+- New files: `python_magnetrun/main.py`, `commands/info.py`, `commands/signature.py`, `commands/_shared.py`
+- Old entry points kept as deprecated aliases in `pyproject.toml` for one release cycle
+- `magnetrun compare` remains pending (blocked on `comparison/cli.py` — Phase F of cross-domain comparison)
 - **See:** [cli-consolidation.plan.md](cli-consolidation.plan.md)
-- **Effort:** ~1-2 days
 
 **3.5 Outlier Deduplication** ✅ **COMPLETE**
 - `examples/outliers.py` deleted; `processing/hysteresis.py::remove_outliers` thin-delegates to `detect_outliers()` (~120 lines → ~15 lines)
@@ -190,32 +200,29 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - **See:** [reader-container-refactoring.plan.md](reader-container-refactoring.plan.md)
 - **Effort:** ~S per phase (R4 is M)
 
-**3.8 Downsampling Extensions** ⬜ **PLANNED**
+**3.8 Downsampling Extensions**
 
-Three incremental additions to `utils/downsampling.py`; all phases are **S** effort; no structural changes to callers.
+*3.8a — M4 / NaN-M4* ✅ **COMPLETE**
+- `m4` and `nan_m4` methods implemented in `utils/downsampling.py`
+- Uses `M4Downsampler` / `NaNM4Downsampler` from `tsdownsample`
+- `nan_m4` bypasses NaN-strip path to preserve gaps in output
+- Tests: `tests/test_downsampling.py`
+- **See:** [m4-downsampling.plan.md](m4-downsampling.plan.md)
 
-*3.8a — M4 / NaN-M4* (`m4-downsampling.plan.md`)
-- Add `m4` method (4 aggregates per bucket: first/last/min/max — pixel-perfect line chart)
-- Add `nan_m4` method (same, but NaN-aware — gaps preserved; bypasses the NaN-strip path)
-- Uses `M4Downsampler` / `NaNM4Downsampler` already in `tsdownsample`; no new dependency
-- Recommended order: M4 → tests → NaN-M4 → tests → CLI surface (`DOWNSAMPLE_METHODS`)
-- **See:** [m4-downsampling.plan.md](m4-downsampling.plan.md) — **Effort: S+S+S+S**
+*3.8b — RDP / Visvalingam-Whyatt* ✅ **COMPLETE**
+- `rdp` and `vw` methods implemented in `utils/downsampling.py`
+- `epsilon: float | None = None` field added to `DownsampleConfig`
+- `DownsampleConfig.from_n_out_rdp()` binary-search factory implemented
+- Optional dependency: `simplification>=0.7` in `[project.optional-dependencies] rdp`
+- Tests: `tests/test_downsampling.py`
+- **See:** [rdp-downsampling.plan.md](rdp-downsampling.plan.md)
 
-*3.8b — RDP / Visvalingam-Whyatt* (`rdp-downsampling.plan.md`)
-- Add `rdp` and `vw` geometry-based methods: more points on ramps, fewer on plateaus
-- Adds `epsilon: float | None = None` field to `DownsampleConfig` (also adds `from_n_out_rdp()` binary-search factory)
-- New optional dependency: `simplification>=0.7` (Rust-backed) in `[project.optional-dependencies] rdp`
-- Do after 3.8a so `DownsampleConfig` field change lands in one commit
-- **See:** [rdp-downsampling.plan.md](rdp-downsampling.plan.md) — **Effort: S+S+S+S**
-
-*3.8c — Downsampling Quality Metrics* (`downsampling-metrics.plan.md`)
-- New `utils/downsampling_metrics.py` with `DownsampleMetrics` dataclass (RMSE, MAE, max error, MAPE, Hausdorff, peak error, energy ratio, timing, memory)
-- `evaluate_downsampling(data, time, config)` + `benchmark_configs(configs)` comparison table
-- Segment-aware metrics (plateau vs transition RMSE via existing `binarize_signal`)
-- 3-tier memory measurement: `tracemalloc` (Tier 1, stdlib), subprocess RSS (Tier 2), `memray` (Tier 3, optional)
-- Can be written before M4/RDP (works with existing `stride`/`minmax`); more useful after them
-- New optional dependency: `benchmark = ["memray>=1.0", "psutil>=5.9", "scipy>=1.9"]`
-- **See:** [downsampling-metrics.plan.md](downsampling-metrics.plan.md) — **Effort: S+S+M+S+S**
+*3.8c — Downsampling Quality Metrics* ✅ **COMPLETE**
+- `utils/downsampling_metrics.py` with `DownsampleMetrics` dataclass (RMSE, MAE, max error, MAPE, Hausdorff, peak error, energy ratio, timing, memory)
+- `evaluate_downsampling(data, time, config)`, `evaluate_downsampling_segments()`, `benchmark_configs(configs)` implemented
+- All exported via `utils/__init__.py`
+- Tests: `tests/test_downsampling_metrics.py`
+- **See:** [downsampling-metrics.plan.md](downsampling-metrics.plan.md)
 
 **3.7 Pattern Entries in `*-defs.json`** ⬜ **PLANNED**
 - feelpp/paraview data can have 100s of similarly-named columns (`U_0`…`U_239`)
@@ -301,7 +308,13 @@ Month 1 (May 2026)
 └─ Phase 2B: Time alignment layer (start)
 
 Month 2 (June 2026)
-├─ Phase 2B: Time alignment layer (complete)
+├─ Phase 2B: Time alignment layer (complete — ~1 day total, see phase2b-time-alignment.plan.md)
+│   ├─ B0.5: standardise hours=UTC + utc_hour_to_local utility
+│   ├─ B1: fix HybridRun.get_time_range() (bin-file lookup)
+│   ├─ B2: fix RMS time origin (seconds from UTC midnight)
+│   ├─ B2.5: fix plot_rms_variable double-read bug
+│   ├─ B3: add align_to_common_time() in utils/timestamps.py
+│   └─ B4: refactor plot_hybrid_with_pupitre_tdms.py demonstrator
 ├─ Phase 2C: Extend plot_data() for hybrid (start)
 └─ Logging migration (ongoing)
 
@@ -360,7 +373,7 @@ graph TD
 **Unblocked:** HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) and hybrid/ refactoring are both complete
 **Improves Phase E:** Stream 3.6 R4 (`HybridData` joins hierarchy) removes `isinstance` branches — do before Phase E
 **Independent:** Quick wins, logging migration, CLI consolidation, type hints, Stream 3.7 (pattern defs), Stream 3.8a/b/c (downsampling extensions — all additive)
-**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.5 outlier dedup ✅ · 3.3 CLI open · 3.4 namespace open · 3.6 reader split open · 3.7 pattern defs open · 3.8 downsampling extensions open
+**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.3 CLI ✅ · 3.5 outlier dedup ✅ · 3.8a M4/NaN-M4 ✅ · 3.8b RDP/VW ✅ · 3.8c metrics ✅ · 3.4 namespace open · 3.6 reader split open · 3.7 pattern defs open
 
 ---
 
@@ -400,6 +413,7 @@ The following items are recognized but explicitly deferred:
 - **[CHECK_IMPLEMENTATION.md](CHECK_IMPLEMENTATION.md)** — Detailed task tracking and current status
 - **[REVIEW.md](REVIEW.md)** — Architecture review and resolved issues
 - **[CODE_REVIEW.md](CODE_REVIEW.md)** — Code quality guidelines
+- **[phase2b-time-alignment.plan.md](phase2b-time-alignment.plan.md)** — Phase 2B detailed plan (hours semantics, get_time_range fix, align_to_common_time)
 - **Plan files:** `*-plan.md`, `*-prompt.md` — Detailed implementation plans for specific features
 
 ---

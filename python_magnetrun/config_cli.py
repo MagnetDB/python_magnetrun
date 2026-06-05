@@ -22,6 +22,24 @@ from .housing_config import register as _register_housing
 from .plotting.cli import register as _register_plot
 
 
+def _run_config(args: argparse.Namespace) -> int:
+    """Dispatcher-compatible entry: delegates to the domain handler."""
+    return args._domain_handler(args)
+
+
+def register(sub: argparse._SubParsersAction) -> None:
+    """Register the ``config`` subcommand on *sub*."""
+    p = sub.add_parser(
+        "config",
+        help="manage housing and insert configuration",
+    )
+    domain_sub = p.add_subparsers(dest="domain", required=True)
+    _register_plot(domain_sub)
+    _register_housing(domain_sub)
+    _register_field(domain_sub)
+    p.set_defaults(_handler=_run_config)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="magnetrun-config",

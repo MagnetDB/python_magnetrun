@@ -1,5 +1,6 @@
 """Plot commands: visualise MagnetRun data."""
 
+import argparse
 import logging
 import os
 import re
@@ -725,3 +726,75 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
     _handle_output(
         fig, args, b, input_files, kv_fields, backend_name, dpi=cfg.style.dpi
     )
+
+
+def _run(args: "argparse.Namespace") -> int:
+    import logging
+
+    from ..log_utils import setup_logging
+    from ._shared import load_inputs
+
+    log_level = getattr(logging, getattr(args, "log_level", "WARNING").upper(), logging.WARNING)
+    setup_logging(level=log_level, log_file=getattr(args, "log_file", None))
+
+    input_files, inputs, extensions = load_inputs(args)
+    if not inputs:
+        logger.error("No files loaded.")
+        return 1
+
+    # optionally load hybrid data
+    if getattr(args, "hybrid_datadir", None) and getattr(args, "hybrid_date", None):
+        import sys
+        import traceback
+
+        from ..hybrid import HybridRun
+        from ..log_utils import format_exception_location
+
+        try:
+            hrun = HybridRun.fromdir(
+                base_dir=args.hybrid_datadir,
+                date_str=args.hybrid_date,
+                fepc_system=getattr(args, "fepc_system", "FEPC-LNCMI"),
+                site=getattr(args, "site", "") or "",
+            )
+            inputs["hybrid"] = {"data": hrun}
+        except (OSError, ValueError, RuntimeError) as e:
+            tb_str = "".join(traceback.format_exception(*sys.exc_info()))
+            logger.error(f"hybrid data: load error at {format_exception_location()}: {e}")
+            logger.debug(f"Traceback:\n{tb_str}")
+
+    if getattr(args, "vs_time", None):
+        assert len(args.vs_time) == len(extensions), (
+            f"expected {len(extensions)} --vs_time groups, got {len(args.vs_time)}"
+        )
+        plot_vs_time(input_files, inputs, extensions, args)
+
+    if getattr(args, "key_vs_key", None):
+        assert len(args.key_vs_key) == len(extensions), (
+            f"expected {len(extensions)} --key_vs_key groups, got {len(args.key_vs_key)}"
+        )
+        plot_key_vs_key(input_files, inputs, extensions, args)
+
+    return 0
+
+
+def register(sub: "argparse._SubParsersAction") -> None:
+    from ..cli_args import (
+        create_base_parser,
+        create_common_plot_parser,
+        create_hybrid_parser,
+        create_managed_plots_parser,
+    )
+
+    base = create_base_parser(add_input_file=False)
+    plot_parser = create_common_plot_parser()
+    hybrid_parser = create_hybrid_parser()
+    managed_plots_parser = create_managed_plots_parser()
+
+    p = sub.add_parser(
+        "plot",
+        parents=[base, plot_parser, hybrid_parser, managed_plots_parser],
+        help="plot run data vs time or key vs key",
+    )
+    p.add_argument("input_file", nargs="+", help="input file(s)")
+    p.set_defaults(_handler=_run)

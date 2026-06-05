@@ -1,5 +1,6 @@
 """Stats command: compute and display statistics for MagnetRun data."""
 
+import argparse
 import logging
 import os
 import traceback
@@ -408,3 +409,77 @@ def display_stats(file, inputs, args, multiindex, columns, data):
         pass
 
     return columns, data
+
+
+def _run(args: "argparse.Namespace") -> int:
+    import logging
+
+    import pandas as pd
+
+    from ..log_utils import setup_logging
+    from ._shared import load_inputs
+
+    log_level = getattr(logging, getattr(args, "log_level", "WARNING").upper(), logging.WARNING)
+    setup_logging(level=log_level, log_file=getattr(args, "log_file", None))
+
+    input_files, inputs, _extensions = load_inputs(args)
+    if not inputs:
+        logger.error("No files loaded.")
+        return 1
+
+    output = "stats"
+    if getattr(args, "plateau", False):
+        if not getattr(args, "keys", None):
+            args.keys = ["Field"]
+        output += "-plateau"
+    if getattr(args, "localmax", False):
+        if not getattr(args, "keys", None):
+            args.keys = ["Field"]
+        output += "-localmax"
+    if getattr(args, "detect_bkpts", False):
+        if not getattr(args, "keys", None):
+            args.keys = ["Field"]
+        output += "-bkpts"
+
+    multiindex: list = [[], []]
+    columns: list = []
+    data: list = []
+
+    for file in input_files:
+        if file in inputs:
+            columns, data = display_stats(file, inputs, args, multiindex, columns, data)
+
+    df = pd.DataFrame(data, pd.MultiIndex.from_product(multiindex), columns=columns)
+    print(df.to_markdown(tablefmt="simple"))
+    df.to_csv(f"{output}.csv")
+    return 0
+
+
+def register(sub: "argparse._SubParsersAction") -> None:
+    from ..cli_args import create_base_parser, create_managed_plots_parser
+
+    base = create_base_parser(add_input_file=False)
+    managed_plots_parser = create_managed_plots_parser()
+
+    p = sub.add_parser(
+        "stats",
+        parents=[base, managed_plots_parser],
+        help="compute and display statistics",
+    )
+    p.add_argument("input_file", nargs="+", help="input file(s)")
+    p.add_argument("--detect_bkpts", action="store_true", help="find breaking points")
+    p.add_argument("--localmax", action="store_true", help="find local maxima")
+    p.add_argument("--plateau", action="store_true", help="find plateaux")
+    p.add_argument("--keys", nargs="+", help="key(s) for stats")
+    p.add_argument(
+        "--threshold", type=float, default=1e-3, help="regime-detection threshold"
+    )
+    p.add_argument(
+        "--bthreshold", type=float, default=1e-3, help="B threshold for regime detection"
+    )
+    p.add_argument(
+        "--dthreshold", type=float, default=10, help="duration threshold for regime detection"
+    )
+    p.add_argument("--window", type=int, default=10, help="rolling window size")
+    p.add_argument("--level", type=int, default=90, help="percentile level")
+    p.set_defaults(_handler=_run)

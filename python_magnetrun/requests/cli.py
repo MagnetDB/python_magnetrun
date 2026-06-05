@@ -7,6 +7,7 @@ For each MagnetID list of attached record
 Check record consistency
 """
 
+import argparse
 import datetime
 import getpass
 import json
@@ -77,62 +78,42 @@ def cleanup(remove_site: list, msg: str, site_names: dict, Sites: dict):
                     site_names[name].remove(item)
 
 
-def main():
-    import argparse
+def _build_fetch_parser(prog: str = "magnetrun-fetch") -> "argparse.ArgumentParser":
+    """Return the argument parser for the fetch command."""
+    import argparse as _ap
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--user", help="specify user")
-    parser.add_argument(
+    p = _ap.ArgumentParser(prog=prog, add_help=True)
+    p.add_argument("--user", help="specify user")
+    p.add_argument(
         "--server",
         help="specify server",
         default="https://srv-data-install.lncmi.cnrs.fr/",
     )
-    parser.add_argument("--check", help="sanity check for records", action="store_true")
-    parser.add_argument("--save", help="save files", action="store_true")
-    parser.add_argument("--datadir", help="specify data dir", type=str, default=".")
-    parser.add_argument(
-        "--load-cirrus",
-        help="load logs and XMLs from cirrus.php",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--cirrus-feed",
-        help="specify cirrus feed (A1, A2, A3, A4, etc.)",
-        type=str,
-        default="A1",
-    )
-    parser.add_argument(
-        "--list-parts",
-        help="list all parts (helices and/or rings) from srv-data",
-        action="store_true",
-    )
-    parser.add_argument(
-        "--part-type",
+    p.add_argument("--check", help="sanity check for records", action="store_true")
+    p.add_argument("--save", help="save files", action="store_true")
+    p.add_argument("--datadir", help="specify data dir", type=str, default=".")
+    p.add_argument("--load-cirrus", help="load logs and XMLs from cirrus.php", action="store_true")
+    p.add_argument("--cirrus-feed", help="cirrus feed (A1, A2, …)", type=str, default="A1")
+    p.add_argument("--list-parts", help="list all parts from srv-data", action="store_true")
+    p.add_argument(
+        "--part-type", choices=["helix", "ring", "all"], default="all",
         help="filter parts by type when using --list-parts",
-        type=str,
-        choices=["helix", "ring", "all"],
-        default="all",
     )
-    parser.add_argument(
-        "--log-level",
-        help="set logging level",
-        type=str,
-        default="INFO",
+    p.add_argument(
+        "--log-level", type=str, default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
     )
-    parser.add_argument(
-        "--log-file",
-        help="save log output to a file",
-        type=str,
-        default=None,
-    )
-    parser.add_argument(
+    p.add_argument("--log-file", type=str, default=None)
+    p.add_argument(
         "--geometry-csv",
-        help="CSV file with two columns 'geometry' and 'yamfile' to override geometry field",
-        type=str,
-        default=None,
+        help="CSV with 'geometry'/'yamfile' columns to override geometry field",
+        type=str, default=None,
     )
-    args = parser.parse_args()
+    return p
+
+
+def main():
+    args = _build_fetch_parser().parse_args()
 
     # Configure logging level
     log_level = getattr(logging, args.log_level.upper(), logging.INFO)
@@ -998,6 +979,58 @@ def main():
         for f in natsorted(site_json_files):
             logger.info(f"  {f}")
         logger.info("\nDone.")
+
+
+def _run_fetch(args: "argparse.Namespace") -> int:
+    """Dispatcher-compatible entry: delegates to main() via _build_fetch_parser()."""
+    import sys as _sys
+
+    # Reconstruct the argv list from the parsed namespace so main() can re-parse.
+    argv: list[str] = []
+    if getattr(args, "user", None):
+        argv += ["--user", args.user]
+    if getattr(args, "server", None) and args.server != "https://srv-data-install.lncmi.cnrs.fr/":
+        argv += ["--server", args.server]
+    if getattr(args, "check", False):
+        argv.append("--check")
+    if getattr(args, "save", False):
+        argv.append("--save")
+    if getattr(args, "datadir", ".") != ".":
+        argv += ["--datadir", args.datadir]
+    if getattr(args, "load_cirrus", False):
+        argv.append("--load-cirrus")
+    if getattr(args, "cirrus_feed", "A1") != "A1":
+        argv += ["--cirrus-feed", args.cirrus_feed]
+    if getattr(args, "list_parts", False):
+        argv.append("--list-parts")
+    if getattr(args, "part_type", "all") != "all":
+        argv += ["--part-type", args.part_type]
+    if getattr(args, "log_level", "INFO") != "INFO":
+        argv += ["--log-level", args.log_level]
+    if getattr(args, "log_file", None):
+        argv += ["--log-file", args.log_file]
+    if getattr(args, "geometry_csv", None):
+        argv += ["--geometry-csv", args.geometry_csv]
+
+    old_argv = _sys.argv
+    _sys.argv = ["magnetrun-fetch"] + argv
+    try:
+        main()
+    finally:
+        _sys.argv = old_argv
+    return 0
+
+
+def register(sub: "argparse._SubParsersAction") -> None:
+    """Register the ``fetch`` subcommand on *sub*."""
+    fetch_parser = _build_fetch_parser(prog="magnetrun fetch")
+    p = sub.add_parser(
+        "fetch",
+        parents=[fetch_parser],
+        add_help=False,
+        help="fetch run data from the server",
+    )
+    p.set_defaults(_handler=_run_fetch)
 
 
 if __name__ == "__main__":
