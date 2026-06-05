@@ -1,15 +1,23 @@
-# Global ARGs — must be declared before any FROM to be usable in FROM instructions
-ARG CUDA_VERSION=12.6.0
-ARG UBUNTU_VERSION=24.04
+# Global ARG — must be declared before any FROM to be usable in FROM instructions
+ARG BASE_IMAGE=debian:trixie-slim
 
 # ── base ──────────────────────────────────────────────────────
-FROM python:3.13-slim AS base
+FROM ${BASE_IMAGE} AS base
 
 LABEL maintainer="christophe.trophime@lncmi.cnrs.fr"
 
+# xcb plugin libs are required by pip-installed PyQt5/PyQt6 wheels (which
+# bundle Qt itself but depend on the system xcb platform plugin chain).
+# This single set of packages enables TkAgg, Qt5Agg and Qt6Agg; the active
+# backend is selected at runtime via MPLBACKEND.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        libx11-6 libxext6 libxrender1 libxcb1 \
-        libxkbcommon-x11-0 libgl1 python3-tk \
+        python-is-python3 \
+        python3-venv \
+        python3-tk \
+        libx11-6 libxext6 libxrender1 \
+        libxcb1 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+        libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 \
+        libxkbcommon-x11-0 libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd -m -s /bin/bash magnetrun
@@ -23,6 +31,7 @@ VOLUME /mnt/LNCMIG-Data
 
 ENV VIRTUAL_ENV=/home/magnetrun/app/venv
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+# Default display backend; override at runtime: docker run -e MPLBACKEND=Qt6Agg …
 ENV MPLBACKEND=TkAgg
 
 USER magnetrun
@@ -35,9 +44,17 @@ RUN echo "alias cp='cp -i'" > $HOME/.bash_aliases && \
 
 RUN python3 -m venv "$VIRTUAL_ENV" \
     && pip install --no-cache-dir -e "python_magnetcooling[all]" \
-    && pip install --no-cache-dir -e ".[all]"
+    && pip install --no-cache-dir -e ".[all]" \
+    && pip install --no-cache-dir PyQt5 PyQt6
 
 ENTRYPOINT ["/bin/bash"]
+
+# ── webagg: browser-based, no display server needed ──────────
+# Access figures at http://localhost:8988 after starting the app.
+FROM base AS webagg
+RUN pip install --no-cache-dir tornado
+ENV MPLBACKEND=WebAgg
+EXPOSE 8988
 
 # ── software-gl: Mesa CPU rasteriser ─────────────────────────
 FROM base AS software-gl
@@ -73,19 +90,19 @@ USER magnetrun
 
 RUN pip install --no-cache-dir PyOpenGL PyOpenGL-accelerate
 
-# ── nvidia: NVIDIA GPU (different base image) ─────────────────
+# ── nvidia: NVIDIA GPU (nvidia/cuda base, ubuntu only) ────────
+ARG CUDA_VERSION=12.6.0
+ARG UBUNTU_VERSION=24.04
+
 FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION} AS nvidia
 
-# deadsnakes PPA provides Python 3.13 natively compiled for Ubuntu —
-# avoids cross-distro SSL/ABI issues that arise from copying the Debian build.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        software-properties-common \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt-get update && apt-get install -y --no-install-recommends \
-        python3.13 \
-        python3.13-venv \
-        python3.13-tk \
-        libx11-6 libxext6 libxrender1 libxcb1 \
+        python-is-python3 \
+        python3-venv \
+        python3-tk \
+        libx11-6 libxext6 libxrender1 \
+        libxcb1 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+        libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xkb1 \
         libxkbcommon-x11-0 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -106,9 +123,9 @@ ENV PYOPENGL_PLATFORM=egl
 USER magnetrun
 ENV HOME=/home/magnetrun
 
-RUN python3.13 -m venv "$VIRTUAL_ENV" \
+RUN python3 -m venv "$VIRTUAL_ENV" \
     && pip install --no-cache-dir -e "python_magnetcooling[all]" \
     && pip install --no-cache-dir -e ".[all]" \
-    && pip install --no-cache-dir PyOpenGL PyOpenGL-accelerate
+    && pip install --no-cache-dir PyQt5 PyQt6 PyOpenGL PyOpenGL-accelerate
 
 ENTRYPOINT ["/bin/bash"]
