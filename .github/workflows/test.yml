@@ -72,6 +72,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout submodules
+        run: git submodule update --init --recursive
+
       - name: Create virtualenv with system site packages
         run: |
           python3 -m venv --system-site-packages .venv
