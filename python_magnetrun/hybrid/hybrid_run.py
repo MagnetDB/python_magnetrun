@@ -674,7 +674,15 @@ class HybridRun:
             data = self._apply_voltage_mask(data, time, system, variable, key, opts)
 
         elif data_type == "trigger":
-            return self.HybridData.list_trigger_files(system)
+            if variable is None:
+                return self.HybridData.list_trigger_events(system)
+
+            data, time = self.HybridData.read_trigger_variable(
+                system,
+                variable,
+                apply_calib=opts.apply_calib,
+                cnv_dir=opts.cnv_dir,
+            )
 
         elif data_type == "vprocess":
             if variable is not None:

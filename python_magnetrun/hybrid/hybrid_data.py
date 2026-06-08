@@ -70,6 +70,12 @@ except ImportError as e:
     logger.warning(f"Could not import vprocess_reader: {e}")
     VProcessFileReader = None  # type: ignore[assignment, misc]
 
+try:
+    from .trigger.trigger_reader import TriggerFileReader
+except ImportError as e:
+    logger.warning(f"Could not import trigger_reader: {e}")
+    TriggerFileReader = None  # type: ignore[assignment, misc]
+
 
 # FEPC system names
 FEPC_SYSTEMS = ["FEPC-LNCMI", "FEPC-AUX-LNCMI"]
@@ -255,7 +261,7 @@ class HybridData(MagnetDataBase):
         elif group == "vprocess":
             return self.get_vprocess_variables()
         elif group == "trigger":
-            raise NotImplementedError("Trigger group keys not implemented yet")
+            return self.get_trigger_variables(system)  # type: ignore[arg-type]
         else:
             raise ValueError(f"Unknown group: {group}")
 
@@ -305,8 +311,15 @@ class HybridData(MagnetDataBase):
                     "type": "trigger",
                     "system": system,
                     "files": self._info.trigger_files[system],
+                    "dirs": self._info.trigger_dirs.get(system, []),
                 }
-                self.Keys.append(group_name)
+                try:
+                    keys = self._build_group_keys("trigger", system)["analog"]
+                except (ImportError, FileNotFoundError, ValueError) as e:
+                    logger.warning(f"Could not get trigger keys for {system}: {e}")
+                    keys = []
+                logger.debug(f"getKeys: trigger keys for system={system}: {keys}")
+                self.Keys += [f"trigger/{system}/{key}" for key in keys]
 
         # vprocess group (no FEPC system subdirectory)
         if self._info.vprocess_available and self._info.vprocess_files:
@@ -1101,6 +1114,128 @@ class HybridData(MagnetDataBase):
             return []
         return self._info.trigger_files[system]
 
+    def get_trigger_variables(self, system: str) -> dict[str, list[str]]:
+        """Get available trigger variables for a FEPC system.
+
+        Reads the FEPC configuration from the first available trigger event
+        directory for *system*.
+
+        Parameters
+        ----------
+        system : str
+            FEPC system name.
+
+        Returns
+        -------
+        dict
+            Dictionary with ``'analog'`` and ``'digital'`` variable lists.
+
+        Raises
+        ------
+        ImportError
+            If trigger_reader is not available.
+        ValueError
+            If no trigger directories are found for *system*.
+        FileNotFoundError
+            If no CFG file is found in the trigger event directory.
+        """
+        if TriggerFileReader is None:
+            raise ImportError("trigger_reader module not available")
+        if system not in self._info.trigger_dirs or not self._info.trigger_dirs[system]:
+            raise ValueError(f"No trigger directories found for {system!r}")
+
+        reader = TriggerFileReader(
+            self._info.trigger_dirs[system][0], system, endian=self.endian
+        )
+        var_info = reader.get_variable_info()
+
+        analog_vars = natsorted(
+            var_info.loc[var_info["type"] == "float32", "name"].tolist()
+        )
+        digital_vars = natsorted(
+            var_info.loc[var_info["type"] == "bool", "name"].tolist()
+        )
+        return {"analog": analog_vars, "digital": digital_vars}
+
+    def read_trigger_variable(
+        self,
+        system: str,
+        variable: str,
+        apply_calib: bool = True,
+        cnv_dir: str | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Read a variable across all trigger events for a FEPC system.
+
+        Trigger events are concatenated in chronological order.  Time is
+        expressed as seconds elapsed since midnight of :attr:`date_str`, the
+        same origin used by :meth:`read_khz_variable` and
+        :meth:`read_rms_variable`.
+
+        Parameters
+        ----------
+        system : str
+            FEPC system name.
+        variable : str
+            Variable name (e.g. ``'I_H1'``).
+        apply_calib : bool, optional
+            Apply calibration for analog channels (default: ``True``).
+        cnv_dir : str, optional
+            Directory containing CNV calibration files.  Defaults to the
+            trigger event's system subdirectory.
+
+        Returns
+        -------
+        data : np.ndarray
+            Concatenated 1-D array across all trigger events.
+        time : np.ndarray
+            Seconds from midnight of :attr:`date_str`, concatenated across
+            all trigger events.
+
+        Raises
+        ------
+        ImportError
+            If trigger_reader is not available.
+        ValueError
+            If no trigger directories are found for *system*.
+        FileNotFoundError
+            If no readable trigger events remain.
+        """
+        import datetime as _dt
+
+        if TriggerFileReader is None:
+            raise ImportError("trigger_reader module not available")
+        if system not in self._info.trigger_dirs or not self._info.trigger_dirs[system]:
+            raise ValueError(f"No trigger directories found for {system!r}")
+
+        day_start = _dt.datetime.combine(self.date, _dt.time.min)
+
+        all_data: list[np.ndarray] = []
+        all_times: list[np.ndarray] = []
+
+        for trigger_dir in self._info.trigger_dirs[system]:
+            reader = TriggerFileReader(trigger_dir, system, endian=self.endian)
+            try:
+                channel_data, time_from_file_start, file_timestamp = reader.read_variable(
+                    variable, apply_calib=apply_calib, cnv_dir=cnv_dir
+                )
+            except (FileNotFoundError, ValueError) as exc:
+                logger.warning(
+                    f"read_trigger_variable: skipping {trigger_dir.name}: {exc}"
+                )
+                continue
+
+            t0 = (file_timestamp - day_start).total_seconds()
+            all_data.append(channel_data)
+            all_times.append(t0 + time_from_file_start)
+
+        if not all_data:
+            raise FileNotFoundError(
+                f"read_trigger_variable: no readable trigger data for "
+                f"{system!r}/{variable!r}"
+            )
+
+        return np.concatenate(all_data), np.concatenate(all_times)
+
     # -------------------------------------------------------------------------
     # MagnetData-like Interface Methods
     # -------------------------------------------------------------------------
@@ -1154,7 +1289,10 @@ class HybridData(MagnetDataBase):
             return self.load_rms_data(system)
 
         elif data_type == "trigger":
-            return self.list_trigger_files(system)
+            if len(parts) >= 3:
+                variable = parts[2]
+                return self.read_trigger_variable(system, variable)
+            return self.list_trigger_events(system)
 
         elif data_type == "vprocess":
             # system holds the variable name (vprocess has no FEPC system layer)
