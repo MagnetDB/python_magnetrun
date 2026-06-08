@@ -306,3 +306,78 @@ class TestHybridData:
         assert isinstance(variables, dict)
         assert "analog" in variables
         assert "I_H1" in variables["analog"]
+
+
+# ---------------------------------------------------------------------------
+# B0.5 — hours parameter is UTC
+# ---------------------------------------------------------------------------
+
+
+class TestUtcHourToLocal:
+    def test_winter_utc_plus_one(self):
+        """In CET (UTC+1), UTC 10 = local 11."""
+        from python_magnetrun.hybrid.utils import utc_hour_to_local
+
+        assert utc_hour_to_local(10, "2025-01-27") == 11
+
+    def test_summer_utc_plus_two(self):
+        """In CEST (UTC+2), UTC 10 = local 12."""
+        from python_magnetrun.hybrid.utils import utc_hour_to_local
+
+        assert utc_hour_to_local(10, "2025-07-15") == 12
+
+    def test_midnight_utc(self):
+        """UTC 0 in winter = local 1."""
+        from python_magnetrun.hybrid.utils import utc_hour_to_local
+
+        assert utc_hour_to_local(0, "2025-01-27") == 1
+
+
+class TestKhzHoursFilterUTC:
+    """Verify that read_khz_variable hours= parameter selects files by UTC hour directly."""
+
+    def _make_dir(self, tmp_path: Path, date_str: str, fepc: str, hours: list[int]) -> Path:
+        """Create a kHz directory with stub .bin and .CFG files for each hour."""
+        khz_dir = tmp_path / "kHz" / date_str / fepc
+        khz_dir.mkdir(parents=True)
+        slot = 0  # first card in CFG gets slot index 0
+        for h in hours:
+            (khz_dir / f"{h:02d}HOST_1_LIST_{slot}.bin").write_bytes(b"")
+        cfg_path = khz_dir / "HOST_2_DATA.CFG"
+        cfg_path.write_text(f"{fepc};1;1000;0;0;ANALOG;1\nU_Alim\n")
+        return khz_dir
+
+    def test_utc_hour_10_selects_correct_file(self, tmp_path: Path):
+        """hours={10} should include the 10*.bin file but not 09*.bin."""
+        from unittest.mock import patch
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        date_str = "2025-07-15"
+        fepc = "FEPC-LNCMI"
+        self._make_dir(tmp_path, date_str, fepc, hours=[9, 10, 11])
+
+        hd = HybridData(base_dir=str(tmp_path), date_str=date_str, fepc_system=fepc)
+
+        captured: list = []
+
+        def _fake_read_hour_file(path, card_type, endian, t0, debug=False):
+            import numpy as np
+            captured.append(Path(path).name)
+            return np.array([1.0]), np.array([0.0])
+
+        import contextlib
+
+        with patch(
+            "python_magnetrun.hybrid.hybrid_data.read_hour_file",
+            side_effect=_fake_read_hour_file,
+        ), patch(
+            "python_magnetrun.hybrid.hybrid_data.compute_hour_t0",
+            return_value=36000.0,
+        ), contextlib.suppress(ValueError, RuntimeError, TypeError, IndexError):
+            hd.read_khz_variable("FEPC-LNCMI", "U_Alim", hours={10})
+
+        selected_hours = {int(name[:2]) for name in captured}
+        assert 10 in selected_hours, f"Expected hour 10 in {selected_hours}"
+        assert 9 not in selected_hours, f"Hour 9 should be excluded, got {selected_hours}"
+        assert 11 not in selected_hours, f"Hour 11 should be excluded, got {selected_hours}"
