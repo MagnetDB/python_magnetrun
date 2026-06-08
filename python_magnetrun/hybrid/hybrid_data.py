@@ -23,6 +23,7 @@ Directory structure:
                 FEPC-LNCMI/
 """
 
+import contextlib
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -1468,3 +1469,46 @@ class HybridData(MagnetDataBase):
             show=show,
             save=save,
         )
+
+
+def _khz_first_last_utc(hdata: "HybridData") -> tuple[datetime, datetime]:
+    """Return (t_start, t_end) as naive UTC datetimes spanning the kHz bin files.
+
+    Parameters
+    ----------
+    hdata : HybridData
+        A fully initialised :class:`HybridData` instance whose
+        ``_info.khz_files`` has been populated by ``_discover_data``.
+
+    Returns
+    -------
+    tuple[datetime, datetime]
+        ``(t_start, t_end)`` — naive UTC datetimes.
+        *t_start* is ``HH:00:00 UTC`` for the earliest bin-file hour;
+        *t_end* is ``(HH+1):00:00 UTC`` for the latest bin-file hour.
+
+    Raises
+    ------
+    RuntimeError
+        If no kHz bin files are found.
+    """
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    all_utc_hours: list[int] = []
+    for key, files in hdata._info.khz_files.items():
+        if key.endswith("_cfg"):
+            continue
+        for f in files:
+            with contextlib.suppress(ValueError):
+                all_utc_hours.append(int(Path(f).name[:2]))
+    if not all_utc_hours:
+        raise RuntimeError("No kHz bin files found — cannot determine time range")
+
+    d = _dt.date.fromisoformat(hdata.date_str)
+    utc = ZoneInfo("UTC")
+    t_start = _dt.datetime(d.year, d.month, d.day, min(all_utc_hours), 0, 0,
+                           tzinfo=utc).replace(tzinfo=None)
+    t_end = _dt.datetime(d.year, d.month, d.day, max(all_utc_hours) + 1, 0, 0,
+                         tzinfo=utc).replace(tzinfo=None)
+    return t_start, t_end

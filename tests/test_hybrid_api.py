@@ -381,3 +381,62 @@ class TestKhzHoursFilterUTC:
         assert 10 in selected_hours, f"Expected hour 10 in {selected_hours}"
         assert 9 not in selected_hours, f"Hour 9 should be excluded, got {selected_hours}"
         assert 11 not in selected_hours, f"Hour 11 should be excluded, got {selected_hours}"
+
+
+# ---------------------------------------------------------------------------
+# B1 — HybridRun.get_time_range() returns naive UTC from bin files
+# ---------------------------------------------------------------------------
+
+
+class TestHybridRunGetTimeRange:
+    """Tests for HybridRun.get_time_range() — Phase B1."""
+
+    def _make_run(self, tmp_path: Path, date_str: str, fepc: str, hours: list[int]) -> object:
+        """Build a minimal HybridRun backed by stub bin files for *hours*."""
+        from python_magnetrun.hybrid.hybrid_run import HybridRun
+
+        khz_dir = tmp_path / "kHz" / date_str / fepc
+        khz_dir.mkdir(parents=True)
+        for h in hours:
+            (khz_dir / f"{h:02d}HOST_1_LIST_0.bin").write_bytes(b"")
+        cfg_path = khz_dir / "HOST_2_DATA.CFG"
+        cfg_path.write_text(f"{fepc};1;1000;0;0;ANALOG;1\nU_Alim\n")
+        return HybridRun.fromdir(str(tmp_path), date_str, fepc_system=fepc)
+
+    def test_returns_naive_utc_pair(self, tmp_path: Path):
+        """get_time_range() must return two naive (tzinfo=None) datetime objects."""
+        import datetime
+
+        hrun = self._make_run(tmp_path, "2025-01-27", "FEPC-LNCMI", [10, 11])
+        t_start, t_end = hrun.get_time_range()
+
+        assert isinstance(t_start, datetime.datetime)
+        assert isinstance(t_end, datetime.datetime)
+        assert t_start.tzinfo is None
+        assert t_end.tzinfo is None
+
+    def test_start_hour_matches_min_bin_hour(self, tmp_path: Path):
+        """t_start.hour should equal the lowest UTC hour found in bin filenames."""
+        hrun = self._make_run(tmp_path, "2025-01-27", "FEPC-LNCMI", [9, 10, 11])
+        t_start, _ = hrun.get_time_range()
+        assert t_start.hour == 9
+
+    def test_end_hour_is_max_plus_one(self, tmp_path: Path):
+        """t_end.hour should equal max(bin hours) + 1."""
+        hrun = self._make_run(tmp_path, "2025-01-27", "FEPC-LNCMI", [9, 10, 11])
+        _, t_end = hrun.get_time_range()
+        assert t_end.hour == 12
+
+    def test_raises_when_no_bin_files(self, tmp_path: Path):
+        """get_time_range() must raise RuntimeError when no bin files exist."""
+        from python_magnetrun.hybrid.hybrid_run import HybridRun
+
+        date_str = "2025-01-27"
+        fepc = "FEPC-LNCMI"
+        khz_dir = tmp_path / "kHz" / date_str / fepc
+        khz_dir.mkdir(parents=True)
+        (khz_dir / "HOST_2_DATA.CFG").write_text(f"{fepc};1;1000;0;0;ANALOG;1\nU_Alim\n")
+        hrun = HybridRun.fromdir(str(tmp_path), date_str, fepc_system=fepc)
+
+        with pytest.raises(RuntimeError, match="No kHz bin files found"):
+            hrun.get_time_range()

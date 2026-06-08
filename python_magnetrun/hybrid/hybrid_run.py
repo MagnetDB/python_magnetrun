@@ -29,7 +29,7 @@ Example usage:
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -916,16 +916,24 @@ class HybridRun:
         return "operational"
 
     def get_time_range(self) -> tuple[datetime, datetime]:
-        """Get time range of available data"""
+        """Get time range of available data.
+
+        Returns
+        -------
+        tuple[datetime, datetime]
+            ``(t_start, t_end)`` as naive UTC datetimes derived from the
+            kHz bin-file UTC hours present in the recording directory.
+
+        Raises
+        ------
+        RuntimeError
+            If no :class:`~python_magnetrun.hybrid.hybrid_data.HybridData`
+            is associated, or no kHz bin files are found.
+        """
         if self.HybridData is None:
             raise RuntimeError("No HybridData associated")
-
-        # Start of day
-        start = datetime.combine(self.HybridData.date, datetime.min.time())
-        # End of day
-        end = start + timedelta(days=1)
-
-        return start, end
+        from .hybrid_data import _khz_first_last_utc
+        return _khz_first_last_utc(self.HybridData)
 
     def get_data_at_time(
         self,
