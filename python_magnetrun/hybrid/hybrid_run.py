@@ -676,6 +676,16 @@ class HybridRun:
         elif data_type == "trigger":
             return self.HybridData.list_trigger_files(system)
 
+        elif data_type == "vprocess":
+            if variable is not None:
+                raise ValueError(
+                    f"Invalid vprocess key: {key!r}. Expected 'vprocess/VARIABLE'"
+                )
+            # system holds the variable name (no FEPC system layer for vprocess)
+            data, time = self.HybridData.read_vprocess_variable(
+                system, hours=opts.hours
+            )
+
         else:
             raise ValueError(f"Unknown data type: {data_type}")
 

@@ -64,6 +64,12 @@ except ImportError as e:
     logger.warning(f"Could not import rms_reader: {e}")
     RMSFileReader = None  # type: ignore[assignment, misc]
 
+try:
+    from .vprocess.vprocess_reader import VProcessFileReader
+except ImportError as e:
+    logger.warning(f"Could not import vprocess_reader: {e}")
+    VProcessFileReader = None  # type: ignore[assignment, misc]
+
 
 # FEPC system names
 FEPC_SYSTEMS = ["FEPC-LNCMI", "FEPC-AUX-LNCMI"]
@@ -78,6 +84,7 @@ class HybridDataInfo:
     khz_available: bool = False
     rms_available: bool = False
     trigger_available: bool = False
+    vprocess_available: bool = False
     fepc_systems: list[str] = field(default_factory=list)
     khz_files: dict[str, list[Path]] = field(default_factory=dict)
     rms_files: dict[str, list[Path]] = field(default_factory=dict)
@@ -85,6 +92,7 @@ class HybridDataInfo:
         default_factory=dict
     )  # TRIGGER__YYYY-MM-DD__HH-MM dirs
     trigger_files: dict[str, list[Path]] = field(default_factory=dict)
+    vprocess_files: list[Path] = field(default_factory=list)
 
 
 class HybridData(MagnetDataBase):
@@ -228,16 +236,24 @@ class HybridData(MagnetDataBase):
                             list(system_dir.glob("*"))
                         )
 
+        # Check vprocess data (no FEPC system subdirectory)
+        vprocess_dir = self.base_dir / "vprocess" / self.date_str
+        if vprocess_dir.exists():
+            self._info.vprocess_available = True
+            self._info.vprocess_files = sorted(vprocess_dir.glob("*.vprocess"))
+
         # Build groups and keys
         self._build_groups()
 
-    def _build_group_keys(self, group: str, system: str) -> dict:
+    def _build_group_keys(self, group: str, system: str | None) -> dict:
         """Build data keys for a specific group"""
 
         if group == "kHz":
-            return self.get_khz_variables(system)
+            return self.get_khz_variables(system)  # type: ignore[arg-type]
         elif group == "rms":
-            return self.get_rms_variables(system)
+            return self.get_rms_variables(system)  # type: ignore[arg-type]
+        elif group == "vprocess":
+            return self.get_vprocess_variables()
         elif group == "trigger":
             raise NotImplementedError("Trigger group keys not implemented yet")
         else:
@@ -292,6 +308,20 @@ class HybridData(MagnetDataBase):
                 }
                 self.Keys.append(group_name)
 
+        # vprocess group (no FEPC system subdirectory)
+        if self._info.vprocess_available and self._info.vprocess_files:
+            self.Groups["vprocess"] = {
+                "type": "vprocess",
+                "files": self._info.vprocess_files,
+            }
+            try:
+                keys = self._build_group_keys("vprocess", None)["analog"]
+            except (ImportError, FileNotFoundError, ValueError) as e:
+                logger.warning(f"Could not get vprocess keys: {e}")
+                keys = []
+            logger.debug(f"getKeys: vprocess keys: {keys}")
+            self.Keys += [f"vprocess/{key}" for key in keys]
+
     @classmethod
     def fromdir(cls, base_dir: str, date_str: str, **kwargs):
         """
@@ -338,9 +368,10 @@ class HybridData(MagnetDataBase):
         print(f"FEPC Systems: {', '.join(self._info.fepc_systems)}")
 
         print("Data availability:")
-        print(f"  kHz data:     {'yes' if self._info.khz_available else 'no'}")
-        print(f"  RMS data:     {'yes' if self._info.rms_available else 'no'}")
-        print(f"  Trigger data: {'yes' if self._info.trigger_available else 'no'}")
+        print(f"  kHz data:      {'yes' if self._info.khz_available else 'no'}")
+        print(f"  RMS data:      {'yes' if self._info.rms_available else 'no'}")
+        print(f"  Trigger data:  {'yes' if self._info.trigger_available else 'no'}")
+        print(f"  VProcess data: {'yes' if self._info.vprocess_available else 'no'}")
 
         if self._info.khz_available:
             print("kHz files:")
@@ -364,6 +395,9 @@ class HybridData(MagnetDataBase):
             print("Trigger files:")
             for system, files in self._info.trigger_files.items():
                 print(f"  {system}: {len(files)} files")
+
+        if self._info.vprocess_available:
+            print(f"VProcess files: {len(self._info.vprocess_files)} files")
 
         print(flush=True)
 
@@ -861,6 +895,154 @@ class HybridData(MagnetDataBase):
         return self._info.rms_files[system]
 
     # -------------------------------------------------------------------------
+    # VProcess Data Methods
+    # -------------------------------------------------------------------------
+
+    def get_vprocess_variables(self) -> dict[str, list[str]]:
+        """Get available variables from the first vprocess file.
+
+        Returns
+        -------
+        dict
+            Dictionary with ``'analog'`` and ``'digital'`` variable lists.
+
+        Raises
+        ------
+        ImportError
+            If vprocess_reader is not available.
+        ValueError
+            If no vprocess files are found.
+        """
+        if VProcessFileReader is None:
+            raise ImportError("vprocess_reader module not available")
+        if not self._info.vprocess_files:
+            raise ValueError("No vprocess files found")
+
+        reader = VProcessFileReader(str(self._info.vprocess_files[0]), endian=self.endian)
+        reader.parse_header()
+
+        analog_vars = natsorted(v.name for v in reader.variables if v.is_analog)
+        digital_vars = natsorted(v.name for v in reader.variables if not v.is_analog)
+
+        return {"analog": analog_vars, "digital": digital_vars}
+
+    def _parse_vprocess_filename_hour(self, filepath: Path) -> int | None:
+        """Return the UTC start hour from a vprocess filename, or None on failure.
+
+        Filename format: ``YYYYMMDD_HHMMSS__YYYYMMDD_HHMMSS.vprocess``
+        """
+        from .vprocess.vprocess_reader import parse_vprocess_filename
+
+        time_range = parse_vprocess_filename(filepath.name)
+        if time_range:
+            return time_range[0].hour
+        return None
+
+    def read_vprocess_variable(
+        self,
+        variable: str,
+        hours: range | list[int] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Read vprocess data for a specific variable.
+
+        Parameters
+        ----------
+        variable : str
+            Variable name (e.g., ``'TT115A'``).
+        hours : range or list of int, optional
+            Local hours to load (0-23).  Files are selected by their UTC
+            start hour converted to French local time.  Loads all files
+            when ``None``.
+
+        Returns
+        -------
+        tuple
+            ``(data_array, time_array)`` where *time* is seconds elapsed
+            from the start of the first sample.
+
+        Raises
+        ------
+        ImportError
+            If vprocess_reader is not available.
+        ValueError
+            If no vprocess files are found or *variable* is not present.
+        FileNotFoundError
+            If no readable files remain after filtering.
+        """
+        if VProcessFileReader is None:
+            raise ImportError("vprocess_reader module not available")
+        if not self._info.vprocess_files:
+            raise ValueError("No vprocess files found")
+
+        if hours is not None:
+            import datetime as _dt
+            from zoneinfo import ZoneInfo
+
+            _tz_paris = ZoneInfo("Europe/Paris")
+            _tz_utc = ZoneInfo("UTC")
+            _date = _dt.date.fromisoformat(self.date_str)
+            files_to_load = []
+            for f in self._info.vprocess_files:
+                utc_hour = self._parse_vprocess_filename_hour(f)
+                if utc_hour is None:
+                    continue
+                _dt_utc = _dt.datetime(
+                    _date.year, _date.month, _date.day,
+                    utc_hour, 0, 0, tzinfo=_tz_utc,
+                )
+                local_hour = _dt_utc.astimezone(_tz_paris).hour
+                if local_hour in hours:
+                    files_to_load.append(f)
+            if not files_to_load:
+                raise ValueError(f"No vprocess files found for hours {hours}")
+            logger.debug(f"Loading {len(files_to_load)} vprocess files for hours {hours}")
+        else:
+            files_to_load = self._info.vprocess_files
+            logger.debug(f"Loading all {len(files_to_load)} vprocess files")
+
+        all_data = []
+        all_timestamps = []
+
+        for vp_file in files_to_load:
+            if not vp_file.exists():
+                logger.warning(f"read_vprocess_variable: file missing, skipping: {vp_file}")
+                continue
+            reader = VProcessFileReader(str(vp_file), endian=self.endian)
+            df = reader.read()
+
+            if variable not in df.columns:
+                available = ", ".join(list(df.columns)[:10])
+                raise ValueError(
+                    f"Variable '{variable}' not found in {vp_file.name}. "
+                    f"Available: {available}..."
+                )
+
+            all_data.append(df[variable].values)
+            all_timestamps.append(df.index)
+
+        if not all_data:
+            raise FileNotFoundError(
+                f"read_vprocess_variable: no readable vprocess files remain for {variable!r}"
+            )
+
+        data = np.concatenate(all_data)
+        timestamps = pd.Index(np.concatenate([t.to_numpy() for t in all_timestamps]))
+        time_ns = timestamps.to_numpy().astype("datetime64[ns]").astype(np.int64)
+        time = (time_ns - time_ns[0]) / 1e9
+
+        return data, time
+
+    def list_vprocess_files(self) -> list[Path]:
+        """List available vprocess files for this day.
+
+        Returns
+        -------
+        list of Path
+            Sorted list of vprocess file paths.
+        """
+        return self._info.vprocess_files
+
+    # -------------------------------------------------------------------------
     # Trigger Data Methods
     # -------------------------------------------------------------------------
 
@@ -975,10 +1157,8 @@ class HybridData(MagnetDataBase):
             return self.list_trigger_files(system)
 
         elif data_type == "vprocess":
-            # Placeholder for future processed data
-            raise NotImplementedError(
-                "HyBridData.getData: vprocess data not implemented yet"
-            )
+            # system holds the variable name (vprocess has no FEPC system layer)
+            return self.read_vprocess_variable(system, hours=hours)
         else:
             raise ValueError(f"Unknown data type: {data_type}")
 
@@ -999,7 +1179,7 @@ class HybridData(MagnetDataBase):
         # Build short_key → [full_key, ...] map.
         # Full keys: "kHz/FEPC-AUX-LNCMI/ALIM1_J1"  →  short: "FEPC-AUX-LNCMI/ALIM1_J1"
         short_to_fulls: dict[str, list[str]] = {}
-        _prefixes = {"kHz", "rms", "trigger"}
+        _prefixes = {"kHz", "rms", "trigger", "vprocess"}
         for full_key in self.Keys:
             parts = full_key.split("/", 1)
             short_key = (
