@@ -128,6 +128,34 @@ def format_exception_location(exception: Exception | None = None) -> str:
     return "unknown:?:?"
 
 
+def local_hour_to_utc(local_h: int, date_str: str, tz: str = "Europe/Paris") -> int:
+    """Convert a local integer hour to the equivalent UTC hour for the given date.
+
+    Parameters
+    ----------
+    local_h : int
+        Local hour (0–23) in *tz*.
+    date_str : str
+        ISO date string, e.g. ``"2025-01-27"``.
+    tz : str
+        IANA timezone name for the local zone.  Defaults to ``"Europe/Paris"``.
+
+    Returns
+    -------
+    int
+        UTC hour corresponding to *local_h* on *date_str*.
+    """
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    d = _dt.date.fromisoformat(date_str)
+    return (
+        _dt.datetime(d.year, d.month, d.day, local_h, 0, 0, tzinfo=ZoneInfo(tz))
+        .astimezone(ZoneInfo("UTC"))
+        .hour
+    )
+
+
 def utc_hour_to_local(utc_h: int, date_str: str, tz: str = "Europe/Paris") -> int:
     """Convert a UTC integer hour to the equivalent local hour for the given date.
 

@@ -7,6 +7,7 @@ parse_tdms_filename(filename)       → datetime | None
 parse_filename_timestamp(filename)  → datetime | None   (dispatches on extension)
 parse_wf_start_time(groups)         → datetime | None   (from TDMS channel properties)
 seconds_since_midnight(dt)          → float
+align_to_common_time(sources, reference=None) → dict[int, float]
 
 Timezone conversion helpers have moved to :mod:`python_magnetrun.utils.timezone`.
 """
@@ -16,6 +17,7 @@ from __future__ import annotations
 import logging
 import os
 from datetime import datetime
+from typing import Protocol, runtime_checkable
 
 import pandas as pd
 
@@ -97,7 +99,9 @@ def parse_tdms_filename(filename: str) -> datetime | None:
             return datetime.strptime(date_str + t, fmt)
         except ValueError:
             continue
-    logger.warning(f"parse_tdms_filename: unrecognised tdms date format in {filename!r}")
+    logger.warning(
+        f"parse_tdms_filename: unrecognised tdms date format in {filename!r}"
+    )
     return None
 
 
@@ -154,6 +158,48 @@ def parse_wf_start_time(groups: dict) -> datetime | None:
 def seconds_since_midnight(dt: datetime) -> float:
     """Return seconds elapsed since midnight for *dt*."""
     return float(dt.hour * 3600 + dt.minute * 60 + dt.second)
+
+
+@runtime_checkable
+class _HasTimeRange(Protocol):
+    def get_time_range(self) -> tuple[datetime, datetime]: ...
+
+
+def align_to_common_time(
+    sources: list[_HasTimeRange],
+    reference: datetime | None = None,
+) -> dict[int, float]:
+    """Compute per-source time offsets [s] relative to a common UTC reference.
+
+    Parameters
+    ----------
+    sources : list
+        Objects implementing ``get_time_range() -> (naive_utc, naive_utc)``.
+        Typically :class:`~python_magnetrun.MagnetRun.MagnetRun` and
+        :class:`~python_magnetrun.hybrid.hybrid_run.HybridRun` instances.
+    reference : datetime, optional
+        Explicit reference (naive UTC).  Defaults to the earliest
+        ``get_time_range()[0]`` across all sources.
+
+    Returns
+    -------
+    dict[int, float]
+        Maps ``id(source)`` to an offset in seconds.
+        Add the offset to the source's time array to align it with the
+        common reference:
+        ``aligned_time = time_array + offsets[id(source)]``.
+
+    Examples
+    --------
+    >>> offsets = align_to_common_time([hrun, pupitre_run])
+    >>> data, time = hrun.getData(key)
+    >>> aligned_time = time + offsets[id(hrun)]
+    """
+    t0s = {id(s): s.get_time_range()[0] for s in sources}
+    for s in sources:
+        logger.info(f"Source {type(s).__name__} (id={id(s)}): start time {t0s[id(s)]}")
+    ref = reference or min(t0s.values())
+    return {k: (t0 - ref).total_seconds() for k, t0 in t0s.items()}
 
 
 def add_time_columns(

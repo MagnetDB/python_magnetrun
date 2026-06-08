@@ -333,6 +333,28 @@ class TestUtcHourToLocal:
         assert utc_hour_to_local(0, "2025-01-27") == 1
 
 
+class TestLocalHourToUtc:
+    def test_winter_local_to_utc(self):
+        """CET (UTC+1): local 11 → UTC 10."""
+        from python_magnetrun.hybrid.utils import local_hour_to_utc
+
+        assert local_hour_to_utc(11, "2025-01-27") == 10
+
+    def test_summer_local_to_utc(self):
+        """CEST (UTC+2): local 12 → UTC 10."""
+        from python_magnetrun.hybrid.utils import local_hour_to_utc
+
+        assert local_hour_to_utc(12, "2025-07-15") == 10
+
+    def test_roundtrip_with_utc_to_local(self):
+        """local_hour_to_utc and utc_hour_to_local are inverses."""
+        from python_magnetrun.hybrid.utils import local_hour_to_utc, utc_hour_to_local
+
+        for date_str in ("2025-01-27", "2025-07-15"):
+            for utc_h in range(0, 22):  # stop at 21 to avoid midnight wrap edge cases
+                assert local_hour_to_utc(utc_hour_to_local(utc_h, date_str), date_str) == utc_h
+
+
 class TestKhzHoursFilterUTC:
     """Verify that read_khz_variable hours= parameter selects files by UTC hour directly."""
 
@@ -426,6 +448,14 @@ class TestHybridRunGetTimeRange:
         hrun = self._make_run(tmp_path, "2025-01-27", "FEPC-LNCMI", [9, 10, 11])
         _, t_end = hrun.get_time_range()
         assert t_end.hour == 12
+
+    def test_end_wraps_to_next_day_when_max_hour_23(self, tmp_path: Path):
+        """Hour 23 + 1 must not overflow the datetime constructor."""
+        import datetime
+
+        hrun = self._make_run(tmp_path, "2025-01-27", "FEPC-LNCMI", [22, 23])
+        _, t_end = hrun.get_time_range()
+        assert t_end == datetime.datetime(2025, 1, 28, 0, 0, 0)
 
     def test_raises_when_no_bin_files(self, tmp_path: Path):
         """get_time_range() must raise RuntimeError when no bin files exist."""

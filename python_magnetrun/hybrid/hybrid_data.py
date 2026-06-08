@@ -1509,6 +1509,8 @@ def _khz_first_last_utc(hdata: "HybridData") -> tuple[datetime, datetime]:
     utc = ZoneInfo("UTC")
     t_start = _dt.datetime(d.year, d.month, d.day, min(all_utc_hours), 0, 0,
                            tzinfo=utc).replace(tzinfo=None)
-    t_end = _dt.datetime(d.year, d.month, d.day, max(all_utc_hours) + 1, 0, 0,
-                         tzinfo=utc).replace(tzinfo=None)
+    t_end = (
+        _dt.datetime(d.year, d.month, d.day, max(all_utc_hours), 0, 0, tzinfo=utc)
+        + _dt.timedelta(hours=1)
+    ).replace(tzinfo=None)
     return t_start, t_end

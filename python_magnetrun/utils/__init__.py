@@ -19,6 +19,7 @@ from .scalar_metrics import (
 )
 from .timestamps import (
     TXT_TIMESTAMP_FORMATS,
+    align_to_common_time,
     parse_filename_timestamp,
     parse_tdms_filename,
     parse_txt_filename,
@@ -62,6 +63,7 @@ __all__ = [
     "SUPPORTED_EXTENSIONS",
     "get_extension",
     "TXT_TIMESTAMP_FORMATS",
+    "align_to_common_time",
     "FileFormatError",
     "parse_filename_timestamp",
     "parse_tdms_filename",
