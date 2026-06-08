@@ -19,6 +19,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
@@ -29,6 +30,7 @@ from python_magnetrun.hybrid.hybrid_run import HybridRun
 from python_magnetrun.hybrid.utils import (
     binarize_signal,
     format_exception_location,
+    local_hour_to_utc,
     log_exception,
     normalize_signal,
 )
@@ -36,11 +38,6 @@ from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun, load_mrun
 from python_magnetrun.utils.downsampling import DownsampleConfig
 from python_magnetrun.utils.files import find_files, select_files
-from python_magnetrun.utils.timestamps import (
-    parse_tdms_filename,
-    parse_txt_filename,
-    seconds_since_midnight,
-)
 
 logger = get_logger(__name__)
 
@@ -72,28 +69,6 @@ HYBRID_TO_TDMS_MAP = {
 # =============================================================================
 # Helper functions
 # =============================================================================
-
-
-def t0_from_filename(filename: str) -> float:
-    """Return seconds-since-midnight for a pupitre .txt filename."""
-    dt = parse_txt_filename(filename)
-    if dt is None:
-        logger.warning(
-            f"t0_from_filename: could not parse t0 from '{filename}', using 0"
-        )
-        return 0.0
-    return seconds_since_midnight(dt)
-
-
-def t0_from_tdms_filename(filename: str) -> float:
-    """Return seconds-since-midnight for a pigbrother .tdms filename."""
-    dt = parse_tdms_filename(filename)
-    if dt is None:
-        logger.warning(
-            f"t0_from_tdms_filename: could not parse t0 from '{filename}', using 0"
-        )
-        return 0.0
-    return seconds_since_midnight(dt)
 
 
 def load_pupitre_data(
@@ -155,14 +130,27 @@ def plot_comparison(
     pupitre_field = HYBRID_TO_PUPITRE_MAP.get(hybrid_key)
     tdms_field = HYBRID_TO_TDMS_MAP.get(hybrid_key)
 
-    # Get t start from hours if provided
-    t0 = 0.0
-    if hours is not None and len(hours) > 0:
-        t0 = hours[0] * 3600  # Convert first hour to seconds
-        print(f"Plotting data starting from hour {hours[0]} (t0={t0} seconds)")
+    # Compute per-source UTC offsets for time-axis alignment
+    hybrid_origin = hybrid_data.get_time_range()[
+        0
+    ]  # naive UTC, from first kHz bin hour
+
+    # t_ref is always a pd.Timestamp so arithmetic with pdata/tdata.get_time_range()[0]
+    # (also pd.Timestamp) is well-defined.  When hours are given, anchor t=0 to the
+    # first requested UTC hour; otherwise anchor to hybrid_origin itself.
+    hybrid_ts = pd.Timestamp(hybrid_origin)
+    if hours is not None:
+        t_ref = hybrid_ts.replace(
+            hour=hours[0], minute=0, second=0, microsecond=0, nanosecond=0
+        )
+    else:
+        t_ref = hybrid_ts
+    # Float offset (seconds) used to shift the kHz time array (which is already in
+    # seconds from hybrid_origin) so that t=0 aligns with t_ref.
+    t_ref_offset_s = (t_ref - hybrid_ts).total_seconds()
 
     # Plot hybrid kHz data
-    print(f"Loading hybrid data for key: {hybrid_key}")
+    logger.info(f"Loading hybrid data for key: {hybrid_key}")
     try:
         res = hybrid_key.split("/")
         logger.debug(f"hybrid_key parts: {res}")
@@ -180,16 +168,17 @@ def plot_comparison(
         #     flush=True,
         # )
         data, time = hybrid_data.getData(hybrid_key, hours=hours, downsample=downsample)
-        print(
-            f"Hybrid data loaded: {len(data)} points, "
-            f"time range: {time[0] if len(time) > 0 else 'N/A'} to {time[-1] if len(time) > 0 else 'N/A'} seconds"
+        logger.info(
+            f"Hybrid data loaded: {len(data)} points, time range: "
+            f"{time[0] if len(time) > 0 else 'N/A'} to {time[-1] if len(time) > 0 else 'N/A'} seconds"
         )
-        # Convert time to relative seconds if it's datetime
+        # Convert time to seconds from UTC hour boundary; anchor t=0 at first sample.
         if len(time) > 0:
             if hasattr(time[0], "timestamp"):
                 time_seconds = np.array([(t - time[0]).total_seconds() for t in time])
             else:
                 time_seconds = time
+
         else:
             time_seconds = time
 
@@ -212,14 +201,16 @@ def plot_comparison(
                 data, time = hybrid_data.getData(
                     f"kHz/FEPC-AUX-LNCMI/{vkey}", downsample=downsample, hours=hours
                 )
-                print(
-                    f"Hybrid data loaded: {len(data)} points, time range: {time[0] if len(time) > 0 else 'N/A'} to {time[-1] if len(time) > 0 else 'N/A'} seconds"
+                logger.info(
+                    f"Hybrid data loaded: {len(data)} points, time range: "
+                    f"{time[0] if len(time) > 0 else 'N/A'} to {time[-1] if len(time) > 0 else 'N/A'} seconds"
                 )
-                # Convert time to relative seconds if it's datetime
+                # Align to the same t=0 as the primary hybrid trace.
                 if len(time) > 0:
                     if hasattr(time[0], "timestamp"):
-                        time_seconds = np.array(
-                            [(t - time[0]).total_seconds() for t in time]
+                        time_seconds = (
+                            np.array([(t - time[0]).total_seconds() for t in time])
+                            - t_ref_offset_s
                         )
                     else:
                         time_seconds = time
@@ -246,7 +237,7 @@ def plot_comparison(
             logger_instance=logger,
             include_traceback=False,
         )
-        logger.debug("  Error at %s: %s", format_exception_location(), e)
+        logger.debug(f"  Error at {format_exception_location()}: {e}")
 
     # Plot pupitre data if available
     if pupitre_data and pupitre_field:
@@ -254,13 +245,13 @@ def plot_comparison(
             try:
                 mdata = pdata.getMData()
                 if pupitre_field in mdata.getKeys():
-                    pupitre_t0 = t0_from_filename(mdata.FileName)
-                    print(
-                        f"Pupitre t0 from filename: {pupitre_t0} seconds, timerange={pdata.get_time_range()}, hybrid t0={t0} seconds"
+                    t_offset = (pdata.get_time_range()[0] - t_ref).total_seconds()
+                    logger.info(
+                        f"Pupitre timerange={pdata.get_time_range()}, offset={t_offset:.1f} s from hybrid origin"
                     )
                     df = mdata.getData(["t", pupitre_field], downsample=downsample)
                     pupitre_values = df[pupitre_field].to_numpy()
-                    pupitre_time = df["t"].to_numpy() + (pupitre_t0 - t0)
+                    pupitre_time = df["t"].to_numpy() + t_offset
 
                     prefix = "Pupitre" if i == 0 else f"Pupitre {i+1}"
                     label = f"{prefix} ({pupitre_field})"
@@ -279,7 +270,7 @@ def plot_comparison(
                         label=label,
                     )
                 else:
-                    print(f"Pupitre field '{pupitre_field}' not found")
+                    logger.warning(f"Pupitre field '{pupitre_field}' not found")
             except (OSError, ValueError, RuntimeError, KeyError) as e:
                 log_exception(
                     "Warning: Could not plot pupitre data",
@@ -297,9 +288,9 @@ def plot_comparison(
                 # Get the appropriate group (usually 'Courants_Alimentations')
                 tdms_keys = mdata.getKeys()
                 if tdms_field in tdms_keys:
-                    tdms_t0 = t0_from_tdms_filename(mdata.FileName)
-                    print(
-                        f"TDMS t0 from filename: {tdms_t0} seconds, timerange={tdata.get_time_range()}, hybrid t0={t0} seconds"
+                    t_offset = (tdata.get_time_range()[0] - t_ref).total_seconds()
+                    logger.info(
+                        f"TDMS timerange={tdata.get_time_range()}, offset={t_offset:.1f} s from hybrid origin"
                     )
                     group = tdms_field.split("/")[0]
                     mdata.addTdmsTime(group)
@@ -308,7 +299,7 @@ def plot_comparison(
                     )
                     channel = tdms_field.split("/")[1]
                     tdms_values = df[channel].to_numpy()
-                    tdms_time = df["t"].to_numpy() + (tdms_t0 - t0)
+                    tdms_time = df["t"].to_numpy() + t_offset
                     prefix = "TDMS" if i == 0 else f"TDMS {i+1}"
                     label = f"{prefix} ({tdms_field})"
                     if normalize:
@@ -334,7 +325,7 @@ def plot_comparison(
                 )
                 logger.debug(f"  Error at {format_exception_location()}: {e}")
 
-    ax.set_xlabel("Time (seconds)")
+    ax.set_xlabel(f"Time (s from {t_ref.strftime('%H:%M:%S UTC')})")
     ax.set_ylabel("Normalized value (a.u.)" if normalize else "Value")
     ax.set_title(f"Comparison: {hybrid_key}")
     ax.legend()
@@ -449,30 +440,33 @@ Examples:
 
     # Parse date
     date = datetime.strptime(args.date, "%Y-%m-%d")
-    print(f"Date: {date.strftime('%Y-%m-%d')}")
-    print(f"Housing: {housing}")
-    print(f"FEPC System: {args.fepc_system}")
+    logger.info(f"Date: {date.strftime('%Y-%m-%d')}")
+    logger.info(f"Housing: {housing}")
+    logger.info(f"FEPC System: {args.fepc_system}")
 
-    # Parse hours if provided (supports '10,11,12' or '10:13' range notation)
+    # Parse hours if provided (supports '10,11,12' or '10:13' range notation).
+    # args.hours is French local time; convert to UTC for hybrid data filtering.
     hours = None
+    hours_utc = None
     if args.hours:
         if ":" in args.hours:
             parts = args.hours.split(":")
-            hours = range(int(parts[0]), int(parts[1]))
+            hours = list(range(int(parts[0]), int(parts[1])))
         else:
             hours = [int(h.strip()) for h in args.hours.split(",")]
-        logger.debug(f"Hours: {list(hours)}")
+        hours_utc = [local_hour_to_utc(h, args.date) for h in hours]
+        logger.debug(f"Hours (local): {hours}  →  UTC: {hours_utc}")
 
     # Build downsampling config from CLI args (None when --downsample-method none)
     downsample_config = args_to_downsample_config(args)
-    print(f"Downsample config: {downsample_config}")
+    logger.info(f"Downsample config: {downsample_config}")
 
     # Construct hybrid key
     hybrid_key = f"kHz/{args.fepc_system}/{args.key}"
     logger.debug(f"Hybrid key: {hybrid_key}")
 
     # Load hybrid data
-    print(f"Loading hybrid data from: {args.hybrid_dir}")
+    logger.info(f"Loading hybrid data from: {args.hybrid_dir}")
     try:
         hrun = HybridRun.fromdir(
             base_dir=str(args.hybrid_dir),
@@ -537,7 +531,7 @@ Examples:
     # Load pupitre data
     pupitre_data = []
     if pupitre_files:
-        print(f"Found {len(pupitre_files)} pupitre file(s)")
+        logger.info(f"Found {len(pupitre_files)} pupitre file(s)")
         for pupitre_file in pupitre_files:
             try:
                 pdata = load_pupitre_data(pupitre_file, housing, args.insert)
@@ -557,7 +551,7 @@ Examples:
     # Load TDMS data
     tdms_data = []
     if tdms_files:
-        print(f"Found {len(tdms_files)} TDMS Overview file(s)")
+        logger.info(f"Found {len(tdms_files)} TDMS Overview file(s)")
         for tdms_file in tdms_files:
             try:
                 tdata = load_tdms_data(tdms_file, housing, args.insert)
@@ -575,21 +569,21 @@ Examples:
         logger.info(f"No TDMS Overview files found for {date.strftime('%Y-%m-%d')}")
 
     # Plot comparison
-    print("Generating comparison plot...")
+    logger.info("Generating comparison plot...")
     fig, _ = plot_comparison(
         hrun,
         pupitre_data,
         tdms_data,
         hybrid_key,
         args.housing,
-        hours=hours,
+        hours=hours_utc,
         normalize=args.normalize,
         downsample=downsample_config,
     )
 
     # Save or show plot (show is the default when --save is not given)
     if args.save:
-        logger.info("Saving plot to: %s", args.save)
+        logger.info(f"Saving plot to: {args.save}")
         fig.savefig(args.save, dpi=150, bbox_inches="tight")
     else:
         logger.debug("Displaying plot...")
