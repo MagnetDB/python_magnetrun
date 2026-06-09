@@ -167,7 +167,7 @@ class _HasTimeRange(Protocol):
 
 
 def align_to_common_time(
-    sources: list[_HasTimeRange],
+    sources: Sequence[_HasTimeRange],
     reference: datetime | None = None,
     hours: Sequence[int] | None = None,
 ) -> dict[int, float]:
@@ -175,7 +175,7 @@ def align_to_common_time(
 
     Parameters
     ----------
-    sources : list
+    sources : Sequence
         Objects implementing ``get_time_range() -> (naive_utc, naive_utc)``.
         Typically :class:`~python_magnetrun.MagnetRun.MagnetRun` and
         :class:`~python_magnetrun.hybrid.hybrid_run.HybridRun` instances.

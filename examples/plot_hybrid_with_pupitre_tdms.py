@@ -13,6 +13,7 @@ The script uses the data directories as defined in python_magnetrun analysis con
 
 import argparse
 import glob
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -26,7 +27,7 @@ from matplotlib.figure import Figure
 from python_magnetrun.analysis.args import args_to_downsample_config
 from python_magnetrun.cli_args import create_base_parser, create_downsampling_parser
 from python_magnetrun.data_dirs import HYBRID_DATA_DIR
-from python_magnetrun.hybrid.hybrid_run import HybridRun
+from python_magnetrun.hybrid.hybrid_run import BinarizeConfig, HybridRun, LoadOptions
 from python_magnetrun.hybrid.utils import (
     binarize_signal,
     format_exception_location,
@@ -35,6 +36,7 @@ from python_magnetrun.hybrid.utils import (
     normalize_signal,
 )
 from python_magnetrun.log_utils import get_logger, setup_logging
+from python_magnetrun.magnetdata_tdms import TdmsMagnetData
 from python_magnetrun.MagnetRun import MagnetRun, load_mrun
 from python_magnetrun.utils.downsampling import DownsampleConfig
 from python_magnetrun.utils.files import find_files, select_files
@@ -97,6 +99,7 @@ def plot_comparison(
     hours: range | list[int] | None = None,
     normalize: bool = False,
     downsample: DownsampleConfig | None = None,
+    binarize_config: BinarizeConfig | None = None,
 ) -> tuple[Figure, Axes]:
     """
     Plot hybrid, pupitre, and TDMS data on the same graph.
@@ -119,12 +122,16 @@ def plot_comparison(
         If True, normalize each signal by its maximum absolute value before plotting.
     downsample : DownsampleConfig or None, optional
         Downsampling configuration applied to all data sources before plotting.
+    binarize_config : BinarizeConfig or None, optional
+        Parameters forwarded to :func:`~python_magnetrun.processing.signal.binarize_signal`
+        when building the voltage mask.  ``None`` uses the function's defaults (Otsu).
 
     Returns
     -------
     tuple[Figure, Axes]
         The matplotlib Figure and Axes objects.
     """
+    load_opts = LoadOptions(downsample=downsample, binarize_config=binarize_config)
     fig, ax = plt.subplots(figsize=(14, 6))
 
     # Get mapped field names
@@ -163,7 +170,9 @@ def plot_comparison(
         #     ),
         #     flush=True,
         # )
-        data, time = hybrid_data.getData(hybrid_key, hours=hours, downsample=downsample)
+        result = hybrid_data.getData(hybrid_key, hours=hours, options=load_opts)
+        assert isinstance(result, tuple)
+        data, time = result
         logger.info(
             f"Hybrid data loaded: {len(data)} points, time range: "
             f"{time[0] if len(time) > 0 else 'N/A'} to {time[-1] if len(time) > 0 else 'N/A'} seconds"
@@ -194,9 +203,11 @@ def plot_comparison(
         # Add V for Bitters (BITTER_V1, BITTER_V2), V for Helices (from PH_V8 to PH_V14) if available
         if "ALIM" in hybrid_key:
             for vkey in ["BITTER_V2", "PH_V8"]:
-                data, time = hybrid_data.getData(
-                    f"kHz/FEPC-AUX-LNCMI/{vkey}", downsample=downsample, hours=hours
+                result = hybrid_data.getData(
+                    f"kHz/FEPC-AUX-LNCMI/{vkey}", hours=hours, options=load_opts
                 )
+                assert isinstance(result, tuple)
+                data, time = result
                 logger.info(
                     f"Hybrid data loaded: {len(data)} points, time range: "
                     f"{time[0] if len(time) > 0 else 'N/A'} to {time[-1] if len(time) > 0 else 'N/A'} seconds"
@@ -286,6 +297,7 @@ def plot_comparison(
                         f"TDMS timerange={tdata.get_time_range()}, offset={t_offset:.1f} s from hybrid origin"
                     )
                     group = tdms_field.split("/")[0]
+                    assert isinstance(mdata, TdmsMagnetData)
                     mdata.addTdmsTime(group)
                     df = mdata.getData(
                         [f"{group}/t", tdms_field], downsample=downsample
@@ -365,6 +377,14 @@ Examples:
   # Downsample using minmax_lttb (requires tsdownsample)
   python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing M8 \\
       --downsample-method minmax_lttb --downsample-params '{"n_out": 10000}'
+
+  # Use fixed threshold for voltage mask binarization
+  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing M8 \\
+      --binarize-method fixed --binarize-params '{"tolerance": 0.01}'
+
+  # Use noise-floor method with a custom percentile
+  python %(prog)s -d 2025-01-27 -s FEPC-AUX-LNCMI -k ALIM1_J1 --housing M8 \\
+      --binarize-method noise --binarize-params '{"noise_percentile": 30.0}'
         """,
     )
 
@@ -412,6 +432,32 @@ Examples:
         help="Normalize each signal by its maximum absolute value before plotting",
     )
 
+    parser.add_argument(
+        "--binarize-method",
+        choices=["otsu", "fixed", "noise"],
+        default="otsu",
+        metavar="METHOD",
+        help=(
+            "thresholding method for the voltage-mask binarization: "
+            "otsu (default, automatic), fixed (use --binarize-params tolerance), "
+            "noise (noise-floor estimate)."
+        ),
+    )
+    parser.add_argument(
+        "--binarize-params",
+        type=str,
+        default=None,
+        metavar="JSON",
+        help=(
+            "JSON object of binarization parameters. "
+            "Supported keys: tolerance (float, fixed only, default 0.005), "
+            "n_bins (int, otsu only, default 256), "
+            "normalize (bool, default true), "
+            "noise_percentile (float, noise only, default 40.0). "
+            "Example: '{\"tolerance\": 0.01}'"
+        ),
+    )
+
     output_group = parser.add_mutually_exclusive_group()
     output_group.add_argument(
         "--save", type=Path, help="Save plot to file (disables interactive display)"
@@ -453,6 +499,16 @@ Examples:
     # Build downsampling config from CLI args (None when --downsample-method none)
     downsample_config = args_to_downsample_config(args)
     logger.info(f"Downsample config: {downsample_config}")
+
+    # Build binarize config from CLI args
+    binarize_params: dict = {}
+    if args.binarize_params:
+        try:
+            binarize_params = json.loads(args.binarize_params)
+        except json.JSONDecodeError as exc:
+            parser.error(f"--binarize-params is not valid JSON: {exc}")
+    binarize_config = BinarizeConfig(method=args.binarize_method, **binarize_params)
+    logger.info(f"Binarize config: {binarize_config}")
 
     # Construct hybrid key
     hybrid_key = f"kHz/{args.fepc_system}/{args.key}"
@@ -572,6 +628,7 @@ Examples:
         hours=hours_utc,
         normalize=args.normalize,
         downsample=downsample_config,
+        binarize_config=binarize_config,
     )
 
     # Save or show plot (show is the default when --save is not given)
