@@ -38,6 +38,7 @@ from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun, load_mrun
 from python_magnetrun.utils.downsampling import DownsampleConfig
 from python_magnetrun.utils.files import find_files, select_files
+from python_magnetrun.utils.timestamps import align_to_common_time
 
 logger = get_logger(__name__)
 
@@ -130,24 +131,19 @@ def plot_comparison(
     pupitre_field = HYBRID_TO_PUPITRE_MAP.get(hybrid_key)
     tdms_field = HYBRID_TO_TDMS_MAP.get(hybrid_key)
 
-    # Compute per-source UTC offsets for time-axis alignment
-    hybrid_origin = hybrid_data.get_time_range()[
-        0
-    ]  # naive UTC, from first kHz bin hour
-
-    # t_ref is always a pd.Timestamp so arithmetic with pdata/tdata.get_time_range()[0]
-    # (also pd.Timestamp) is well-defined.  When hours are given, anchor t=0 to the
-    # first requested UTC hour; otherwise anchor to hybrid_origin itself.
-    hybrid_ts = pd.Timestamp(hybrid_origin)
+    # Compute t_ref: anchor t=0 to hours[0]:00:00 UTC when hours are given,
+    # otherwise to hybrid origin.  t_ref is also used for the axis label.
+    hybrid_ts = pd.Timestamp(hybrid_data.get_time_range()[0])
     if hours is not None:
-        t_ref = hybrid_ts.replace(
-            hour=hours[0], minute=0, second=0, microsecond=0, nanosecond=0
-        )
+        t_ref = hybrid_ts.replace(hour=hours[0], minute=0, second=0, microsecond=0)
     else:
         t_ref = hybrid_ts
-    # Float offset (seconds) used to shift the kHz time array (which is already in
-    # seconds from hybrid_origin) so that t=0 aligns with t_ref.
-    t_ref_offset_s = (t_ref - hybrid_ts).total_seconds()
+
+    # Per-source offsets (seconds) so that source_time + offset aligns with t_ref.
+    offsets = align_to_common_time(
+        [hybrid_data] + pupitre_data + tdms_data,
+        reference=t_ref.to_pydatetime(),
+    )
 
     # Plot hybrid kHz data
     logger.info(f"Loading hybrid data for key: {hybrid_key}")
@@ -172,10 +168,10 @@ def plot_comparison(
             f"Hybrid data loaded: {len(data)} points, time range: "
             f"{time[0] if len(time) > 0 else 'N/A'} to {time[-1] if len(time) > 0 else 'N/A'} seconds"
         )
-        # Convert time to seconds from UTC hour boundary; anchor t=0 at first sample.
+        # Convert time to seconds relative to t_ref.
         if len(time) > 0:
             if hasattr(time[0], "timestamp"):
-                time_seconds = np.array([(t - time[0]).total_seconds() for t in time])
+                time_seconds = np.array([(t - t_ref).total_seconds() for t in time])
             else:
                 time_seconds = time
 
@@ -208,10 +204,7 @@ def plot_comparison(
                 # Align to the same t=0 as the primary hybrid trace.
                 if len(time) > 0:
                     if hasattr(time[0], "timestamp"):
-                        time_seconds = (
-                            np.array([(t - time[0]).total_seconds() for t in time])
-                            - t_ref_offset_s
-                        )
+                        time_seconds = np.array([(t - t_ref).total_seconds() for t in time])
                     else:
                         time_seconds = time
                 else:
@@ -245,7 +238,7 @@ def plot_comparison(
             try:
                 mdata = pdata.getMData()
                 if pupitre_field in mdata.getKeys():
-                    t_offset = (pdata.get_time_range()[0] - t_ref).total_seconds()
+                    t_offset = offsets[id(pdata)]
                     logger.info(
                         f"Pupitre timerange={pdata.get_time_range()}, offset={t_offset:.1f} s from hybrid origin"
                     )
@@ -288,7 +281,7 @@ def plot_comparison(
                 # Get the appropriate group (usually 'Courants_Alimentations')
                 tdms_keys = mdata.getKeys()
                 if tdms_field in tdms_keys:
-                    t_offset = (tdata.get_time_range()[0] - t_ref).total_seconds()
+                    t_offset = offsets[id(tdata)]
                     logger.info(
                         f"TDMS timerange={tdata.get_time_range()}, offset={t_offset:.1f} s from hybrid origin"
                     )

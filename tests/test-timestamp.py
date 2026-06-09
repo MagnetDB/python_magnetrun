@@ -367,3 +367,22 @@ class TestAlignToCommonTime:
         s = self._make(8)
         offsets = align_to_common_time([s])
         assert offsets[id(s)] == 0.0
+
+    def test_hours_snaps_reference_to_hour_boundary(self) -> None:
+        from python_magnetrun.utils.timestamps import align_to_common_time
+
+        # s10 starts at 10:00, s11 at 11:00; hours=[10] anchors t_ref to 10:00
+        s10, s11 = self._make(10), self._make(11)
+        offsets = align_to_common_time([s10, s11], hours=[10])
+        assert offsets[id(s10)] == 0.0
+        assert offsets[id(s11)] == 3600.0
+
+    def test_hours_with_source_starting_before_anchor(self) -> None:
+        from python_magnetrun.utils.timestamps import align_to_common_time
+
+        # s starts at 09:30; hours=[10] anchors t_ref to 10:00 → offset is -1800 s
+        s = _FakeSource(
+            datetime(2025, 1, 27, 9, 30, 0), datetime(2025, 1, 27, 10, 30, 0)
+        )
+        offsets = align_to_common_time([s], hours=[10])
+        assert offsets[id(s)] == -1800.0
