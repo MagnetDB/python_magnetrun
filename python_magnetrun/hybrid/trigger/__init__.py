@@ -8,7 +8,9 @@ Main components:
 """
 
 from .trigger_reader import (
+    TRIGGER_SAMPLING_FREQUENCY,
     TriggerFileInfo,
+    TriggerFileReader,
     TriggerInfo,
     create_time_array,
     find_trigger_directories,
@@ -22,8 +24,10 @@ from .trigger_reader import (
 )
 
 __all__ = [
+    "TRIGGER_SAMPLING_FREQUENCY",
     "TriggerInfo",
     "TriggerFileInfo",
+    "TriggerFileReader",
     "parse_eventinfo_properties",
     "parse_trigger_directory",
     "read_trigger_file_header",

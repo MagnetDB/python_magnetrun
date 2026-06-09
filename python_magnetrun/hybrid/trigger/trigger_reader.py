@@ -14,8 +14,10 @@ import struct
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+import pandas as pd
 
 from ...log_utils import SIMPLE_FORMAT, setup_logging
 from ...utils.validation import FileFormatError
@@ -736,6 +738,202 @@ def apply_calibration(
 
     # Linear calibration: y = a * x + b
     return calib.a * data + calib.b
+
+
+class TriggerFileReader:
+    """Reader for a single FEPC trigger event directory.
+
+    Mirrors the interface of :class:`~python_magnetrun.hybrid.rms.rms_reader.RMSFileReader`
+    and :class:`~python_magnetrun.hybrid.vprocess.vprocess_reader.VProcessFileReader`
+    so that :class:`~python_magnetrun.hybrid.hybrid_data.HybridData` can handle all
+    data types uniformly.
+
+    Parameters
+    ----------
+    trigger_dir : str or Path
+        Path to the trigger event directory
+        (e.g. ``TRIGGER__2025-01-06__08-16``).
+    system : str
+        FEPC system name (``'FEPC-LNCMI'`` or ``'FEPC-AUX-LNCMI'``).
+    endian : str, optional
+        Endianness: ``'big'`` (default) or ``'little'``.
+    """
+
+    def __init__(
+        self,
+        trigger_dir: str | Path,
+        system: str,
+        endian: str = "big",
+    ):
+        self.trigger_dir = Path(trigger_dir)
+        self.system = system
+        self.endian = endian
+        self._config: FEPCConfig | None = None
+
+    def load_config(self) -> FEPCConfig:
+        """Load FEPC configuration for this trigger event.
+
+        Returns
+        -------
+        FEPCConfig
+            Parsed configuration object.
+
+        Raises
+        ------
+        FileNotFoundError
+            If no CFG file is found in the system subdirectory.
+        """
+        if self._config is None:
+            config = load_trigger_config(self.trigger_dir, self.system)
+            if config is None:
+                raise FileNotFoundError(
+                    f"No CFG file found in {self.trigger_dir / self.system}"
+                )
+            self._config = config
+        return self._config
+
+    def get_variable_info(self) -> pd.DataFrame:
+        """Return a DataFrame with metadata for every variable in the config.
+
+        Returns
+        -------
+        pd.DataFrame
+            Columns: ``name``, ``type`` (``'float32'`` or ``'bool'``),
+            ``slot``, ``channel``, ``card_type``.
+        """
+        config = self.load_config()
+        rows: list[dict[str, Any]] = []
+        for card in config.cards:
+            type_str = "float32" if card.card_type == "ANA" else "bool"
+            for i, var_name in enumerate(card.variable_names):
+                rows.append(
+                    {
+                        "name": var_name,
+                        "type": type_str,
+                        "slot": card.slot,
+                        "channel": i,
+                        "card_type": card.card_type,
+                    }
+                )
+        return pd.DataFrame(rows)
+
+    def get_metadata(self) -> dict[str, Any]:
+        """Return trigger-event metadata.
+
+        Returns
+        -------
+        dict
+            Keys: ``trigger_dir``, ``system``, ``timestamp`` (approximate
+            trigger time from directory name), ``sample_idx``,
+            ``sampling_frequency``.
+        """
+        trigger_info = parse_trigger_directory(self.trigger_dir)
+        return {
+            "trigger_dir": str(self.trigger_dir),
+            "system": self.system,
+            "timestamp": trigger_info.timestamp,
+            "trigger_approx_timestamp": trigger_info.trigger_approx_timestamp,
+            "sample_idx": trigger_info.sample_idx,
+            "sampling_frequency": TRIGGER_SAMPLING_FREQUENCY,
+            "pre_samples": trigger_info.pre_samples,
+            "post_samples": trigger_info.post_samples,
+            "total_samples": trigger_info.total_samples,
+        }
+
+    def read_variable(
+        self,
+        variable: str,
+        apply_calib: bool = True,
+        cnv_dir: str | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, datetime]:
+        """Read one variable from this trigger event.
+
+        Parameters
+        ----------
+        variable : str
+            Variable name (e.g. ``'I_H1'``).
+        apply_calib : bool, optional
+            Apply calibration for analog channels (default: ``True``).
+        cnv_dir : str, optional
+            Directory containing CNV calibration files.  Defaults to the
+            trigger event's system subdirectory.
+
+        Returns
+        -------
+        data : np.ndarray
+            Calibrated (or raw uint16) 1-D array.
+        time : np.ndarray
+            Seconds elapsed from the start of this trigger file
+            (``0`` to ``~70``).
+        file_timestamp : datetime
+            Absolute UTC timestamp of sample 0 in this trigger file.
+
+        Raises
+        ------
+        ValueError
+            If *variable* is not found in the configuration.
+        FileNotFoundError
+            If the corresponding binary file is missing.
+        """
+        config = self.load_config()
+
+        # Locate card and channel
+        var_slot: int | None = None
+        var_channel: int | None = None
+        var_card = None
+        for card in config.cards:
+            if variable in card.variable_names:
+                var_slot = card.slot
+                var_channel = card.variable_names.index(variable)
+                var_card = card
+                break
+
+        if var_slot is None or var_channel is None or var_card is None:
+            available = [v for c in config.cards for v in c.variable_names]
+            raise ValueError(
+                f"Variable {variable!r} not found in {self.trigger_dir.name}. "
+                f"Available: {available}"
+            )
+
+        card_type = var_card.card_type
+
+        # Locate binary file
+        trigger_files = list_trigger_files(self.trigger_dir, self.system)
+        bin_file = next(
+            (
+                tf.filepath
+                for tf in trigger_files
+                if tf.slot == var_slot and tf.card_type == card_type
+            ),
+            None,
+        )
+        if bin_file is None:
+            raise FileNotFoundError(
+                f"No binary file for slot {var_slot}/{card_type} "
+                f"in {self.trigger_dir.name}/{self.system}"
+            )
+
+        # Read raw data and file-start timestamp
+        raw_data, file_timestamp = read_trigger_file(bin_file, card_type, self.endian)
+        channel_data: np.ndarray = raw_data[:, var_channel]
+
+        # Apply calibration for analog channels
+        if apply_calib and card_type == "ANA" and var_card.calibrations is not None:
+            from ..kHz.fepc_reader import calibrate_channel
+
+            cnv = cnv_dir or str(self.trigger_dir / self.system)
+            channel_data = calibrate_channel(
+                channel_data.astype(np.float64), var_card, var_channel, cnv
+            )
+        else:
+            channel_data = channel_data.astype(
+                np.float64 if card_type == "ANA" else bool
+            )
+
+        n = len(channel_data)
+        time = np.arange(n, dtype=np.float64) / TRIGGER_SAMPLING_FREQUENCY
+
+        return channel_data, time, file_timestamp
 
 
 if __name__ == "__main__":

@@ -703,7 +703,25 @@ class HybridRun:
             data = self._apply_voltage_mask(data, time, system, variable, key, opts, opts.binarize_config)
 
         elif data_type == "trigger":
-            return self.HybridData.list_trigger_files(system)
+            if variable is None:
+                return self.HybridData.list_trigger_events(system)
+
+            data, time = self.HybridData.read_trigger_variable(
+                system,
+                variable,
+                apply_calib=opts.apply_calib,
+                cnv_dir=opts.cnv_dir,
+            )
+
+        elif data_type == "vprocess":
+            if variable is not None:
+                raise ValueError(
+                    f"Invalid vprocess key: {key!r}. Expected 'vprocess/VARIABLE'"
+                )
+            # system holds the variable name (no FEPC system layer for vprocess)
+            data, time = self.HybridData.read_vprocess_variable(
+                system, hours=opts.hours
+            )
 
         else:
             raise ValueError(f"Unknown data type: {data_type}")
