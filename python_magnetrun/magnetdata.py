@@ -51,12 +51,25 @@ def load_magnetdata(
     - ``.txt``  → :class:`PandasMagnetData`
     - ``.csv``  → :class:`PandasMagnetData`
 
-    :param filename: path to the data file
-    :param defs_file: optional path to a field definitions JSON file
-    :param fmt: explicit format override (``DataType`` member name, e.g.
-        ``"tdms"``); when provided, extension detection is skipped
-    :return: the loaded data object
-    :raises ValueError: if the file extension is not recognised
+    Parameters
+    ----------
+    filename : str
+        Path to the data file.
+    defs_file : str, optional
+        Path to a field definitions JSON file.
+    fmt : str, optional
+        Explicit format override (``DataType`` member name, e.g.
+        ``"tdms"``); when provided, extension detection is skipped.
+
+    Returns
+    -------
+    MagnetDataBase
+        The loaded data object.
+
+    Raises
+    ------
+    ValueError
+        If the file extension is not recognised.
     """
     from .readers.registry import DataType, detect_type
 
@@ -85,12 +98,25 @@ def _fromtdms(
     This function contains the TDMS-specific loading logic previously on
     ``MagnetData.fromtdms``.
 
-    :param name: filename with a .tdms extension
-    :param defs_file: path to a field definitions file; defaults to the
-        bundled ``pigbrother-defs.json``
-    :raises FileNotFoundError: if *name* does not exist
-    :raises RuntimeError: if file extension is not .tdms or required group missing
-    :return: TdmsMagnetData instance
+    Parameters
+    ----------
+    name : str
+        Filename with a ``.tdms`` extension.
+    defs_file : str, optional
+        Path to a field definitions file; defaults to the bundled
+        ``pigbrother-defs.json``.
+
+    Returns
+    -------
+    TdmsMagnetData
+        Loaded TDMS data instance.
+
+    Raises
+    ------
+    FileNotFoundError
+        If *name* does not exist.
+    RuntimeError
+        If file extension is not ``.tdms`` or required group is missing.
     """
     from nptdms import TdmsFile
 

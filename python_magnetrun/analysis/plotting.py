@@ -156,6 +156,16 @@ def plot_data(
         Color configuration
     interactive : bool, optional
         Enable interactive incident annotations
+    backend : str or PlottingBackend, optional
+        Backend name or instance (default: auto-detected).
+    df_hybrid : pandas.DataFrame, optional
+        Hybrid data to overlay on the same axes; ``None`` skips.
+    df_hybrid_incidents : dict, optional
+        Incident DataFrames for hybrid data, same structure as
+        *df_incidents*; ``None`` skips.
+    hybrid_dict : dict, optional
+        Housing-specific mapping for hybrid channels, same structure as
+        *pupitre_dict*; ``None`` skips.
 
     Returns
     -------
