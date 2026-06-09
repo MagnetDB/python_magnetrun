@@ -312,3 +312,77 @@ class TestTimerangeToUtc:
     def test_start_before_end(self) -> None:
         t_start, t_end = timerange_to_utc("2023-07-18 15:06:00;2023-07-18 16:00:00")
         assert t_start < t_end
+
+
+# ---------------------------------------------------------------------------
+# align_to_common_time
+# ---------------------------------------------------------------------------
+
+
+class _FakeSource:
+    """Minimal stub satisfying _HasTimeRange."""
+
+    def __init__(self, start: datetime, end: datetime) -> None:
+        self._start = start
+        self._end = end
+
+    def get_time_range(self) -> tuple[datetime, datetime]:
+        return self._start, self._end
+
+
+class TestAlignToCommonTime:
+    def _make(self, hour: int) -> _FakeSource:
+        return _FakeSource(datetime(2025, 1, 27, hour, 0, 0),
+                           datetime(2025, 1, 27, hour + 1, 0, 0))
+
+    def test_earliest_source_offset_is_zero(self) -> None:
+        from python_magnetrun.utils.timestamps import align_to_common_time
+
+        s10, s11, s12 = self._make(10), self._make(11), self._make(12)
+        offsets = align_to_common_time([s10, s11, s12])
+        assert offsets[id(s10)] == 0.0
+
+    def test_later_sources_have_positive_offsets(self) -> None:
+        from python_magnetrun.utils.timestamps import align_to_common_time
+
+        s10, s11, s12 = self._make(10), self._make(11), self._make(12)
+        offsets = align_to_common_time([s10, s11, s12])
+        assert offsets[id(s11)] == 3600.0
+        assert offsets[id(s12)] == 7200.0
+
+    def test_explicit_reference(self) -> None:
+        from python_magnetrun.utils.timestamps import align_to_common_time
+
+        ref = datetime(2025, 1, 27, 10, 0, 0)
+        s = self._make(10)
+        s_later = _FakeSource(datetime(2025, 1, 27, 10, 5, 0),
+                              datetime(2025, 1, 27, 11, 5, 0))
+        offsets = align_to_common_time([s, s_later], reference=ref)
+        assert offsets[id(s)] == 0.0
+        assert offsets[id(s_later)] == 300.0
+
+    def test_single_source_offset_is_zero(self) -> None:
+        from python_magnetrun.utils.timestamps import align_to_common_time
+
+        s = self._make(8)
+        offsets = align_to_common_time([s])
+        assert offsets[id(s)] == 0.0
+
+    def test_hours_snaps_reference_to_hour_boundary(self) -> None:
+        from python_magnetrun.utils.timestamps import align_to_common_time
+
+        # s10 starts at 10:00, s11 at 11:00; hours=[10] anchors t_ref to 10:00
+        s10, s11 = self._make(10), self._make(11)
+        offsets = align_to_common_time([s10, s11], hours=[10])
+        assert offsets[id(s10)] == 0.0
+        assert offsets[id(s11)] == 3600.0
+
+    def test_hours_with_source_starting_before_anchor(self) -> None:
+        from python_magnetrun.utils.timestamps import align_to_common_time
+
+        # s starts at 09:30; hours=[10] anchors t_ref to 10:00 → offset is -1800 s
+        s = _FakeSource(
+            datetime(2025, 1, 27, 9, 30, 0), datetime(2025, 1, 27, 10, 30, 0)
+        )
+        offsets = align_to_common_time([s], hours=[10])
+        assert offsets[id(s)] == -1800.0

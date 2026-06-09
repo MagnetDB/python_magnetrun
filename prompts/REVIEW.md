@@ -1,6 +1,6 @@
 # Package Review: `python_magnetrun`
 
-Date: 2026-06-05 (updated)
+Date: 2026-06-09 (updated)
 
 ---
 
@@ -199,8 +199,8 @@ and `tests/test_hybrid_formula_resolution.py`.
 | Argument parsing for smoothing/logging | `cli_args.py` builders vs. `processing/cli.py` inline argparse | Planned — see `cli-consolidation.plan.md` |
 | Outlier detection | `hybrid/outliers.py` (canonical) + `processing/hysteresis.py::remove_outliers` (inline IQR/zscore/MAD) + `examples/outliers.py` (rolling-MAD inline) + 2 CLI-style test scripts | Done — canonical moved to `python_magnetrun/outliers.py`; `hybrid/outliers.py` is a shim; `OutlierConfig` dataclass + `OUTLIER_DEFAULTS` added; `create_outlier_parser`/`args_to_outlier_config` in `cli_args.py`; `hybrid_data.py` plot methods accept `OutlierConfig`; signal functions in `processing/signal.py`; `test_outliers.py` (142 tests); `isolation_forest` in `OutlierMethod` |
 | `RMSFileReader` / `VProcessFileReader` near-identical classes | `hybrid/rms/rms_reader.py`, `hybrid/vprocess/vprocess_reader.py` | Open — Stream 3.9 L2 (`_BinaryFileReaderBase` + single `ChannelVariable` dataclass) |
-| UTC→local hour conversion — 4 independent implementations | `hybrid_data.py` (×2), `analysis/processing.py`, `analysis/loaders.py` | Partial — Phase 2B B0.5 adds `utc_hour_to_local()` to `hybrid/utils.py` and consolidates 3 sites; `analysis/loaders.py` already UTC |
-| `plot_khz_variable` / `plot_rms_variable` ~80 % identical pipeline | `hybrid/plotting.py:444` and `:564` | Open — Stream 3.9 L1; highlight-mode double-read bug in RMS tracked as Phase 2B B2.5 |
+| UTC→local hour conversion — 4 independent implementations | `hybrid_data.py` (×2), `analysis/processing.py`, `analysis/loaders.py` | Done — Phase 2B B0.5: `utc_hour_to_local()` in `hybrid/utils.py`; `read_khz_variable` / `read_rms_variable` use UTC directly; `_utc_hour_to_local` closure removed from `analysis/processing.py`; `analysis/loaders.py` already UTC |
+| `plot_khz_variable` / `plot_rms_variable` ~80 % identical pipeline | `hybrid/plotting.py:444` and `:564` | Open — Stream 3.9 L1; highlight-mode double-read bug (B2.5) ✅ fixed |
 | `plot_khz_variables` / `plot_rms_variables` ~75 % identical | `hybrid/plotting.py:152` and `:314` | Open — Stream 3.9 L1 (same `_plot_variables_impl` extraction); RMS missing `downsample` param |
 | `_resolve_backend` exact duplicate | `hybrid/plotting.py:50`, `plotting/timeseries.py:34` | Open — Stream 3.9 S2 |
 | `log_exception` / `format_exception_location` — incompatible or duplicated signatures | `hybrid/utils.py:32`/`:97`, `log_utils.py:305`/`:361` | Open — Stream 3.9 M1 |
@@ -233,9 +233,11 @@ and `tests/test_hybrid_formula_resolution.py`.
 | Hardcoded default path in `cli_args.py` | Done |
 | Protocol duplication (`DataProvider` / `DataLoader`) | Done |
 | Timestamp convention (Pandas + TDMS) | Done |
+| Phase 2B: Time alignment (`utc_hour_to_local`, `_khz_first_last_utc`, RMS origin, `align_to_common_time`, demonstrator) | Done — B0.5–B4 all complete (`ca4b41a`…`fb79656`); 1052 tests pass |
+| `BinarizeConfig` dataclass in `hybrid/hybrid_run.py` | Done — `method`, `tolerance`, `n_bins`, `normalize`, `noise_percentile`; wired into `LoadOptions` + `getData` (`02c7783`) |
 | `HybridData` timestamp support | Pending (prerequisite `analysis/` Phase 6 is now done) |
 | Cross-domain comparison (`DataLoader` extension, Phase A0–A3) | Done |
-| Cross-domain comparison (Phases D–G: `ComparisonSession`, adapters, CLI) | Pending (Phases B–C done) |
+| Cross-domain comparison (Phases D–G: `ComparisonSession`, adapters, CLI) | Partial — Phases B–C done; Phase F stub registered (`f87e8ce`, `c13c179`); Phases D, E, G pending |
 | Reader/container split (`readers/` subpackage, Phases R1–R5) | Done — see `reader-container-refactoring.plan.md`; `HybridData` in hierarchy; `field_meta` bug fixed; 46 new tests |
 | Pattern entries in `*-defs.json` + `feelpp-defs.json` (Phase H) | Pending — extends cross-domain plan |
 | TDMS export (`PandasMagnetData.to_tdms()`) | Pending — see `pupitre_to_tdms_export.md` |
@@ -258,16 +260,18 @@ foundations. All major structural issues are now resolved: housing config consol
 shim replacement, `getUnitKey` fix, `saveData` delegation, hardcoded-path removal, `Data` promoted to
 an abstract property with lazy loading (`PandasMagnetData._ensure_data_loaded` + `TdmsMagnetData._LazyGroupDict`
 + context-manager support), Protocol unification (`DataLoader` only, Phase 2A complete), timestamp
-convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC), downsampling refactoring
+convention (`PandasMagnetData` + `TdmsMagnetData` both store naive UTC), Phase 2B time alignment
+(`utc_hour_to_local()`, `_khz_first_last_utc()`, RMS UTC midnight origin, `align_to_common_time(sources, reference, hours)`,
+demonstrator refactored; 1052 tests pass), `BinarizeConfig` dataclass in `hybrid_run.py`, downsampling refactoring
 (`DownsampleConfig`, shared `utils/downsampling.py`, `tsdownsample` extras; M4/NaN-M4, RDP/VW, and
 quality metrics all complete), plotting refactoring (subpackage, backends, label/legend uniformization),
 file validation infrastructure (committed and integrated), resilient pupitre-file loading (encoding
 fallback, `on_bad_lines="warn"`, empty-data guard, truncation check), `addData`/`computeData` metadata
 parameters (`symbol`, `unit`, `label`, `description` → `FieldMeta`), `HybridRun.getData` formula-key
 resolution (`_resolve_hybrid_formula`), CLI consolidation (13-subcommand `magnetrun` dispatcher,
-`register()` pattern, `main.py`), and reader/container split (`readers/` subpackage, `HybridData`
-joins `MagnetDataBase`, `DataType.HTS`, registry + `detect_type()`; `field_meta` init bug fixed;
-971 tests pass).
+`register()` pattern, `main.py`; `magnetrun compare` stub registered), and reader/container split
+(`readers/` subpackage, `HybridData` joins `MagnetDataBase`, `DataType.HTS`, registry + `detect_type()`;
+`field_meta` init bug fixed; 1052 tests pass).
 A cross-module review (`docs/hybrid_refactoring_notes.md`) identified 16 code-quality findings in the
 `hybrid/` subpackage and broader package; tracked as Stream 3.9 (S/M/L items — safe_float, _resolve_backend,
 log_exception, range schema, CNV calibration, plot unification, _BinaryFileReaderBase) and Stream 4.6
@@ -278,11 +282,12 @@ implementation with `hv.extension()` + Panel + datashader and subsume `analysis/
 **Package is production-ready for core use cases.** Remaining work in priority order:
 (1) known regressions (multiple-file plotting); (2) CI already in place (`test.yml` + `docs.yml`; `ruff` via pre-commit); (3) logging migration completion;
 (4) `hybrid/` internal refactoring — **all 6 phases complete** (`hybrid-subpackage-refactoring.plan.md`);
-(5) CLI consolidation — ✅ done (`cli-consolidation.plan.md`);
+(5) CLI consolidation — ✅ done (`cli-consolidation.plan.md`; `magnetrun compare` stub registered);
 (6) hybrid code quality — Stream 3.9 S/M/L items + Stream 4.6 trigger/VProcess integration (see `docs/hybrid_refactoring_notes.md`);
-(7) `HybridData` timestamp support (prerequisite `analysis/` Phase 6 complete — unblocked);
-(8) cross-domain Phases D–G (`ComparisonSession`, CLI);
-(9) optional HoloViews migration; (10) pipeline redesign (polars/narwhals).
+(7) Phase 2C — extend `plot_data()` for hybrid (Phase 2B now complete — **unblocked**);
+(8) `HybridData` timestamp support (prerequisite `analysis/` Phase 6 complete — unblocked);
+(9) cross-domain Phases D, E, G (`ComparisonSession`, full CLI handler; Phase F stub done);
+(10) optional HoloViews migration; (11) pipeline redesign (polars/narwhals).
 
 ---
 

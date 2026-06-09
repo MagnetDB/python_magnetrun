@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from .configAlims.convertxml import register as _register_alim
 from .field_defs import register as _register_field
 from .housing_config import register as _register_housing
 from .plotting.cli import register as _register_plot
@@ -37,6 +38,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     _register_plot(domain_sub)
     _register_housing(domain_sub)
     _register_field(domain_sub)
+    _register_alim(domain_sub)
     p.set_defaults(_handler=_run_config)
 
 
@@ -49,6 +51,7 @@ def main() -> None:
     _register_plot(sub)
     _register_housing(sub)
     _register_field(sub)
+    _register_alim(sub)
 
     args = parser.parse_args()
     sys.exit(args._domain_handler(args))

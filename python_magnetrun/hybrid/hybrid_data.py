@@ -23,6 +23,7 @@ Directory structure:
                 FEPC-LNCMI/
 """
 
+import contextlib
 import logging
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -554,24 +555,11 @@ class HybridData(MagnetDataBase):
         bin_files = sorted(khz_dir.glob(bin_pattern))
 
         if hours is not None:
-            # Filename hour is UTC; user-supplied hours are French local time.
-            # Convert each file's UTC hour to French local hour before comparing.
-            import datetime as _dt
-            from zoneinfo import ZoneInfo
-
-            _tz_paris = ZoneInfo("Europe/Paris")
-            _tz_utc = ZoneInfo("UTC")
-            _date = _dt.date.fromisoformat(self.date_str)
+            # Filename hours are UTC; hours parameter is UTC.
             filtered_files = []
             for f in bin_files:
                 try:
-                    utc_hour = int(f.name[:2])
-                    _dt_utc = _dt.datetime(
-                        _date.year, _date.month, _date.day,
-                        utc_hour, 0, 0, tzinfo=_tz_utc,
-                    )
-                    local_hour = _dt_utc.astimezone(_tz_paris).hour
-                    if local_hour in hours:
+                    if int(f.name[:2]) in hours:
                         filtered_files.append(f)
                 except ValueError:
                     pass
@@ -812,26 +800,11 @@ class HybridData(MagnetDataBase):
                 )
             files_to_load = [rms_files[file_idx]]
         elif hours is not None:
-            # Filename hour is UTC; user-supplied hours are French local time.
-            # Convert each file's UTC hour to French local hour before comparing.
-            import datetime as _dt
-            from zoneinfo import ZoneInfo
-
-            _tz_paris = ZoneInfo("Europe/Paris")
-            _tz_utc = ZoneInfo("UTC")
-            _date = _dt.date.fromisoformat(self.date_str)
-            files_to_load = []
-            for f in rms_files:
-                utc_hour = self._parse_rms_filename_hour(f)
-                if utc_hour is None:
-                    continue
-                _dt_utc = _dt.datetime(
-                    _date.year, _date.month, _date.day,
-                    utc_hour, 0, 0, tzinfo=_tz_utc,
-                )
-                local_hour = _dt_utc.astimezone(_tz_paris).hour
-                if local_hour in hours:
-                    files_to_load.append(f)
+            # Filename hours are UTC; hours parameter is UTC.
+            files_to_load = [
+                f for f in rms_files
+                if self._parse_rms_filename_hour(f) in hours
+            ]
             if not files_to_load:
                 raise ValueError(f"No RMS files found for hours {hours}")
             logger.debug(f"Loading {len(files_to_load)} RMS files for hours {hours}")
@@ -1814,3 +1787,48 @@ class HybridData(MagnetDataBase):
             show=show,
             save=save,
         )
+
+
+def _khz_first_last_utc(hdata: "HybridData") -> tuple[datetime, datetime]:
+    """Return (t_start, t_end) as naive UTC datetimes spanning the kHz bin files.
+
+    Parameters
+    ----------
+    hdata : HybridData
+        A fully initialised :class:`HybridData` instance whose
+        ``_info.khz_files`` has been populated by ``_discover_data``.
+
+    Returns
+    -------
+    tuple[datetime, datetime]
+        ``(t_start, t_end)`` — naive UTC datetimes.
+        *t_start* is ``HH:00:00 UTC`` for the earliest bin-file hour;
+        *t_end* is ``(HH+1):00:00 UTC`` for the latest bin-file hour.
+
+    Raises
+    ------
+    RuntimeError
+        If no kHz bin files are found.
+    """
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    all_utc_hours: list[int] = []
+    for key, files in hdata._info.khz_files.items():
+        if key.endswith("_cfg"):
+            continue
+        for f in files:
+            with contextlib.suppress(ValueError):
+                all_utc_hours.append(int(Path(f).name[:2]))
+    if not all_utc_hours:
+        raise RuntimeError("No kHz bin files found — cannot determine time range")
+
+    d = _dt.date.fromisoformat(hdata.date_str)
+    utc = ZoneInfo("UTC")
+    t_start = _dt.datetime(d.year, d.month, d.day, min(all_utc_hours), 0, 0,
+                           tzinfo=utc).replace(tzinfo=None)
+    t_end = (
+        _dt.datetime(d.year, d.month, d.day, max(all_utc_hours), 0, 0, tzinfo=utc)
+        + _dt.timedelta(hours=1)
+    ).replace(tzinfo=None)
+    return t_start, t_end

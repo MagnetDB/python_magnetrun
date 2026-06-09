@@ -30,6 +30,7 @@ def main() -> None:
 
     # workflow commands
     from .analysis.cli import register as _r_ana
+    from .comparison.cli import register as _r_cmp
     from .hybrid.cli import register as _r_hyb
     from .processing.cli import register as _r_proc
     from .runlogs.pigbrother import register as _r_log
@@ -38,6 +39,7 @@ def main() -> None:
     _r_proc(sub)
     _r_hyb(sub)
     _r_log(sub)
+    _r_cmp(sub)
 
     # infrastructure commands (were separate executables)
     from .config_cli import register as _r_cfg

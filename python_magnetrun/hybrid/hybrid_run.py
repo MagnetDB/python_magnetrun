@@ -29,7 +29,7 @@ Example usage:
 import logging
 import os
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +46,31 @@ from .hybrid_data import HybridData
 
 # Setup logger
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BinarizeConfig:
+    """Parameters forwarded to :func:`~python_magnetrun.processing.signal.binarize_signal`.
+
+    Parameters
+    ----------
+    method : str
+        Thresholding method: ``'otsu'`` (default), ``'fixed'``, or ``'noise'``.
+    tolerance : float
+        Threshold used only when *method* is ``'fixed'``.
+    n_bins : int
+        Histogram bins for Otsu's method.
+    normalize : bool
+        Normalize the signal by its maximum absolute value before thresholding.
+    noise_percentile : float
+        Percentile defining the noise population for method ``'noise'``.
+    """
+
+    method: str = "otsu"
+    tolerance: float = 0.005
+    n_bins: int = 256
+    normalize: bool = True
+    noise_percentile: float = 40.0
 
 
 @dataclass
@@ -67,6 +92,9 @@ class LoadOptions:
     # Calibration
     apply_calib: bool = True
     cnv_dir: str | None = None
+
+    # Voltage-mask binarization
+    binarize_config: BinarizeConfig | None = None
 
 
 @dataclass
@@ -595,6 +623,7 @@ class HybridRun:
                 hours=opts.hours,
                 apply_calib=opts.apply_calib,
                 cnv_dir=opts.cnv_dir,
+                binarize_config=opts.binarize_config,
             )
             logger.debug(f"LoadOptions opts: {opts}")
         logger.debug(f"opts: {opts}")
@@ -660,7 +689,7 @@ class HybridRun:
                 cnv_dir=opts.cnv_dir,
             )
 
-            data = self._apply_voltage_mask(data, time, system, variable, key, opts)
+            data = self._apply_voltage_mask(data, time, system, variable, key, opts, opts.binarize_config)
 
         elif data_type == "rms":
             if variable is None:
@@ -671,7 +700,7 @@ class HybridRun:
                 variable,
                 hours=opts.hours,
             )
-            data = self._apply_voltage_mask(data, time, system, variable, key, opts)
+            data = self._apply_voltage_mask(data, time, system, variable, key, opts, opts.binarize_config)
 
         elif data_type == "trigger":
             if variable is None:
@@ -715,12 +744,34 @@ class HybridRun:
         variable: str,
         key: str,
         opts,
+        binarize_config: BinarizeConfig | None = None,
     ) -> np.ndarray:
         """Zero out samples in *data* that fall outside the voltage-on intervals.
 
         The voltage channel is always kHz; its binary mask is projected onto
         *data*'s (possibly lower-rate) time grid via nearest-neighbour lookup.
         Returns *data* unchanged when no mask is configured or on any error.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Signal array to mask.
+        time : np.ndarray
+            Time axis for *data* (seconds from start of day).
+        system : str
+            FEPC system name (e.g. ``'FEPC-LNCMI'``).
+        variable : str
+            Variable name within *system*.
+        key : str
+            Full data key (used only for log messages).
+        opts : LoadOptions
+            Active load options; ``opts.binarize_config`` is used when
+            *binarize_config* is ``None``.
+        binarize_config : BinarizeConfig, optional
+            Override for the binarization parameters.  When ``None`` the value
+            from *opts.binarize_config* is used; when that is also ``None``
+            the defaults of
+            :func:`~python_magnetrun.processing.signal.binarize_signal` apply.
         """
         try:
             from ..housing_config import get_housing_config
@@ -746,7 +797,18 @@ class HybridRun:
                 f"mean={voltage_data.mean():.4g}, std={voltage_data.std():.4g}, "
                 f"n_nonzero={int(np.count_nonzero(voltage_data))}"
             )
-            v_mask = binarize_signal(voltage_data)
+            bcfg = binarize_config or opts.binarize_config
+            if bcfg is not None:
+                v_mask = binarize_signal(
+                    voltage_data,
+                    method=bcfg.method,
+                    tolerance=bcfg.tolerance,
+                    n_bins=bcfg.n_bins,
+                    normalize=bcfg.normalize,
+                    noise_percentile=bcfg.noise_percentile,
+                )
+            else:
+                v_mask = binarize_signal(voltage_data)
             logger.warning(
                 f"voltage mask stats: n_on={int(v_mask.sum())}/{v_mask.size} "
                 f"({100.0 * v_mask.mean():.1f}% on)"
@@ -934,16 +996,24 @@ class HybridRun:
         return "operational"
 
     def get_time_range(self) -> tuple[datetime, datetime]:
-        """Get time range of available data"""
+        """Get time range of available data.
+
+        Returns
+        -------
+        tuple[datetime, datetime]
+            ``(t_start, t_end)`` as naive UTC datetimes derived from the
+            kHz bin-file UTC hours present in the recording directory.
+
+        Raises
+        ------
+        RuntimeError
+            If no :class:`~python_magnetrun.hybrid.hybrid_data.HybridData`
+            is associated, or no kHz bin files are found.
+        """
         if self.HybridData is None:
             raise RuntimeError("No HybridData associated")
-
-        # Start of day
-        start = datetime.combine(self.HybridData.date, datetime.min.time())
-        # End of day
-        end = start + timedelta(days=1)
-
-        return start, end
+        from .hybrid_data import _khz_first_last_utc
+        return _khz_first_last_utc(self.HybridData)
 
     def get_data_at_time(
         self,

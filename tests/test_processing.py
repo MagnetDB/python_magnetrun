@@ -45,8 +45,8 @@ needs_ruptures = pytest.mark.skipif(not _has_ruptures, reason="ruptures not inst
 from python_magnetrun.processing.distance import (  # noqa: E402
     calc_correlation,
     calc_euclidean,
-    calc_mape,
 )
+from python_magnetrun.utils.scalar_metrics import calc_mae  # noqa: E402
 
 
 class TestCalcEuclidean:
@@ -75,27 +75,27 @@ class TestCalcEuclidean:
         assert calc_euclidean(a, b) == pytest.approx(3.0)
 
 
-class TestCalcMape:
+class TestCalcMae:
     def test_identical_arrays_returns_zero(self) -> None:
         a = np.array([1.0, 2.0, 3.0])
-        assert calc_mape(a, a) == pytest.approx(0.0)
+        assert calc_mae(a, a) == pytest.approx(0.0)
 
     def test_known_value(self) -> None:
         a = np.array([1.0, 2.0, 3.0])
         b = np.array([2.0, 3.0, 4.0])
         # mean(|[1, 1, 1]|) = 1.0
-        assert calc_mape(a, b) == pytest.approx(1.0)
+        assert calc_mae(a, b) == pytest.approx(1.0)
 
     def test_nonnegative(self) -> None:
         a = np.random.default_rng(42).standard_normal(20)
         b = np.random.default_rng(7).standard_normal(20)
-        assert calc_mape(a, b) >= 0.0
+        assert calc_mae(a, b) >= 0.0
 
     def test_symmetric_absolute_error(self) -> None:
-        """calc_mape uses absolute error so it should be symmetric."""
+        """calc_mae uses absolute error so it should be symmetric."""
         a = np.array([1.0, 2.0])
         b = np.array([3.0, 4.0])
-        assert calc_mape(a, b) == pytest.approx(calc_mape(b, a))
+        assert calc_mae(a, b) == pytest.approx(calc_mae(b, a))
 
 
 class TestCalcCorrelation:

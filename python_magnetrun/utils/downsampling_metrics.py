@@ -213,7 +213,7 @@ def _measure_peak_rss_subprocess(
         method=config.method,
         bucket_size=repr(config.bucket_size),
     )
-    payload = np.row_stack([time, data]).astype(np.float64).tobytes()
+    payload = np.vstack([time, data]).astype(np.float64).tobytes()
     result = subprocess.run(
         [sys.executable, "-c", script],
         input=payload,

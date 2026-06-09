@@ -654,9 +654,7 @@ def plot_rms_variable(
             b._get_ax(fig, 0).set_ylabel(ylabel)
 
         if highlight and outlier_result is not None:
-            orig_d, orig_t = hybrid_data.read_rms_variable(
-                system, variable, file_idx=file_idx, hours=hours
-            )
+            orig_d, orig_t = orig_data, orig_time
             _scatter_outliers(b, fig, 0, orig_d, orig_t, outlier_result,
                               f"Outliers ({outlier_result.n_outliers})", downsample, downsample_method)
 
@@ -666,9 +664,7 @@ def plot_rms_variable(
 
     b.add_series(fig, 0, time, data, label=f"{variable} (RMS)")
     if highlight and outlier_result is not None:
-        orig_d, orig_t = hybrid_data.read_rms_variable(
-            system, variable, file_idx=file_idx, hours=hours
-        )
+        orig_d, orig_t = orig_data, orig_time
         _scatter_outliers(b, fig, 0, orig_d, orig_t, outlier_result,
                           f"Outliers ({outlier_result.n_outliers})", downsample, downsample_method)
     _handle_output(b, fig, show, save)

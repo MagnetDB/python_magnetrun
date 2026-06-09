@@ -1,6 +1,6 @@
 # Development Roadmap — python_magnetrun
 
-*Updated: 2026-06-05*
+*Updated: 2026-06-09*
 
 This document outlines strategic priorities and upcoming work. For detailed implementation status, see [CHECK_IMPLEMENTATION.md](CHECK_IMPLEMENTATION.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -29,6 +29,9 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 - ✅ Outlier deduplication (canonical `python_magnetrun/outliers.py`; `hybrid/outliers.py` is a shim; `hysteresis.py` thin-delegates; `tests/test_outliers.py` 142 tests; `ISOLATION_FOREST` added to `OutlierMethod`)
 - ✅ `hybrid/` subpackage refactoring — all 6 phases (`OutlierConfig` dataclass, `OUTLIER_DEFAULTS`, `processing/signal.py`, cache-eviction docstring, all-NaN / file-existence guards, typed exceptions; 866 tests pass)
 - ✅ Reader/container split (`readers/` subpackage; `PupitreReader`, `BProfileReader`, `EnsightReader`, `FeelppReader`, `CsvReader`, `TdmsReader`, `HtsReader`, `HybridReader`; `DataType.HTS = 4`; `HybridData` joins `MagnetDataBase` hierarchy, fixing `field_meta` init bug; `READERS`/`CONTAINERS` registry + `detect_type()`; 46 new tests; 971 pass)
+- ✅ Phase 2B: Time Alignment Layer complete — `utc_hour_to_local()` in `hybrid/utils.py`; UTC `hours` in `read_khz_variable`/`read_rms_variable`; `_khz_first_last_utc()` + `HybridRun.get_time_range()` fix; RMS time origin from UTC midnight; `align_to_common_time(sources, reference, hours)` in `utils/timestamps.py`; demonstrator refactored; 1052 tests pass
+- ✅ `BinarizeConfig` dataclass in `hybrid/hybrid_run.py` (`method`, `tolerance`, `n_bins`, `normalize`, `noise_percentile`); wired into `LoadOptions` and `getData` flow
+- ✅ `comparison/cli.py` stub + `register()` wired into unified dispatcher — `magnetrun compare` now discoverable
 
 ---
 
@@ -75,47 +78,24 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 - `MagnetRun` and `HybridRun` both satisfy protocol
 - `get_time_range()` and `getDomain()` implemented
 
-**Phase 2B: Time Alignment Layer** 🔶 **PARTIAL**
+**Phase 2B: Time Alignment Layer** ✅ **COMPLETE**
 
 **How t0 works per source:**
 - **Pupitre** (`MagnetRun.from_txt`): header timestamp is local time → `local_to_utc_naive()` → `StartTime` = naive UTC. `get_time_range()` returns `(StartTime, StartTime + duration)`.
 - **Pigbrother** (`MagnetRun.fromtdms`): `wf_start_time` TDMS property is already UTC → `ensure_utc_naive()` → `StartTime` = naive UTC. `get_time_range()` reads `wf_start_time` directly.
-- **Hybrid kHz**: `compute_hour_t0(first_bin_file, date_str)` extracts `HH` from filename (already UTC — `tz_name` arg is a no-op). `getData()` returns elapsed seconds from this t0. `HybridRun.get_time_range()` currently returns start-of-day (no file lookup).
-- **Hybrid RMS**: internal datetime index is available but discarded; `getData()` returns seconds relative to first sample only.
+- **Hybrid kHz**: `compute_hour_t0(first_bin_file, date_str)` extracts `HH` from filename (UTC). `getData()` returns elapsed seconds from this t0. `HybridRun.get_time_range()` now calls `_khz_first_last_utc(hdata)` for an accurate `(t_start, t_end)` from bin-file UTC hours.
+- **Hybrid RMS**: time is now seconds since UTC midnight of the recording date.
 
-A working prototype exists in `examples/plot_hybrid_with_pupitre_tdms.py` but has two latent timezone bugs: (a) `hours` is treated as local time inside `read_khz_variable` / `read_rms_variable` but as UTC in the demonstrator's offset formula; (b) per-source offsets use filename-parsed local time instead of `get_time_range()[0]` (UTC).  Both bugs cause a DST-sized (~2 h) misalignment in summer sessions.
+**Completed tasks:**
 
-**See:** [phase2b-time-alignment.plan.md](phase2b-time-alignment.plan.md) for full analysis and implementation plan.
+- ✅ **B0.5** — `utc_hour_to_local()` added to `hybrid/utils.py`; `read_khz_variable` / `read_rms_variable` use UTC `hours` directly; `_utc_hour_to_local` closure removed from `analysis/processing.py` (`ca4b41a`)
+- ✅ **B1** — `_khz_first_last_utc(hdata)` helper in `hybrid_data.py`; `HybridRun.get_time_range()` now calls it (`e397101`)
+- ✅ **B2** — RMS time origin changed to seconds since UTC midnight of recording date (`e397101`)
+- ✅ **B2.5** — `plot_rms_variable` uses stashed `orig_data`/`orig_time` in both highlight branches; double-read eliminated
+- ✅ **B3** — `align_to_common_time(sources, reference, hours)` in `utils/timestamps.py` (`e67233c`, `fb79656`)
+- ✅ **B4** — demonstrator `examples/plot_hybrid_with_pupitre_tdms.py` refactored to use `align_to_common_time()` (`1ab50de`)
 
-**Remaining tasks:**
-
-1. **B0.5 — Standardise `hours` = UTC** *(was: "confirm timezone", already resolved in `compute_hour_t0`)*
-   - `read_khz_variable` and `read_rms_variable` convert UTC filename hours → local before comparing against `hours`; change to direct UTC comparison.
-   - Add `utc_hour_to_local()` to `hybrid/utils.py` for display/UI use only.
-   - Update `analysis/processing.py:load_hybrid_data` (remove `_utc_hour_to_local` closure).
-   - `analysis/loaders.py` already uses UTC — no change.
-
-2. **B1 — Fix `HybridRun.get_time_range()`**
-   - Derive t0 from first available kHz bin file's UTC hour; return `(t0_utc_naive, last_hour_end_utc_naive)`.
-   - Add `_khz_first_last_utc(hdata)` helper reusing `compute_hour_t0` logic.
-
-3. **B2 — Fix RMS time origin**
-   - In `HybridData.read_rms_variable()`, change `time = (time_ns - time_ns[0]) / 1e9` to seconds since UTC midnight of the recording date.
-
-4. **B2.5 — Fix `plot_rms_variable` double-read bug** *(from `docs/hybrid_refactoring_notes.md` item 3)*
-   - In highlight mode, use stashed `orig_data`/`orig_time` instead of re-calling `read_rms_variable()` twice.
-
-5. **B3 — Add `align_to_common_time(sources, reference=None)`**
-   - In `utils/timestamps.py`: compute `offset = (source.get_time_range()[0] - ref).total_seconds()` per source.
-   - Caller adds offset to the time array from `getData()`.
-
-6. **B4 — Refactor demonstrator**
-   - Replace `t0 = hours[0] * 3600` and `t0_from_filename` / `t0_from_tdms_filename` with `align_to_common_time([hrun, *pupitre, *tdms])`.
-   - X-axis label shows UTC origin from `hrun.get_time_range()[0]`.
-
-**Effort:** ~1 day (B0.5 + B2 + B2.5 can run in parallel with B1)
-
-**Sequencing:** B0.5 → B1 → B3 → B4; B2 and B2.5 independent (run in parallel)
+**See:** [phase2b-time-alignment.plan.md](phase2b-time-alignment.plan.md) for full analysis.
 
 **Phase 2C: Extend `plot_data()` for Hybrid** ⬜ **PLANNED**
 
@@ -129,7 +109,7 @@ def plot_data(
 )
 ```
 
-**Depends on:** Phase 2B completion
+**Depends on:** Phase 2B — ✅ **now complete**
 **Effort:** ~2-3 weeks
 
 **Phase 2D: Side-by-Side Comparison** ⬜ **PLANNED**
@@ -268,7 +248,7 @@ Items 2 and 3 from the notes are already tracked as B0.5 and B2.5 in Phase 2B. I
 - **Phase H:** Pattern entries in `*-defs.json` + `feelpp-defs.json` (independent, do any time — see Stream 3.7)
 - Phase D: Extend `*-defs.json` with simulation/bfield aliases; `KeyMapping` (reuses `field_defs.build_crossref()`)
 - Phase E: `ComparisonSession` implementation; cleaner now that Stream 3.6 R4 is complete (`HybridData` in hierarchy)
-- Phase F: `magnetrun compare` subcommand via `comparison/cli.py::register()` — wired into the unified `magnetrun` dispatcher (**no** standalone `magnetrun-compare` entry point; see `cli-consolidation.plan.md`)
+- Phase F: `magnetrun compare` subcommand via `comparison/cli.py::register()` — ✅ **stub registered** (`f87e8ce`, `c13c179`); handler raises `NotImplementedError` until Phase E (`ComparisonSession`) is complete
 - Phase G: Comprehensive tests
 - **Depends on:** HybridData timestamp support; CLI consolidation (Stream 3.3) should land first or in the same branch; Phase E significantly cleaner after Stream 3.6 R4
 - **See:** [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
@@ -337,14 +317,8 @@ Month 1 (May 2026)
 └─ Phase 2B: Time alignment layer (start)
 
 Month 2 (June 2026)
-├─ Phase 2B: Time alignment layer (complete — ~1 day total, see phase2b-time-alignment.plan.md)
-│   ├─ B0.5: standardise hours=UTC + utc_hour_to_local utility
-│   ├─ B1: fix HybridRun.get_time_range() (bin-file lookup)
-│   ├─ B2: fix RMS time origin (seconds from UTC midnight)
-│   ├─ B2.5: fix plot_rms_variable double-read bug
-│   ├─ B3: add align_to_common_time() in utils/timestamps.py
-│   └─ B4: refactor plot_hybrid_with_pupitre_tdms.py demonstrator
-├─ Phase 2C: Extend plot_data() for hybrid (start)
+├─ Phase 2B: Time alignment layer ✅ DONE (B0.5–B4 all landed; see commits ca4b41a…fb79656)
+├─ Phase 2C: Extend plot_data() for hybrid (start) ← NOW UNBLOCKED
 └─ Logging migration (ongoing)
 
 Month 3 (July 2026)
@@ -403,6 +377,7 @@ graph TD
 **Improves Phase E:** Stream 3.6 R4 (`HybridData` joins hierarchy) ✅ complete — Phase E can now be implemented cleanly
 **Independent:** Quick wins, logging migration, CLI consolidation, type hints, Stream 3.7 (pattern defs), Stream 3.8a/b/c (downsampling extensions — all additive)
 **Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.3 CLI ✅ · 3.4 namespace ✅ · 3.5 outlier dedup ✅ · 3.6 reader split ✅ · 3.8a M4/NaN-M4 ✅ · 3.8b RDP/VW ✅ · 3.8c metrics ✅ · 3.7 pattern defs open · 3.9 code quality open
+**Phase 2B status:** ✅ complete (B0.5 · B1 · B2 · B2.5 · B3 · B4 all done; 1052 tests pass)
 
 ---
 
@@ -410,6 +385,7 @@ graph TD
 
 **By End of Q2 2026:**
 - [x] CI/CD pipeline running on all PRs (`test.yml` + `docs.yml` already in place; `ruff` via pre-commit)
+- [x] Phase 2B: Time Alignment Layer complete
 - [ ] Multiple-file plotting regression fixed
 - [ ] Quick wins completed
 

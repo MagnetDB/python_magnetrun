@@ -306,3 +306,167 @@ class TestHybridData:
         assert isinstance(variables, dict)
         assert "analog" in variables
         assert "I_H1" in variables["analog"]
+
+
+# ---------------------------------------------------------------------------
+# B0.5 — hours parameter is UTC
+# ---------------------------------------------------------------------------
+
+
+class TestUtcHourToLocal:
+    def test_winter_utc_plus_one(self):
+        """In CET (UTC+1), UTC 10 = local 11."""
+        from python_magnetrun.hybrid.utils import utc_hour_to_local
+
+        assert utc_hour_to_local(10, "2025-01-27") == 11
+
+    def test_summer_utc_plus_two(self):
+        """In CEST (UTC+2), UTC 10 = local 12."""
+        from python_magnetrun.hybrid.utils import utc_hour_to_local
+
+        assert utc_hour_to_local(10, "2025-07-15") == 12
+
+    def test_midnight_utc(self):
+        """UTC 0 in winter = local 1."""
+        from python_magnetrun.hybrid.utils import utc_hour_to_local
+
+        assert utc_hour_to_local(0, "2025-01-27") == 1
+
+
+class TestLocalHourToUtc:
+    def test_winter_local_to_utc(self):
+        """CET (UTC+1): local 11 → UTC 10."""
+        from python_magnetrun.hybrid.utils import local_hour_to_utc
+
+        assert local_hour_to_utc(11, "2025-01-27") == 10
+
+    def test_summer_local_to_utc(self):
+        """CEST (UTC+2): local 12 → UTC 10."""
+        from python_magnetrun.hybrid.utils import local_hour_to_utc
+
+        assert local_hour_to_utc(12, "2025-07-15") == 10
+
+    def test_roundtrip_with_utc_to_local(self):
+        """local_hour_to_utc and utc_hour_to_local are inverses."""
+        from python_magnetrun.hybrid.utils import local_hour_to_utc, utc_hour_to_local
+
+        for date_str in ("2025-01-27", "2025-07-15"):
+            for utc_h in range(0, 22):  # stop at 21 to avoid midnight wrap edge cases
+                assert local_hour_to_utc(utc_hour_to_local(utc_h, date_str), date_str) == utc_h
+
+
+class TestKhzHoursFilterUTC:
+    """Verify that read_khz_variable hours= parameter selects files by UTC hour directly."""
+
+    def _make_dir(self, tmp_path: Path, date_str: str, fepc: str, hours: list[int]) -> Path:
+        """Create a kHz directory with stub .bin and .CFG files for each hour."""
+        khz_dir = tmp_path / "kHz" / date_str / fepc
+        khz_dir.mkdir(parents=True)
+        slot = 0  # first card in CFG gets slot index 0
+        for h in hours:
+            (khz_dir / f"{h:02d}HOST_1_LIST_{slot}.bin").write_bytes(b"")
+        cfg_path = khz_dir / "HOST_2_DATA.CFG"
+        cfg_path.write_text(f"{fepc};1;1000;0;0;ANALOG;1\nU_Alim\n")
+        return khz_dir
+
+    def test_utc_hour_10_selects_correct_file(self, tmp_path: Path):
+        """hours={10} should include the 10*.bin file but not 09*.bin."""
+        from unittest.mock import patch
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        date_str = "2025-07-15"
+        fepc = "FEPC-LNCMI"
+        self._make_dir(tmp_path, date_str, fepc, hours=[9, 10, 11])
+
+        hd = HybridData(base_dir=str(tmp_path), date_str=date_str, fepc_system=fepc)
+
+        captured: list = []
+
+        def _fake_read_hour_file(path, card_type, endian, t0, debug=False):
+            import numpy as np
+            captured.append(Path(path).name)
+            return np.array([1.0]), np.array([0.0])
+
+        import contextlib
+
+        with patch(
+            "python_magnetrun.hybrid.hybrid_data.read_hour_file",
+            side_effect=_fake_read_hour_file,
+        ), patch(
+            "python_magnetrun.hybrid.hybrid_data.compute_hour_t0",
+            return_value=36000.0,
+        ), contextlib.suppress(ValueError, RuntimeError, TypeError, IndexError):
+            hd.read_khz_variable("FEPC-LNCMI", "U_Alim", hours={10})
+
+        selected_hours = {int(name[:2]) for name in captured}
+        assert 10 in selected_hours, f"Expected hour 10 in {selected_hours}"
+        assert 9 not in selected_hours, f"Hour 9 should be excluded, got {selected_hours}"
+        assert 11 not in selected_hours, f"Hour 11 should be excluded, got {selected_hours}"
+
+
+# ---------------------------------------------------------------------------
+# B1 — HybridRun.get_time_range() returns naive UTC from bin files
+# ---------------------------------------------------------------------------
+
+
+class TestHybridRunGetTimeRange:
+    """Tests for HybridRun.get_time_range() — Phase B1."""
+
+    def _make_run(self, tmp_path: Path, date_str: str, fepc: str, hours: list[int]) -> object:
+        """Build a minimal HybridRun backed by stub bin files for *hours*."""
+        from python_magnetrun.hybrid.hybrid_run import HybridRun
+
+        khz_dir = tmp_path / "kHz" / date_str / fepc
+        khz_dir.mkdir(parents=True)
+        for h in hours:
+            (khz_dir / f"{h:02d}HOST_1_LIST_0.bin").write_bytes(b"")
+        cfg_path = khz_dir / "HOST_2_DATA.CFG"
+        cfg_path.write_text(f"{fepc};1;1000;0;0;ANALOG;1\nU_Alim\n")
+        return HybridRun.fromdir(str(tmp_path), date_str, fepc_system=fepc)
+
+    def test_returns_naive_utc_pair(self, tmp_path: Path):
+        """get_time_range() must return two naive (tzinfo=None) datetime objects."""
+        import datetime
+
+        hrun = self._make_run(tmp_path, "2025-01-27", "FEPC-LNCMI", [10, 11])
+        t_start, t_end = hrun.get_time_range()
+
+        assert isinstance(t_start, datetime.datetime)
+        assert isinstance(t_end, datetime.datetime)
+        assert t_start.tzinfo is None
+        assert t_end.tzinfo is None
+
+    def test_start_hour_matches_min_bin_hour(self, tmp_path: Path):
+        """t_start.hour should equal the lowest UTC hour found in bin filenames."""
+        hrun = self._make_run(tmp_path, "2025-01-27", "FEPC-LNCMI", [9, 10, 11])
+        t_start, _ = hrun.get_time_range()
+        assert t_start.hour == 9
+
+    def test_end_hour_is_max_plus_one(self, tmp_path: Path):
+        """t_end.hour should equal max(bin hours) + 1."""
+        hrun = self._make_run(tmp_path, "2025-01-27", "FEPC-LNCMI", [9, 10, 11])
+        _, t_end = hrun.get_time_range()
+        assert t_end.hour == 12
+
+    def test_end_wraps_to_next_day_when_max_hour_23(self, tmp_path: Path):
+        """Hour 23 + 1 must not overflow the datetime constructor."""
+        import datetime
+
+        hrun = self._make_run(tmp_path, "2025-01-27", "FEPC-LNCMI", [22, 23])
+        _, t_end = hrun.get_time_range()
+        assert t_end == datetime.datetime(2025, 1, 28, 0, 0, 0)
+
+    def test_raises_when_no_bin_files(self, tmp_path: Path):
+        """get_time_range() must raise RuntimeError when no bin files exist."""
+        from python_magnetrun.hybrid.hybrid_run import HybridRun
+
+        date_str = "2025-01-27"
+        fepc = "FEPC-LNCMI"
+        khz_dir = tmp_path / "kHz" / date_str / fepc
+        khz_dir.mkdir(parents=True)
+        (khz_dir / "HOST_2_DATA.CFG").write_text(f"{fepc};1;1000;0;0;ANALOG;1\nU_Alim\n")
+        hrun = HybridRun.fromdir(str(tmp_path), date_str, fepc_system=fepc)
+
+        with pytest.raises(RuntimeError, match="No kHz bin files found"):
+            hrun.get_time_range()
