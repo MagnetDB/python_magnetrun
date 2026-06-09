@@ -270,6 +270,45 @@ Items 2 and 3 from the notes are already tracked as B0.5 and B2.5 in Phase 2B. I
 - **Effort:** XL
 - **See:** [docs/hybrid_refactoring_notes.md](../docs/hybrid_refactoring_notes.md) item 10
 
+**4.7 Parquet Save/Load with Rich Metadata** ⬜ **PLANNED**
+
+**Goal:** Self-describing persistent format for `MagnetDataBase` instances — survives the round-trip through ETL and S3 storage (RustFS) without the original raw file or defs JSON.
+
+**Key design decisions:**
+- `pyarrow` for the saver; `polars` stays in `rustfs/magnetfs` (D8)
+- `pint.Unit` serialised as `str(unit)` UTF-8; `""` represents `None` (D1)
+- `FieldMeta` gains `category: str = ""` (TDMS group, pupitre bucket, hybrid prefix) instead of a degenerate `Groups` dict (D2)
+- `timestamp` column dropped from saved data; reconstructed lazily via `getTimestamp()` from `t + start_timestamp` (D3)
+- `start/end_timestamp` stored as split `(seconds, nanos)` byte-string pair for nanosecond precision (D4)
+- `properties: dict` on `MagnetDataBase`; caller-populated via `setProperty()` before `saveParquet()` (D5)
+- One group per Parquet file initially; multi-group manifest layout deferred to Phase 8 (D6)
+- S3 layer lives in `rustfs/magnetfs`, not in `python_magnetrun` — `saveParquet` accepts `IO[bytes]` (D7)
+
+**Phases:**
+
+| Phase | Task | Effort |
+|-------|------|--------|
+| 1 | `category: str = ""` on `FieldMeta`; `load_units_from_json` reads it; `addData`/`computeData` gain `category=`; editorial: add `"category"` to all three defs JSON files | S |
+| 2 | `properties: dict = {}` on `MagnetDataBase.__init__`; `setProperty`/`getProperty` methods | S |
+| 3 | New `python_magnetrun/io/parquet.py` — serialization helpers, `_serialize_unit`, `_serialize_field_meta`, timestamp helpers; `PandasMagnetData.saveParquet` + `loadParquet` | M |
+| 4 | `getTimestamp()` lazy materialiser on `MagnetDataBase`; audit `extractTimeData` / alignment code | S |
+| 5 | `TdmsMagnetData.saveParquet(target, group=)` + `loadParquet`; category derived from key prefix | M |
+| 6 | `load_magnetrun_parquet()` factory (dispatches on `magnetrun.source_type`); `MagnetRun.fromparquet` + `saveParquet` | S |
+| 7 | S3 thin wrappers in `rustfs/magnetfs/parquet_io.py` (`save_to_s3`/`load_from_s3`); `magnetfs` CLI gains `magnetrun-save`/`magnetrun-load` subcommands | M |
+| 8 | Multi-group manifest layout (`run.parquet/` dir + `_manifest.json`); HybridRun integration | XL — **deferred** |
+
+**Execution order:** 1 → 2 → 3 → 4 → 5 → 6 → 7; Phase 8 deferred until single-group case is proven.
+
+**New optional dependency:** `pyarrow` (add as `io` extras group in `pyproject.toml`).
+
+**Depends on:** nothing — fully independent of all current work streams. Phase 1 (`category` on `FieldMeta`) is useful on its own even if Phases 3–7 are deferred.
+
+**Effort:** S + S + M + S + M + S + M = ~3 days (Phases 1–7); Phase 8 XL separate.
+
+**See:** [parquet-save-load.plan.md](parquet-save-load.plan.md) — full design decisions (D1–D8), metadata schema v1, API, open questions (S3 key convention, boto3 dep, compression, `properties` shape).
+
+---
+
 **4.3 Pipeline Redesign (polars/narwhals)**
 - Custom npTDMS with polars backend
 - narwhals wrapping for framework-agnostic API
@@ -362,6 +401,10 @@ graph TD
     R4 --> F
     R4 -.fixed field_meta bug.-> T[4.5 TDMS Export]
 
+    PQ1[4.7 Phase 1: FieldMeta category] --> PQ3[4.7 Parquet Save/Load P3-P6]
+    PQ3 --> PQ7[4.7 Phase 7: S3 wrapper]
+    PQ1 -.independent.-> F
+
     H1[3.7 Pattern defs H1-H3] -.independent.-> F
 
     G[CI Pipeline] -.-> HH[mypy Enabled]
@@ -419,6 +462,7 @@ The following items are recognized but explicitly deferred:
 - **[REVIEW.md](REVIEW.md)** — Architecture review and resolved issues
 - **[CODE_REVIEW.md](CODE_REVIEW.md)** — Code quality guidelines
 - **[phase2b-time-alignment.plan.md](phase2b-time-alignment.plan.md)** — Phase 2B detailed plan (hours semantics, get_time_range fix, align_to_common_time)
+- **[parquet-save-load.plan.md](parquet-save-load.plan.md)** — Stream 4.7: Parquet save/load design (D1–D8 decisions, metadata schema v1, 8-phase implementation plan, S3 integration)
 - **Plan files:** `*-plan.md`, `*-prompt.md` — Detailed implementation plans for specific features
 
 ---
