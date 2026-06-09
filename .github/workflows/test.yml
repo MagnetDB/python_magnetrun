@@ -67,7 +67,7 @@ jobs:
       - name: Install git and Python
         run: |
           apt-get update
-          apt-get install -y git git-lfs python3 python3-pip python3-venv
+          apt-get install -y git git-lfs python3 python3-pip python3-venv curl gpg
 
       - name: Checkout repository
         uses: actions/checkout@v4
