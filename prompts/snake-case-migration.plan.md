@@ -1,6 +1,31 @@
 # Plan: Adopt snake_case across python_magnetrun
 
-Date: 2026-04-13
+Date: 2026-04-13 (updated 2026-06-09)
+
+---
+
+## Current Status (2026-06-09)
+
+**Prerequisites completed:**
+- `fix-remaining-issues.plan.md` — done
+- `cli-consolidation.plan.md` — fully implemented
+
+**What exists now:**
+- 47 methods have `# noqa: N802` but **zero `DeprecationWarning`** — they are still primary implementations, not shims
+- `MagnetRun.py` has 14 more camelCase methods without even the noqa comment
+- No snake_case counterparts exist yet (the only snake_case method added so far is `get_time_range`)
+- Extensive internal callers: `commands/`, `processing/`, `analysis/`, `runetl.py`, `waterflow_pipeline.py`, tests
+
+**Immediate next action:** Begin Pass 1 — add snake_case implementations and camelCase shims across the four core files.
+
+---
+
+## Open Questions (must resolve before Pass 1)
+
+1. **`hybrid/hybrid_run.py`** — its camelCase methods (`getData`, `getKeys`, etc.) mirror `MagnetRun`'s. Should they follow the same shim pattern, or is `HybridRun` considered internal-only (no external callers)?
+2. **`requests/` subpackage** — `GObject.py`, `HMagnet.py`, `MRecord.py`, `webscrapping.py` all have camelCase. Are these in scope for Pass 1, or treated separately (they are closer to external API)?
+3. **`simulation/simulation_run.py` and `bfield/bfield_run.py`** — forward-delegate to wrapped objects using camelCase. Should their own camelCase facade methods be shimmed, or are they purely internal?
+4. **`panels/*.py`** — scripts, not importable modules. Update in-place in Pass 2 or defer?
 
 ---
 
