@@ -1,6 +1,6 @@
 # Implementation Status — python_magnetrun
 
-*Last updated: 2026-06-05 — branch `rework_analysis`*
+*Last updated: 2026-06-09 — branch `rework_analysis`*
 
 This document tracks detailed implementation status and task completion. For strategic direction, see [ROADMAP.md](ROADMAP.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -120,23 +120,20 @@ HybridRun                   ← satisfies DataLoader protocol
 | `HybridRun` satisfies protocol | ✅ Done | `hybrid/hybrid_run.py` | Cross-domain Phase A0–A3 complete (commit `de9f374`) |
 | Protocol compliance tests | ✅ Done | `tests/test_protocol.py` | Verifies both classes satisfy protocol |
 
-#### Phase 2B: Time Alignment Layer 🟡 PARTIAL
+#### Phase 2B: Time Alignment Layer ✅ COMPLETE
 
 **See:** [phase2b-time-alignment.plan.md](phase2b-time-alignment.plan.md) for full analysis and timezone bug details.
 
-| Task | Status | Notes |
-|------|--------|-------|
-| TDMS `wf_start_time` exposed | ✅ Done | `get_time_range()` via protocol |
-| Pupitre naive UTC timestamps | ✅ Done | `PandasMagnetData.addTime()` converts local → UTC |
-| B0.5 — Standardise `hours` = UTC in `read_khz_variable` / `read_rms_variable` | 🔴 Open | Add `utc_hour_to_local()` to `hybrid/utils.py`; remove `_utc_hour_to_local` closure in `analysis/processing.py` |
-| B1 — Fix `HybridRun.get_time_range()` | 🔴 Open | Derive t0 from first kHz bin file via `compute_hour_t0`; return `(t0_utc_naive, last_hour_end)` |
-| B2 — Fix RMS time origin | 🔴 Open | Change `time = (time_ns - time_ns[0]) / 1e9` to seconds since UTC midnight of recording date |
-| B2.5 — Fix `plot_rms_variable` double-read bug | 🔴 Open | Use stashed `orig_data`/`orig_time` in highlight branches; currently re-calls `read_rms_variable()` twice (I/O waste + inconsistency risk) |
-| B3 — `align_to_common_time(sources, reference=None)` | 🔴 Open | In `utils/timestamps.py`; offset = `(source.get_time_range()[0] - ref).total_seconds()` per source |
-| B4 — Refactor demonstrator | 🔴 Open | Replace manual offsets in `examples/plot_hybrid_with_pupitre_tdms.py` with `align_to_common_time()` |
-
-**Sequencing:** B0.5 → B1 → B3 → B4; B2 and B2.5 independent (run in parallel with B1)
-**Effort:** ~1 day total
+| Task | Status | Commit | Notes |
+|------|--------|--------|-------|
+| TDMS `wf_start_time` exposed | ✅ Done | prior | `get_time_range()` via protocol |
+| Pupitre naive UTC timestamps | ✅ Done | prior | `PandasMagnetData.addTime()` converts local → UTC |
+| B0.5 — Standardise `hours` = UTC in `read_khz_variable` / `read_rms_variable` | ✅ Done | `ca4b41a` | `utc_hour_to_local()` in `hybrid/utils.py`; `_utc_hour_to_local` closure removed from `analysis/processing.py`; `test_hybrid_api.py` +75 lines |
+| B1 — Fix `HybridRun.get_time_range()` | ✅ Done | `e397101` | `_khz_first_last_utc(hdata)` helper in `hybrid_data.py`; returns `(t_start, t_end)` from bin-file UTC hours |
+| B2 — Fix RMS time origin | ✅ Done | `e397101` | `time` now seconds since UTC midnight of recording date; `test_hybrid_api.py` +59 lines |
+| B2.5 — Fix `plot_rms_variable` double-read bug | ✅ Done | prior | Uses stashed `orig_data`/`orig_time` in both highlight branches |
+| B3 — `align_to_common_time(sources, reference, hours)` | ✅ Done | `e67233c`, `fb79656` | In `utils/timestamps.py`; `hours` param added; `test-timestamp.py` +55 lines; `test_hybrid_api.py` +30 lines |
+| B4 — Refactor demonstrator | ✅ Done | `1ab50de` | `examples/plot_hybrid_with_pupitre_tdms.py` refactored to use `align_to_common_time()` |
 
 #### Phase 2C: Extend `plot_data()` for Hybrid 🔴 PLANNED
 
@@ -152,9 +149,9 @@ def plot_data(
 )
 ```
 
-**Dependencies:** Phase 2B completion
+**Dependencies:** Phase 2B — ✅ **now complete**
 **Effort:** ~2-3 weeks
-**Status:** Awaiting Phase 2B
+**Status:** Unblocked — ready to start
 
 #### Phase 2D: Side-by-Side Comparison 🔴 PLANNED
 
@@ -319,7 +316,7 @@ via a `"match"` regex key. Scoped to `feelpp-defs.json`; pupitre/pigbrother defs
 
 #### 3.9 Hybrid Subpackage Code Quality ⬜ OPEN
 
-**Status:** 16 findings from cross-module review. Items B0.5/B2.5 tracked in Phase 2B; items 12/13 in Quick Wins.
+**Status:** 16 findings from cross-module review. Items B0.5/B2.5 ✅ done (Phase 2B complete); items 12/13 in Quick Wins.
 **See:** [docs/hybrid_refactoring_notes.md](../docs/hybrid_refactoring_notes.md)
 
 | Priority | Item | Effort | Risk | Status |
@@ -384,7 +381,7 @@ via a `"match"` regex key. Scoped to `feelpp-defs.json`; pupitre/pigbrother defs
 - 🔴 Phase H: Pattern entries in `*-defs.json` + `feelpp-defs.json` (independent — see Stream 3.7)
 - 🔴 Phase D: Extend `*-defs.json` with simulation/bfield aliases; `KeyMapping`
 - 🔴 Phase E: `ComparisonSession` — cleaner now that Stream 3.6 R4 is done (`HybridData` in hierarchy)
-- 🔴 Phase F: `magnetrun compare` CLI
+- 🟡 Phase F: `magnetrun compare` CLI — ✅ stub registered (`f87e8ce`, `c13c179`); handler raises `NotImplementedError` until Phase E complete
 - 🔴 Phase G: Comprehensive tests
 
 **Dependencies:** HybridData timestamp support; Phase E significantly cleaner after Stream 3.6 R4
@@ -472,7 +469,7 @@ Currently trigger and vprocess readers exist and work independently but are unre
 
 ---
 
-## Completed Major Work (2026 Q1-Q2)
+## Completed Major Work (2026 Q1-Q2, updated 2026-06-09)
 
 ### ✅ Critical Issues — RESOLVED
 
@@ -564,6 +561,19 @@ Currently trigger and vprocess readers exist and work independently but are unre
     - `OutlierMethod.ISOLATION_FOREST` added to `hybrid/outliers.py`: sklearn `IsolationForest` backend, contamination threshold (default 0.1), rolling-window correctly rejected with `ValueError`
     - `_VALID_METHODS` in `hysteresis.py` extended with `"isolation_forest"`
 
+17. **Phase 2B: Time Alignment Layer — all tasks complete** *(commits `ca4b41a`…`fb79656`)*
+    - B0.5: `utc_hour_to_local()` in `hybrid/utils.py`; `read_khz_variable`/`read_rms_variable` use UTC `hours` directly; `_utc_hour_to_local` closure removed from `analysis/processing.py`
+    - B1: `_khz_first_last_utc(hdata)` in `hybrid_data.py`; `HybridRun.get_time_range()` now calls it for accurate `(t_start, t_end)`
+    - B2: RMS time origin is now seconds since UTC midnight of recording date
+    - B2.5: `plot_rms_variable` uses stashed `orig_data`/`orig_time` in both highlight branches
+    - B3: `align_to_common_time(sources, reference, hours)` in `utils/timestamps.py`; exported via `utils/__init__.py`
+    - B4: `examples/plot_hybrid_with_pupitre_tdms.py` refactored to use `align_to_common_time()`
+
+18. **`BinarizeConfig` dataclass** *(commit `02c7783`)*
+    - `method`, `tolerance`, `n_bins`, `normalize`, `noise_percentile` fields
+    - `LoadOptions.binarize_config: BinarizeConfig | None` field
+    - Wired into `getData` flow via `_apply_voltage_mask`
+
 16. **`analysis/` subpackage refactoring — all 6 phases** *(branch `rework_analysis`)*
     - Phase 1: dead code, logging, `DIR_*` constants centralised in `utils/files.py`; `pigbrother.py` imports `DIR_DEFAULT`/`DIR_SPIKE`
     - Phase 2: `DownsampleConfig` adopted in `analysis/plotting.py`; old percent-based helpers removed
@@ -616,22 +626,19 @@ Currently trigger and vprocess readers exist and work independently but are unre
    - Ensure validation called before parsing
    - Add tests for validation paths
 
-4. **Complete Phase 2B (Time Alignment)**
-   - Add UTC conversion to kHz/RMS loaders
-   - Implement `align_to_common_time()` utility
-   - Add multi-source alignment tests
+4. ~~**Complete Phase 2B (Time Alignment)**~~ — ✅ **DONE** (B0.5–B4 all landed; 1052 tests pass)
 
-5. **Quick wins cleanup**
+5. **Start Phase 2C: Extend `plot_data()` for hybrid** ← NOW UNBLOCKED
+   - Add `df_hybrid` and `hybrid_channels` parameters to `analysis/plotting.plot_data()`
+   - Implement hybrid plotting logic using `align_to_common_time()`
+   - Add tests and examples
+
+6. **Quick wins cleanup**
    - ~~Add assertions to `test_python_magnetrun.py`~~ — ✅ Done
    - Enable `mypy` pre-commit hook
    - Audit TODOs in `requests/cli.py`
 
 ### 🟢 Medium Priority (Do This Quarter)
-
-6. **Phase 2C: Extend plot_data() for hybrid**
-   - Add `df_hybrid` and `hybrid_channels` parameters
-   - Implement hybrid plotting logic
-   - Add tests and examples
 
 7. **Phase 2D: Side-by-side comparison**
    - Extend `plot_comparison()` for multi-source
@@ -646,8 +653,8 @@ Currently trigger and vprocess readers exist and work independently but are unre
 
 9. ~~**Outlier deduplication**~~ — ✅ Done (see Stream 3.5)
 10. ~~**hybrid/ refactoring**~~ — ✅ Done (all 6 phases; see Stream 3.2)
-11. ~~**Reader/container split R1–R5**~~ — ✅ Done (all phases; see Stream 3.6; 971 tests pass)
-12. ~~**CLI consolidation**~~ — ✅ Done (see Stream 3.3)
+11. ~~**Reader/container split R1–R5**~~ — ✅ Done (all phases; see Stream 3.6; 1052 tests pass)
+12. ~~**CLI consolidation**~~ — ✅ Done (see Stream 3.3; `magnetrun compare` stub registered)
 13. **HybridData timestamp support** (~0.5 days; now fully unblocked — analysis/ Phase 6 + 3.6 R4 both done)
 14. ~~**M4 / NaN-M4 downsampling**~~ — ✅ Done (see Stream 3.8a)
 14b. ~~**RDP / VW downsampling**~~ — ✅ Done (see Stream 3.8b)
@@ -667,7 +674,14 @@ Currently trigger and vprocess readers exist and work independently but are unre
 
 | Commit | Task | Impact |
 |--------|------|--------|
-| (branch) | Reader/container split (3.6) — all 5 phases | `readers/` subpackage (8 reader classes + registry); `HybridData(MagnetDataBase)` hierarchy; `DataType.HTS = 4`; `field_meta` init bug fixed; `load_magnetdata` accepts `fmt=`; 46 new tests in `tests/readers/`; **971 tests pass** |
+| `02c7783` | `BinarizeConfig` dataclass in `hybrid_run.py` | `method`/`tolerance`/`n_bins`/`normalize`/`noise_percentile` fields; wired into `LoadOptions.binarize_config` + `getData` flow |
+| `fb79656` | Add `hours` param to `align_to_common_time()` | `utils/timestamps.py` updated; demonstrator simplified; `test-timestamp.py` +19 lines |
+| `1ab50de` | Refactor demonstrator (B4) | `examples/plot_hybrid_with_pupitre_tdms.py` uses `align_to_common_time()` |
+| `e67233c` | Implement B3 — `align_to_common_time()` | `utils/timestamps.py` +48 lines; `utils/__init__.py` export; `test-timestamp.py` +55 lines; `test_hybrid_api.py` +30 lines |
+| `e397101` | Fix RMS time origin (B2) + `_khz_first_last_utc` (B1) | RMS time now seconds from UTC midnight; `HybridRun.get_time_range()` uses bin-file lookup; `test_hybrid_api.py` +59 lines |
+| `ca4b41a` | Standardise `hours` = UTC (B0.5) | `utc_hour_to_local()` in `hybrid/utils.py`; closures removed from `analysis/processing.py`; `test_hybrid_api.py` +75 lines |
+| `f87e8ce` + `c13c179` | `comparison/cli.py` stub; `main.py` wired | `magnetrun compare` now discoverable; handler raises `NotImplementedError` |
+| (branch) | Reader/container split (3.6) — all 5 phases | `readers/` subpackage (8 reader classes + registry); `HybridData(MagnetDataBase)` hierarchy; `DataType.HTS = 4`; `field_meta` init bug fixed; `load_magnetdata` accepts `fmt=`; 46 new tests in `tests/readers/`; **1052 tests pass** |
 | (branch) | Outlier deduplication (3.5) | `examples/outliers.py` deleted; `hysteresis.py::remove_outliers` thin-delegates; `test-anomalies*.py` deleted; `tests/test_outliers.py` (142 tests); `ISOLATION_FOREST` in `OutlierMethod`; 142 new tests pass |
 | (uncommitted) | `analysis/` subpackage refactoring — all 6 phases | `utils/files.py` canonical; `HousingConfig` 4 new methods; monoliths decomposed; `add_time_columns` utility; 827 tests pass |
 | f6394e2 | Change `addData`/`computeData` signature | `symbol`/`unit`/`label`/`description` → `FieldMeta`; JSON configs updated |
@@ -693,8 +707,8 @@ Currently trigger and vprocess readers exist and work independently but are unre
 
 ## Dependencies & Blockers
 
-**Phase 2B (Time Alignment)** blocks:
-- Phase 2C (Hybrid plotting)
+**Phase 2B (Time Alignment)** ✅ complete — previously blocked:
+- Phase 2C (Hybrid plotting) — **now unblocked**
 - Phase 2D (Comparison view)
 
 **analysis/ Phase 6 (Timestamp utilities)** ✅ complete — previously blocked:
@@ -727,9 +741,9 @@ Currently trigger and vprocess readers exist and work independently but are unre
 
 **By End of Q2 2026:**
 - [x] CI/CD pipeline running on all PRs (`test.yml` + `docs.yml`; `ruff` via pre-commit)
+- [x] Phase 2B (Time Alignment) complete
 - [ ] Multiple-file plotting regression fixed
 - [ ] All quick wins completed
-- [ ] Phase 2B (Time Alignment) complete
 
 **By End of Q3 2026:**
 - [ ] Phase 2B-D complete (unified multi-source plotting)
