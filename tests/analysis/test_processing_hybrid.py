@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pandas as pd
 
-from python_magnetrun.analysis.processing import load_hybrid_data
+from python_magnetrun.analysis.processing import load_hybrid_data, load_hybrid_incidents_data
 
 # A valid-looking kHz source path: parents[3]=base, parents[1].name=date_str,
 # Path(f).name[:2] = "10" (parseable as int → hours_set).
@@ -98,3 +98,110 @@ class TestLoadHybridDataTimeAlignment:
             self._call(reference_t0, time_array, np.ones(1))
 
         assert any("t_offset" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Helpers for load_hybrid_incidents_data tests
+# ---------------------------------------------------------------------------
+
+_TDIR_1 = "/data/exp1/trigger/TRIGGER__2025-11-05__10-02"
+_TDIR_2 = "/data/exp1/trigger/TRIGGER__2025-11-05__10-15"
+_REFERENCE_T0 = datetime(2025, 11, 5, 10, 0, 0)
+
+
+def _make_trigger_record(trigger_dirs: list[str]) -> MagicMock:
+    record = MagicMock()
+    record.sources.hybrid_trigger = trigger_dirs
+    return record
+
+
+def _make_trigger_info(approx_ts: datetime | None, dirname_ts: datetime) -> MagicMock:
+    info = MagicMock()
+    info.trigger_approx_timestamp = approx_ts
+    info.timestamp = dirname_ts
+    info.trigger_name = "TRIGGER__2025-11-05__10-02"
+    return info
+
+
+class TestLoadHybridIncidentsData:
+    """load_hybrid_incidents_data() parses trigger dirs and returns aligned t values."""
+
+    def test_empty_sources_returns_empty_list(self):
+        record = _make_trigger_record([])
+        result = load_hybrid_incidents_data(record, MagicMock(), "GR1", [], _REFERENCE_T0)
+        assert result == {"hybrid_trigger": []}
+
+    def test_approx_timestamp_preferred_over_dirname(self):
+        """trigger_approx_timestamp (ms precision) is used when available."""
+        approx_ts = datetime(2025, 11, 5, 10, 2, 16, 921000)  # 136.921 s after reference
+        dirname_ts = datetime(2025, 11, 5, 10, 2)              # 120 s — minute precision
+        info = _make_trigger_info(approx_ts, dirname_ts)
+
+        with patch(
+            "python_magnetrun.hybrid.trigger.trigger_reader.parse_trigger_directory",
+            return_value=info,
+        ):
+            result = load_hybrid_incidents_data(
+                _make_trigger_record([_TDIR_1]), MagicMock(), "GR1", [], _REFERENCE_T0
+            )
+
+        dfs = result["hybrid_trigger"]
+        assert len(dfs) == 1
+        expected_t = (approx_ts - _REFERENCE_T0).total_seconds()
+        assert abs(dfs[0]["t"].iloc[0] - expected_t) < 1e-6
+
+    def test_falls_back_to_dirname_timestamp_when_approx_missing(self):
+        """When trigger_approx_timestamp is None, dirname timestamp is used."""
+        dirname_ts = datetime(2025, 11, 5, 10, 2)
+        info = _make_trigger_info(None, dirname_ts)
+
+        with patch(
+            "python_magnetrun.hybrid.trigger.trigger_reader.parse_trigger_directory",
+            return_value=info,
+        ):
+            result = load_hybrid_incidents_data(
+                _make_trigger_record([_TDIR_1]), MagicMock(), "GR1", [], _REFERENCE_T0
+            )
+
+        dfs = result["hybrid_trigger"]
+        assert len(dfs) == 1
+        expected_t = (dirname_ts - _REFERENCE_T0).total_seconds()
+        assert abs(dfs[0]["t"].iloc[0] - expected_t) < 1e-6
+
+    def test_multiple_triggers_produce_multiple_dataframes(self):
+        """One DataFrame per trigger directory."""
+        ts1 = datetime(2025, 11, 5, 10, 2, 16)
+        ts2 = datetime(2025, 11, 5, 10, 15, 3)
+        info1 = _make_trigger_info(ts1, ts1)
+        info2 = _make_trigger_info(ts2, ts2)
+
+        with patch(
+            "python_magnetrun.hybrid.trigger.trigger_reader.parse_trigger_directory",
+            side_effect=[info1, info2],
+        ):
+            result = load_hybrid_incidents_data(
+                _make_trigger_record([_TDIR_1, _TDIR_2]),
+                MagicMock(), "GR1", [], _REFERENCE_T0,
+            )
+
+        dfs = result["hybrid_trigger"]
+        assert len(dfs) == 2
+        assert abs(dfs[0]["t"].iloc[0] - (ts1 - _REFERENCE_T0).total_seconds()) < 1e-6
+        assert abs(dfs[1]["t"].iloc[0] - (ts2 - _REFERENCE_T0).total_seconds()) < 1e-6
+
+    def test_bad_directory_is_skipped(self):
+        """OSError on one directory does not prevent others from loading."""
+        ts_good = datetime(2025, 11, 5, 10, 15, 3)
+        info_good = _make_trigger_info(ts_good, ts_good)
+
+        with patch(
+            "python_magnetrun.hybrid.trigger.trigger_reader.parse_trigger_directory",
+            side_effect=[OSError("not found"), info_good],
+        ):
+            result = load_hybrid_incidents_data(
+                _make_trigger_record([_TDIR_1, _TDIR_2]),
+                MagicMock(), "GR1", [], _REFERENCE_T0,
+            )
+
+        dfs = result["hybrid_trigger"]
+        assert len(dfs) == 1  # only the good one

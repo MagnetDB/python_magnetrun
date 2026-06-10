@@ -676,28 +676,58 @@ def load_hybrid_incidents_data(
     keys: list[str],
     reference_t0: datetime,
 ) -> dict[str, list[pd.DataFrame]]:
-    """
-    Load incidents data (trigger).
+    """Load hybrid trigger incidents for a record.
+
+    Each trigger directory in ``record.sources.hybrid_trigger`` is parsed via
+    :func:`~python_magnetrun.hybrid.trigger.trigger_reader.parse_trigger_directory`.
+    The precise UTC timestamp (``trigger_approx_timestamp`` from
+    ``EventInfo.properties``, ms precision) is preferred over the minute-
+    precision dirname timestamp.  The resulting ``t`` value is
+    ``(trigger_ts - reference_t0).total_seconds()``.
 
     Parameters
     ----------
     record : OverviewRecord
-        Record to load data into
+        Record whose ``sources.hybrid_trigger`` lists trigger directories.
     housing_config : HousingConfig
-        Housing configuration
+        Housing configuration (unused here, kept for API symmetry with
+        :func:`load_incidents_data`).
     group : str
-        TDMS group name
-    keys : List[str]
-        Keys to load
+        TDMS group name (unused here, kept for API symmetry).
+    keys : list[str]
+        Data keys (unused here, kept for API symmetry).
     reference_t0 : datetime
-        Reference timestamp for time column
+        Naive UTC reference; ``t = 0`` on the shared plot axis.
 
     Returns
     -------
-    Dict[str, List[pd.DataFrame]]
-        Incidents data by type
+    dict[str, list[pd.DataFrame]]
+        ``{"hybrid_trigger": [df, ...]}`` — one DataFrame per trigger event.
+        Each DataFrame has a single ``"t"`` column (float seconds from
+        *reference_t0*) with one row.
     """
-    pass
+    if record.sources is None or not record.sources.hybrid_trigger:
+        return {"hybrid_trigger": []}
+
+    from ..hybrid.trigger.trigger_reader import parse_trigger_directory
+
+    incidents: list[pd.DataFrame] = []
+    for tdir in record.sources.hybrid_trigger:
+        try:
+            info = parse_trigger_directory(Path(tdir))
+        except (OSError, ValueError) as e:
+            logger.warning(f"load_hybrid_incidents_data: skipping {tdir!r}: {e}")
+            continue
+
+        ts = info.trigger_approx_timestamp or info.timestamp
+        t = (ts - reference_t0).total_seconds()
+        incidents.append(pd.DataFrame({"t": [t]}))
+        logger.debug(
+            f"load_hybrid_incidents_data: trigger {info.trigger_name!r} "
+            f"ts={ts}, t={t:.3f}s"
+        )
+
+    return {"hybrid_trigger": incidents}
 
 
 # =============================================================================
@@ -834,11 +864,13 @@ def _load_all_sources(
             if record.has_data("archive")
             else record.t0
         )
-        load_hybrid_incidents_data(
+        result = load_hybrid_incidents_data(
             record, housing_config, config.group, keys, reference_t0
         )
+        record.data.update(result)
         logger.debug(
-            f"{record.filename}: loaded hybrid incidents reference_t0={reference_t0}"
+            f"{record.filename}: loaded {len(result.get('hybrid_trigger', []))} "
+            f"hybrid trigger incidents, reference_t0={reference_t0}"
         )
 
     # Synchronise pupitre
