@@ -84,6 +84,51 @@ class TestAnnotationColors:
         assert all(isinstance(c, str) and c for c in incident_colors)
 
 
+class TestAddVline:
+    """add_vline() draws a vertical line with the correct color."""
+
+    def _make_mgr(self):
+        b = MatplotlibBackend()
+        fig = b.subplots(1)
+        return AnnotationManager(b), fig
+
+    def test_axvline_called_at_correct_x(self):
+        from unittest.mock import patch
+
+        mgr, fig = self._make_mgr()
+        ax = fig._magnetrun_axes[0]
+        with patch.object(ax, "axvline") as mock_axvline:
+            mgr.add_vline(fig, 0, t=42.0, label="trigger #1")
+        mock_axvline.assert_called_once()
+        assert mock_axvline.call_args.kwargs.get("x") == 42.0 or mock_axvline.call_args.args[0] == 42.0
+
+    def test_explicit_color_forwarded_to_axvline(self):
+        from unittest.mock import patch
+
+        mgr, fig = self._make_mgr()
+        ax = fig._magnetrun_axes[0]
+        with patch.object(ax, "axvline") as mock_axvline:
+            mgr.add_vline(fig, 0, t=5.0, label="ev", color="red")
+        _, kwargs = mock_axvline.call_args
+        assert kwargs.get("color") == "red"
+
+    def test_default_color_is_incident_default(self):
+        from unittest.mock import patch
+
+        mgr, fig = self._make_mgr()
+        ax = fig._magnetrun_axes[0]
+        with patch.object(ax, "axvline") as mock_axvline:
+            mgr.add_vline(fig, 0, t=1.0, label="ev")
+        _, kwargs = mock_axvline.call_args
+        assert kwargs.get("color") == PlotColors().incident_default
+
+    def test_no_entry_added_to_annotation_dict(self):
+        """add_vline does not register detail metadata (no click handler needed)."""
+        mgr, fig = self._make_mgr()
+        mgr.add_vline(fig, 0, t=1.0, label="ev")
+        assert len(mgr._mpl_annotation_dict) == 0
+
+
 class TestAnnotationManagerPlotly:
     def test_add_annotation_plotly(self):
         pytest.importorskip("plotly")

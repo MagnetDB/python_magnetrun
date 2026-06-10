@@ -87,6 +87,41 @@ class AnnotationManager:
         else:
             self._backend.add_annotation(fig, ax_idx, t, f, label, detail)
 
+    def add_vline(
+        self,
+        fig: Any,
+        ax_idx: int,
+        t: float,
+        label: str,
+        color: str | None = None,
+    ) -> None:
+        """Add a vertical-line annotation at time *t* (point event, no y value).
+
+        Unlike :meth:`add`, this method does not require a data value at *t*
+        and does not attach interactive detail metadata.  Use it for
+        timestamp-only events such as hybrid trigger incidents.
+
+        Parameters
+        ----------
+        fig : Any
+            Figure handle.
+        ax_idx : int
+            Index of the target axes.
+        t : float
+            Time coordinate [s].
+        label : str
+            Short text displayed alongside the line.
+        color : str, optional
+            Line and label colour.  Defaults to
+            :attr:`PlotColors.incident_default`.
+        """
+        from .matplotlib_backend import MatplotlibBackend
+
+        if isinstance(self._backend, MatplotlibBackend):
+            self._add_vline_mpl(fig, ax_idx, t, label, color=color)
+        else:
+            self._backend.add_annotation(fig, ax_idx, t, 0.0, label, None)
+
     def connect(self, fig: Any) -> None:
         """Wire up interactive events.
 
@@ -151,6 +186,32 @@ class AnnotationManager:
 
         if detail is not None:
             self._mpl_annotation_dict[annot] = detail
+
+    def _add_vline_mpl(
+        self,
+        fig: Any,
+        ax_idx: int,
+        t: float,
+        label: str,
+        color: str | None = None,
+    ) -> None:
+        """Draw a dashed vertical line + rotated label on a matplotlib axes."""
+        from .matplotlib_backend import MatplotlibBackend
+
+        ax = MatplotlibBackend._get_ax(fig, ax_idx)
+        fc = color or self._colors.incident_default
+        ax.axvline(x=t, color=fc, linestyle="--", alpha=0.7, linewidth=1.0)
+        ax.text(
+            t,
+            1.0,
+            f" {label}",
+            transform=ax.get_xaxis_transform(),
+            rotation=90,
+            va="top",
+            ha="right",
+            color=fc,
+            fontsize=8,
+        )
 
 
 def _show_incident_detail(
