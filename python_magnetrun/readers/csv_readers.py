@@ -6,12 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
-
-def _open_text(path: Path):  # type: ignore[return]
-    """Open *path* with encoding fallback (UTF-8 → latin-1)."""
-    from ..utils.files import _open_text_with_fallback
-
-    return _open_text_with_fallback(str(path))
+from ..utils.files import _open_text_with_fallback
 
 
 class PupitreReader:
@@ -50,7 +45,7 @@ class PupitreReader:
         pd.DataFrame
             Parsed data with all rows.
         """
-        with _open_text(path) as f:
+        with _open_text_with_fallback(path) as f:
             return pd.read_csv(
                 f,
                 sep=self.sep,
@@ -72,7 +67,7 @@ class PupitreReader:
         pd.DataFrame
             Single-row DataFrame used for key discovery.
         """
-        with _open_text(path) as f:
+        with _open_text_with_fallback(path) as f:
             return pd.read_csv(
                 f,
                 sep=self.sep,
@@ -374,7 +369,7 @@ class CsvReader:
         pd.DataFrame
             Parsed data.
         """
-        with _open_text(path) as f:
+        with _open_text_with_fallback(path) as f:
             return pd.read_csv(
                 f,
                 sep=self.sep,

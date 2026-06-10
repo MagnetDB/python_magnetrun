@@ -31,12 +31,6 @@ logger = logging.getLogger(__name__)
 __all__ = ["plot_subplots", "plot_overlay", "plot_xy"]
 
 
-def _resolve_backend(backend: str | PlottingBackend) -> PlottingBackend:
-    if isinstance(backend, str):
-        return get_backend(backend)
-    return backend
-
-
 def _apply_downsample(
     df: pd.DataFrame,
     t_col: str,
@@ -218,7 +212,7 @@ def plot_subplots(
     if not fields:
         raise ValueError("fields must not be empty")
 
-    b = _resolve_backend(backend)
+    b = get_backend(backend)
 
     _backend_name = backend if isinstance(backend, str) else type(backend).__name__
     live_kernel = _backend_name in ("plotly-resampler", "plotly-widget")
@@ -341,7 +335,7 @@ def plot_overlay(
     if not fields:
         raise ValueError("fields must not be empty")
 
-    b = _resolve_backend(backend)
+    b = get_backend(backend)
 
     _backend_name = backend if isinstance(backend, str) else type(backend).__name__
     live_kernel = _backend_name in ("plotly-resampler", "plotly-widget")
@@ -491,7 +485,7 @@ def plot_xy(
     if not pairs:
         raise ValueError("pairs must not be empty")
 
-    b = _resolve_backend(backend)
+    b = get_backend(backend)
     fig = b.subplots(1, share_x=False, style=style)
 
     # Determine x-axis label from the set of unique x columns (fallback).

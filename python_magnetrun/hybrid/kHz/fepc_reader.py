@@ -36,6 +36,14 @@ DIGITAL_DATA_SIZE = 200  # bytes (50 samples × 32 bits)
 DIGITAL_BLOCK_SIZE = 212  # bytes (header + data)
 
 
+def safe_float(val, default=0.0):
+    """Convert string to float, handling French decimal notation."""
+    try:
+        return float(val.replace(",", "."))
+    except (ValueError, AttributeError):
+        return default
+
+
 @dataclass
 class CalibrationInfo:
     """Calibration parameters for a channel"""
@@ -295,13 +303,6 @@ def parse_cfg_file(cfg_path: str) -> FEPCConfig:
     digital_var_list: list[dict] = []
     analog_var_list: list[dict] = []
 
-    def safe_float(val, default=0.0):
-        """Convert string to float, handling French decimal notation"""
-        try:
-            return float(val.replace(",", "."))
-        except (ValueError, AttributeError):
-            return default
-
     for line in lines[num_cards + 1 :]:
         line = line.strip()
         if not line:
@@ -431,12 +432,6 @@ def _extract_calibration(var_dict: dict) -> CalibrationInfo:
     --------
     CalibrationInfo : Calibration object
     """
-
-    def safe_float(val, default=0.0):
-        try:
-            return float(val.replace(",", "."))  # Handle French decimal notation
-        except (ValueError, AttributeError):
-            return default
 
     calib = CalibrationInfo()
 

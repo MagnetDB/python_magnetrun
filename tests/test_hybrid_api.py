@@ -470,3 +470,271 @@ class TestHybridRunGetTimeRange:
 
         with pytest.raises(RuntimeError, match="No kHz bin files found"):
             hrun.get_time_range()
+
+
+# ---------------------------------------------------------------------------
+# L1 — _plot_variable_impl and _plot_variables_impl extraction
+# ---------------------------------------------------------------------------
+
+
+class TestPlotVariableImpl:
+    """Tests for _plot_variable_impl — shared single-variable plotting pipeline."""
+
+    def _make_outlier_result(self, mask):
+        """Build a minimal OutlierResult for the given boolean mask."""
+        from python_magnetrun.outliers import OutlierResult
+
+        return OutlierResult(
+            mask=mask,
+            method="zscore",
+            threshold=3.0,
+            n_outliers=int(mask.sum()),
+            n_total=len(mask),
+        )
+
+    def test_highlight_uses_stash_not_reread(self):
+        """In highlight mode orig_data/orig_time from the stash are passed to _scatter_outliers."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.plotting import _plot_variable_impl
+
+        data = np.array([1.0, 5.0, 2.0, 1.5])
+        time = np.array([0.0, 1.0, 2.0, 3.0])
+        outlier_result = self._make_outlier_result(np.array([False, True, False, False]))
+
+        scatter_calls: list = []
+
+        def fake_scatter(b, fig, ax_idx, d, t, result, label, ds, ds_method):
+            scatter_calls.append((d.copy(), t.copy()))
+
+        mock_backend = MagicMock()
+
+        with (
+            patch("python_magnetrun.hybrid.plotting.plot_overlay") as mock_overlay,
+            patch("python_magnetrun.hybrid.plotting._handle_output"),
+            patch(
+                "python_magnetrun.hybrid.plotting.get_backend",
+                return_value=mock_backend,
+            ),
+            patch(
+                "python_magnetrun.hybrid.plotting._scatter_outliers",
+                side_effect=fake_scatter,
+            ),
+        ):
+            mock_overlay.return_value = MagicMock()
+            _plot_variable_impl(
+                data, time, "SYS", "I_H1", "I_H1 [A]", "title", "I_H1",
+                None, False, None,
+                outlier_result, "highlight",
+                None, "auto", "matplotlib",
+            )
+
+        assert len(scatter_calls) == 1
+        np.testing.assert_array_equal(scatter_calls[0][0], data)
+        np.testing.assert_array_equal(scatter_calls[0][1], time)
+
+    def test_no_scatter_when_strategy_not_highlight(self):
+        """_scatter_outliers is not called when strategy is not 'highlight'."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.plotting import _plot_variable_impl
+
+        data = np.array([1.0, 5.0, 2.0])
+        time = np.array([0.0, 1.0, 2.0])
+        outlier_result = self._make_outlier_result(np.array([False, True, False]))
+
+        mock_backend = MagicMock()
+
+        with (
+            patch("python_magnetrun.hybrid.plotting.plot_overlay") as mock_overlay,
+            patch("python_magnetrun.hybrid.plotting._handle_output"),
+            patch(
+                "python_magnetrun.hybrid.plotting.get_backend",
+                return_value=mock_backend,
+            ),
+            patch(
+                "python_magnetrun.hybrid.plotting._apply_outlier_strategy",
+                return_value=(data, time),
+            ),
+            patch("python_magnetrun.hybrid.plotting._scatter_outliers") as mock_scatter,
+        ):
+            mock_overlay.return_value = MagicMock()
+            _plot_variable_impl(
+                data, time, "SYS", "I_H1", "I_H1 [A]", "title", "I_H1",
+                None, False, None,
+                outlier_result, "interpolate",
+                None, "auto", "matplotlib",
+            )
+
+        mock_scatter.assert_not_called()
+
+    def test_ylabel_set_when_different_from_variable_name(self):
+        """y-axis label is applied when ylabel differs from the variable name."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.plotting import _plot_variable_impl
+
+        data = np.array([1.0, 2.0])
+        time = np.array([0.0, 1.0])
+
+        mock_ax = MagicMock()
+        mock_backend = MagicMock()
+        mock_backend._get_ax.return_value = mock_ax
+
+        with (
+            patch("python_magnetrun.hybrid.plotting.plot_overlay") as mock_overlay,
+            patch("python_magnetrun.hybrid.plotting._handle_output"),
+            patch(
+                "python_magnetrun.hybrid.plotting.get_backend",
+                return_value=mock_backend,
+            ),
+        ):
+            mock_overlay.return_value = MagicMock(spec=[])
+            _plot_variable_impl(
+                data, time, "SYS", "I_H1", "I_H1 [A]", "title", "I_H1",
+                None, False, None, None, "none",
+                None, "auto", "matplotlib",
+            )
+
+        mock_ax.set_ylabel.assert_called_once_with("I_H1 [A]")
+
+    def test_ylabel_not_set_when_no_unit(self):
+        """y-axis label is not applied when ylabel equals variable name (no unit)."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.plotting import _plot_variable_impl
+
+        data = np.array([1.0, 2.0])
+        time = np.array([0.0, 1.0])
+
+        mock_ax = MagicMock()
+        mock_backend = MagicMock()
+        mock_backend._get_ax.return_value = mock_ax
+
+        with (
+            patch("python_magnetrun.hybrid.plotting.plot_overlay") as mock_overlay,
+            patch("python_magnetrun.hybrid.plotting._handle_output"),
+            patch(
+                "python_magnetrun.hybrid.plotting.get_backend",
+                return_value=mock_backend,
+            ),
+        ):
+            mock_overlay.return_value = MagicMock(spec=[])
+            # ylabel == variable → no set_ylabel call
+            _plot_variable_impl(
+                data, time, "SYS", "I_H1", "I_H1", "title", "I_H1",
+                None, False, None, None, "none",
+                None, "auto", "matplotlib",
+            )
+
+        mock_ax.set_ylabel.assert_not_called()
+
+
+class TestPlotRmsVariablesBugFixes:
+    """Regression tests for bugs fixed in plot_rms_variables (3.9 L1)."""
+
+    def test_downsample_param_present(self):
+        """plot_rms_variables must accept downsample and downsample_method params."""
+        import inspect
+
+        from python_magnetrun.hybrid.plotting import plot_rms_variables
+
+        sig = inspect.signature(plot_rms_variables)
+        assert "downsample" in sig.parameters
+        assert "downsample_method" in sig.parameters
+
+    def test_ylabel_applied_for_each_variable(self):
+        """y-axis label is set per-variable when a unit is found."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.plotting import plot_rms_variables
+
+        hd = MagicMock()
+        hd.date_str = "2024-05-09"
+        hd.read_rms_variable.return_value = (np.array([1.0, 2.0]), np.array([0.0, 1.0]))
+
+        mock_ax = MagicMock()
+        mock_backend = MagicMock()
+        mock_backend._get_ax.return_value = mock_ax
+
+        with (
+            patch("python_magnetrun.hybrid.plotting._get_rms_unit", return_value="bar"),
+            patch("python_magnetrun.hybrid.plotting.plot_subplots") as mock_subplots,
+            patch(
+                "python_magnetrun.hybrid.plotting.get_backend",
+                return_value=mock_backend,
+            ),
+            patch("python_magnetrun.hybrid.plotting._handle_output"),
+        ):
+            mock_subplots.return_value = MagicMock(spec=[])
+            plot_rms_variables(hd, "SYS", ["PT205", "TT201"], show=False)
+
+        assert mock_ax.set_ylabel.call_count == 2
+        labels = [c.args[0] for c in mock_ax.set_ylabel.call_args_list]
+        assert "PT205 [bar]" in labels
+        assert "TT201 [bar]" in labels
+
+    def test_downsample_forwarded_to_scatter_outliers(self):
+        """downsample= is forwarded to _scatter_outliers in highlight mode."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.plotting import plot_rms_variables
+        from python_magnetrun.outliers import OutlierResult
+
+        data = np.array([1.0, 5.0, 2.0])
+        time = np.array([0.0, 1.0, 2.0])
+        mask = np.array([False, True, False])
+        outlier_result = OutlierResult(
+            mask=mask, method="zscore", threshold=3.0,
+            n_outliers=1, n_total=3,
+        )
+
+        hd = MagicMock()
+        hd.date_str = "2024-05-09"
+        hd.read_rms_variable.return_value = (data.copy(), time.copy())
+
+        scatter_calls: list = []
+
+        def fake_scatter(b, fig, ax_idx, d, t, result, label, ds, ds_method):
+            scatter_calls.append({"downsample": ds, "downsample_method": ds_method})
+
+        mock_backend = MagicMock()
+        mock_backend._get_ax.return_value = MagicMock()
+
+        with (
+            patch("python_magnetrun.hybrid.plotting._get_rms_unit", return_value=""),
+            patch("python_magnetrun.hybrid.plotting.plot_subplots") as mock_subplots,
+            patch(
+                "python_magnetrun.hybrid.plotting.get_backend",
+                return_value=mock_backend,
+            ),
+            patch("python_magnetrun.hybrid.plotting._handle_output"),
+            patch(
+                "python_magnetrun.hybrid.plotting._scatter_outliers",
+                side_effect=fake_scatter,
+            ),
+        ):
+            mock_subplots.return_value = MagicMock(spec=[])
+            plot_rms_variables(
+                hd, "SYS", ["PT205", "TT201"],
+                outlier_results={"PT205": outlier_result},
+                outlier_strategy="highlight",
+                downsample=10000,
+                show=False,
+            )
+
+        assert len(scatter_calls) == 1
+        assert scatter_calls[0]["downsample"] == 10000
+        assert scatter_calls[0]["downsample_method"] == "auto"

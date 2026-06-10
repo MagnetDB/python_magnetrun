@@ -32,7 +32,7 @@ def get_extension(path: str) -> str:
 
 
 @contextlib.contextmanager
-def _open_text_with_fallback(path: str):
+def _open_text_with_fallback(path: str | Path):
     """Open a text file as UTF-8, falling back to Latin-1 on decode error."""
     try:
         with open(path, encoding="utf-8") as probe:

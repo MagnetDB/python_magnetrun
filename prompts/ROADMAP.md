@@ -211,13 +211,15 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - **See:** Phase H of [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
 - **Effort:** S (~2 hours)
 
-**3.9 Hybrid Subpackage Code Quality** ⬜ **OPEN** *(from [docs/hybrid_refactoring_notes.md](../docs/hybrid_refactoring_notes.md))*
+**3.9 Hybrid Subpackage Code Quality** 🔶 **IN PROGRESS** *(from [docs/hybrid_refactoring_notes.md](../docs/hybrid_refactoring_notes.md))*
 
 Items 2 and 3 from the notes are already tracked as B0.5 and B2.5 in Phase 2B. Items 12 and 13 (docs-only cross-refs and a rename) are in Quick Wins.
 
+**See:** [3.9-hybrid-code-quality.plan.md](3.9-hybrid-code-quality.plan.md) for full item tracking.
+
 *Small (S) — low risk, do any time:*
 - **S1 — `safe_float` module-level** (notes item 5): hoist the two nested `safe_float` definitions to module level in [hybrid/kHz/fepc_reader.py](../python_magnetrun/hybrid/kHz/fepc_reader.py) (lines 298 and 435).
-- **S2 — Consolidate `_resolve_backend`** (notes items 6/15): move the three-line helper to `plotting/_utils.py`; import it in [hybrid/plotting.py](../python_magnetrun/hybrid/plotting.py) and [plotting/timeseries.py](../python_magnetrun/plotting/timeseries.py).
+- ✅ **S2 — Consolidate `_resolve_backend`** (notes items 6/15): deleted both local definitions; all 6 call sites now use `get_backend` directly (which already handles `PlottingBackend` instances). **1071 tests pass.**
 
 *Medium (M) — low-to-medium risk:*
 - **M1 — Unify `log_exception` + `format_exception_location`** (notes items 9/11): standardise on the `log_utils.py` signature (explicit `logger` arg); update six call sites in `hybrid/cli.py`; delete the duplicate in [hybrid/utils.py](../python_magnetrun/hybrid/utils.py).
@@ -226,7 +228,7 @@ Items 2 and 3 from the notes are already tracked as B0.5 and B2.5 in Phase 2B. I
 - **M4 — Share CNV calibration helper** (notes items 7/16): extract `_apply_cnv_calibration(data, cnv_path) -> np.ndarray` into `hybrid/utils.py`; reuse it in `hybrid/kHz/fepc_reader.py:apply_calibration` and `hybrid/trigger/trigger_reader.py:apply_calibration`.
 
 *Large (L) — medium risk, plan separately before starting:*
-- **L1 — Extract `_plot_variable_impl` / `_plot_variables_impl`** (notes items 3/4): unify ~80% identical bodies of `plot_khz_variable`/`plot_rms_variable` and `plot_khz_variables`/`plot_rms_variables` in [hybrid/plotting.py](../python_magnetrun/hybrid/plotting.py); fix RMS versions missing `downsample` param and unlabelled y-axes.
+- ✅ **L1 — Extract `_plot_variable_impl` / `_plot_variables_impl`** (notes items 3/4): unified `plot_khz_variable`/`plot_rms_variable` and `plot_khz_variables`/`plot_rms_variables` in [hybrid/plotting.py](../python_magnetrun/hybrid/plotting.py); fixed RMS missing `downsample` param, unlabelled y-axes, and `_scatter_outliers` not receiving downsample args. 7 new tests. **1071 tests pass.**
 - **L2 — Extract `_BinaryFileReaderBase`** (notes item 1): abstract base class for `RMSFileReader` ([hybrid/rms/rms_reader.py](../python_magnetrun/hybrid/rms/rms_reader.py)) and `VProcessFileReader` ([hybrid/vprocess/vprocess_reader.py](../python_magnetrun/hybrid/vprocess/vprocess_reader.py)); merge `RMSVariable`/`VProcessVariable` into a single `ChannelVariable` dataclass; subclass only encoding and timestamp-conversion differences.
 
 **Note:** trigger/VProcess integration into `HybridData` (notes item 10) is tracked as Stream 4.6.
