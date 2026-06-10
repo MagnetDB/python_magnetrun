@@ -685,8 +685,12 @@ class FileDiscovery:
                 m = re.search(r"\d{4}-\d{2}-\d{2}_(\d{2})\d{2}[—-]", p.stem)
                 return int(m.group(1)) if m else None
 
-            def _trigger_hour(p: Path) -> int | None:
-                m = re.search(r"__(\d{2})-\d{2}$", p.parent.name)
+            def _trigger_dir_hour(p: Path) -> int | None:
+                m = re.search(r"__(\d{2})-\d{2}$", p.name)
+                return int(m.group(1)) if m else None
+
+            def _vprocess_hour(p: Path) -> int | None:
+                m = re.match(r"^\d{8}_(\d{2})", p.name)
                 return int(m.group(1)) if m else None
 
             file_set.hybrid_kHz = natsorted(
@@ -703,17 +707,23 @@ class FileDiscovery:
                 if _rms_hour(f) in utc_hours
             )
             file_set.hybrid_trigger = natsorted(
+                str(d)
+                for dirs in hdata._info.trigger_dirs.values()
+                for d in dirs
+                if _trigger_dir_hour(d) in utc_hours
+            )
+            file_set.hybrid_vprocess = natsorted(
                 str(f)
-                for files in hdata._info.trigger_files.values()
-                for f in files
-                if _trigger_hour(f) in utc_hours
+                for f in hdata._info.vprocess_files
+                if _vprocess_hour(f) in utc_hours
             )
             logger.info(
                 f"Hybrid data for {date_str} {time_str}–{end_time_str} (local)"
                 f" hours={list(hours)}: "
                 f"{len(file_set.hybrid_kHz)} kHz, "
                 f"{len(file_set.hybrid_rms)} rms, "
-                f"{len(file_set.hybrid_trigger)} trigger"
+                f"{len(file_set.hybrid_trigger)} trigger dirs, "
+                f"{len(file_set.hybrid_vprocess)} vprocess"
             )
         except (OSError, ValueError, ImportError) as e:
             logger.warning(f"Could not discover hybrid data for {date_str}: {e}")
@@ -790,7 +800,8 @@ class FileDiscovery:
             f"{len(file_set.pupitre_runlog)} pupitre runlog, "
             f"{len(file_set.hybrid_kHz)} kHz, "
             f"{len(file_set.hybrid_rms)} rms, "
-            f"{len(file_set.hybrid_trigger)} trigger"
+            f"{len(file_set.hybrid_trigger)} trigger dirs, "
+            f"{len(file_set.hybrid_vprocess)} vprocess"
         )
         return file_set
 

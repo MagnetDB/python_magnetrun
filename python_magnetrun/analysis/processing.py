@@ -547,6 +547,9 @@ def load_hybrid_data(
     if htype == "rms" and not record.sources.hybrid_rms:
         logger.warning("No hybrid RMS sources defined for record")
         return pd.DataFrame()
+    if htype == "vprocess" and not record.sources.hybrid_vprocess:
+        logger.warning("No hybrid vprocess sources defined for record")
+        return pd.DataFrame()
 
     if htype == "kHz":
         logger.info(
@@ -556,20 +559,32 @@ def load_hybrid_data(
         logger.info(
             f"Loading hybrid RMS data: {len(record.sources.hybrid_rms)} files, group={group}, keys={keys}, extra_keys={extra_keys}"
         )
+    elif htype == "vprocess":
+        logger.info(
+            f"Loading hybrid vprocess data: {len(record.sources.hybrid_vprocess)} files"
+        )
 
-    # Map keys to hybrid channel names
-    hybrid_keys = housing_config.get_hybrid_group_keys(group)
+    # Map keys to hybrid channel names (not used for vprocess)
+    hybrid_keys = housing_config.get_hybrid_group_keys(group) if htype != "vprocess" else []
     logger.debug(f"hybrid_keys={hybrid_keys} from group={group}")
 
-    # Path structure: <base_dir>/kHz/<date_str>/<fepc_system>/<HH>HOST_*.bin
+    # Path structure:
+    #   kHz/rms: <base_dir>/kHz/<date_str>/<fepc_system>/<HH>HOST_*.bin  (parents[3], parents[1])
+    #   vprocess: <base_dir>/vprocess/<date_str>/<filename>.vprocess      (parents[2], parents[0])
     if htype == "kHz":
         first_file = Path(record.sources.hybrid_kHz[0])
+        base_dir = str(first_file.parents[3])
+        date_str = first_file.parents[1].name
     elif htype == "rms":
         first_file = Path(record.sources.hybrid_rms[0])
-    base_dir = str(first_file.parents[3])
-    date_str = first_file.parents[1].name  # "YYYY-MM-DD"
+        base_dir = str(first_file.parents[3])
+        date_str = first_file.parents[1].name
+    else:  # vprocess
+        first_file = Path(record.sources.hybrid_vprocess[0])
+        base_dir = str(first_file.parents[2])
+        date_str = first_file.parents[0].name
 
-    # kHz/RMS filenames encode UTC hours; hours parameter is UTC.
+    # Filenames encode UTC hours; hours parameter is UTC.
     import re as _re
 
     hours_set: set[int] = set()
@@ -583,6 +598,11 @@ def load_hybrid_data(
                 m = _re.search(r"\d{4}-\d{2}-\d{2}_(\d{2})\d{2}[—-]", Path(f).stem)
                 if m:
                     hours_set.add(int(m.group(1)))
+    elif htype == "vprocess":
+        for f in record.sources.hybrid_vprocess:
+            m = _re.match(r"^\d{8}_(\d{2})", Path(f).name)
+            if m:
+                hours_set.add(int(m.group(1)))
     hours_list: list[int] | None = sorted(hours_set) or None
 
     try:
@@ -591,6 +611,15 @@ def load_hybrid_data(
         hrun = HybridRun.fromdir(
             base_dir=base_dir, date_str=date_str, housing=record.housing
         )
+
+        # For vprocess, derive keys from the file header (no housing-config mapping).
+        if htype == "vprocess":
+            try:
+                vprocess_vars = hrun.HybridData.get_vprocess_variables()["analog"]
+                hybrid_keys = [f"vprocess/{v}" for v in vprocess_vars]
+            except (ImportError, ValueError) as e:
+                logger.warning(f"load_hybrid_data: cannot read vprocess variables: {e}")
+                return pd.DataFrame()
 
         frames: list[pd.DataFrame] = []
         for key in hybrid_keys:
@@ -756,6 +785,18 @@ def _load_all_sources(
             f"{record.filename}: loaded hybrid rms columns={df_hybrid_rms.columns.tolist()}"
         )
 
+    # Hybrid vprocess
+    if record.sources.hybrid_vprocess:
+        logger.info(f"hybrid_vprocess={record.sources.hybrid_vprocess}")
+        df_hybrid_vprocess = load_hybrid_data(
+            record, housing_config, config.group, keys, htype="vprocess"
+        )
+        if not df_hybrid_vprocess.empty:
+            record.data["hybrid_vprocess"] = df_hybrid_vprocess
+        logger.info(
+            f"{record.filename}: loaded hybrid vprocess columns={df_hybrid_vprocess.columns.tolist()}"
+        )
+
     # Hybrid trigger
     if record.sources.hybrid_trigger:
         logger.info(f"hybrid_trigger={record.sources.hybrid_trigger}")
@@ -864,6 +905,7 @@ def process_overview_file(
         f"incidents={len(record.sources.default) + len(record.sources.trigger) + len(record.sources.spike)}, "
         f"hybrid_kHz={len(record.sources.hybrid_kHz)}, "
         f"hybrid_rms={len(record.sources.hybrid_rms)}, "
+        f"hybrid_vprocess={len(record.sources.hybrid_vprocess)}, "
         f"hybrid_trigger={len(record.sources.hybrid_trigger)}"
     )
 
