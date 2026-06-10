@@ -324,6 +324,116 @@ class TestPlotDataFunction:
         mock_plt.subplots.assert_called_once()
 
 
+class TestPlotDataUnits:
+    """Verify unit propagation through plot_data()."""
+
+    @staticmethod
+    def _overview_with_unit(unit_symbol: str, pint_unit):
+        """Return df_overview with attrs['units'] set for 'Courant_GR1'."""
+        import pint as _pint  # noqa: F401 (ensure available)
+
+        df = pd.DataFrame({"t": np.arange(5, dtype=float), "Courant_GR1": np.ones(5)})
+        df.attrs["units"] = {"Courant_GR1": (unit_symbol, pint_unit)}
+        return df
+
+    def test_merged_attrs_populated(self):
+        """units_map is stored on merged.attrs['units'] after pd.concat.
+
+        Uses the non-direct (plot_overlay) path so that merged is passed as
+        the first positional arg and can be captured.
+        """
+        import pint
+
+        from python_magnetrun.plotting.backend import PlottingBackend
+
+        ureg = pint.UnitRegistry()
+
+        df_overview = self._overview_with_unit("A", ureg.ampere)
+        df_archive = pd.DataFrame({"t": np.arange(5, dtype=float)})
+        df_pupitre = pd.DataFrame({"t": np.arange(5, dtype=float)})
+
+        # A MagicMock that passes isinstance(b, PlottingBackend) — enough to
+        # satisfy get_backend (which returns it unchanged) but is NOT a
+        # MatplotlibBackend, so the non-direct plot_overlay path is taken.
+        mock_backend = MagicMock(spec=PlottingBackend)
+
+        captured: dict = {}
+
+        def fake_plot_overlay(merged_df, *args, **kwargs):
+            captured["merged"] = merged_df
+            fig = MagicMock()
+            fig._magnetrun_xlabel = ""
+            fig._magnetrun_ylabel = ""
+            return fig
+
+        from python_magnetrun.analysis.plotting import plot_data
+
+        with patch("python_magnetrun.analysis.plotting.plot_overlay", side_effect=fake_plot_overlay):
+            plot_data(
+                df_overview,
+                df_archive,
+                df_pupitre,
+                None,
+                channels_dict={},
+                pupitre_dict=None,
+                housing="M9",
+                tkey="t",
+                key="Courant_GR1",
+                title="Test",
+                msg="",
+                show=False,
+                save=False,
+                backend=mock_backend,
+            )
+
+        assert "merged" in captured, "plot_overlay was never called"
+        merged = captured["merged"]
+        units = merged.attrs.get("units", {})
+        assert "Overview: Courant_GR1" in units, f"Expected 'Overview: Courant_GR1' in units, got {list(units)}"
+        symbol, unit = units["Overview: Courant_GR1"]
+        assert symbol == "A"
+        assert unit == ureg.ampere
+
+    @patch("python_magnetrun.analysis.plotting.plt")
+    def test_ylabel_from_pupitre_when_overview_empty(self, mock_plt):
+        """ylabel is derived from pupitre attrs when overview+archive have no units."""
+        import pint
+
+        ureg = pint.UnitRegistry()
+
+        mock_fig = MagicMock()
+        mock_ax = MagicMock()
+        mock_plt.subplots.return_value = (mock_fig, mock_ax)
+        mock_fig._magnetrun_axes = [mock_ax]
+
+        df_overview = pd.DataFrame({"t": np.arange(5, dtype=float)})
+        df_archive = pd.DataFrame({"t": np.arange(5, dtype=float)})
+        df_pupitre = pd.DataFrame({"t": np.arange(5, dtype=float), "IH": np.ones(5)})
+        df_pupitre.attrs["units"] = {"IH": ("A", ureg.ampere)}
+
+        from python_magnetrun.analysis.plotting import plot_data
+
+        plot_data(
+            df_overview,
+            df_archive,
+            df_pupitre,
+            None,
+            channels_dict={},
+            pupitre_dict={"M9": {"Courant_GR1": "IH"}},
+            housing="M9",
+            tkey="t",
+            key="Courant_GR1",
+            title="Test",
+            msg="",
+            show=False,
+            save=False,
+        )
+
+        mock_ax.set_ylabel.assert_called_once()
+        ylabel_arg = mock_ax.set_ylabel.call_args[0][0]
+        assert "A" in ylabel_arg
+
+
 class TestIntegration:
     """Integration tests for plotting module."""
 

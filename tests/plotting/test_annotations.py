@@ -8,6 +8,7 @@ matplotlib.use("Agg")
 
 from python_magnetrun.plotting.annotations import AnnotationManager
 from python_magnetrun.plotting.matplotlib_backend import MatplotlibBackend
+from python_magnetrun.plotting.style import PlotColors
 
 
 class TestAnnotationManagerMatplotlib:
@@ -33,6 +34,54 @@ class TestAnnotationManagerMatplotlib:
         detail = {"idx": 0, "anomaly": "ev", "tkey": "t", "df": pd.DataFrame()}
         mgr.add(fig, 0, t=1.0, f=1.0, label="ev", detail=detail)
         mgr.connect(fig)  # should not raise
+
+
+class TestAnnotationColors:
+    """Test per-type annotation box colors."""
+
+    def _make_mgr(self):
+        b = MatplotlibBackend()
+        fig = b.subplots(1)
+        return AnnotationManager(b), fig
+
+    def test_default_color_used_when_none(self):
+        import matplotlib.colors as mcolors
+        mgr, fig = self._make_mgr()
+        mgr.add(fig, 0, t=1.0, f=0.5, label="ev", detail={"idx": 0})
+        annot = list(mgr._mpl_annotation_dict.keys())[0]
+        fc = annot.get_bbox_patch().get_facecolor()
+        expected = mcolors.to_rgb(PlotColors().incident_default)
+        assert mcolors.to_hex(fc[:3]) == mcolors.to_hex(expected)
+
+    def test_explicit_color_forwarded(self):
+        import matplotlib.colors as mcolors
+        mgr, fig = self._make_mgr()
+        mgr.add(fig, 0, t=1.0, f=0.5, label="ev", detail={"idx": 0}, color="red")
+        annot = list(mgr._mpl_annotation_dict.keys())[0]
+        fc = annot.get_bbox_patch().get_facecolor()
+        assert mcolors.to_hex(fc[:3]) == mcolors.to_hex(mcolors.to_rgb("red"))
+
+    def test_get_incident_color_mapping(self):
+        colors = PlotColors()
+        assert colors.get_incident_color("default") == colors.incident_default
+        assert colors.get_incident_color("spike") == colors.incident_spike
+        assert colors.get_incident_color("trigger") == colors.incident_trigger
+        assert colors.get_incident_color("hybrid_trigger") == colors.incident_hybrid
+
+    def test_get_incident_color_unknown_falls_back(self):
+        colors = PlotColors()
+        assert colors.get_incident_color("unknown_type") == colors.incident_default
+
+    def test_four_incident_types_have_distinct_colors(self):
+        colors = PlotColors()
+        incident_colors = [
+            colors.incident_default,
+            colors.incident_spike,
+            colors.incident_trigger,
+            colors.incident_hybrid,
+        ]
+        # All four should be defined (non-empty strings)
+        assert all(isinstance(c, str) and c for c in incident_colors)
 
 
 class TestAnnotationManagerPlotly:

@@ -54,17 +54,36 @@ class AnnotationManager:
         f: float,
         label: str,
         detail: dict | None = None,
+        color: str | None = None,
     ) -> None:
         """Add one annotation at (t, f).
 
         For the matplotlib backend, also stores *detail* metadata so that the
         pick handler (wired via :meth:`connect`) can open a detail sub-figure.
         For the plotly backend, delegates to ``backend.add_annotation()``.
+
+        Parameters
+        ----------
+        fig : Any
+            Figure handle.
+        ax_idx : int
+            Index of the target axes.
+        t : float
+            Time coordinate [s].
+        f : float
+            Value coordinate.
+        label : str
+            Annotation text.
+        detail : dict, optional
+            Metadata dict opened on click (matplotlib only).
+        color : str, optional
+            Box background colour.  Defaults to
+            :attr:`PlotColors.incident_default`.
         """
         from .matplotlib_backend import MatplotlibBackend
 
         if isinstance(self._backend, MatplotlibBackend):
-            self._add_mpl(fig, ax_idx, t, f, label, detail)
+            self._add_mpl(fig, ax_idx, t, f, label, detail, color=color)
         else:
             self._backend.add_annotation(fig, ax_idx, t, f, label, detail)
 
@@ -110,11 +129,13 @@ class AnnotationManager:
         f: float,
         label: str,
         detail: dict | None,
+        color: str | None = None,
     ) -> None:
         """Add an annotation at (t, f) to a matplotlib figure, and store *detail* metadata."""
         from .matplotlib_backend import MatplotlibBackend
 
         ax = MatplotlibBackend._get_ax(fig, ax_idx)
+        fc = color or self._colors.incident_default
 
         (point,) = ax.plot(t, f, "yo", markersize=8)
 
@@ -123,7 +144,7 @@ class AnnotationManager:
             xy=(t, f),
             xytext=(10, 10),
             textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.5", fc=self._colors.incident, alpha=0.7),
+            bbox=dict(boxstyle="round,pad=0.5", fc=fc, alpha=0.7),
             arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0"),
         )
         annot.set_picker(True)
@@ -157,7 +178,7 @@ def _show_incident_detail(
         ax_sub.plot(
             idf[tkey].values,
             idf[archive_key].values,
-            color=colors.incident,
+            color=colors.incident_default,
             label=f"Incident: {archive_key}",
         )
 

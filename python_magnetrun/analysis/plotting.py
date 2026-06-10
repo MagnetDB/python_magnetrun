@@ -193,13 +193,29 @@ def plot_data(
     b = get_backend(backend)
 
     # ------------------------------------------------------------------
+    # Pre-compute per-source channel names once so they are available in
+    # both the concat section and the unit-resolution section below.
+    # ------------------------------------------------------------------
+    _ar_ch = channels_dict.get(key)
+    _pu_ch = (pupitre_dict or {}).get(housing, {}).get(key)
+    _hy_ch = (hybrid_dict or {}).get(housing, {}).get(key)
+
+    # ------------------------------------------------------------------
     # Build one merged DataFrame: one row per sample, NaN where a source
     # has no value at that timestamp.  plot_overlay handles NaN as gaps.
+    # units_map carries {renamed_col: (symbol, pint_unit)} so that
+    # merged.attrs["units"] survives the concat.
     # ------------------------------------------------------------------
     dfs_to_concat: list[pd.DataFrame] = []
     field_names: list[str] = []
     field_colors: list[str] = []
     field_styles: list[tuple] = []
+    units_map: dict[str, tuple] = {}
+
+    def _collect_unit(col: str, src_attrs: dict, src_key: str) -> None:
+        entry = src_attrs.get("units", {}).get(src_key)
+        if entry:
+            units_map[col] = entry
 
     if not df_overview.empty:
         logger.debug(
@@ -213,15 +229,16 @@ def plot_data(
             field_names.append(col)
             field_colors.append(colors.overview)
             field_styles.append((None, None, None, 1))
-        ov_ch = channels_dict.get(key)
-        if ov_ch and ov_ch in df_overview.columns:
-            col = f"Overview: {ov_ch}"
-            ov_rename[ov_ch] = col
+            _collect_unit(col, df_overview.attrs, key)
+        if _ar_ch and _ar_ch in df_overview.columns:
+            col = f"Overview: {_ar_ch}"
+            ov_rename[_ar_ch] = col
             field_names.append(col)
             field_colors.append(colors.overview)
             field_styles.append(
                 (None, ".", None, 1)
             )  # small markers distinguish source
+            _collect_unit(col, df_overview.attrs, _ar_ch)
         if ov_rename:
             ov_cols = [tkey] + list(ov_rename.keys())
             dfs_to_concat.append(df_overview[ov_cols].rename(columns=ov_rename))
@@ -231,41 +248,39 @@ def plot_data(
             f"housing={housing}, key={key}, channels_dict={channels_dict}, "
             f"df.columns={df_archive.columns.tolist()}"
         )
-        ar_ch = channels_dict.get(key)
-        if ar_ch and ar_ch in df_archive.columns:
-            col = f"Archive: {ar_ch}"
-            dfs_to_concat.append(df_archive[[tkey, ar_ch]].rename(columns={ar_ch: col}))
+        if _ar_ch and _ar_ch in df_archive.columns:
+            col = f"Archive: {_ar_ch}"
+            dfs_to_concat.append(df_archive[[tkey, _ar_ch]].rename(columns={_ar_ch: col}))
             field_names.append(col)
             field_colors.append(colors.archive)
             field_styles.append(
                 ("--", None, None, 0.5)
             )  # dashed + semi-transparent to distinguish
+            _collect_unit(col, df_archive.attrs, _ar_ch)
 
     if not df_pupitre.empty:
         logger.debug(
             f"housing={housing}, key={key}, pupitre_dict={pupitre_dict}, "
             f"df.columns={df_pupitre.columns.tolist()}"
         )
-        pu_ch = pupitre_dict.get(housing, {}).get(key)
-        if pu_ch and pu_ch in df_pupitre.columns:
-            col = f"Pupitre: {pu_ch}"
-            dfs_to_concat.append(df_pupitre[[tkey, pu_ch]].rename(columns={pu_ch: col}))
+        if _pu_ch and _pu_ch in df_pupitre.columns:
+            col = f"Pupitre: {_pu_ch}"
+            dfs_to_concat.append(df_pupitre[[tkey, _pu_ch]].rename(columns={_pu_ch: col}))
             field_names.append(col)
             field_colors.append(colors.pupitre)
             field_styles.append(("-.", None, None, 1))  # dash-dot for pupitre
-            logger.debug(f"pupitre[{pu_ch}]:\n{dfs_to_concat[-1].head()}")
-            logger.debug(f"pupitre[{pu_ch}]:\n{dfs_to_concat[-1].describe()}")
+            _collect_unit(col, df_pupitre.attrs, _pu_ch)
+            logger.debug(f"pupitre[{_pu_ch}]:\n{dfs_to_concat[-1].head()}")
+            logger.debug(f"pupitre[{_pu_ch}]:\n{dfs_to_concat[-1].describe()}")
 
-    if df_hybrid is not None and not df_hybrid.empty:
-        hy_ch = (hybrid_dict or {}).get(housing, {}).get(key)
-        if hy_ch and hy_ch in df_hybrid.columns:
-            col = f"Hybrid: {hy_ch}"
-            dfs_to_concat.append(df_hybrid[[tkey, hy_ch]].rename(columns={hy_ch: col}))
-            field_names.append(col)
-            field_colors.append(colors.hybrid)
-            field_styles.append(
-                (":", None, None, 1)
-            )  # dotted to distinguish from pupitre
+    if df_hybrid is not None and not df_hybrid.empty and _hy_ch and _hy_ch in df_hybrid.columns:
+        col = f"Hybrid: {_hy_ch}"
+        dfs_to_concat.append(df_hybrid[[tkey, _hy_ch]].rename(columns={_hy_ch: col}))
+        field_names.append(col)
+        field_colors.append(colors.hybrid)
+        field_styles.append((":", None, None, 1))  # dotted to distinguish from pupitre
+        if isinstance(df_hybrid, pd.DataFrame):
+            _collect_unit(col, df_hybrid.attrs, _hy_ch)
 
     if not field_names:
         logger.warning(
@@ -273,26 +288,26 @@ def plot_data(
         )
         return None
 
-    # Resolve unit for ylabel before concat drops attrs
-    _ch = channels_dict.get(key, key)
-    logger.debug(
-        f"Resolving unit for key={key!r}, channel={_ch!r} from overview and archive metadata"
-    )
-    for _df in [
-        df_overview,
-        df_archive,
-        df_pupitre,
-    ]:
+    # Resolve unit for ylabel — check all sources, attrs must be read before
+    # pd.concat() drops them.
+    for _df in [df_overview, df_archive, df_pupitre]:
         logger.debug(f"{_df}.attrs.get('units', {{}}): {_df.attrs.get('units', {})}")
 
     _unit_entry = (
-        df_overview.attrs.get("units", {}).get(_ch)
+        df_overview.attrs.get("units", {}).get(_ar_ch)
         or df_overview.attrs.get("units", {}).get(key)
-        or df_archive.attrs.get("units", {}).get(_ch)
+        or df_archive.attrs.get("units", {}).get(_ar_ch)
         or df_archive.attrs.get("units", {}).get(key)
+        or (_pu_ch and df_pupitre.attrs.get("units", {}).get(_pu_ch))
+        or (
+            _hy_ch
+            and isinstance(df_hybrid, pd.DataFrame)
+            and df_hybrid.attrs.get("units", {}).get(_hy_ch)
+        )
     )
     logger.debug(
-        f"Found unit entry for key={key!r}: {_unit_entry!r} (type: {type(_unit_entry)})"
+        f"Resolving unit for key={key!r}: ar_ch={_ar_ch!r}, pu_ch={_pu_ch!r}, "
+        f"hy_ch={_hy_ch!r} → entry={_unit_entry!r}"
     )
     _pint_unit = _unit_entry[1] if _unit_entry else None
     _symbol_unit = _unit_entry[0] if _unit_entry else ""
@@ -306,6 +321,8 @@ def plot_data(
         .sort_values(tkey, kind="stable")
         .reset_index(drop=True)
     )
+    if units_map:
+        merged.attrs["units"] = units_map
     logger.debug(
         f"Merged DataFrame for plotting:\n{merged.head()}\n{merged.describe()}"
     )
@@ -418,7 +435,10 @@ def plot_data(
                         "pupitre": (df_pupitre, pupitre_dict.get(housing, {}).get(key)),
                         "archive": (df_archive, channels_dict.get(key)),
                     }
-                    manager.add(fig, 0, t_mid, f_mid, label, detail)
+                    manager.add(
+                        fig, 0, t_mid, f_mid, label, detail,
+                        color=colors.get_incident_color(itype),
+                    )
 
         if df_hybrid_incidents is not None:
             hy_ch = (hybrid_dict or {}).get(housing, {}).get(key)
@@ -442,7 +462,10 @@ def plot_data(
                         "hybrid": (df_hybrid, hy_ch),
                         "archive": (df_archive, channels_dict.get(key)),
                     }
-                    manager.add(fig, 0, t_mid, f_mid, label, detail)
+                    manager.add(
+                        fig, 0, t_mid, f_mid, label, detail,
+                        color=colors.get_incident_color(itype),
+                    )
 
         manager.connect(fig)
 

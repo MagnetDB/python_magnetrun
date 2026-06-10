@@ -79,7 +79,10 @@ class PlotColors:
     archive: str = "red"
     pupitre: str = "green"
     hybrid: str = "orange"
-    incident: str = "yellow"
+    incident_default: str = "orange"
+    incident_spike: str = "yellow"
+    incident_trigger: str = "green"
+    incident_hybrid: str = "red"
     regime_up: str = "green"
     regime_down: str = "red"
     regime_plateau: str = "blue"
@@ -114,6 +117,27 @@ class PlotColors:
         }
         return regime_map.get(regime, "gray")
 
+    def get_incident_color(self, itype: str) -> str:
+        """Return the annotation box color for an incident type.
+
+        Parameters
+        ----------
+        itype : str
+            Incident type key: ``"default"``, ``"spike"``, ``"trigger"``,
+            or ``"hybrid_trigger"``.
+
+        Returns
+        -------
+        str
+            Colour string suitable for matplotlib ``fc`` or ``color`` kwargs.
+        """
+        return {
+            "default": self.incident_default,
+            "spike": self.incident_spike,
+            "trigger": self.incident_trigger,
+            "hybrid_trigger": self.incident_hybrid,
+        }.get(itype, self.incident_default)
+
 
 @dataclass
 class PlotConfig:
@@ -142,6 +166,11 @@ class PlotConfig:
         for key in ("title_style", "xlabel_style", "ylabel_style", "annotation_style"):
             if isinstance(style_data.get(key), dict):
                 style_data[key] = LabelStyle(**style_data[key])
+        # Migrate old single-field "incident" key written by previous versions.
+        if "incident" in colors_data and "incident_default" not in colors_data:
+            colors_data["incident_default"] = colors_data.pop("incident")
+        elif "incident" in colors_data:
+            colors_data.pop("incident")
         return cls(style=PlotStyle(**style_data), colors=PlotColors(**colors_data))
 
 

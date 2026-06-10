@@ -1,6 +1,6 @@
 # Development Roadmap — python_magnetrun
 
-*Updated: 2026-06-09*
+*Updated: 2026-06-10*
 
 This document outlines strategic priorities and upcoming work. For detailed implementation status, see [CHECK_IMPLEMENTATION.md](CHECK_IMPLEMENTATION.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -97,19 +97,21 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 
 **See:** [phase2b-time-alignment.plan.md](phase2b-time-alignment.plan.md) for full analysis.
 
-**Phase 2C: Extend `plot_data()` for Hybrid** ⬜ **PLANNED**
+**Phase 2C: Extend `plot_data()` for Hybrid** 🔶 **IN PROGRESS**
 
-Extend `analysis/plotting.plot_data()` with:
-```python
-def plot_data(
-    ...
-    df_hybrid: HybridRun | None = None,
-    hybrid_channels: list[str] | None = None,
-    ...
-)
-```
+Extend `analysis/plotting.plot_data()` and supporting modules to integrate Hybrid data alongside Overview, Archive, and Pupitre sources on shared axes. `hybrid_dict` (same pattern as `pupitre_dict`) is the channel-mapping parameter — `hybrid_channels` was dropped.
 
-**Depends on:** Phase 2B — ✅ **now complete**
+**Completed:**
+- ✅ Per-type annotation colors — `PlotColors` gains `incident_default/spike/trigger/hybrid` fields + `get_incident_color(itype)`; `AnnotationManager.add()` gains `color` param; `plot_data()` passes per-type color to each `manager.add()` call; migration in `PlotConfig.from_dict()` for old `"incident"` key; 5 new annotation tests
+- ✅ Unit propagation — pre-compute `_ar_ch/_pu_ch/_hy_ch`; `units_map` collected inline per source block; `merged.attrs["units"] = units_map` set after `pd.concat()` (survives the concat); `_unit_entry` fallback widened to pupitre + hybrid attrs; `TestPlotDataUnits` (2 tests); **1078 tests pass**
+
+**Pending:**
+- ⬜ `HybridRun` acceptance + time alignment — widen `df_hybrid` type to `HybridRun | pd.DataFrame | None`; add `reference_t0: datetime | None`; extract DataFrame + compute offset via `align_to_common_time`; surface `hrun` from `load_hybrid_data()`; update `analysis/cli.py`
+- ⬜ `load_hybrid_incidents_data()` — implement stub in `analysis/processing.py` using `parse_trigger_directory()`; prefer `trigger_approx_timestamp` from `EventInfo.properties` (ms precision) over `TriggerInfo.timestamp` (minute precision)
+- ⬜ `AnnotationManager.add_vline()` — new method for point-event annotations (no data column)
+- ⬜ Use `add_vline()` fallback in `plot_data()` hybrid incidents annotation loop
+
+**Depends on:** Phase 2B — ✅ **complete**
 **Effort:** ~2-3 weeks
 
 **Phase 2D: Side-by-Side Comparison** ⬜ **PLANNED**
@@ -218,8 +220,9 @@ Items 2 and 3 from the notes are already tracked as B0.5 and B2.5 in Phase 2B. I
 **See:** [3.9-hybrid-code-quality.plan.md](3.9-hybrid-code-quality.plan.md) for full item tracking.
 
 *Small (S) — low risk, do any time:*
-- **S1 — `safe_float` module-level** (notes item 5): hoist the two nested `safe_float` definitions to module level in [hybrid/kHz/fepc_reader.py](../python_magnetrun/hybrid/kHz/fepc_reader.py) (lines 298 and 435).
+- ✅ **S1 — `safe_float` module-level** (notes item 5): `safe_float` hoisted to module level in [hybrid/kHz/fepc_reader.py](../python_magnetrun/hybrid/kHz/fepc_reader.py); both nested definitions at ~298 and ~435 removed.
 - ✅ **S2 — Consolidate `_resolve_backend`** (notes items 6/15): deleted both local definitions; all 6 call sites now use `get_backend` directly (which already handles `PlottingBackend` instances). **1071 tests pass.**
+- ✅ **S3 — `_open_text` wrapper** (notes item): `_open_text_with_fallback` in [utils/files.py](../python_magnetrun/utils/files.py) widened to `str | Path`; `_open_text` wrapper deleted from [readers/csv_readers.py](../python_magnetrun/readers/csv_readers.py); 3 call sites updated.
 
 *Medium (M) — low-to-medium risk:*
 - **M1 — Unify `log_exception` + `format_exception_location`** (notes items 9/11): standardise on the `log_utils.py` signature (explicit `logger` arg); update six call sites in `hybrid/cli.py`; delete the duplicate in [hybrid/utils.py](../python_magnetrun/hybrid/utils.py).
@@ -421,7 +424,7 @@ graph TD
 **Unblocked:** HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) and hybrid/ refactoring are both complete
 **Improves Phase E:** Stream 3.6 R4 (`HybridData` joins hierarchy) ✅ complete — Phase E can now be implemented cleanly
 **Independent:** Quick wins, logging migration, CLI consolidation, type hints, Stream 3.7 (pattern defs), Stream 3.8a/b/c (downsampling extensions — all additive)
-**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.3 CLI ✅ · 3.4 namespace ✅ · 3.5 outlier dedup ✅ · 3.6 reader split ✅ · 3.8a M4/NaN-M4 ✅ · 3.8b RDP/VW ✅ · 3.8c metrics ✅ · 3.7 pattern defs open · 3.9 code quality open
+**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.3 CLI ✅ · 3.4 namespace ✅ · 3.5 outlier dedup ✅ · 3.6 reader split ✅ · 3.8a M4/NaN-M4 ✅ · 3.8b RDP/VW ✅ · 3.8c metrics ✅ · 3.7 pattern defs open · 3.9 code quality 🔶 partial (S1 ✅ S2 ✅ S3 ✅ L1 ✅ · M1/M2/M3/M4/L2 open)
 **Phase 2B status:** ✅ complete (B0.5 · B1 · B2 · B2.5 · B3 · B4 all done; 1052 tests pass)
 
 ---
