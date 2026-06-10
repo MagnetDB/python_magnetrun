@@ -434,6 +434,104 @@ class TestPlotDataUnits:
         assert "A" in ylabel_arg
 
 
+class TestPlotDataHybridIncidentFallback:
+    """add_vline() is used when a hybrid incident has no channel data column."""
+
+    @patch("python_magnetrun.analysis.plotting.plt")
+    def test_point_event_incident_calls_add_vline(self, mock_plt):
+        """A hybrid incident df with only 't' (no channel column) triggers add_vline."""
+        from unittest.mock import patch as _patch
+
+        mock_fig = MagicMock()
+        mock_ax = MagicMock()
+        mock_plt.subplots.return_value = (mock_fig, mock_ax)
+        mock_fig._magnetrun_axes = [mock_ax]
+
+        df_overview = pd.DataFrame({"t": np.arange(5, dtype=float), "Courant_GR1": np.ones(5)})
+        df_archive = pd.DataFrame({"t": np.arange(5, dtype=float)})
+        df_pupitre = pd.DataFrame({"t": np.arange(5, dtype=float)})
+        # Point-event incident: only a 't' column, no waveform data.
+        df_point_event = pd.DataFrame({"t": [2.5]})
+        df_hybrid_incidents = {"hybrid_trigger": [df_point_event]}
+
+        from python_magnetrun.analysis.plotting import plot_data
+
+        with _patch(
+            "python_magnetrun.plotting.annotations.AnnotationManager"
+        ) as MockManager:
+            mock_mgr = MagicMock()
+            MockManager.return_value = mock_mgr
+
+            plot_data(
+                df_overview,
+                df_archive,
+                df_pupitre,
+                None,
+                channels_dict={},
+                pupitre_dict=None,
+                housing="M9",
+                tkey="t",
+                key="Courant_GR1",
+                title="Test",
+                msg="",
+                show=False,
+                save=False,
+                df_hybrid_incidents=df_hybrid_incidents,
+                hybrid_dict=None,
+            )
+
+        mock_mgr.add_vline.assert_called_once()
+        call_kwargs = mock_mgr.add_vline.call_args
+        # t value should be the median of the point-event df
+        assert call_kwargs.args[2] == 2.5 or call_kwargs.kwargs.get("t") == 2.5
+
+    @patch("python_magnetrun.analysis.plotting.plt")
+    def test_incident_with_channel_data_calls_add_not_add_vline(self, mock_plt):
+        """A hybrid incident df that has the channel column uses manager.add(), not add_vline()."""
+        from unittest.mock import patch as _patch
+
+        mock_fig = MagicMock()
+        mock_ax = MagicMock()
+        mock_plt.subplots.return_value = (mock_fig, mock_ax)
+        mock_fig._magnetrun_axes = [mock_ax]
+
+        df_overview = pd.DataFrame({"t": np.arange(5, dtype=float), "Courant_GR1": np.ones(5)})
+        df_archive = pd.DataFrame({"t": np.arange(5, dtype=float)})
+        df_pupitre = pd.DataFrame({"t": np.arange(5, dtype=float)})
+        # Full incident with waveform data matching the hybrid channel.
+        df_full_incident = pd.DataFrame({"t": np.arange(3, dtype=float), "IH": np.ones(3)})
+        df_hybrid_incidents = {"hybrid_trigger": [df_full_incident]}
+
+        from python_magnetrun.analysis.plotting import plot_data
+
+        with _patch(
+            "python_magnetrun.plotting.annotations.AnnotationManager"
+        ) as MockManager:
+            mock_mgr = MagicMock()
+            MockManager.return_value = mock_mgr
+
+            plot_data(
+                df_overview,
+                df_archive,
+                df_pupitre,
+                None,
+                channels_dict={},
+                pupitre_dict=None,
+                housing="M9",
+                tkey="t",
+                key="Courant_GR1",
+                title="Test",
+                msg="",
+                show=False,
+                save=False,
+                df_hybrid_incidents=df_hybrid_incidents,
+                hybrid_dict={"M9": {"Courant_GR1": "IH"}},
+            )
+
+        mock_mgr.add.assert_called_once()
+        mock_mgr.add_vline.assert_not_called()
+
+
 class TestIntegration:
     """Integration tests for plotting module."""
 

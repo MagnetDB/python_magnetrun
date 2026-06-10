@@ -451,6 +451,11 @@ def plot_data(
                         continue
                     t_mid = idf[tkey].median()
                     if hy_ch is None or hy_ch not in idf.columns:
+                        label = rf"{itype} #{i + 1}"
+                        manager.add_vline(
+                            fig, 0, t_mid, label,
+                            color=colors.get_incident_color(itype),
+                        )
                         continue
                     f_mid = idf[hy_ch].median()
                     label = rf"{itype} #{i + 1}"
