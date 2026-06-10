@@ -12,10 +12,10 @@ Usage:
 import argparse
 import logging
 
-from ..log_utils import setup_logging
+from ..log_utils import format_exception_location, log_exception, setup_logging
 from .args import args_to_outlier_config, create_parser
 from .hybrid_data import HybridData
-from .utils import format_exception_location, list_available_dates, log_exception
+from .utils import list_available_dates
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ def run_show_rms_vars(data: HybridData, system: str) -> None:
             logger.info(f"    ... and {len(vars_info['digital']) - 10} more")
     except (OSError, ValueError, RuntimeError, KeyError) as e:
         log_exception(
-            "Error showing kHz variables", e, use_print=True, include_traceback=False
+            logger, "Error showing kHz variables", e, use_print=True, include_traceback=False
         )
         logger.error(f"  Error at {format_exception_location()}: {e}")
 
@@ -123,7 +123,7 @@ def main() -> None:
         )
     except (OSError, ValueError, RuntimeError) as e:
         log_exception(
-            "Error creating HybridData", e, use_print=True, include_traceback=True
+            logger, "Error creating HybridData", e, use_print=True, include_traceback=True
         )
         return
 
@@ -193,7 +193,7 @@ def main() -> None:
             return
         except (OSError, RuntimeError) as e:
             log_exception(
-                "Error plotting kHz variable", e, use_print=True, include_traceback=True
+                logger, "Error plotting kHz variable", e, use_print=True, include_traceback=True
             )
             return
 
@@ -229,7 +229,7 @@ def main() -> None:
                 )
         except (OSError, ValueError, RuntimeError) as e:
             log_exception(
-                "Error plotting RMS variable", e, use_print=True, include_traceback=True
+                logger, "Error plotting RMS variable", e, use_print=True, include_traceback=True
             )
 
     # Plot both kHz and RMS
@@ -255,7 +255,7 @@ def main() -> None:
             return
         except (OSError, RuntimeError) as e:
             log_exception(
-                "Error plotting kHz with RMS", e, use_print=True, include_traceback=True
+                logger, "Error plotting kHz with RMS", e, use_print=True, include_traceback=True
             )
 
 
@@ -282,7 +282,7 @@ def _run(args: "argparse.Namespace") -> int:
             endian=getattr(args, "endian", "big"),
         )
     except (OSError, ValueError, RuntimeError) as e:
-        log_exception("Error creating HybridData", e, use_print=True, include_traceback=True)
+        log_exception(logger, "Error creating HybridData", e, use_print=True, include_traceback=True)
         return 1
 
     data.print_summary()
@@ -318,7 +318,7 @@ def _run(args: "argparse.Namespace") -> int:
                                         save=getattr(args, "save", None), outlier_config=outlier_config,
                                         layout=getattr(args, "layout", "subplots"))
         except (OSError, ValueError, RuntimeError) as e:
-            log_exception("Error plotting kHz variable", e, use_print=True, include_traceback=True)
+            log_exception(logger, "Error plotting kHz variable", e, use_print=True, include_traceback=True)
             return 1
 
     if getattr(args, "plot_rms", None):
@@ -335,7 +335,7 @@ def _run(args: "argparse.Namespace") -> int:
                                         save=getattr(args, "save", None), outlier_config=outlier_config,
                                         layout=getattr(args, "layout", "subplots"))
         except (OSError, ValueError, RuntimeError) as e:
-            log_exception("Error plotting RMS variable", e, use_print=True, include_traceback=True)
+            log_exception(logger, "Error plotting RMS variable", e, use_print=True, include_traceback=True)
             return 1
 
     if getattr(args, "plot_both", None):
@@ -348,7 +348,7 @@ def _run(args: "argparse.Namespace") -> int:
                                    hours=hours, apply_calib=not getattr(args, "no_calib", False),
                                    save=getattr(args, "save", None))
         except (OSError, ValueError, RuntimeError) as e:
-            log_exception("Error plotting kHz with RMS", e, use_print=True, include_traceback=True)
+            log_exception(logger, "Error plotting kHz with RMS", e, use_print=True, include_traceback=True)
             return 1
 
     return 0
