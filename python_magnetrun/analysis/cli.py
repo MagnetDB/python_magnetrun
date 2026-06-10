@@ -311,7 +311,7 @@ def _load_records(input_files, config, parsed_args, housing, logger):
     return results, all_dfs, channels_dict, pupitre_dict, hybrid_dict, keys, housing
 
 
-def _combine_dataframes(all_dfs: list[tuple]):
+def _combine_dataframes(all_dfs: list[tuple]) -> tuple:
     """Concatenate per-file DataFrames into single combined DataFrames.
 
     Returns

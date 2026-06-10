@@ -35,6 +35,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 from natsort import natsorted
@@ -385,7 +386,11 @@ def load_files_data(
 
             # Dispatch on data type rather than file extension.
             if mdata.Type == DataType.TDMS:
-                df = pd.DataFrame(mdata.getTdmsData(group=group, channel=None))
+                from python_magnetrun.magnetdata_tdms import TdmsMagnetData
+
+                df = pd.DataFrame(
+                    cast(TdmsMagnetData, mdata).getTdmsData(group=group, channel=None)
+                )
             else:
                 available = set(mdata.Keys)
                 desired = [k for k in (keys or []) + ["t", "timestamp"] if k in available]
@@ -693,29 +698,41 @@ class FileDiscovery:
                 m = re.match(r"^\d{8}_(\d{2})", p.name)
                 return int(m.group(1)) if m else None
 
-            file_set.hybrid_kHz = natsorted(
-                str(f)
-                for key, files in hdata._info.khz_files.items()
-                if not key.endswith("_cfg")
-                for f in files
-                if _khz_hour(f) in utc_hours
+            file_set.hybrid_kHz = cast(
+                list[str],
+                natsorted(
+                    str(f)
+                    for key, files in hdata._info.khz_files.items()
+                    if not key.endswith("_cfg")
+                    for f in files
+                    if _khz_hour(f) in utc_hours
+                ),
             )
-            file_set.hybrid_rms = natsorted(
-                str(f)
-                for files in hdata._info.rms_files.values()
-                for f in files
-                if _rms_hour(f) in utc_hours
+            file_set.hybrid_rms = cast(
+                list[str],
+                natsorted(
+                    str(f)
+                    for files in hdata._info.rms_files.values()
+                    for f in files
+                    if _rms_hour(f) in utc_hours
+                ),
             )
-            file_set.hybrid_trigger = natsorted(
-                str(d)
-                for dirs in hdata._info.trigger_dirs.values()
-                for d in dirs
-                if _trigger_dir_hour(d) in utc_hours
+            file_set.hybrid_trigger = cast(
+                list[str],
+                natsorted(
+                    str(d)
+                    for dirs in hdata._info.trigger_dirs.values()
+                    for d in dirs
+                    if _trigger_dir_hour(d) in utc_hours
+                ),
             )
-            file_set.hybrid_vprocess = natsorted(
-                str(f)
-                for f in hdata._info.vprocess_files
-                if _vprocess_hour(f) in utc_hours
+            file_set.hybrid_vprocess = cast(
+                list[str],
+                natsorted(
+                    str(f)
+                    for f in hdata._info.vprocess_files
+                    if _vprocess_hour(f) in utc_hours
+                ),
             )
             logger.info(
                 f"Hybrid data for {date_str} {time_str}–{end_time_str} (local)"
