@@ -517,6 +517,7 @@ def load_hybrid_data(
     keys: list[str],
     extra_keys: list[str] | None = None,
     htype: str = "kHz",
+    reference_t0: datetime | None = None,
 ) -> pd.DataFrame:
     """
     Load hybrid data for a record.
@@ -533,6 +534,13 @@ def load_hybrid_data(
         Current keys to load
     extra_keys : List[str], optional
         Additional keys (flow params, etc.)
+    reference_t0 : datetime, optional
+        Reference UTC timestamp for the shared time axis (t = 0).  When
+        provided and ``htype == "kHz"``, the kHz time array (elapsed seconds
+        from ``HH:00:00 UTC``) is shifted by
+        ``(hrun.get_time_range()[0] - reference_t0).total_seconds()`` so
+        that the hybrid ``t`` column is on the same axis as the overview
+        and archive data.  RMS and vprocess alignment is not yet supported.
 
     Returns
     -------
@@ -612,6 +620,17 @@ def load_hybrid_data(
             base_dir=base_dir, date_str=date_str, housing=record.housing
         )
 
+        # Compute time offset so hybrid t aligns with the shared overview axis.
+        # Only kHz is supported: get_time_range() is kHz-based.
+        _t_offset = 0.0
+        if htype == "kHz" and reference_t0 is not None:
+            khz_origin = hrun.get_time_range()[0]
+            _t_offset = (khz_origin - reference_t0).total_seconds()
+            logger.debug(
+                f"load_hybrid_data: kHz origin={khz_origin}, "
+                f"reference_t0={reference_t0}, t_offset={_t_offset:.3f}s"
+            )
+
         # For vprocess, derive keys from the file header (no housing-config mapping).
         if htype == "vprocess":
             try:
@@ -633,7 +652,7 @@ def load_hybrid_data(
             logger.debug(
                 f"Loaded hybrid data for key={key}, data type={type(data)}, time shape={time.shape}"
             )
-            frames.append(pd.DataFrame({"t": time, key: data}))
+            frames.append(pd.DataFrame({"t": time + _t_offset, key: data}))
 
     except (OSError, ValueError, ImportError) as e:
         logger.error(
@@ -761,11 +780,19 @@ def _load_all_sources(
             f"{record.filename}: loaded pupitre data columns={df_pupitre.columns.tolist()}"
         )
 
+    # Common reference for hybrid time alignment (same formula used for incidents).
+    _hybrid_reference_t0: datetime | None = (
+        record.data["archive"]["timestamp"].iloc[0]
+        if record.has_data("archive")
+        else record.t0
+    )
+
     # Hybrid kHz
     if record.sources.hybrid_kHz:
         logger.info(f"hybrid_kHz={record.sources.hybrid_kHz}")
         df_hybrid_kHz = load_hybrid_data(
-            record, housing_config, config.group, keys, htype="kHz"
+            record, housing_config, config.group, keys, htype="kHz",
+            reference_t0=_hybrid_reference_t0,
         )
         if not df_hybrid_kHz.empty:
             record.data["hybrid_kHz"] = df_hybrid_kHz
@@ -777,7 +804,8 @@ def _load_all_sources(
     if record.sources.hybrid_rms:
         logger.info(f"hybrid_rms={record.sources.hybrid_rms}")
         df_hybrid_rms = load_hybrid_data(
-            record, housing_config, config.group, keys, htype="rms"
+            record, housing_config, config.group, keys, htype="rms",
+            reference_t0=_hybrid_reference_t0,
         )
         if not df_hybrid_rms.empty:
             record.data["hybrid_rms"] = df_hybrid_rms
@@ -789,7 +817,8 @@ def _load_all_sources(
     if record.sources.hybrid_vprocess:
         logger.info(f"hybrid_vprocess={record.sources.hybrid_vprocess}")
         df_hybrid_vprocess = load_hybrid_data(
-            record, housing_config, config.group, keys, htype="vprocess"
+            record, housing_config, config.group, keys, htype="vprocess",
+            reference_t0=_hybrid_reference_t0,
         )
         if not df_hybrid_vprocess.empty:
             record.data["hybrid_vprocess"] = df_hybrid_vprocess
