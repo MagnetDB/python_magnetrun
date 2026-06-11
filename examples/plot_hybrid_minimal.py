@@ -24,8 +24,8 @@ from python_magnetrun.data_dirs import (
 
 # Import from hybrid module
 from python_magnetrun.hybrid.hybrid_run import HybridRun
-from python_magnetrun.hybrid.utils import binarize_signal, log_exception
-from python_magnetrun.log_utils import get_logger, setup_logging
+from python_magnetrun.hybrid.utils import binarize_signal
+from python_magnetrun.log_utils import get_logger, log_exception, setup_logging
 from python_magnetrun.MagnetRun import MagnetRun
 
 TZ_FRANCE = ZoneInfo("Europe/Paris")
