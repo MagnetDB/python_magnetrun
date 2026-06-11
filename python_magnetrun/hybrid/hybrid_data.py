@@ -172,6 +172,7 @@ class HybridData(MagnetDataBase):
 
         # Discover available data — overwrites self.Groups and self.Keys
         self._discover_data()
+        self._infer_timestamps()
 
     # ------------------------------------------------------------------
     # Abstract property implementations (MagnetDataBase requirements)
@@ -365,6 +366,165 @@ class HybridData(MagnetDataBase):
             f"rms={self._info.rms_available}, "
             f"trigger={self._info.trigger_available})"
         )
+
+    # ------------------------------------------------------------------
+    # Timestamp support (MagnetDataBase interface)
+    # ------------------------------------------------------------------
+
+    def _infer_timestamps(self, time_zone: str = "Europe/Paris") -> None:
+        """Infer start_timestamp / end_timestamp from discovered files (naive UTC).
+
+        Parameters
+        ----------
+        time_zone : str
+            IANA timezone name for local-time sources (RMS filenames,
+            trigger directory names).
+        """
+        import re
+
+        import pytz
+
+        tz = pytz.timezone(time_zone)
+
+        def _local_to_utc(local_ts: pd.Timestamp) -> datetime:
+            return (
+                local_ts.tz_localize(tz, ambiguous=False, nonexistent="shift_forward")
+                .tz_convert(pytz.utc)
+                .to_pydatetime()
+                .replace(tzinfo=None)
+            )
+
+        utc_starts: list[datetime] = []
+        utc_ends: list[datetime] = []
+
+        # --- 1. RMS filenames (local time, both start and end encoded) ---
+        # Format: {system}_YYYY-MM-DD_HHMM—YYYY-MM-DD_HHMM.rms
+        # Separator may be em-dash (—, U+2014) or hyphen-minus (-).
+        pattern = r"(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})[—\-](\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})"
+        for files in self._info.rms_files.values():
+            for f in files:
+                m = re.search(pattern, f.stem)
+                if m:
+                    d1, h1, mn1, d2, h2, mn2 = m.groups()
+                    utc_starts.append(_local_to_utc(pd.Timestamp(f"{d1} {h1}:{mn1}")))
+                    utc_ends.append(_local_to_utc(pd.Timestamp(f"{d2} {h2}:{mn2}")))
+
+        # --- 2. kHz bin filenames (filename encodes UTC hour: XXHOST_*_LIST_N.bin) ---
+        # Parse UTC hour from first two characters of each filename — no file content
+        # needed, consistent with _khz_first_last_utc.  Do NOT apply _local_to_utc.
+        if not utc_starts:
+            import datetime as _dt
+            from zoneinfo import ZoneInfo
+
+            utc_zone = ZoneInfo("UTC")
+            all_hours: list[int] = []
+            for system, files in self._info.khz_files.items():
+                if system.endswith("_cfg") or not files:
+                    continue
+                for f in files:
+                    if f.suffix != ".bin":
+                        continue
+                    with contextlib.suppress(ValueError):
+                        all_hours.append(int(f.name[:2]))
+            if all_hours:
+                d = self.date
+                t_start = _dt.datetime(d.year, d.month, d.day, min(all_hours), 0, 0,
+                                       tzinfo=utc_zone).replace(tzinfo=None)
+                t_end = (
+                    _dt.datetime(d.year, d.month, d.day, max(all_hours), 0, 0,
+                                 tzinfo=utc_zone)
+                    + _dt.timedelta(hours=1)
+                ).replace(tzinfo=None)
+                utc_starts.append(t_start)
+                utc_ends.append(t_end)
+
+        # --- 3. Trigger directories (last resort: start only, local time) ---
+        if not utc_starts:
+            for dirs in self._info.trigger_dirs.values():
+                for d in dirs:
+                    parts = d.name.split("__")  # TRIGGER__YYYY-MM-DD__HH-MM
+                    if len(parts) >= 3:
+                        with contextlib.suppress(ValueError):
+                            utc_starts.append(
+                                _local_to_utc(
+                                    pd.Timestamp(f"{parts[1]} {parts[2].replace('-', ':')}")
+                                )
+                            )
+
+        if not utc_starts:
+            logger.debug(f"_infer_timestamps: no timestamps found for {self.date_str}")
+            return
+
+        self.start_timestamp = min(utc_starts)
+        self.end_timestamp = max(utc_ends) if utc_ends else None
+
+    def addTime(self, time_zone: str = "Europe/Paris") -> int:  # noqa: N802
+        """Compute and store start_timestamp / end_timestamp (naive UTC).
+
+        Unlike :class:`~python_magnetrun.magnetdata_pandas.PandasMagnetData`,
+        ``HybridData`` does not hold pre-loaded DataFrames, so ``addTime()``
+        only sets the metadata timestamps. Time arrays from
+        :meth:`read_khz_variable` / :meth:`read_rms_variable` remain
+        relative (elapsed seconds from first sample).
+
+        Parameters
+        ----------
+        time_zone : str
+            IANA timezone of the source date/time data.
+
+        Returns
+        -------
+        int
+            ``0`` on success.
+        """
+        self._infer_timestamps(time_zone=time_zone)
+        return 0
+
+    def getStartDate(self, group: str | None = None) -> tuple:  # noqa: N802
+        """Return start/end date and time strings derived from file metadata.
+
+        Parameters
+        ----------
+        group : str, optional
+            Unused; accepted for interface compatibility.
+
+        Returns
+        -------
+        tuple
+            ``(start_date, start_time, end_date, end_time)`` strings in
+            ``"%Y.%m.%d"`` / ``"%H:%M:%S"`` format, or empty tuple when
+            timestamps are unavailable.
+        """
+        if self.start_timestamp is None:
+            self._infer_timestamps()
+        if self.start_timestamp is None:
+            return ()
+        fmt_date = "%Y.%m.%d"
+        fmt_time = "%H:%M:%S"
+        return (
+            self.start_timestamp.strftime(fmt_date),
+            self.start_timestamp.strftime(fmt_time),
+            self.end_timestamp.strftime(fmt_date) if self.end_timestamp else "",
+            self.end_timestamp.strftime(fmt_time) if self.end_timestamp else "",
+        )
+
+    def getDuration(self, group: str | None = None) -> float:  # noqa: N802
+        """Return the duration of the dataset in seconds.
+
+        Parameters
+        ----------
+        group : str, optional
+            Unused; accepted for interface compatibility.
+
+        Returns
+        -------
+        float
+            ``(end_timestamp - start_timestamp).total_seconds()`` [s], or
+            ``0.0`` when either timestamp is unavailable.
+        """
+        if self.start_timestamp is None or self.end_timestamp is None:
+            return 0.0
+        return (self.end_timestamp - self.start_timestamp).total_seconds()
 
     def getKeys(self) -> list[str]:
         logger.debug(f"HybridData/getKeys: keys={self.Keys}")

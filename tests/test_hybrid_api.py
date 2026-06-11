@@ -458,7 +458,7 @@ class TestHybridRunGetTimeRange:
         assert t_end == datetime.datetime(2025, 1, 28, 0, 0, 0)
 
     def test_raises_when_no_bin_files(self, tmp_path: Path):
-        """get_time_range() must raise RuntimeError when no bin files exist."""
+        """get_time_range() must raise when no timestamps can be inferred."""
         from python_magnetrun.hybrid.hybrid_run import HybridRun
 
         date_str = "2025-01-27"
@@ -468,8 +468,116 @@ class TestHybridRunGetTimeRange:
         (khz_dir / "HOST_2_DATA.CFG").write_text(f"{fepc};1;1000;0;0;ANALOG;1\nU_Alim\n")
         hrun = HybridRun.fromdir(str(tmp_path), date_str, fepc_system=fepc)
 
-        with pytest.raises(RuntimeError, match="No kHz bin files found"):
+        with pytest.raises(NotImplementedError):
             hrun.get_time_range()
+
+
+# ---------------------------------------------------------------------------
+# 4.1 — HybridData timestamp support
+# ---------------------------------------------------------------------------
+
+
+class TestHybridTimestamps:
+    """Tests for HybridData timestamp inference — Task 4.1."""
+
+    def _make_rms_dir(self, tmp_path: Path, date_str: str, fepc: str, stem: str) -> Path:
+        """Create a minimal RMS directory with one synthetic .rms file."""
+        rms_dir = tmp_path / "rms" / date_str / fepc
+        rms_dir.mkdir(parents=True)
+        (rms_dir / f"{stem}.rms").write_bytes(b"")
+        return rms_dir
+
+    def test_no_files_returns_none(self, tmp_path: Path):
+        """Empty directory — both timestamps stay None, no exception raised."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        assert hdata.start_timestamp is None
+        assert hdata.end_timestamp is None
+
+    def test_start_timestamp_from_rms_filename(self, tmp_path: Path):
+        """start_timestamp is inferred from RMS filename and is a naive UTC datetime."""
+        import datetime
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",  # em-dash separator
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        assert hdata.start_timestamp is not None
+        assert isinstance(hdata.start_timestamp, datetime.datetime)
+        assert hdata.start_timestamp.tzinfo is None  # naive UTC
+
+    def test_end_timestamp_from_rms_filename(self, tmp_path: Path):
+        """end_timestamp is inferred from RMS filename and is after start_timestamp."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        assert hdata.end_timestamp is not None
+        assert hdata.end_timestamp > hdata.start_timestamp
+
+    def test_utc_conversion_winter(self, tmp_path: Path):
+        """Local 2025-01-06 10:00 CET (UTC+1) must convert to UTC 09:00."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        # RMS filename encodes local time 10:00 start, 12:00 end (CET = UTC+1 in January)
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        assert hdata.start_timestamp.hour == 9  # 10:00 CET → 09:00 UTC
+
+    def test_addTime_sets_both(self, tmp_path: Path):
+        """addTime() sets start_timestamp and end_timestamp, returns 0."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        # Reset to simulate a fresh call
+        hdata.start_timestamp = None
+        hdata.end_timestamp = None
+        ret = hdata.addTime()
+        assert ret == 0
+        assert hdata.start_timestamp is not None
+        assert hdata.end_timestamp is not None
+
+    def test_getDuration_positive(self, tmp_path: Path):
+        """getDuration() returns a positive number of seconds."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        assert hdata.getDuration() > 0.0
+
+    def test_getStartDate_format(self, tmp_path: Path):
+        """getStartDate() returns a 4-tuple of non-empty strings in expected format."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        result = hdata.getStartDate()
+        assert len(result) == 4
+        start_date, start_time, end_date, end_time = result
+        assert "." in start_date   # "%Y.%m.%d" format
+        assert ":" in start_time   # "%H:%M:%S" format
+        assert "." in end_date
+        assert ":" in end_time
 
 
 # ---------------------------------------------------------------------------
