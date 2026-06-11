@@ -277,7 +277,7 @@ def compute_lag(
         First series data with keys:
         - "df": DataFrame with data
         - "field": Column name for values
-        - "range": Tuple of (start_index, end_index) or None
+        - "range": Dict ``{"start": start_index, "end": end_index}`` (integer indices, ``None`` means boundary)
     df2_data : dict
         Second series data (same format as df1_data)
     show : bool, optional
@@ -297,7 +297,7 @@ def compute_lag(
     >>> df1_data = {
     ...     "df": df_overview[["timestamp", "Courant_GR1"]],
     ...     "field": "Courant_GR1",
-    ...     "range": (0, 100)
+    ...     "range": {"start": 0, "end": 100},
     ... }
     >>> lag = compute_lag("timestamp", df1_data, df2_data)
     """
@@ -307,7 +307,8 @@ def compute_lag(
     # Extract series 1
     ts1 = df1_data["df"].copy()
     key1 = df1_data["field"]
-    istart1, iend1 = df1_data["range"]
+    istart1 = df1_data["range"]["start"]
+    iend1 = df1_data["range"]["end"]
     ts1.set_index(tkey, inplace=True)
     ts1 = ts1.iloc[:, 0]  # Get first data column
 
@@ -321,7 +322,8 @@ def compute_lag(
     # Extract series 2
     ts2 = df2_data["df"].copy()
     key2 = df2_data["field"]
-    istart2, iend2 = df2_data["range"]
+    istart2 = df2_data["range"]["start"]
+    iend2 = df2_data["range"]["end"]
     ts2.set_index(tkey, inplace=True)
     ts2 = ts2.iloc[:, 0]
 

@@ -1137,12 +1137,12 @@ def _compute_lag_correlation(
             df1_data = {
                 "df": df_overview[["timestamp", overview_key]].copy(),
                 "field": overview_key,
-                "range": (0, None),
+                "range": {"start": 0, "end": None},
             }
             df2_data = {
                 "df": df_pupitre[["timestamp", pupitre_key]].copy(),
                 "field": pupitre_key,
-                "range": (0, None),
+                "range": {"start": 0, "end": None},
             }
 
             lag = compute_lag(
