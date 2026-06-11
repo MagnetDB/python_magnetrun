@@ -738,3 +738,197 @@ class TestPlotRmsVariablesBugFixes:
         assert len(scatter_calls) == 1
         assert scatter_calls[0]["downsample"] == 10000
         assert scatter_calls[0]["downsample_method"] == "auto"
+
+
+class TestPlotVprocessVariable:
+    """Tests for HybridData.plot_vprocess_variable and plotting.plot_vprocess_variable."""
+
+    def test_delegates_to_plotting_module(self):
+        """plot_vprocess_variable calls plotting.plot_vprocess_variable with correct args."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.plotting import plot_vprocess_variable
+
+        hd = MagicMock()
+        hd.date_str = "2024-05-09"
+        hd.read_vprocess_variable.return_value = (
+            np.array([1.0, 2.0]), np.array([0.0, 1.0])
+        )
+
+        mock_backend = MagicMock()
+
+        with (
+            patch("python_magnetrun.hybrid.plotting._get_vprocess_unit", return_value="V"),
+            patch("python_magnetrun.hybrid.plotting.plot_overlay") as mock_overlay,
+            patch(
+                "python_magnetrun.hybrid.plotting.get_backend",
+                return_value=mock_backend,
+            ),
+            patch("python_magnetrun.hybrid.plotting._handle_output"),
+        ):
+            mock_overlay.return_value = MagicMock(spec=[])
+            plot_vprocess_variable(hd, "U_coil", hours=None, show=False)
+
+        hd.read_vprocess_variable.assert_called_once_with("U_coil", hours=None)
+
+    def test_outlier_config_triggers_detector(self):
+        """outlier_config causes OutlierDetector.detect to be called on the data."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+        from python_magnetrun.outliers import OutlierConfig, OutlierResult
+
+        data = np.array([1.0, 2.0, 3.0])
+        time = np.array([0.0, 1.0, 2.0])
+        mask = np.array([False, False, False])
+        outlier_result = OutlierResult(
+            mask=mask, method="zscore", threshold=3.0, n_outliers=0, n_total=3
+        )
+        config = OutlierConfig(method="zscore", threshold=3.0)
+
+        hd = MagicMock(spec=HybridData)
+        hd.read_vprocess_variable.return_value = (data, time)
+
+        mock_detector_instance = MagicMock()
+        mock_detector_instance.detect.return_value = outlier_result
+
+        with (
+            patch("python_magnetrun.outliers.OutlierDetector", return_value=mock_detector_instance),
+            patch(
+                "python_magnetrun.hybrid.plotting.plot_vprocess_variable"
+            ) as mock_plot_fn,
+        ):
+            hd.plot_vprocess_variable = HybridData.plot_vprocess_variable.__get__(hd)
+            hd.plot_vprocess_variable("U_coil", outlier_config=config, show=False)
+
+        mock_detector_instance.detect.assert_called_once()
+        mock_plot_fn.assert_called_once()
+        _, kwargs = mock_plot_fn.call_args
+        assert kwargs["outlier_result"] is outlier_result
+
+    def test_no_outlier_when_config_is_none(self):
+        """outlier_result=None is forwarded when outlier_config is None."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        hd = MagicMock(spec=HybridData)
+        hd.read_vprocess_variable.return_value = (np.array([1.0]), np.array([0.0]))
+
+        with patch(
+            "python_magnetrun.hybrid.plotting.plot_vprocess_variable"
+        ) as mock_plot_fn:
+            hd.plot_vprocess_variable = HybridData.plot_vprocess_variable.__get__(hd)
+            hd.plot_vprocess_variable("U_coil", show=False)
+
+        _, kwargs = mock_plot_fn.call_args
+        assert kwargs["outlier_result"] is None
+
+
+class TestPlotTriggerVariable:
+    """Tests for HybridData.plot_trigger_variable and plotting.plot_trigger_variable."""
+
+    def test_delegates_with_system_and_variable(self):
+        """plot_trigger_variable reads data and calls _plot_variable_impl."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.plotting import plot_trigger_variable
+
+        hd = MagicMock()
+        hd.date_str = "2024-05-09"
+        hd.read_trigger_variable.return_value = (
+            np.array([1.0, 2.0]), np.array([0.0, 1.0])
+        )
+
+        mock_backend = MagicMock()
+
+        with (
+            patch("python_magnetrun.hybrid.plotting._get_trigger_unit", return_value="A"),
+            patch("python_magnetrun.hybrid.plotting.plot_overlay") as mock_overlay,
+            patch(
+                "python_magnetrun.hybrid.plotting.get_backend",
+                return_value=mock_backend,
+            ),
+            patch("python_magnetrun.hybrid.plotting._handle_output"),
+        ):
+            mock_overlay.return_value = MagicMock(spec=[])
+            plot_trigger_variable(
+                hd, "SYS", "I_H1", apply_calib=True, cnv_dir=None, show=False
+            )
+
+        hd.read_trigger_variable.assert_called_once_with(
+            "SYS", "I_H1", apply_calib=True, cnv_dir=None
+        )
+
+    def test_apply_calib_forwarded(self):
+        """apply_calib and cnv_dir are forwarded to plotting.plot_trigger_variable."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        data = np.array([1.0, 2.0])
+        time = np.array([0.0, 1.0])
+
+        hd = MagicMock(spec=HybridData)
+        hd.read_trigger_variable.return_value = (data, time)
+
+        with patch(
+            "python_magnetrun.hybrid.plotting.plot_trigger_variable"
+        ) as mock_plot_fn:
+            hd.plot_trigger_variable = HybridData.plot_trigger_variable.__get__(hd)
+            hd.plot_trigger_variable(
+                "SYS", "I_H1",
+                apply_calib=False, cnv_dir="/some/dir",
+                show=False,
+            )
+
+        _, kwargs = mock_plot_fn.call_args
+        assert kwargs["apply_calib"] is False
+        assert kwargs["cnv_dir"] == "/some/dir"
+
+    def test_outlier_config_triggers_detector(self):
+        """outlier_config causes OutlierDetector.detect to be called."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+        from python_magnetrun.outliers import OutlierConfig, OutlierResult
+
+        data = np.array([1.0, 2.0, 3.0])
+        time = np.array([0.0, 1.0, 2.0])
+        mask = np.array([False, False, False])
+        outlier_result = OutlierResult(
+            mask=mask, method="zscore", threshold=3.0, n_outliers=0, n_total=3
+        )
+        config = OutlierConfig(method="zscore", threshold=3.0)
+
+        hd = MagicMock(spec=HybridData)
+        hd.read_trigger_variable.return_value = (data, time)
+
+        mock_detector_instance = MagicMock()
+        mock_detector_instance.detect.return_value = outlier_result
+
+        with (
+            patch("python_magnetrun.outliers.OutlierDetector", return_value=mock_detector_instance),
+            patch(
+                "python_magnetrun.hybrid.plotting.plot_trigger_variable"
+            ) as mock_plot_fn,
+        ):
+            hd.plot_trigger_variable = HybridData.plot_trigger_variable.__get__(hd)
+            hd.plot_trigger_variable("SYS", "I_H1", outlier_config=config, show=False)
+
+        mock_detector_instance.detect.assert_called_once()
+        mock_plot_fn.assert_called_once()
+        _, kwargs = mock_plot_fn.call_args
+        assert kwargs["outlier_result"] is outlier_result

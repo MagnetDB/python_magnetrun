@@ -41,6 +41,15 @@ def remove_outliers(
     -------
     pd.DataFrame
         Copy of df with outlier rows removed.
+
+    See Also
+    --------
+    python_magnetrun.outliers.remove_outliers :
+        Array variant operating on ``(data, time)`` numpy arrays; also
+        supports interpolation and clipping strategies.
+    remove_outliers_by_x_range :
+        Domain-knowledge alternative that filters by an explicit x-value
+        range rather than a statistical method.
     """
     if method not in _VALID_METHODS:
         raise ValueError(f"method must be one of {sorted(_VALID_METHODS)}; got {method!r}")
@@ -58,22 +67,29 @@ def remove_outliers_by_x_range(
     x_max: float | None = None,
 ) -> pd.DataFrame:
     """
-    Remove outliers by specifying acceptable x range (simple domain knowledge approach).
+    Remove outliers by specifying an acceptable x range.
 
-    Parameters:
-    -----------
-    df : pandas DataFrame
-        Data
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Data with at least an x column.
     x_col : str
-        Name of x column
+        Name of the x column.
     x_min : float, optional
-        Minimum acceptable x value
+        Minimum acceptable x value; rows below this are removed.
     x_max : float, optional
-        Maximum acceptable x value
+        Maximum acceptable x value; rows above this are removed.
 
-    Returns:
+    Returns
+    -------
+    pd.DataFrame
+        Copy of *df* with out-of-range x rows removed.
+
+    See Also
     --------
-    DataFrame with out-of-range x values removed
+    remove_outliers :
+        Statistical variant (IQR / z-score / MAD) that operates on both
+        x and y columns.
     """
     df_clean = df.copy()
     mask = np.ones(len(df_clean), dtype=bool)

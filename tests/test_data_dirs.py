@@ -11,14 +11,12 @@ from __future__ import annotations
 
 import importlib
 import json
-import os
 from pathlib import Path
 
 import pytest
 
 import python_magnetrun.data_dirs as data_dirs_mod
 from python_magnetrun.data_dirs import _resolve, load_data_dirs_json
-
 
 # ---------------------------------------------------------------------------
 # Helpers

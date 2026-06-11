@@ -1730,6 +1730,168 @@ class HybridData(MagnetDataBase):
             **plot_kwargs,
         )
 
+    def plot_vprocess_variable(
+        self,
+        variable: str,
+        hours: range | list[int] | None = None,
+        ax=None,
+        show: bool = True,
+        save: str | None = None,
+        outlier_config: OutlierConfig | None = None,
+        **plot_kwargs,
+    ):
+        """Plot VProcess data for a specific variable.
+
+        This method delegates to :func:`hybrid.plotting.plot_vprocess_variable`.
+
+        Parameters
+        ----------
+        variable : str
+            Variable name.
+        hours : range or list of int, optional
+            Hours to read (default: all available).
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot on (creates new figure if ``None``).
+        show : bool, optional
+            Show plot (default: True).
+        save : str, optional
+            Save plot to file.
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
+        **plot_kwargs : dict
+            Additional arguments passed to the backend.
+
+        Returns
+        -------
+        tuple
+            ``(fig, ax)`` matplotlib figure and axes.
+        """
+        from ..outliers import OutlierDetector
+        from . import plotting
+
+        outlier_result = None
+        if outlier_config is not None:
+            data, _ = self.read_vprocess_variable(variable, hours=hours)
+            outlier_result = OutlierDetector(config=outlier_config).detect(data)
+
+        return plotting.plot_vprocess_variable(
+            self, variable, hours=hours,
+            ax=ax, show=show, save=save,
+            outlier_result=outlier_result, **plot_kwargs,
+        )
+
+    def plot_vprocess_variables(
+        self,
+        variables: list[str],
+        hours: range | list[int] | None = None,
+        layout: str = "subplots",
+        show: bool = True,
+        save: str | None = None,
+        outlier_config: OutlierConfig | None = None,
+        **plot_kwargs,
+    ):
+        """Plot multiple VProcess variables.
+
+        This method delegates to :func:`hybrid.plotting.plot_vprocess_variables`.
+
+        Parameters
+        ----------
+        variables : list of str
+            Variable names to plot.
+        hours : range or list of int, optional
+            Hours to read (default: all available).
+        layout : str, optional
+            Plot layout: ``'subplots'`` (default) or ``'overlay'``.
+        show : bool, optional
+            Show plot (default: True).
+        save : str, optional
+            Save plot to file.
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
+        **plot_kwargs : dict
+            Additional arguments passed to the backend.
+
+        Returns
+        -------
+        tuple
+            ``(fig, axes)`` matplotlib figure and axes.
+        """
+        from ..outliers import OutlierDetector
+        from . import plotting
+
+        outlier_results = None
+        if outlier_config is not None:
+            detector = OutlierDetector(config=outlier_config)
+            outlier_results = {}
+            for var in variables:
+                data, _ = self.read_vprocess_variable(var, hours=hours)
+                outlier_results[var] = detector.detect(data)
+
+        return plotting.plot_vprocess_variables(
+            self, variables, hours=hours,
+            layout=layout, show=show, save=save,
+            outlier_results=outlier_results, **plot_kwargs,
+        )
+
+    def plot_trigger_variable(
+        self,
+        system: str,
+        variable: str,
+        apply_calib: bool = True,
+        cnv_dir: str | None = None,
+        ax=None,
+        show: bool = True,
+        save: str | None = None,
+        outlier_config: OutlierConfig | None = None,
+        **plot_kwargs,
+    ):
+        """Plot trigger data for a specific variable.
+
+        This method delegates to :func:`hybrid.plotting.plot_trigger_variable`.
+
+        Parameters
+        ----------
+        system : str
+            FEPC system name.
+        variable : str
+            Variable name.
+        apply_calib : bool, optional
+            Apply calibration (default: True).
+        cnv_dir : str, optional
+            Directory for CNV calibration files.
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot on (creates new figure if ``None``).
+        show : bool, optional
+            Show plot (default: True).
+        save : str, optional
+            Save plot to file.
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
+        **plot_kwargs : dict
+            Additional arguments passed to the backend.
+
+        Returns
+        -------
+        tuple
+            ``(fig, ax)`` matplotlib figure and axes.
+        """
+        from ..outliers import OutlierDetector
+        from . import plotting
+
+        outlier_result = None
+        if outlier_config is not None:
+            data, _ = self.read_trigger_variable(
+                system, variable, apply_calib=apply_calib, cnv_dir=cnv_dir
+            )
+            outlier_result = OutlierDetector(config=outlier_config).detect(data)
+
+        return plotting.plot_trigger_variable(
+            self, system, variable,
+            apply_calib=apply_calib, cnv_dir=cnv_dir,
+            ax=ax, show=show, save=save,
+            outlier_result=outlier_result, **plot_kwargs,
+        )
+
     def plot_khz_with_rms(
         self,
         system: str,

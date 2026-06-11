@@ -388,7 +388,7 @@ def _default_save_path(
     return Path.cwd() / f"{stem}-{tag}_vs_time{suffix}"
 
 
-def _handle_output(fig, args, backend, input_files, fields, backend_name, *, dpi=300):
+def _save_or_show_figure(fig, args, backend, input_files, fields, backend_name, *, dpi=300):
     """Unified save-or-show logic for all plot methods."""
     save = getattr(args, "save", None)
     show = getattr(args, "show", False)
@@ -721,7 +721,7 @@ def _plot_vs_time_backend(
         print(b.to_json(fig))
         return
 
-    _handle_output(
+    _save_or_show_figure(
         fig, args, b, input_files, all_fields, backend_name, dpi=cfg.style.dpi
     )
 
@@ -851,7 +851,7 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
 
     b.finalize(fig)
     kv_fields = list(_flatten(args.key_vs_key)) if args.key_vs_key else []
-    _handle_output(
+    _save_or_show_figure(
         fig, args, b, input_files, kv_fields, backend_name, dpi=cfg.style.dpi
     )
 
