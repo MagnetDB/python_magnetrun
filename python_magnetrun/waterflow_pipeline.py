@@ -13,7 +13,6 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
-
 from python_magnetcooling.waterflow import WaterFlow
 
 from .log_utils import setup_logging
