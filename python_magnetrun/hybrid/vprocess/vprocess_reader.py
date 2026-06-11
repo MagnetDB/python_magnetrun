@@ -16,7 +16,6 @@ File Structure:
 
 import logging
 import re
-import struct
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -24,43 +23,40 @@ from typing import Any
 import pandas as pd
 
 from ...utils.validation import validate_vprocess_format
+from .._binary_reader_base import ChannelVariable, _BinaryFileReaderBase
 
-# Setup logger
 logger = logging.getLogger(__name__)
+
+# Backward-compat alias
+VProcessVariable = ChannelVariable
 
 
 def parse_vprocess_filename(filename: str) -> tuple[datetime, datetime] | None:
-    """
-    Parse VProcess filename to extract start and end times.
+    """Parse a VProcess filename to extract start and end times.
 
-    Expected format: YYYYMMDD_HHMMSS__YYYYMMDD_HHMMSS.vprocess
-    Example: 20251105_000000__20251105_005959.vprocess
+    Expected format: ``YYYYMMDD_HHMMSS__YYYYMMDD_HHMMSS.vprocess``
 
     Parameters
     ----------
     filename : str
-        VProcess filename
+        VProcess filename (basename only).
 
     Returns
     -------
     tuple or None
-        (start_datetime, end_datetime) if parsing successful, None otherwise
+        ``(start_datetime, end_datetime)`` if parsing succeeds, ``None`` otherwise.
     """
-    # Pattern: YYYYMMDD_HHMMSS__YYYYMMDD_HHMMSS.vprocess
     pattern = r"(\d{8})_(\d{6})__(\d{8})_(\d{6})\.vprocess"
     match = re.match(pattern, filename)
-
     if not match:
         return None
-
-    start_date = match.group(1)  # YYYYMMDD
-    start_time = match.group(2)  # HHMMSS
-    end_date = match.group(3)  # YYYYMMDD
-    end_time = match.group(4)  # HHMMSS
-
     try:
-        start_dt = datetime.strptime(f"{start_date}_{start_time}", "%Y%m%d_%H%M%S")
-        end_dt = datetime.strptime(f"{end_date}_{end_time}", "%Y%m%d_%H%M%S")
+        start_dt = datetime.strptime(
+            f"{match.group(1)}_{match.group(2)}", "%Y%m%d_%H%M%S"
+        )
+        end_dt = datetime.strptime(
+            f"{match.group(3)}_{match.group(4)}", "%Y%m%d_%H%M%S"
+        )
         return (start_dt, end_dt)
     except ValueError:
         return None
@@ -69,407 +65,132 @@ def parse_vprocess_filename(filename: str) -> tuple[datetime, datetime] | None:
 def find_vprocess_files_for_date(
     directory: str, date: datetime, pattern: str = "*.vprocess"
 ) -> list[Path]:
-    """
-    Find all VProcess files for a specific date.
+    """Find all VProcess files for a specific date.
 
     Parameters
     ----------
     directory : str
-        Directory to search
+        Directory to search.
     date : datetime
-        Date to search for
-    pattern : str
-        File pattern (default: ``*.vprocess``)
+        Date to search for.
+    pattern : str, optional
+        Glob pattern (default: ``"*.vprocess"``).
 
     Returns
     -------
     list of Path
-        Sorted list of VProcess files for the specified date
+        Sorted list of VProcess files for the specified date.
     """
     dir_path = Path(directory)
-    _date_str = date.strftime("%Y%m%d")
-
-    # Find all files matching pattern
-    all_files = sorted(dir_path.glob(pattern))
-
-    # Filter by date
-    date_files = []
-    for file in all_files:
-        time_range = parse_vprocess_filename(file.name)
-        if time_range and time_range[0].date() == date.date():
-            date_files.append(file)
-
-    return sorted(date_files)
+    return sorted(
+        f for f in sorted(dir_path.glob(pattern))
+        if (tr := parse_vprocess_filename(f.name)) and tr[0].date() == date.date()
+    )
 
 
-class VProcessVariable:
-    """Represents a variable in the VProcess file."""
-
-    def __init__(
-        self,
-        name: str,
-        var_type: str,
-        unit: str | None = None,
-        min_val: float | None = None,
-        max_val: float | None = None,
-        display_format: str | None = None,
-    ):
-        self.name = name
-        self.var_type = var_type  # 'float32' or 'dig'
-        self.unit = unit
-        self.min_val = min_val
-        self.max_val = max_val
-        self.display_format = display_format
-        self.is_analog = "float" in var_type.lower()
-        self.byte_size = 4 if self.is_analog else 1
-
-    def __repr__(self) -> str:
-        return f"VProcessVariable({self.name}, {self.var_type}, {self.unit})"
-
-
-class VProcessFileReader:
+class VProcessFileReader(_BinaryFileReaderBase):
     """Reader for VProcess binary files with ASCII headers."""
 
-    def __init__(self, filepath: str, endian: str = "big"):
-        """
-        Initialize VProcess file reader.
+    _encoding = "utf-8"
+
+    # ── abstract implementations ──────────────────────────────────────────
+
+    def _validate_format(self) -> None:
+        validate_vprocess_format(str(self.filepath))
+
+    def _parse_variables(self, line: str) -> None:
+        """Parse the ``# variables = …`` line.
 
         Parameters
         ----------
-        filepath : str
-            Path to the vprocess file
-        endian : str
-            Endianness: 'big' or 'little' (default: 'big')
+        line : str
+            Raw header line starting with ``"# variables"``.
         """
-        self.filepath = Path(filepath)
-        self.header_lines: list[str] = []
-        self.variables: list[VProcessVariable] = []
-        self.metadata: dict[str, Any] = {}
-        self.data: pd.DataFrame | None = None
-        self.endian = "<" if endian == "little" else ">"
-
-    def parse_header(self) -> None:
-        """Parse the ASCII header from the VProcess file."""
-        self.variables = []
-        self.metadata = {}
-        validate_vprocess_format(str(self.filepath))
-        with open(self.filepath, "rb") as f:
-            header_lines = []
-            while True:
-                raw_line = f.readline()
-                if raw_line.startswith(b"#"):
-                    decoded_line = raw_line.decode("utf-8", errors="ignore").strip()
-                    header_lines.append(decoded_line)
-                else:
-                    break
-
-            self.header_lines = header_lines
-
-        # Parse each header line
-        for line in self.header_lines:
-            if line.startswith("# variables"):
-                self._parse_variables(line)
-            elif line.startswith("# windows"):
-                self._parse_windows(line)
-            elif line.startswith("# frequency"):
-                self._parse_frequency(line)
-            elif line.startswith("# data-helper"):
-                self._parse_data_helper(line)
-            elif line.startswith("# vprocess data file"):
-                self._parse_format(line)
-
-    def _parse_variables(self, line: str) -> None:
-        """
-        Parse the variables definition line.
-
-        Format: # variables = VAR1 [type:float32|unit:K|min:0.00|max:325.00|df:%.2f]; VAR2 [...]
-        """
-        # Extract content after '# variables = '
         match = re.search(r"# variables\s*=\s*(.+)", line)
         if not match:
             return
-
-        var_content = match.group(1)
-
-        # Split by semicolons to get individual variables
-        var_specs = [v.strip() for v in var_content.split(";") if v.strip()]
-
-        for var_spec in var_specs:
-            # Parse variable name and properties
-            var_match = re.match(r"(\w+)\s*\[(.+?)\]", var_spec)
-            if not var_match:
+        for var_spec in (s.strip() for s in match.group(1).split(";") if s.strip()):
+            m = re.match(r"(\w+)\s*\[(.+?)\]", var_spec)
+            if not m:
                 continue
-
-            var_name = var_match.group(1)
-            properties_str = var_match.group(2)
-
-            # Parse properties
-            properties = {}
-            for prop in properties_str.split("|"):
+            props: dict[str, str] = {}
+            for prop in m.group(2).split("|"):
                 if ":" in prop:
-                    key, value = prop.split(":", 1)
-                    properties[key.strip()] = value.strip()
-
-            var_type = properties.get("type", "float32")
-            unit = properties.get("unit")
-            min_val = (
-                float(properties["min"])
-                if "min" in properties and properties["min"] != "_"
-                else None
-            )
-            max_val = (
-                float(properties["max"])
-                if "max" in properties and properties["max"] != "_"
-                else None
-            )
-            display_format = properties.get("df")
-
-            variable = VProcessVariable(
-                name=var_name,
-                var_type=var_type,
-                unit=unit,
-                min_val=min_val,
-                max_val=max_val,
-                display_format=display_format,
-            )
-
-            self.variables.append(variable)
-
-        logger.debug(f"Parsed {len(self.variables)} variables")
-
-    def _parse_windows(self, line: str) -> None:
-        """
-        Parse the time window line.
-
-        Format: # windows = [UTC] DD/MM/YYYY-HH:MM:SS.mmm -> DD/MM/YYYY-HH:MM:SS.mmm
-        """
-        match = re.search(r"\[UTC\]\s+(.+?)\s+->\s+(.+)", line)
-        if match:
-            start_str = match.group(1)
-            end_str = match.group(2)
-
-            # Parse datetime strings (format: DD/MM/YYYY-HH:MM:SS.mmm)
-            date_format = "%d/%m/%Y-%H:%M:%S.%f"
-            try:
-                self.metadata["start_time"] = datetime.strptime(start_str, date_format)
-                self.metadata["end_time"] = datetime.strptime(end_str, date_format)
-            except ValueError:
-                # Try without milliseconds
-                date_format = "%d/%m/%Y-%H:%M:%S"
-                self.metadata["start_time"] = datetime.strptime(
-                    start_str.split(".")[0], date_format
+                    k, v = prop.split(":", 1)
+                    props[k.strip()] = v.strip()
+            self.variables.append(
+                ChannelVariable(
+                    name=m.group(1),
+                    var_type=props.get("type", "float32"),
+                    unit=props.get("unit"),
+                    min_val=(
+                        float(props["min"])
+                        if "min" in props and props["min"] != "_"
+                        else None
+                    ),
+                    max_val=(
+                        float(props["max"])
+                        if "max" in props and props["max"] != "_"
+                        else None
+                    ),
+                    display_format=props.get("df"),
                 )
-                self.metadata["end_time"] = datetime.strptime(
-                    end_str.split(".")[0], date_format
-                )
+            )
+        logger.debug("Parsed %d variables", len(self.variables))
 
-    def _parse_frequency(self, line: str) -> None:
-        """Parse the frequency line."""
-        match = re.search(r"# frequency\s*=\s*([\d.]+)\s*Hz", line)
-        if match:
-            self.metadata["frequency"] = float(match.group(1))
+    def _parse_extra_header(self, line: str) -> None:
+        if line.startswith("# vprocess data file"):
+            self._parse_format(line)
 
-    def _parse_data_helper(self, line: str) -> None:
-        """
-        Parse the data-helper line.
+    def _make_timestamps(self, raw: list[float]) -> pd.DatetimeIndex:
+        return pd.DatetimeIndex(
+            [datetime.fromtimestamp(t, tz=UTC) for t in raw]
+        )
 
-        Format: # data-helper [offset:0x2c8a - time:8(B) - width:764(B)]
-        """
-        match = re.search(r"offset:(0x[\da-fA-F]+)", line)
-        if match:
-            self.metadata["data_offset"] = int(match.group(1), 16)
-
-        match = re.search(r"time:(\d+)\(B\)", line)
-        if match:
-            self.metadata["timestamp_bytes"] = int(match.group(1))
-
-        match = re.search(r"width:(\d+)\(B\)", line)
-        if match:
-            self.metadata["sample_width"] = int(match.group(1))
+    # ── VProcess-specific header method ───────────────────────────────────
 
     def _parse_format(self, line: str) -> None:
-        """Parse the format line."""
         match = re.search(r"# vprocess data file - (.+)", line)
         if match:
             self.metadata["format"] = match.group(1).strip()
 
-    def read_binary_data(self) -> pd.DataFrame:
-        """Read the binary data portion of the VProcess file."""
-        if not self.variables:
-            raise ValueError("Header must be parsed before reading binary data")
 
-        timestamp_size = self.metadata.get("timestamp_bytes", 8)
-        sample_width = self.metadata.get("sample_width", 0)
-        data_offset = self.metadata.get("data_offset", 0)
+# ── convenience functions ─────────────────────────────────────────────────
 
-        # Open file and seek to data start
-        with open(self.filepath, "rb") as f:
-            f.seek(data_offset)
-            binary_data = f.read()
-
-        # Calculate number of samples
-        num_samples = len(binary_data) // sample_width
-        logger.debug(f"Reading {num_samples} samples from {self.filepath.name}")
-
-        # Prepare data arrays
-        timestamps = []
-        data_arrays: dict[str, list] = {var.name: [] for var in self.variables}
-
-        # Read samples
-        for i in range(num_samples):
-            sample_start = i * sample_width
-            sample_data = binary_data[sample_start : sample_start + sample_width]
-
-            # Parse timestamp (8 bytes, double)
-            timestamp_raw = struct.unpack(
-                f"{self.endian}d", sample_data[:timestamp_size]
-            )[0]
-            timestamp = datetime.fromtimestamp(timestamp_raw, tz=UTC)
-            timestamps.append(timestamp)
-
-            # Parse variable data
-            offset = timestamp_size
-            for var in self.variables:
-                if var.is_analog:
-                    # Float32 (4 bytes)
-                    value = struct.unpack(
-                        f"{self.endian}f", sample_data[offset : offset + 4]
-                    )[0]
-                    offset += 4
-                else:
-                    # Digital (1 byte)
-                    value = struct.unpack("B", sample_data[offset : offset + 1])[0]
-                    offset += 1
-
-                data_arrays[var.name].append(value)
-
-        # Create DataFrame
-        df = pd.DataFrame(data_arrays, index=pd.DatetimeIndex(timestamps))
-        df.index.name = "timestamp"
-
-        return df
-
-    def read(self) -> pd.DataFrame:
-        """
-        Complete read operation: parse header and read binary data.
-
-        Returns
-        -------
-        pd.DataFrame
-            DataFrame with timestamp index and variable columns
-        """
-        self.parse_header()
-        self.data = self.read_binary_data()
-        logger.info(
-            f"Successfully read VProcess file: {self.filepath.name}: keys={list(self.data.columns)}"
-        )
-        return self.data
-
-    def get_variable_info(self) -> pd.DataFrame:
-        """
-        Get information about all variables.
-
-        Returns
-        -------
-        pd.DataFrame
-            DataFrame with variable metadata
-        """
-        var_info_list = []
-        for var in self.variables:
-            info = {
-                "name": var.name,
-                "type": var.var_type,
-                "unit": var.unit,
-                "min": var.min_val,
-                "max": var.max_val,
-                "display_format": var.display_format,
-            }
-            var_info_list.append(info)
-
-        return pd.DataFrame(var_info_list)
-
-    def get_metadata(self) -> dict[str, Any]:
-        """
-        Get file metadata.
-
-        Returns
-        -------
-        dict
-            Metadata dictionary
-        """
-        return self.metadata.copy()
-
-    def print_summary(self) -> None:
-        """Print a formatted summary of the file contents."""
-        logger.info("=" * 70)
-        logger.info(f"VProcess File: {self.filepath.name}")
-        logger.info("=" * 70)
-
-        if self.metadata:
-            logger.info("\nMetadata:")
-            for key, value in self.metadata.items():
-                logger.info(f"  {key}: {value}")
-
-        if self.variables:
-            logger.info(f"\nVariables: {len(self.variables)}")
-            logger.info(f"  Analog: {sum(1 for v in self.variables if v.is_analog)}")
-            logger.info(
-                f"  Digital: {sum(1 for v in self.variables if not v.is_analog)}"
-            )
-
-            logger.info("\nFirst 10 variables:")
-            for i, var in enumerate(self.variables[:10]):
-                unit_str = f" ({var.unit})" if var.unit else ""
-                logger.info(f"  {i + 1:2d}. {var.name:20s} [{var.var_type}]{unit_str}")
-
-            if len(self.variables) > 10:
-                logger.info(f"  ... and {len(self.variables) - 10} more")
-
-        if self.data is not None:
-            logger.info(f"\nData Shape: {self.data.shape}")
-            logger.info(f"Time Range: {self.data.index[0]} to {self.data.index[-1]}")
-
-        logger.info("=" * 70)
-
-
-# Convenience functions
 def read_vprocess_file(filepath: str, endian: str = "big") -> pd.DataFrame:
-    """
-    Read a VProcess file into a pandas DataFrame.
+    """Read a VProcess file into a :class:`~pandas.DataFrame`.
 
     Parameters
     ----------
     filepath : str
-        Path to the VProcess file
+        Path to the VProcess file.
     endian : str, optional
-        Endianness: 'big' or 'little' (default: 'big')
+        Endianness: ``"big"`` (default) or ``"little"``.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame with timestamp index and variable columns
+        DataFrame with UTC timestamp index and one column per channel.
     """
-    reader = VProcessFileReader(filepath, endian=endian)
-    return reader.read()
+    return VProcessFileReader(filepath, endian=endian).read()
 
 
 def get_vprocess_info(
     filepath: str, endian: str = "big"
 ) -> tuple[dict[str, Any], pd.DataFrame]:
-    """
-    Get metadata and variable information from a VProcess file.
+    """Return metadata and variable information from a VProcess file.
 
     Parameters
     ----------
     filepath : str
-        Path to the VProcess file
+        Path to the VProcess file.
     endian : str, optional
-        Endianness: 'big' or 'little' (default: 'big')
+        Endianness: ``"big"`` (default) or ``"little"``.
 
     Returns
     -------
     tuple
-        (metadata_dict, variables_dataframe)
+        ``(metadata_dict, variables_dataframe)``.
     """
     reader = VProcessFileReader(filepath, endian=endian)
     reader.parse_header()
@@ -479,6 +200,7 @@ def get_vprocess_info(
 __all__ = [
     "VProcessFileReader",
     "VProcessVariable",
+    "ChannelVariable",
     "read_vprocess_file",
     "get_vprocess_info",
     "parse_vprocess_filename",
@@ -487,7 +209,7 @@ __all__ = [
 
 
 def main() -> None:
-    """Main function for CLI usage."""
+    """CLI entry point."""
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -496,27 +218,19 @@ def main() -> None:
     )
     parser.add_argument("filepath", help="Path to the VProcess file")
     parser.add_argument(
-        "--endian",
-        "-e",
+        "--endian", "-e",
         choices=["big", "little"],
         default="little",
         help="Endianness of binary data (default: little)",
     )
-
     args = parser.parse_args()
 
-    logger.info(f"Reading VProcess file with {args.endian}-endian format...")
     reader = VProcessFileReader(args.filepath, endian=args.endian)
     reader.print_summary()
-
-    logger.info("\nVariable Information:")
-    logger.info(reader.get_variable_info())
-
-    logger.info("\nReading data...")
+    logger.info("Variable Information:\n%s", reader.get_variable_info())
     df = reader.read()
-    logger.info(f"\nData shape: {df.shape}")
-    logger.info("\nFirst few rows:")
-    logger.info(df.head())
+    logger.info("Data shape: %s", df.shape)
+    logger.info("First rows:\n%s", df.head())
 
 
 if __name__ == "__main__":

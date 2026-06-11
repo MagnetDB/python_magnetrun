@@ -212,7 +212,7 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - **See:** Phase H of [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
 - **Effort:** S (~2 hours)
 
-**3.9 Hybrid Subpackage Code Quality** 🔶 **IN PROGRESS** *(from [docs/hybrid_refactoring_notes.md](../docs/hybrid_refactoring_notes.md))*
+**3.9 Hybrid Subpackage Code Quality** ✅ **COMPLETE** *(from [docs/hybrid_refactoring_notes.md](../docs/hybrid_refactoring_notes.md))*
 
 Items 2 and 3 from the notes are already tracked as B0.5 and B2.5 in Phase 2B. Items 12 and 13 (docs-only cross-refs and a rename) are in Quick Wins.
 
@@ -227,15 +227,15 @@ Items 2 and 3 from the notes are already tracked as B0.5 and B2.5 in Phase 2B. I
 *Medium (M) — low-to-medium risk:*
 - ✅ **M1 — Unify `log_exception` + `format_exception_location`** (notes items 9/11): `log_exception` and `format_exception_location` deleted from [hybrid/utils.py](../python_magnetrun/hybrid/utils.py); all 9 call sites in `hybrid/cli.py` updated to `log_utils.log_exception(logger, …)`.
 - ✅ **M2 — Standardise `range` schema** (notes item 14): dict schema `{"start": …, "end": …}` adopted in both `compute_lag` and `lag_correlation` in [analysis/synchronization.py](../python_magnetrun/analysis/synchronization.py); `_compute_lag_correlation` in `analysis/processing.py` updated.
-- **M3 — Deprecate `processing.correlations` lag functions** (notes item 8): add deprecation shims in [processing/correlations.py](../python_magnetrun/processing/correlations.py) that forward to `analysis.synchronization` equivalents. **Depends on:** M2 ✅
+- ✅ **M3 — Deprecate `processing.correlations` lag functions** (notes item 8): `compute_lag` and `lag_correlation` in [processing/correlations.py](../python_magnetrun/processing/correlations.py) replaced with `DeprecationWarning` shims forwarding to `analysis.synchronization`; `_normalise_range` helper converts legacy tuple `range` to dict for backward compat.
 - ✅ **M4 — Share CNV calibration helper** (notes items 7/16): `_apply_cnv_calibration(data, cnv_path) -> np.ndarray` extracted to `hybrid/utils.py`; reused in `hybrid/kHz/fepc_reader.py` and `hybrid/trigger/trigger_reader.py` (gains French decimal-comma handling).
 
 *Large (L) — medium risk, plan separately before starting:*
 - ✅ **L1 — Extract `_plot_variable_impl` / `_plot_variables_impl`** (notes items 3/4): unified `plot_khz_variable`/`plot_rms_variable` and `plot_khz_variables`/`plot_rms_variables` in [hybrid/plotting.py](../python_magnetrun/hybrid/plotting.py); fixed RMS missing `downsample` param, unlabelled y-axes, and `_scatter_outliers` not receiving downsample args. 7 new tests.
-- **L2 — Extract `_BinaryFileReaderBase`** (notes item 1): abstract base class for `RMSFileReader` ([hybrid/rms/rms_reader.py](../python_magnetrun/hybrid/rms/rms_reader.py)) and `VProcessFileReader` ([hybrid/vprocess/vprocess_reader.py](../python_magnetrun/hybrid/vprocess/vprocess_reader.py)); merge `RMSVariable`/`VProcessVariable` into a single `ChannelVariable` dataclass; 3 abstract hooks (`_validate_format`, `_parse_variables`, `_make_timestamps`) + 1 no-op hook (`_parse_extra_header`). **See:** [l2-binary-reader-base.plan.md](l2-binary-reader-base.plan.md)
+- ✅ **L2 — Extract `_BinaryFileReaderBase`** (notes item 1): `hybrid/_binary_reader_base.py` created with `ChannelVariable` dataclass + `_BinaryFileReaderBase`; `RMSFileReader` and `VProcessFileReader` now inherit from it; `RMSVariable`/`VProcessVariable` are backward-compat aliases for `ChannelVariable`; 21 new tests. **See:** [l2-binary-reader-base.plan.md](l2-binary-reader-base.plan.md)
 
 **Note:** trigger/VProcess integration into `HybridData` (notes item 10) is tracked as Stream 4.6.
-**Effort:** M3 ~0.5 day · L2 ~1–2 days
+**Stream 3.9 complete.** All items done: S1 S2 S3 L1 M1 M2 M3 M4 L2 ✅
 
 ---
 
@@ -431,8 +431,8 @@ graph TD
 **Unblocked:** Phase 2D (side-by-side comparison); HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) and hybrid/ refactoring are both complete
 **Improves Phase E:** Stream 3.6 R4 (`HybridData` joins hierarchy) ✅ complete — Phase E can now be implemented cleanly
 **Independent:** Quick wins, logging migration, CLI consolidation, type hints, Stream 3.7 (pattern defs), Stream 3.8a/b/c (downsampling extensions — all additive)
-**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.3 CLI ✅ · 3.4 namespace ✅ · 3.5 outlier dedup ✅ · 3.6 reader split ✅ · 3.8a M4/NaN-M4 ✅ · 3.8b RDP/VW ✅ · 3.8c metrics ✅ · 3.7 pattern defs open · 3.9 code quality 🔶 partial (S1 ✅ S2 ✅ S3 ✅ L1 ✅ M1 ✅ M2 ✅ M4 ✅ · M3/L2 open)
-**Phase 2B status:** ✅ complete · **Phase 2C status:** ✅ complete (1093 tests pass, 7 skipped)
+**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.3 CLI ✅ · 3.4 namespace ✅ · 3.5 outlier dedup ✅ · 3.6 reader split ✅ · 3.8a M4/NaN-M4 ✅ · 3.8b RDP/VW ✅ · 3.8c metrics ✅ · 3.9 code quality ✅ · 3.7 pattern defs open
+**Phase 2B status:** ✅ complete · **Phase 2C status:** ✅ complete · **1114 tests pass, 7 skipped**
 
 ---
 
