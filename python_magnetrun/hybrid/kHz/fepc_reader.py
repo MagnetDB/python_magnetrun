@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from ...utils.validation import FileFormatError
+from ..utils import _apply_cnv_calibration
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -936,8 +937,7 @@ def calibrate_channel(
     if calib.cnv_file:
         cnv_path = Path(cnv_directory) / calib.cnv_file
         if cnv_path.exists():
-            cnv_dict = load_calibration(str(cnv_path))
-            return apply_calibration(raw_data, cnv_dict=cnv_dict)
+            return _apply_cnv_calibration(raw_data, cnv_path)
         else:
             logger.warning(f"CNV file {cnv_path} not found, using linear calibration")
 
@@ -1245,8 +1245,7 @@ def apply_variable_calibration(
                 cnv_path = Path(cnv_directory) / calib_info.cnv_file
                 if cnv_path.exists():
                     print(f"  Using CNV file calibration: {calib_info.cnv_file}")
-                    cnv_dict = load_calibration(str(cnv_path))
-                    return apply_calibration(data, cnv_dict=cnv_dict)
+                    return _apply_cnv_calibration(data, cnv_path)
                 else:
                     print(
                         f"  Warning: CNV file {cnv_path} not found, using linear calibration"

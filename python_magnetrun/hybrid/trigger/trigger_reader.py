@@ -22,6 +22,7 @@ import pandas as pd
 from ...log_utils import SIMPLE_FORMAT, setup_logging
 from ...utils.validation import FileFormatError
 from ..kHz.fepc_reader import CalibrationInfo, FEPCConfig, parse_cfg_file
+from ..utils import _apply_cnv_calibration
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -729,9 +730,7 @@ def apply_calibration(
         if cnv_path.exists():
             logger.info(f"Applying piecewise calibration from {calib.cnv_file}")
             try:
-                cnv_data = np.loadtxt(cnv_path, delimiter=";")
-                calibrated = np.interp(data, cnv_data[:, 0], cnv_data[:, 1])
-                return calibrated
+                return _apply_cnv_calibration(data, cnv_path)
             except (OSError, ValueError) as e:
                 logger.warning(f"Failed to apply CNV calibration: {e}")
                 # Fall back to linear

@@ -14,12 +14,50 @@ Re-exported for backward compatibility:
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+
 from ..outliers import OutlierDetector, detect_outliers, remove_outliers  # noqa: F401
 from ..processing.signal import (  # noqa: F401
     _otsu_threshold,
     binarize_signal,
     normalize_signal,
 )
+
+
+def _apply_cnv_calibration(data: np.ndarray, cnv_path: Path) -> np.ndarray:
+    """Apply piecewise linear calibration from a CNV file.
+
+    Loads the semicolon-delimited lookup table, handles French decimal notation
+    (comma → period), sorts entries by raw ADC value, then interpolates.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Raw ADC data.
+    cnv_path : Path
+        Path to the ``.CNV`` calibration file (semicolon-delimited rows of
+        ``raw_value;physical_value``).
+
+    Returns
+    -------
+    np.ndarray
+        Calibrated data in physical units, same shape as *data*.
+    """
+    n_values: list[int] = []
+    physical_values: list[float] = []
+    with open(cnv_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split(";")
+            if len(parts) >= 2:
+                n_values.append(int(parts[0].strip()))
+                physical_values.append(float(parts[1].strip().replace(",", ".")))
+
+    sorted_pairs = sorted(zip(n_values, physical_values, strict=False))
+    ns, pvs = zip(*sorted_pairs, strict=False)
+    return np.interp(data.flatten(), np.array(ns), np.array(pvs)).reshape(data.shape)
 
 def local_hour_to_utc(local_h: int, date_str: str, tz: str = "Europe/Paris") -> int:
     """Convert a local integer hour to the equivalent UTC hour for the given date.
