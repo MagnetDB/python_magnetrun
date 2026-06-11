@@ -1,4 +1,5 @@
 import logging
+import warnings
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,6 +10,13 @@ from ..magnetdata_base import MagnetDataBase
 logger = logging.getLogger(__name__)
 
 
+def _normalise_range(r: tuple | dict) -> dict:
+    """Convert a legacy tuple range ``(start, end)`` to dict form ``{"start": …, "end": …}``."""
+    if isinstance(r, tuple):
+        return {"start": r[0], "end": r[1]}
+    return r
+
+
 def lag_correlation(
     data1: dict,
     data2: dict,
@@ -16,116 +24,42 @@ def lag_correlation(
     save: bool = False,
     debug: bool = False,
 ) -> pd.Timedelta:
-    """_summary_
+    """Compute lag using scipy cross-correlation.
 
-    :param data1: _description_
-    :type data1: dict
-    :param data2: _description_
-    :type data2: dict
-    :param show: _description_, defaults to False
-    :type show: bool, optional
-    :param save: _description_, defaults to False
-    :type save: bool, optional
-    :param debug: _description_, defaults to False
-    :type debug: bool, optional
-    :return: _description_
-    :rtype: _type_
+    .. deprecated::
+        Use :func:`python_magnetrun.analysis.synchronization.lag_correlation` instead.
+
+    Parameters
+    ----------
+    data1 : dict
+        First series with keys ``"field"``, ``"df"``, ``"range"`` (dict ``{"start": …, "end": …}``).
+    data2 : dict
+        Second series (same format as *data1*).
+    show : bool, optional
+        Display diagnostic plots.
+    save : bool, optional
+        Save diagnostic plots.
+    debug : bool, optional
+        Print debug information.
+
+    Returns
+    -------
+    pd.Timedelta
+        Computed lag.
     """
-    logger.info(f"lag_correlation: {data1['field']} - {data2['field']}")
-
-    from scipy.signal import correlate, correlation_lags
-
-    series = data1["df"]
-    name_series = data1["field"]
-    start_index1 = data1["range"]["start"]
-    end_index1 = data1["range"]["end"]
-
-    trend = data2["df"]
-    name_trend = data2["field"]
-    start_index2 = data2["range"]["start"]
-    end_index2 = data2["range"]["end"]
-
-    # Select a slice of the time series
-    if start_index1 != 0:
-        if end_index1 is not None:
-            time_series_slice = series[start_index1:end_index1]
-        else:
-            time_series_slice = series[start_index1:]
-    else:
-        time_series_slice = series[:end_index1] if end_index1 is not None else series
-
-    # Select a slice of the trend series
-    if start_index2 != 0:
-        if end_index2 is not None:
-            trend_slice = trend[start_index2:end_index2]
-        else:
-            trend_slice = trend[start_index2:]
-    else:
-        trend_slice = trend[:end_index2] if end_index2 is not None else trend
-
-    # dump data to csv
-    if debug:
-        time_series_slice.to_csv("time_series_slice.csv")
-        trend_slice.to_csv("trend_slice.csv")
-
-    # Drop NaN values from trend slice
-    # trend_slice = trend_slice[~np.isnan(trend_slice)]
-    # time_series_slice = time_series_slice[-len(trend_slice):]
-
-    # Compute cross-correlation
-    # correlation = correlate(  # noqa: E501
-    #     time_series_slice - np.mean(time_series_slice),
-    #     trend_slice - np.mean(trend_slice)
-    # )
-    correlation = correlate(
-        time_series_slice - time_series_slice.mean(), trend_slice - trend_slice.mean()
+    warnings.warn(
+        "processing.correlations.lag_correlation() is deprecated; "
+        "use analysis.synchronization.lag_correlation() instead.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    lags = correlation_lags(time_series_slice.size, trend_slice.size, mode="full")
+    from ..analysis.synchronization import lag_correlation as _canonical
 
-    # Find the lag with maximum correlation
-    lag = lags[np.argmax(correlation)]
-
-    time_trend_slice_lag = time_series_slice.copy()
-
-    time_shift = pd.to_timedelta(f"{lag}s")
-    time_trend_slice_lag.index = time_trend_slice_lag.index - time_shift
-    # print("after lag")
-    # print(time_trend_slice_lag.head())
-
-    # Plot the results
-    logger.info(f'name_series="{name_series}", name_trend="{name_trend}", lag={lag}s')
-
-    plt.figure(figsize=(12, 6))
-    plt.subplot(2, 1, 1)
-    plt.plot(time_series_slice, label=name_series, marker="+")
-    plt.plot(trend_slice, label=name_trend, color="red", marker="*")
-    plt.plot(
-        time_trend_slice_lag,
-        label=f"{name_series} with lag {lag}s",
-        color="green",
-        marker="o",
-        linestyle="None",
-        alpha=0.2,
-    )
-    plt.title(f"{name_series} and {name_trend}")
-    plt.legend()
-    plt.grid(True)
-
-    plt.subplot(2, 1, 2)
-    plt.plot(lags, correlation, label="Cross-Correlation")
-    plt.axvline(lag, color="red", linestyle="--", label=f"Lag = {lag}")
-    plt.title(f"Cross-Correlation between {name_series} and {name_trend}")
-    plt.xlabel("Lag")
-    plt.ylabel("Cross-Correlation")
-    plt.legend()
-    plt.grid(True)
-    if save:
-        plt.savefig("lag_correlation.png", dpi=300)
-    if show:
-        plt.show()
-    plt.close()
-
-    return time_shift
+    d1 = dict(data1)
+    d2 = dict(data2)
+    d1["range"] = _normalise_range(d1["range"])
+    d2["range"] = _normalise_range(d2["range"])
+    return _canonical(d1, d2, show=show, save=save, debug=debug)
 
 
 def compute_lag(
@@ -136,82 +70,48 @@ def compute_lag(
     save: bool = False,
     debug: bool = False,
 ) -> pd.Timedelta:
-    logger.info(f"compute_lag: {df1_data['field']} - {df2_data['field']}")
+    """Compute lag between two time series using cross-correlation.
 
-    ts1 = df1_data["df"].copy()
-    key1 = df1_data["field"]
-    (istart1, iend1) = df1_data["range"]
-    ts1.set_index(tkey, inplace=True)
-    ts1 = ts1.iloc[:, 0]
-    # ts1 = ts1 - ts1.min() ?? needed
+    .. deprecated::
+        Use :func:`python_magnetrun.analysis.synchronization.compute_lag` instead.
+        Note: the canonical function expects ``"range"`` as a dict
+        ``{"start": …, "end": …}``; tuple ranges are converted automatically
+        by this shim.
 
-    ts1_index = ts1.index.to_list()
-    otstart = ts1_index[istart1]
-    otend = ts1_index[-1]
-    if iend1 is not None:
-        otend = ts1_index[iend1]
-    logger.debug(f"ts1 range: [{istart1}, {iend1}]-> [{otstart}, {otend}]")
+    Parameters
+    ----------
+    tkey : str
+        Name of the time/index column.
+    df1_data : dict
+        First series with keys ``"df"``, ``"field"``,
+        ``"range"`` (tuple ``(start, end)`` or dict ``{"start": …, "end": …}``).
+    df2_data : dict
+        Second series (same format as *df1_data*).
+    show : bool, optional
+        Display diagnostic plots.
+    save : bool, optional
+        Save diagnostic plots.
+    debug : bool, optional
+        Print debug information.
 
-    ts2 = df2_data["df"].copy()
-    key2 = df2_data["field"]
-    (istart2, iend2) = df2_data["range"]
-    ts2.set_index(tkey, inplace=True)
-    ts2 = ts2.iloc[:, 0]
-    # resample to make sure that timeseries share the same index
-    try:
-        ts2_index = ts2.index.to_list()
-        ts2_resampled = ts2.resample("1s", origin=ts2_index[0]).asfreq()
-    except Exception as e:
-        logger.error(f"compute_lag: resample error: {e}")
-        logger.error(f"ts2 index:\n{ts2.index}")
-        logger.error(f"ts2:\n{ts2}")
-        duplicates = ts2.index.duplicated()
-        logger.error(f"{duplicates}")
-        raise e
-    pstart: np.ndarray = np.array([], dtype=int)
-    pend: np.ndarray = np.array([], dtype=int)
-
-    # Interpolate missing values (optional, depending on your use case)
-    ts2_resampled = ts2_resampled.interpolate(method="linear")
-    if istart2 is None and iend2 is None:
-        pstart = ts2_resampled.index.get_indexer([pd.Timestamp(otstart)], method="nearest")
-        pend = ts2_resampled.index.get_indexer([pd.Timestamp(otend)], method="nearest")
-    else:
-        ts2_index = ts2.index.to_list()
-        ptstart = ts2_index[istart2]
-        ptend = ts2_index[-1]
-        if iend2 is not None:
-            ptend = ts2_index[iend2]
-        pstart = ts2_resampled.index.get_indexer([pd.Timestamp(ptstart)], method="nearest")
-        pend = ts2_resampled.index.get_indexer([pd.Timestamp(ptend)], method="nearest")
-
-    ptstart = ts2_resampled.index[pstart[0]]
-    ptend = ts2_resampled.index[pend[0]]
-    logger.debug(f"ts2 range: [{istart2}, {iend2}]-> [{ptstart}, {ptend}]")
-
-    # pupitre data
-    ts2_data = {
-        "field": key2,
-        "df": ts2_resampled,
-        "range": {"start": ptstart, "end": ptend},
-    }
-
-    # overview data
-    ts1_data = {
-        "field": key1,
-        "df": ts1,
-        "range": {"start": otstart, "end": otend},
-    }
-    logger.info(f"compute_lag: {ts1_data['field']} - {ts2_data['field']}")
-    lag = lag_correlation(
-        ts2_data,
-        ts1_data,
-        show=show,
-        save=save,
-        debug=debug,
+    Returns
+    -------
+    pd.Timedelta
+        Computed lag.
+    """
+    warnings.warn(
+        "processing.correlations.compute_lag() is deprecated; "
+        "use analysis.synchronization.compute_lag() instead.",
+        DeprecationWarning,
+        stacklevel=2,
     )
+    from ..analysis.synchronization import compute_lag as _canonical
 
-    return lag
+    d1 = dict(df1_data)
+    d2 = dict(df2_data)
+    d1["range"] = _normalise_range(d1["range"])
+    d2["range"] = _normalise_range(d2["range"])
+    return _canonical(tkey, d1, d2, show=show, save=save, debug=debug)
 
 
 # To check
