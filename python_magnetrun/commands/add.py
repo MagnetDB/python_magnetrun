@@ -3,7 +3,7 @@
 import argparse
 import logging
 
-from ..commands.plot import _handle_output, _resolve_plot_config
+from ..commands.plot import _resolve_plot_config, _save_or_show_figure
 from ..magnetdata_base import DataType
 from ..plotting.backend import get_backend
 
@@ -53,7 +53,7 @@ def _plot_fields(mdata, fields: list[str], title: str, args, cfg) -> None:
     elif title and hasattr(fig, "suptitle"):
         fig.suptitle(title)
 
-    _handle_output(fig, args, b, [], fields, backend_name, dpi=cfg.style.dpi)
+    _save_or_show_figure(fig, args, b, [], fields, backend_name, dpi=cfg.style.dpi)
 
 
 def add_field(mrun, args):

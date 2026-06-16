@@ -458,7 +458,7 @@ class TestHybridRunGetTimeRange:
         assert t_end == datetime.datetime(2025, 1, 28, 0, 0, 0)
 
     def test_raises_when_no_bin_files(self, tmp_path: Path):
-        """get_time_range() must raise RuntimeError when no bin files exist."""
+        """get_time_range() must raise when no timestamps can be inferred."""
         from python_magnetrun.hybrid.hybrid_run import HybridRun
 
         date_str = "2025-01-27"
@@ -468,8 +468,116 @@ class TestHybridRunGetTimeRange:
         (khz_dir / "HOST_2_DATA.CFG").write_text(f"{fepc};1;1000;0;0;ANALOG;1\nU_Alim\n")
         hrun = HybridRun.fromdir(str(tmp_path), date_str, fepc_system=fepc)
 
-        with pytest.raises(RuntimeError, match="No kHz bin files found"):
+        with pytest.raises(NotImplementedError):
             hrun.get_time_range()
+
+
+# ---------------------------------------------------------------------------
+# 4.1 — HybridData timestamp support
+# ---------------------------------------------------------------------------
+
+
+class TestHybridTimestamps:
+    """Tests for HybridData timestamp inference — Task 4.1."""
+
+    def _make_rms_dir(self, tmp_path: Path, date_str: str, fepc: str, stem: str) -> Path:
+        """Create a minimal RMS directory with one synthetic .rms file."""
+        rms_dir = tmp_path / "rms" / date_str / fepc
+        rms_dir.mkdir(parents=True)
+        (rms_dir / f"{stem}.rms").write_bytes(b"")
+        return rms_dir
+
+    def test_no_files_returns_none(self, tmp_path: Path):
+        """Empty directory — both timestamps stay None, no exception raised."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        assert hdata.start_timestamp is None
+        assert hdata.end_timestamp is None
+
+    def test_start_timestamp_from_rms_filename(self, tmp_path: Path):
+        """start_timestamp is inferred from RMS filename and is a naive UTC datetime."""
+        import datetime
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",  # em-dash separator
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        assert hdata.start_timestamp is not None
+        assert isinstance(hdata.start_timestamp, datetime.datetime)
+        assert hdata.start_timestamp.tzinfo is None  # naive UTC
+
+    def test_end_timestamp_from_rms_filename(self, tmp_path: Path):
+        """end_timestamp is inferred from RMS filename and is after start_timestamp."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        assert hdata.end_timestamp is not None
+        assert hdata.end_timestamp > hdata.start_timestamp
+
+    def test_utc_conversion_winter(self, tmp_path: Path):
+        """Local 2025-01-06 10:00 CET (UTC+1) must convert to UTC 09:00."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        # RMS filename encodes local time 10:00 start, 12:00 end (CET = UTC+1 in January)
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        assert hdata.start_timestamp.hour == 9  # 10:00 CET → 09:00 UTC
+
+    def test_addTime_sets_both(self, tmp_path: Path):
+        """addTime() sets start_timestamp and end_timestamp, returns 0."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        # Reset to simulate a fresh call
+        hdata.start_timestamp = None
+        hdata.end_timestamp = None
+        ret = hdata.addTime()
+        assert ret == 0
+        assert hdata.start_timestamp is not None
+        assert hdata.end_timestamp is not None
+
+    def test_getDuration_positive(self, tmp_path: Path):
+        """getDuration() returns a positive number of seconds."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        assert hdata.getDuration() > 0.0
+
+    def test_getStartDate_format(self, tmp_path: Path):
+        """getStartDate() returns a 4-tuple of non-empty strings in expected format."""
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        self._make_rms_dir(
+            tmp_path, "2025-01-06", "FEPC-LNCMI",
+            "SUPRA_2025-01-06_1000—2025-01-06_1200",
+        )
+        hdata = HybridData(str(tmp_path), "2025-01-06")
+        result = hdata.getStartDate()
+        assert len(result) == 4
+        start_date, start_time, end_date, end_time = result
+        assert "." in start_date   # "%Y.%m.%d" format
+        assert ":" in start_time   # "%H:%M:%S" format
+        assert "." in end_date
+        assert ":" in end_time
 
 
 # ---------------------------------------------------------------------------
@@ -738,3 +846,197 @@ class TestPlotRmsVariablesBugFixes:
         assert len(scatter_calls) == 1
         assert scatter_calls[0]["downsample"] == 10000
         assert scatter_calls[0]["downsample_method"] == "auto"
+
+
+class TestPlotVprocessVariable:
+    """Tests for HybridData.plot_vprocess_variable and plotting.plot_vprocess_variable."""
+
+    def test_delegates_to_plotting_module(self):
+        """plot_vprocess_variable calls plotting.plot_vprocess_variable with correct args."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.plotting import plot_vprocess_variable
+
+        hd = MagicMock()
+        hd.date_str = "2024-05-09"
+        hd.read_vprocess_variable.return_value = (
+            np.array([1.0, 2.0]), np.array([0.0, 1.0])
+        )
+
+        mock_backend = MagicMock()
+
+        with (
+            patch("python_magnetrun.hybrid.plotting._get_vprocess_unit", return_value="V"),
+            patch("python_magnetrun.hybrid.plotting.plot_overlay") as mock_overlay,
+            patch(
+                "python_magnetrun.hybrid.plotting.get_backend",
+                return_value=mock_backend,
+            ),
+            patch("python_magnetrun.hybrid.plotting._handle_output"),
+        ):
+            mock_overlay.return_value = MagicMock(spec=[])
+            plot_vprocess_variable(hd, "U_coil", hours=None, show=False)
+
+        hd.read_vprocess_variable.assert_called_once_with("U_coil", hours=None)
+
+    def test_outlier_config_triggers_detector(self):
+        """outlier_config causes OutlierDetector.detect to be called on the data."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+        from python_magnetrun.outliers import OutlierConfig, OutlierResult
+
+        data = np.array([1.0, 2.0, 3.0])
+        time = np.array([0.0, 1.0, 2.0])
+        mask = np.array([False, False, False])
+        outlier_result = OutlierResult(
+            mask=mask, method="zscore", threshold=3.0, n_outliers=0, n_total=3
+        )
+        config = OutlierConfig(method="zscore", threshold=3.0)
+
+        hd = MagicMock(spec=HybridData)
+        hd.read_vprocess_variable.return_value = (data, time)
+
+        mock_detector_instance = MagicMock()
+        mock_detector_instance.detect.return_value = outlier_result
+
+        with (
+            patch("python_magnetrun.outliers.OutlierDetector", return_value=mock_detector_instance),
+            patch(
+                "python_magnetrun.hybrid.plotting.plot_vprocess_variable"
+            ) as mock_plot_fn,
+        ):
+            hd.plot_vprocess_variable = HybridData.plot_vprocess_variable.__get__(hd)
+            hd.plot_vprocess_variable("U_coil", outlier_config=config, show=False)
+
+        mock_detector_instance.detect.assert_called_once()
+        mock_plot_fn.assert_called_once()
+        _, kwargs = mock_plot_fn.call_args
+        assert kwargs["outlier_result"] is outlier_result
+
+    def test_no_outlier_when_config_is_none(self):
+        """outlier_result=None is forwarded when outlier_config is None."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        hd = MagicMock(spec=HybridData)
+        hd.read_vprocess_variable.return_value = (np.array([1.0]), np.array([0.0]))
+
+        with patch(
+            "python_magnetrun.hybrid.plotting.plot_vprocess_variable"
+        ) as mock_plot_fn:
+            hd.plot_vprocess_variable = HybridData.plot_vprocess_variable.__get__(hd)
+            hd.plot_vprocess_variable("U_coil", show=False)
+
+        _, kwargs = mock_plot_fn.call_args
+        assert kwargs["outlier_result"] is None
+
+
+class TestPlotTriggerVariable:
+    """Tests for HybridData.plot_trigger_variable and plotting.plot_trigger_variable."""
+
+    def test_delegates_with_system_and_variable(self):
+        """plot_trigger_variable reads data and calls _plot_variable_impl."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.plotting import plot_trigger_variable
+
+        hd = MagicMock()
+        hd.date_str = "2024-05-09"
+        hd.read_trigger_variable.return_value = (
+            np.array([1.0, 2.0]), np.array([0.0, 1.0])
+        )
+
+        mock_backend = MagicMock()
+
+        with (
+            patch("python_magnetrun.hybrid.plotting._get_trigger_unit", return_value="A"),
+            patch("python_magnetrun.hybrid.plotting.plot_overlay") as mock_overlay,
+            patch(
+                "python_magnetrun.hybrid.plotting.get_backend",
+                return_value=mock_backend,
+            ),
+            patch("python_magnetrun.hybrid.plotting._handle_output"),
+        ):
+            mock_overlay.return_value = MagicMock(spec=[])
+            plot_trigger_variable(
+                hd, "SYS", "I_H1", apply_calib=True, cnv_dir=None, show=False
+            )
+
+        hd.read_trigger_variable.assert_called_once_with(
+            "SYS", "I_H1", apply_calib=True, cnv_dir=None
+        )
+
+    def test_apply_calib_forwarded(self):
+        """apply_calib and cnv_dir are forwarded to plotting.plot_trigger_variable."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+
+        data = np.array([1.0, 2.0])
+        time = np.array([0.0, 1.0])
+
+        hd = MagicMock(spec=HybridData)
+        hd.read_trigger_variable.return_value = (data, time)
+
+        with patch(
+            "python_magnetrun.hybrid.plotting.plot_trigger_variable"
+        ) as mock_plot_fn:
+            hd.plot_trigger_variable = HybridData.plot_trigger_variable.__get__(hd)
+            hd.plot_trigger_variable(
+                "SYS", "I_H1",
+                apply_calib=False, cnv_dir="/some/dir",
+                show=False,
+            )
+
+        _, kwargs = mock_plot_fn.call_args
+        assert kwargs["apply_calib"] is False
+        assert kwargs["cnv_dir"] == "/some/dir"
+
+    def test_outlier_config_triggers_detector(self):
+        """outlier_config causes OutlierDetector.detect to be called."""
+        from unittest.mock import MagicMock, patch
+
+        import numpy as np
+
+        from python_magnetrun.hybrid.hybrid_data import HybridData
+        from python_magnetrun.outliers import OutlierConfig, OutlierResult
+
+        data = np.array([1.0, 2.0, 3.0])
+        time = np.array([0.0, 1.0, 2.0])
+        mask = np.array([False, False, False])
+        outlier_result = OutlierResult(
+            mask=mask, method="zscore", threshold=3.0, n_outliers=0, n_total=3
+        )
+        config = OutlierConfig(method="zscore", threshold=3.0)
+
+        hd = MagicMock(spec=HybridData)
+        hd.read_trigger_variable.return_value = (data, time)
+
+        mock_detector_instance = MagicMock()
+        mock_detector_instance.detect.return_value = outlier_result
+
+        with (
+            patch("python_magnetrun.outliers.OutlierDetector", return_value=mock_detector_instance),
+            patch(
+                "python_magnetrun.hybrid.plotting.plot_trigger_variable"
+            ) as mock_plot_fn,
+        ):
+            hd.plot_trigger_variable = HybridData.plot_trigger_variable.__get__(hd)
+            hd.plot_trigger_variable("SYS", "I_H1", outlier_config=config, show=False)
+
+        mock_detector_instance.detect.assert_called_once()
+        mock_plot_fn.assert_called_once()
+        _, kwargs = mock_plot_fn.call_args
+        assert kwargs["outlier_result"] is outlier_result

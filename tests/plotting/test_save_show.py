@@ -1,4 +1,4 @@
-"""Tests for _default_save_path, _handle_output, and --save/--show argparse semantics."""
+"""Tests for _default_save_path, _save_or_show_figure, and --save/--show argparse semantics."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from python_magnetrun.cli_args import create_managed_plots_parser
-from python_magnetrun.commands.plot import _default_save_path, _handle_output
+from python_magnetrun.commands.plot import _default_save_path, _save_or_show_figure
 
 
 class TestDefaultSavePath:
@@ -59,21 +59,21 @@ class TestHandleOutput:
     def test_neither_flag_defaults_to_show(self):
         b = self._make_backend()
         fig = MagicMock()
-        _handle_output(fig, self._args(save=None, show=False), b, ["f.txt"], ["B"], "matplotlib")
+        _save_or_show_figure(fig, self._args(save=None, show=False), b, ["f.txt"], ["B"], "matplotlib")
         b.show.assert_called_once_with(fig)
         b.save.assert_not_called()
 
     def test_show_true_calls_show(self):
         b = self._make_backend()
         fig = MagicMock()
-        _handle_output(fig, self._args(save=None, show=True), b, ["f.txt"], ["B"], "matplotlib")
+        _save_or_show_figure(fig, self._args(save=None, show=True), b, ["f.txt"], ["B"], "matplotlib")
         b.show.assert_called_once_with(fig)
         b.save.assert_not_called()
 
     def test_save_empty_string_uses_default_name(self):
         b = self._make_backend()
         fig = MagicMock()
-        _handle_output(fig, self._args(save="", show=False), b, ["f.txt"], ["B"], "matplotlib")
+        _save_or_show_figure(fig, self._args(save="", show=False), b, ["f.txt"], ["B"], "matplotlib")
         b.save.assert_called_once()
         saved_path = b.save.call_args[0][1]
         assert saved_path.parent == Path.cwd()
@@ -83,7 +83,7 @@ class TestHandleOutput:
         b = self._make_backend()
         fig = MagicMock()
         explicit = str(tmp_path / "out.png")
-        _handle_output(fig, self._args(save=explicit, show=False), b, ["f.txt"], ["B"], "matplotlib")
+        _save_or_show_figure(fig, self._args(save=explicit, show=False), b, ["f.txt"], ["B"], "matplotlib")
         b.save.assert_called_once()
         saved_path = b.save.call_args[0][1]
         assert saved_path == Path(explicit)
@@ -92,13 +92,13 @@ class TestHandleOutput:
     def test_save_does_not_call_show(self):
         b = self._make_backend()
         fig = MagicMock()
-        _handle_output(fig, self._args(save="out.png", show=False), b, ["f.txt"], ["B"], "matplotlib")
+        _save_or_show_figure(fig, self._args(save="out.png", show=False), b, ["f.txt"], ["B"], "matplotlib")
         b.show.assert_not_called()
 
     def test_dpi_forwarded_to_save(self):
         b = self._make_backend()
         fig = MagicMock()
-        _handle_output(fig, self._args(save=""), b, ["f.txt"], ["B"], "matplotlib", dpi=150)
+        _save_or_show_figure(fig, self._args(save=""), b, ["f.txt"], ["B"], "matplotlib", dpi=150)
         _, kwargs = b.save.call_args
         assert kwargs.get("dpi") == 150
 

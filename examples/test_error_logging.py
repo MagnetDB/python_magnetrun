@@ -8,7 +8,7 @@ This script shows different error logging patterns and their output.
 from pathlib import Path
 
 # Import from python_magnetrun.hybrid module
-from python_magnetrun.hybrid.utils import format_exception_location, log_exception
+from python_magnetrun.log_utils import format_exception_location, log_exception
 
 
 def test_full_traceback():

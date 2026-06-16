@@ -998,22 +998,27 @@ class HybridRun:
     def get_time_range(self) -> tuple[datetime, datetime]:
         """Get time range of available data.
 
+        Delegates to
+        :meth:`~python_magnetrun.hybrid.hybrid_data.HybridData.get_time_range`,
+        mirroring the pattern used by
+        :meth:`~python_magnetrun.MagnetRun.MagnetRun.get_time_range`.
+
         Returns
         -------
         tuple[datetime, datetime]
-            ``(t_start, t_end)`` as naive UTC datetimes derived from the
-            kHz bin-file UTC hours present in the recording directory.
+            ``(start_timestamp, end_timestamp)`` as naive UTC datetimes.
 
         Raises
         ------
         RuntimeError
             If no :class:`~python_magnetrun.hybrid.hybrid_data.HybridData`
-            is associated, or no kHz bin files are found.
+            is associated.
+        NotImplementedError
+            If no timestamps could be inferred from the data files.
         """
         if self.HybridData is None:
             raise RuntimeError("No HybridData associated")
-        from .hybrid_data import _khz_first_last_utc
-        return _khz_first_last_utc(self.HybridData)
+        return self.HybridData.get_time_range()
 
     def get_data_at_time(
         self,

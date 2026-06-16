@@ -1,6 +1,6 @@
 # Development Roadmap — python_magnetrun
 
-*Updated: 2026-06-10*
+*Updated: 2026-06-11*
 
 This document outlines strategic priorities and upcoming work. For detailed implementation status, see [CHECK_IMPLEMENTATION.md](CHECK_IMPLEMENTATION.md). For architectural review, see [REVIEW.md](REVIEW.md).
 
@@ -32,6 +32,8 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 - ✅ Phase 2B: Time Alignment Layer complete — `utc_hour_to_local()` in `hybrid/utils.py`; UTC `hours` in `read_khz_variable`/`read_rms_variable`; `_khz_first_last_utc()` + `HybridRun.get_time_range()` fix; RMS time origin from UTC midnight; `align_to_common_time(sources, reference, hours)` in `utils/timestamps.py`; demonstrator refactored; 1052 tests pass
 - ✅ `BinarizeConfig` dataclass in `hybrid/hybrid_run.py` (`method`, `tolerance`, `n_bins`, `normalize`, `noise_percentile`); wired into `LoadOptions` and `getData` flow
 - ✅ `comparison/cli.py` stub + `register()` wired into unified dispatcher — `magnetrun compare` now discoverable
+- ✅ Phase 2C: Extend `plot_data()` for Hybrid complete — per-type annotation colors, unit propagation, `HybridRun` acceptance + time alignment, `load_hybrid_incidents_data()`, `AnnotationManager.add_vline()`, hybrid incidents wired into `plot_data()` via `add_vline()`
+- ✅ Stream 3.9 M1/M2/M4: `log_exception` unified (`hybrid/utils.py` duplicates deleted), `range` schema standardised to dict in `analysis/synchronization.py`, `_apply_cnv_calibration` shared helper extracted to `hybrid/utils.py`
 
 ---
 
@@ -97,24 +99,21 @@ This document outlines strategic priorities and upcoming work. For detailed impl
 
 **See:** [phase2b-time-alignment.plan.md](phase2b-time-alignment.plan.md) for full analysis.
 
-**Phase 2C: Extend `plot_data()` for Hybrid** 🔶 **IN PROGRESS**
+**Phase 2C: Extend `plot_data()` for Hybrid** ✅ **COMPLETE**
 
-Extend `analysis/plotting.plot_data()` and supporting modules to integrate Hybrid data alongside Overview, Archive, and Pupitre sources on shared axes. `hybrid_dict` (same pattern as `pupitre_dict`) is the channel-mapping parameter — `hybrid_channels` was dropped.
+Extended `analysis/plotting.plot_data()` and supporting modules to integrate Hybrid data alongside Overview, Archive, and Pupitre sources on shared axes. `hybrid_dict` (same pattern as `pupitre_dict`) is the channel-mapping parameter.
 
 **Completed:**
 - ✅ Per-type annotation colors — `PlotColors` gains `incident_default/spike/trigger/hybrid` fields + `get_incident_color(itype)`; `AnnotationManager.add()` gains `color` param; `plot_data()` passes per-type color to each `manager.add()` call; migration in `PlotConfig.from_dict()` for old `"incident"` key; 5 new annotation tests
-- ✅ Unit propagation — pre-compute `_ar_ch/_pu_ch/_hy_ch`; `units_map` collected inline per source block; `merged.attrs["units"] = units_map` set after `pd.concat()` (survives the concat); `_unit_entry` fallback widened to pupitre + hybrid attrs; `TestPlotDataUnits` (2 tests); **1078 tests pass**
+- ✅ Unit propagation — pre-compute `_ar_ch/_pu_ch/_hy_ch`; `units_map` collected inline per source block; `merged.attrs["units"] = units_map` set after `pd.concat()` (survives the concat); `_unit_entry` fallback widened to pupitre + hybrid attrs; `TestPlotDataUnits` (2 tests)
+- ✅ `HybridRun` acceptance + time alignment — `load_hybrid_data()` widened to `HybridRun | pd.DataFrame | None`; `reference_t0: datetime | None` added; offset computed via `align_to_common_time`
+- ✅ `load_hybrid_incidents_data()` — implemented in `analysis/processing.py` using `parse_trigger_directory()`; prefers `trigger_approx_timestamp` from `EventInfo.properties` (ms precision) over minute-precision dirname timestamp
+- ✅ `AnnotationManager.add_vline()` + `_add_vline_mpl()` — new method for point-event annotations (no data column)
+- ✅ `plot_data()` uses `add_vline()` for hybrid incidents annotation loop
 
-**Pending:**
-- ⬜ `HybridRun` acceptance + time alignment — widen `df_hybrid` type to `HybridRun | pd.DataFrame | None`; add `reference_t0: datetime | None`; extract DataFrame + compute offset via `align_to_common_time`; surface `hrun` from `load_hybrid_data()`; update `analysis/cli.py`
-- ⬜ `load_hybrid_incidents_data()` — implement stub in `analysis/processing.py` using `parse_trigger_directory()`; prefer `trigger_approx_timestamp` from `EventInfo.properties` (ms precision) over `TriggerInfo.timestamp` (minute precision)
-- ⬜ `AnnotationManager.add_vline()` — new method for point-event annotations (no data column)
-- ⬜ Use `add_vline()` fallback in `plot_data()` hybrid incidents annotation loop
+**1093 tests pass, 7 skipped.**
 
-**Depends on:** Phase 2B — ✅ **complete**
-**Effort:** ~2-3 weeks
-
-**Phase 2D: Side-by-Side Comparison** ⬜ **PLANNED**
+**Phase 2D: Side-by-Side Comparison** ⬜ **NEXT** *(unblocked)*
 
 Extend `plot_comparison()` to accept `list[DataLoader]`:
 - Auto-generate subplot grid (source × channel)
@@ -213,29 +212,30 @@ Current: `ChannelMapping` exists for TDMS internal mappings; `KeyMapping` in `co
 - **See:** Phase H of [cross-domain-comparison.prompt.md](cross-domain-comparison.prompt.md)
 - **Effort:** S (~2 hours)
 
-**3.9 Hybrid Subpackage Code Quality** 🔶 **IN PROGRESS** *(from [docs/hybrid_refactoring_notes.md](../docs/hybrid_refactoring_notes.md))*
+**3.9 Hybrid Subpackage Code Quality** ✅ **COMPLETE** *(from [docs/hybrid_refactoring_notes.md](../docs/hybrid_refactoring_notes.md))*
 
 Items 2 and 3 from the notes are already tracked as B0.5 and B2.5 in Phase 2B. Items 12 and 13 (docs-only cross-refs and a rename) are in Quick Wins.
 
 **See:** [3.9-hybrid-code-quality.plan.md](3.9-hybrid-code-quality.plan.md) for full item tracking.
+**See:** [l2-binary-reader-base.plan.md](l2-binary-reader-base.plan.md) for detailed L2 plan.
 
 *Small (S) — low risk, do any time:*
 - ✅ **S1 — `safe_float` module-level** (notes item 5): `safe_float` hoisted to module level in [hybrid/kHz/fepc_reader.py](../python_magnetrun/hybrid/kHz/fepc_reader.py); both nested definitions at ~298 and ~435 removed.
-- ✅ **S2 — Consolidate `_resolve_backend`** (notes items 6/15): deleted both local definitions; all 6 call sites now use `get_backend` directly (which already handles `PlottingBackend` instances). **1071 tests pass.**
+- ✅ **S2 — Consolidate `_resolve_backend`** (notes items 6/15): deleted both local definitions; all 6 call sites now use `get_backend` directly (which already handles `PlottingBackend` instances).
 - ✅ **S3 — `_open_text` wrapper** (notes item): `_open_text_with_fallback` in [utils/files.py](../python_magnetrun/utils/files.py) widened to `str | Path`; `_open_text` wrapper deleted from [readers/csv_readers.py](../python_magnetrun/readers/csv_readers.py); 3 call sites updated.
 
 *Medium (M) — low-to-medium risk:*
-- **M1 — Unify `log_exception` + `format_exception_location`** (notes items 9/11): standardise on the `log_utils.py` signature (explicit `logger` arg); update six call sites in `hybrid/cli.py`; delete the duplicate in [hybrid/utils.py](../python_magnetrun/hybrid/utils.py).
-- **M2 — Standardise `range` schema** (notes item 14): adopt dict schema `{"start": …, "end": …}` for both `compute_lag` and `lag_correlation` in [analysis/synchronization.py](../python_magnetrun/analysis/synchronization.py); update caller in `analysis/processing.py:_compute_lag_correlation` (currently uses tuple).
-- **M3 — Deprecate `processing.correlations` lag functions** (notes item 8): add deprecation shims in [processing/correlations.py](../python_magnetrun/processing/correlations.py) that forward to `analysis.synchronization` equivalents; unify `range` schema (dict) and update callers.
-- **M4 — Share CNV calibration helper** (notes items 7/16): extract `_apply_cnv_calibration(data, cnv_path) -> np.ndarray` into `hybrid/utils.py`; reuse it in `hybrid/kHz/fepc_reader.py:apply_calibration` and `hybrid/trigger/trigger_reader.py:apply_calibration`.
+- ✅ **M1 — Unify `log_exception` + `format_exception_location`** (notes items 9/11): `log_exception` and `format_exception_location` deleted from [hybrid/utils.py](../python_magnetrun/hybrid/utils.py); all 9 call sites in `hybrid/cli.py` updated to `log_utils.log_exception(logger, …)`.
+- ✅ **M2 — Standardise `range` schema** (notes item 14): dict schema `{"start": …, "end": …}` adopted in both `compute_lag` and `lag_correlation` in [analysis/synchronization.py](../python_magnetrun/analysis/synchronization.py); `_compute_lag_correlation` in `analysis/processing.py` updated.
+- ✅ **M3 — Deprecate `processing.correlations` lag functions** (notes item 8): `compute_lag` and `lag_correlation` in [processing/correlations.py](../python_magnetrun/processing/correlations.py) replaced with `DeprecationWarning` shims forwarding to `analysis.synchronization`; `_normalise_range` helper converts legacy tuple `range` to dict for backward compat.
+- ✅ **M4 — Share CNV calibration helper** (notes items 7/16): `_apply_cnv_calibration(data, cnv_path) -> np.ndarray` extracted to `hybrid/utils.py`; reused in `hybrid/kHz/fepc_reader.py` and `hybrid/trigger/trigger_reader.py` (gains French decimal-comma handling).
 
 *Large (L) — medium risk, plan separately before starting:*
-- ✅ **L1 — Extract `_plot_variable_impl` / `_plot_variables_impl`** (notes items 3/4): unified `plot_khz_variable`/`plot_rms_variable` and `plot_khz_variables`/`plot_rms_variables` in [hybrid/plotting.py](../python_magnetrun/hybrid/plotting.py); fixed RMS missing `downsample` param, unlabelled y-axes, and `_scatter_outliers` not receiving downsample args. 7 new tests. **1071 tests pass.**
-- **L2 — Extract `_BinaryFileReaderBase`** (notes item 1): abstract base class for `RMSFileReader` ([hybrid/rms/rms_reader.py](../python_magnetrun/hybrid/rms/rms_reader.py)) and `VProcessFileReader` ([hybrid/vprocess/vprocess_reader.py](../python_magnetrun/hybrid/vprocess/vprocess_reader.py)); merge `RMSVariable`/`VProcessVariable` into a single `ChannelVariable` dataclass; subclass only encoding and timestamp-conversion differences.
+- ✅ **L1 — Extract `_plot_variable_impl` / `_plot_variables_impl`** (notes items 3/4): unified `plot_khz_variable`/`plot_rms_variable` and `plot_khz_variables`/`plot_rms_variables` in [hybrid/plotting.py](../python_magnetrun/hybrid/plotting.py); fixed RMS missing `downsample` param, unlabelled y-axes, and `_scatter_outliers` not receiving downsample args. 7 new tests.
+- ✅ **L2 — Extract `_BinaryFileReaderBase`** (notes item 1): `hybrid/_binary_reader_base.py` created with `ChannelVariable` dataclass + `_BinaryFileReaderBase`; `RMSFileReader` and `VProcessFileReader` now inherit from it; `RMSVariable`/`VProcessVariable` are backward-compat aliases for `ChannelVariable`; 21 new tests. **See:** [l2-binary-reader-base.plan.md](l2-binary-reader-base.plan.md)
 
 **Note:** trigger/VProcess integration into `HybridData` (notes item 10) is tracked as Stream 4.6.
-**Effort:** S items ~30 min each · M items ~0.5 day each · L items ~1–2 days each
+**Stream 3.9 complete.** All items done: S1 S2 S3 L1 M1 M2 M3 M4 L2 ✅
 
 ---
 
@@ -268,12 +268,19 @@ Items 2 and 3 from the notes are already tracked as B0.5 and B2.5 in Phase 2B. I
 - **Effort:** M (pupitre) + M (hybrid RMS) + M (hybrid kHz)
 - **Independent of Phases D–G** — can be done any time after `addTime()` is stable
 
-**4.6 Trigger & VProcess Integration into `HybridData`** ⬜ **PLANNED**
-- Add `read_trigger_variable`, `read_vprocess_variable`, `plot_trigger_variable`, `plot_vprocess_variable` to the `HybridData` interface in [hybrid/hybrid_data.py](../python_magnetrun/hybrid/hybrid_data.py)
-- Currently trigger and vprocess readers exist and work independently but are unreachable via the unified `HybridData` API (notes item 10)
-- **Depends on:** Stream 3.9 L2 (`_BinaryFileReaderBase`) for a clean, non-duplicated integration
-- **Effort:** XL
-- **See:** [docs/hybrid_refactoring_notes.md](../docs/hybrid_refactoring_notes.md) item 10
+**4.6 Trigger & VProcess Plotting Integration** ⬜ **PLANNED** *(revised scope)*
+
+The data-access layer (`read_trigger_variable`, `read_vprocess_variable`, `get_trigger_variables`,
+`list_trigger_events`, etc.) is **already implemented** in `HybridData`. What remains is purely
+the plotting layer:
+- Add `plot_vprocess_variable`, `plot_vprocess_variables`, `plot_trigger_variable` to
+  [hybrid/plotting.py](../python_magnetrun/hybrid/plotting.py) following the `plot_rms_variable` pattern
+- Add thin wrapper methods to [hybrid/hybrid_data.py](../python_magnetrun/hybrid/hybrid_data.py)
+- Add `_get_vprocess_unit` helper (reads unit from first VProcess file header); `_get_trigger_unit` reuses `_get_khz_unit`
+
+**Depends on:** L2 is **not required** — data access is already correct. L2 improves code quality but is independent.
+**Effort:** M (~0.5 day) — revised down from XL; the pattern is fully established.
+**See:** [4.6-trigger-vprocess-plotting.plan.md](4.6-trigger-vprocess-plotting.plan.md) for full design.
 
 **4.7 Parquet Save/Load with Rich Metadata** ⬜ **PLANNED**
 
@@ -366,8 +373,8 @@ Month 2 (June 2026)
 └─ Logging migration (ongoing)
 
 Month 3 (July 2026)
-├─ Phase 2C: Extend plot_data() for hybrid (complete)
-├─ Phase 2D: Side-by-side comparison (start)
+├─ Phase 2C: Extend plot_data() for hybrid ✅ DONE (completed early June 2026)
+├─ Phase 2D: Side-by-side comparison (start) ← NOW UNBLOCKED
 └─ Enable mypy, type hints backfill (background)
 
 Month 4 (August 2026)
@@ -396,7 +403,7 @@ Month 6+ (October 2026+)
 
 ```mermaid
 graph TD
-    A[Phase 2B: Time Alignment] --> B[Phase 2C: Hybrid Plotting]
+    A[Phase 2B: Time Alignment ✅] --> B[Phase 2C: Hybrid Plotting ✅]
     B --> C[Phase 2D: Comparison View]
 
     D[analysis/ Phase 6: Timestamps ✅] --> E[HybridData Timestamp Support]
@@ -420,12 +427,12 @@ graph TD
     L[3.5 Outlier Dedup ✅] --> M[3.2 hybrid/ refactoring ✅]
 ```
 
-**Critical Path:** Phase 2B → 2C → 2D (unified plotting)
-**Unblocked:** HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) and hybrid/ refactoring are both complete
+**Critical Path:** Phase 2B → 2C ✅ → 2D (unified plotting)
+**Unblocked:** Phase 2D (side-by-side comparison); HybridData timestamps — analysis/ Phase 6 (`add_time_columns`) and hybrid/ refactoring are both complete
 **Improves Phase E:** Stream 3.6 R4 (`HybridData` joins hierarchy) ✅ complete — Phase E can now be implemented cleanly
 **Independent:** Quick wins, logging migration, CLI consolidation, type hints, Stream 3.7 (pattern defs), Stream 3.8a/b/c (downsampling extensions — all additive)
-**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.3 CLI ✅ · 3.4 namespace ✅ · 3.5 outlier dedup ✅ · 3.6 reader split ✅ · 3.8a M4/NaN-M4 ✅ · 3.8b RDP/VW ✅ · 3.8c metrics ✅ · 3.7 pattern defs open · 3.9 code quality 🔶 partial (S1 ✅ S2 ✅ S3 ✅ L1 ✅ · M1/M2/M3/M4/L2 open)
-**Phase 2B status:** ✅ complete (B0.5 · B1 · B2 · B2.5 · B3 · B4 all done; 1052 tests pass)
+**Stream 3 status:** 3.1 analysis/ ✅ · 3.2 hybrid/ ✅ · 3.3 CLI ✅ · 3.4 namespace ✅ · 3.5 outlier dedup ✅ · 3.6 reader split ✅ · 3.8a M4/NaN-M4 ✅ · 3.8b RDP/VW ✅ · 3.8c metrics ✅ · 3.9 code quality ✅ · 3.7 pattern defs open
+**Phase 2B status:** ✅ complete · **Phase 2C status:** ✅ complete · **1114 tests pass, 7 skipped**
 
 ---
 

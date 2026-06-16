@@ -86,6 +86,30 @@ def _get_rms_unit(
     return ""
 
 
+def _get_vprocess_unit(hybrid_data: "HybridData", variable: str) -> str:
+    """Get unit for a VProcess variable from the first available file."""
+    try:
+        files = hybrid_data.list_vprocess_files()
+        if not files:
+            return ""
+        from ..vprocess.vprocess_reader import VProcessFileReader
+
+        reader = VProcessFileReader(str(files[0]), endian=hybrid_data.endian)
+        reader.parse_header()
+        var_info = reader.get_variable_info()
+        row = var_info[var_info["name"] == variable]
+        if not row.empty and row.iloc[0]["unit"]:
+            return str(row.iloc[0]["unit"])
+    except (OSError, ValueError, KeyError):
+        pass
+    return ""
+
+
+def _get_trigger_unit(hybrid_data: "HybridData", system: str, variable: str) -> str:
+    """Get unit for a trigger variable (reuses kHz FEPC config)."""
+    return _get_khz_unit(hybrid_data, system, variable)
+
+
 def _handle_output(
     b: PlottingBackend,
     fig: Any,
@@ -705,6 +729,207 @@ def plot_rms_variable(
 
     return _plot_variable_impl(
         data, time, system, variable, ylabel, title, f"{variable} (RMS)",
+        ax, show, save, outlier_result, outlier_strategy,
+        downsample, downsample_method, backend,
+    )
+
+
+def plot_vprocess_variable(
+    hybrid_data: "HybridData",
+    variable: str,
+    hours: range | list[int] | None = None,
+    ax=None,
+    show: bool = True,
+    save: str | None = None,
+    outlier_result: Optional["OutlierResult"] = None,
+    outlier_strategy: str = "interpolate",
+    downsample: int | None = None,
+    downsample_method: str = "auto",
+    backend: str | PlottingBackend = "matplotlib",
+    **plot_kwargs,
+) -> tuple:
+    """Plot VProcess data for a specific variable.
+
+    Parameters
+    ----------
+    hybrid_data : HybridData
+        HybridData instance.
+    variable : str
+        Variable name.
+    hours : range or list of int, optional
+        Hours to read (default: all available).
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to plot on (matplotlib only).
+    show : bool, optional
+        Show plot (default: True).
+    save : str, optional
+        Save plot to file.
+    outlier_result : OutlierResult, optional
+        Pre-computed outlier detection result.
+    outlier_strategy : str, optional
+        How to handle outliers: ``'remove'``, ``'interpolate'``, ``'highlight'``, ``'none'``.
+    downsample : int, optional
+        Target number of points for plotting.
+    downsample_method : str, optional
+        Downsampling method: ``'auto'``, ``'minmax_lttb'``, ``'stride'``, ``'minmax'``.
+    backend : str or PlottingBackend, optional
+        Plotting backend (default: ``'matplotlib'``).
+
+    Returns
+    -------
+    tuple
+        ``(fig, ax)`` — ``ax`` is ``None`` for non-matplotlib backends.
+    """
+    logger.debug("plot_vprocess_variable: variable=%s", variable)
+    data, time = hybrid_data.read_vprocess_variable(variable, hours=hours)
+    unit = _get_vprocess_unit(hybrid_data, variable)
+    ylabel = f"{variable} [{unit}]" if unit else variable
+    title = f"VProcess - {variable} ({hybrid_data.date_str})"
+    return _plot_variable_impl(
+        data, time, "vprocess", variable, ylabel, title, variable,
+        ax, show, save, outlier_result, outlier_strategy,
+        downsample, downsample_method, backend,
+    )
+
+
+def plot_vprocess_variables(
+    hybrid_data: "HybridData",
+    variables: list[str],
+    hours: range | list[int] | None = None,
+    layout: str = "subplots",
+    show: bool = True,
+    save: str | None = None,
+    outlier_results: dict[str, "OutlierResult"] | None = None,
+    outlier_strategy: str = "interpolate",
+    downsample: int | None = None,
+    downsample_method: str = "auto",
+    backend: str | PlottingBackend = "matplotlib",
+    **plot_kwargs,
+) -> tuple:
+    """Plot multiple VProcess variables.
+
+    Parameters
+    ----------
+    hybrid_data : HybridData
+        HybridData instance.
+    variables : list of str
+        Variable names to plot.
+    hours : range or list of int, optional
+        Hours to read (default: all available).
+    layout : str, optional
+        Plot layout: ``'subplots'`` (default) or ``'overlay'``.
+    show : bool, optional
+        Show plot (default: True).
+    save : str, optional
+        Save plot to file.
+    outlier_results : dict, optional
+        Maps variable names to :class:`~python_magnetrun.outliers.OutlierResult`.
+    outlier_strategy : str, optional
+        How to handle outliers: ``'remove'``, ``'interpolate'``, ``'highlight'``, ``'none'``.
+    downsample : int, optional
+        Target number of points; ``None`` disables downsampling.
+    downsample_method : str, optional
+        Downsampling method name.
+    backend : str or PlottingBackend, optional
+        Plotting backend (default: ``'matplotlib'``).
+
+    Returns
+    -------
+    tuple
+        ``(fig, axes)``.
+    """
+    n_vars = len(variables)
+    if n_vars == 0:
+        raise ValueError("At least one variable must be specified")
+
+    if n_vars == 1:
+        var_outlier = outlier_results.get(variables[0]) if outlier_results else None
+        return plot_vprocess_variable(
+            hybrid_data, variables[0],
+            hours=hours,
+            show=show, save=save,
+            outlier_result=var_outlier, outlier_strategy=outlier_strategy,
+            downsample=downsample, downsample_method=downsample_method,
+            backend=backend,
+        )
+
+    logger.debug("plot_vprocess_variables: variables=%s", variables)
+
+    def _read(v: str) -> tuple[np.ndarray, np.ndarray]:
+        return hybrid_data.read_vprocess_variable(v, hours=hours)
+
+    title = f"VProcess ({hybrid_data.date_str})"
+    return _plot_variables_impl(
+        hybrid_data, "vprocess", variables,
+        _read,
+        lambda v: _get_vprocess_unit(hybrid_data, v),
+        title, layout, show, save,
+        outlier_results, outlier_strategy,
+        downsample, downsample_method, backend,
+    )
+
+
+def plot_trigger_variable(
+    hybrid_data: "HybridData",
+    system: str,
+    variable: str,
+    apply_calib: bool = True,
+    cnv_dir: str | None = None,
+    ax=None,
+    show: bool = True,
+    save: str | None = None,
+    outlier_result: Optional["OutlierResult"] = None,
+    outlier_strategy: str = "interpolate",
+    downsample: int | None = 50000,
+    downsample_method: str = "auto",
+    backend: str | PlottingBackend = "matplotlib",
+    **plot_kwargs,
+) -> tuple:
+    """Plot trigger data for a specific variable.
+
+    Parameters
+    ----------
+    hybrid_data : HybridData
+        HybridData instance.
+    system : str
+        FEPC system name.
+    variable : str
+        Variable name.
+    apply_calib : bool, optional
+        Apply calibration (default: True).
+    cnv_dir : str, optional
+        Directory for CNV calibration files.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to plot on (matplotlib only).
+    show : bool, optional
+        Show plot (default: True).
+    save : str, optional
+        Save plot to file.
+    outlier_result : OutlierResult, optional
+        Pre-computed outlier detection result.
+    outlier_strategy : str, optional
+        How to handle outliers: ``'remove'``, ``'interpolate'``, ``'highlight'``, ``'none'``.
+    downsample : int, optional
+        Target number of points for plotting (default: 50000).
+    downsample_method : str, optional
+        Downsampling method: ``'auto'``, ``'minmax_lttb'``, ``'stride'``, ``'minmax'``.
+    backend : str or PlottingBackend, optional
+        Plotting backend (default: ``'matplotlib'``).
+
+    Returns
+    -------
+    tuple
+        ``(fig, ax)`` — ``ax`` is ``None`` for non-matplotlib backends.
+    """
+    logger.debug("plot_trigger_variable: system=%s, variable=%s", system, variable)
+    data, time = hybrid_data.read_trigger_variable(
+        system, variable, apply_calib=apply_calib, cnv_dir=cnv_dir
+    )
+    unit = _get_trigger_unit(hybrid_data, system, variable)
+    ylabel = f"{variable} [{unit}]" if unit else variable
+    title = f"{system} Trigger - {variable} ({hybrid_data.date_str})"
+    return _plot_variable_impl(
+        data, time, system, variable, ylabel, title, f"{variable} (Trigger)",
         ax, show, save, outlier_result, outlier_strategy,
         downsample, downsample_method, backend,
     )

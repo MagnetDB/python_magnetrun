@@ -545,6 +545,14 @@ def remove_outliers(
     -------
     tuple
         (clean_data, clean_time, n_outliers)
+
+    See Also
+    --------
+    processing.hysteresis.remove_outliers :
+        DataFrame variant for x/y hysteresis data; returns a filtered
+        :class:`~pandas.DataFrame` instead of arrays.
+    detect_outliers :
+        Returns the boolean outlier mask without modifying the data.
     """
     detector = OutlierDetector(method, threshold, window_size)
     result = detector.detect(data, time)

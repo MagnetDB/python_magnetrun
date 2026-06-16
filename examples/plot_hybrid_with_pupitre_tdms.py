@@ -30,12 +30,15 @@ from python_magnetrun.data_dirs import HYBRID_DATA_DIR
 from python_magnetrun.hybrid.hybrid_run import BinarizeConfig, HybridRun, LoadOptions
 from python_magnetrun.hybrid.utils import (
     binarize_signal,
-    format_exception_location,
     local_hour_to_utc,
-    log_exception,
     normalize_signal,
 )
-from python_magnetrun.log_utils import get_logger, setup_logging
+from python_magnetrun.log_utils import (
+    format_exception_location,
+    get_logger,
+    log_exception,
+    setup_logging,
+)
 from python_magnetrun.magnetdata_tdms import TdmsMagnetData
 from python_magnetrun.MagnetRun import MagnetRun, load_mrun
 from python_magnetrun.utils.downsampling import DownsampleConfig

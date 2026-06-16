@@ -8,376 +8,145 @@ by binary data.
 
 import logging
 import re
-import struct
-from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
 from ...utils.validation import validate_rms_format
+from .._binary_reader_base import (
+    ChannelVariable,
+    _BinaryFileReaderBase,
+)
 
-# Setup logger
 logger = logging.getLogger(__name__)
 
-# RMS format constants
-FLOAT32_SIZE = 4  # bytes - size of float32 analog values
-DIGITAL_SIZE = 1  # bytes - size of digital/bit values
-TIMESTAMP_SIZE = 8  # bytes - size of timestamp (double precision)
-DEFAULT_SAMPLE_WIDTH = 257  # bytes - default width of each sample record
-DEFAULT_DATA_OFFSET = 0  # bytes - default offset to start of binary data
+# Kept for backward-compat imports
+DEFAULT_SAMPLE_WIDTH = 257
+DEFAULT_DATA_OFFSET = 0
+
+# Backward-compat alias
+RMSVariable = ChannelVariable
 
 
-class RMSVariable:
-    """Represents a variable in the RMS file."""
-
-    def __init__(
-        self,
-        name: str,
-        var_type: str,
-        unit: str | None = None,
-        min_val: float | None = None,
-        max_val: float | None = None,
-        display_format: str | None = None,
-    ):
-        self.name = name
-        self.var_type = var_type  # 'float32' or 'bit'
-        self.unit = unit
-        self.min_val = min_val
-        self.max_val = max_val
-        self.display_format = display_format
-        self.is_analog = var_type == "float32"
-        self.byte_size = FLOAT32_SIZE if self.is_analog else DIGITAL_SIZE
-
-    def __repr__(self) -> str:
-        return f"RMSVariable({self.name}, {self.var_type}, {self.unit})"
-
-
-class RMSFileReader:
+class RMSFileReader(_BinaryFileReaderBase):
     """Reader for RMS binary files with ASCII headers."""
 
-    def __init__(self, filepath: str, endian: str = "big"):
-        self.filepath = Path(filepath)
-        self.header_lines: list[str] = []
-        self.variables: list[RMSVariable] = []
-        self.metadata: dict[str, Any] = {}
-        self.data: pd.DataFrame | None = None
-        self.endian = (
-            ">" if endian == "big" else "<"
-        )  # '>' for big-endian, '<' for little-endian
+    _encoding = "US-ASCII"
+    _default_sample_width = DEFAULT_SAMPLE_WIDTH
+    _default_data_offset = DEFAULT_DATA_OFFSET
 
-    def parse_header(self) -> None:
-        """Parse the ASCII header from the RMS file."""
+    # ── abstract implementations ──────────────────────────────────────────
+
+    def _validate_format(self) -> None:
         validate_rms_format(str(self.filepath))
-        with open(self.filepath, "rb") as f:
-            header_lines = []
-            while True:
-                raw_line = f.readline()
-                # Check if line starts with #
-                if raw_line.startswith(b"#"):
-                    decoded_line = raw_line.decode("US-ASCII").strip()
-                    header_lines.append(decoded_line)
-                else:
-                    # End of header
-                    break
-
-            self.header_lines = header_lines
-
-        # Parse each header line
-        for line in self.header_lines:
-            if line.startswith("# variables"):
-                self._parse_variables(line)
-            elif line.startswith("# windows"):
-                self._parse_windows(line)
-            elif line.startswith("# frequency"):
-                self._parse_frequency(line)
-            elif line.startswith("# data-helper"):
-                self._parse_data_helper(line)
-            elif line.startswith("# format"):
-                self._parse_format(line)
-            elif line.startswith("# processed on"):
-                self._parse_processed_info(line)
 
     def _parse_variables(self, line: str) -> None:
-        """Parse the variables definition line."""
-        # Extract everything after '# variables ='
+        """Parse the ``# variables = …`` line.
+
+        Parameters
+        ----------
+        line : str
+            Raw header line starting with ``"# variables"``.
+        """
         match = re.search(r"# variables\s*=\s*(.+)", line)
         if not match:
             return
-
-        var_string = match.group(1)
-
-        # Split by semicolon to get individual variables
-        var_definitions = var_string.split(";")
-
-        for var_def in var_definitions:
+        for var_def in match.group(1).split(";"):
             var_def = var_def.strip()
             if not var_def:
                 continue
-
-            # Parse variable definition
-            # Format: NAME [type:TYPE|unit:UNIT|min:MIN|max:MAX|df:FORMAT]
-            # or: NAME [type:TYPE|min:MIN|max:MAX]  for digital
-
-            match = re.match(r"(\S+)\s*\[(.+)\]", var_def)
-            if not match:
+            m = re.match(r"(\S+)\s*\[(.+)\]", var_def)
+            if not m:
                 continue
-
-            name = match.group(1)
-            properties = match.group(2)
-
-            # Parse properties
-            props = {}
-            for prop in properties.split("|"):
+            name = m.group(1)
+            props: dict[str, str] = {}
+            for prop in m.group(2).split("|"):
                 if ":" in prop:
-                    key, value = prop.split(":", 1)
-                    props[key.strip()] = value.strip()
-
-            var_type = props.get("type", "unknown")
-            unit = props.get("unit")
-            min_val = float(props["min"]) if "min" in props else None
-            max_val = float(props["max"]) if "max" in props else None
-            display_format = props.get("df")
-
-            variable = RMSVariable(
-                name, var_type, unit, min_val, max_val, display_format
+                    k, v = prop.split(":", 1)
+                    props[k.strip()] = v.strip()
+            self.variables.append(
+                ChannelVariable(
+                    name=name,
+                    var_type=props.get("type", "unknown"),
+                    unit=props.get("unit"),
+                    min_val=float(props["min"]) if "min" in props else None,
+                    max_val=float(props["max"]) if "max" in props else None,
+                    display_format=props.get("df"),
+                )
             )
-            self.variables.append(variable)
 
-    def _parse_windows(self, line: str) -> None:
-        """Parse the time window line."""
-        # Format: # windows = [UTC] 03/11/2025-00:00:00.000 -> 03/11/2025-01:00:00.000
-        match = re.search(r"\[UTC\]\s+(.+?)\s+->\s+(.+)", line)
-        if match:
-            start_str = match.group(1).strip()
-            end_str = match.group(2).strip()
+    def _parse_extra_header(self, line: str) -> None:
+        if line.startswith("# format"):
+            self._parse_format(line)
+        elif line.startswith("# processed on"):
+            self._parse_processed_info(line)
 
-            # Parse datetime strings (format: DD/MM/YYYY-HH:MM:SS.mmm)
-            def parse_datetime(dt_str: str) -> datetime:
-                return datetime.strptime(dt_str, "%d/%m/%Y-%H:%M:%S.%f")
+    def _make_timestamps(self, raw: list[float]) -> pd.DatetimeIndex:
+        return pd.to_datetime(raw, unit="s", utc=True)
 
-            self.metadata["start_time"] = parse_datetime(start_str)
-            self.metadata["end_time"] = parse_datetime(end_str)
-
-    def _parse_frequency(self, line: str) -> None:
-        """Parse the sampling frequency line."""
-        # Format: # frequency = 0.1 Hz
-        match = re.search(r"# frequency\s*=\s*([\d.]+)\s*Hz", line)
-        if match:
-            self.metadata["frequency"] = float(match.group(1))
-
-    def _parse_data_helper(self, line: str) -> None:
-        """Parse the data-helper line."""
-        # Format: # data-helper [offset:0x144d - time:8(B),absolute - width:257(B)]
-        match = re.search(r"offset:(0x[\da-fA-F]+)", line)
-        if match:
-            self.metadata["data_offset"] = int(match.group(1), 16)
-
-        match = re.search(r"time:(\d+)\(B\)", line)
-        if match:
-            self.metadata["timestamp_bytes"] = int(match.group(1))
-
-        match = re.search(r"width:(\d+)\(B\)", line)
-        if match:
-            self.metadata["sample_width"] = int(match.group(1))
+    # ── RMS-specific header methods ───────────────────────────────────────
 
     def _parse_format(self, line: str) -> None:
-        """Parse the format line."""
-        # Format: # format = binary,asnet-vgen-1.0
         match = re.search(r"# format\s*=\s*(.+)", line)
         if match:
             self.metadata["format"] = match.group(1).strip()
 
     def _parse_processed_info(self, line: str) -> None:
-        """Parse the processing information line."""
-        # Format: # processed on LNCMI-controlPC [10.10.0.5] (asnet) offline at 03/11/2025-01:02:00
         self.metadata["processed_info"] = line[2:].strip()
 
-    def read_binary_data(self) -> pd.DataFrame:
-        """Read the binary data portion of the RMS file."""
-        if not self.variables:
-            raise ValueError("Header must be parsed before reading binary data")
-
-        # Calculate the expected byte positions for each variable
-        timestamp_size = self.metadata.get("timestamp_bytes", TIMESTAMP_SIZE)
-        sample_width = self.metadata.get("sample_width", DEFAULT_SAMPLE_WIDTH)
-        data_offset = self.metadata.get("data_offset", DEFAULT_DATA_OFFSET)
-
-        # Open file and seek to data start
-        with open(self.filepath, "rb") as f:
-            f.seek(data_offset)
-
-            # Read all remaining data
-            binary_data = f.read()
-
-        # Calculate number of samples
-        num_samples = len(binary_data) // sample_width
-        logger.debug(f"Number of samples: {num_samples}")
-
-        # Prepare data arrays
-        timestamps = []
-        data_arrays: dict[str, list] = {var.name: [] for var in self.variables}
-        assert len(data_arrays) == len(
-            self.variables
-        ), f"Data arrays length mismatch: {len(data_arrays)} vs {len(self.variables)}"
-        logger.debug(f"Reading {len(self.variables)} variables")
-        logger.debug(f"Analog: {len([var for var in self.variables if var.is_analog])}")
-        logger.debug(
-            f"Digital: {len([var for var in self.variables if not var.is_analog])}"
-        )
-
-        # Parse each sample
-        for i in range(num_samples):
-            sample_start = i * sample_width
-            sample_data = binary_data[sample_start : sample_start + sample_width]
-
-            # Read timestamp (8 bytes, double precision float)
-            # nombre de secondes depuis 01/01/1970 00:00 UTC
-            timestamp = struct.unpack(f"{self.endian}d", sample_data[0:timestamp_size])[
-                0
-            ]
-            timestamps.append(timestamp)
-
-            # Read variables in order
-            byte_offset = timestamp_size
-            for var in self.variables:
-                if var.is_analog:
-                    # Read 4 bytes as float32
-                    value = struct.unpack(
-                        f"{self.endian}f",
-                        sample_data[byte_offset : byte_offset + FLOAT32_SIZE],
-                    )[0]
-                    # print(f'Read variable {var.name}[{i}]: {value} (ANALOG)', flush=True)
-                    byte_offset += FLOAT32_SIZE
-                else:
-                    # Read 1 byte as unsigned char (endianness not applicable)
-                    value = struct.unpack(
-                        "B", sample_data[byte_offset : byte_offset + DIGITAL_SIZE]
-                    )[0]
-                    # print(f'Read variable {var.name}[{i}]: {value} (DIG)', flush=True)
-                    byte_offset += DIGITAL_SIZE
-
-                data_arrays[var.name].append(value)
-
-        logger.debug("all samples read")
-
-        # Convert timestamps to datetime
-        # Timestamps are Unix timestamps (seconds since 01/01/1970 00:00 UTC)
-        datetime_index = pd.to_datetime(timestamps, unit="s", utc=True)
-
-        # Create DataFrame
-        df = pd.DataFrame(data_arrays, index=datetime_index)
-        df.index.name = "timestamp"
-
-        return df
-
-    def read(self) -> pd.DataFrame:
-        """Read the complete RMS file and return as DataFrame."""
-        logger.debug(f"before parsing header: variables={len(self.variables)}")
-        if not self.variables:
-            self.parse_header()
-        logger.debug(f"Header parsed: variables={len(self.variables)}")
-        self.data = self.read_binary_data()
-        return self.data
+    # ── variable info with byte_size column ───────────────────────────────
 
     def get_variable_info(self) -> pd.DataFrame:
-        """Return information about all variables as a DataFrame."""
-        if not self.variables:
-            self.parse_header()
-        logger.debug(f"Collecting variable info for {len(self.variables)} variables")
-        var_info = []
-        for var in self.variables:
-            var_info.append(
-                {
-                    "name": var.name,
-                    "type": var.var_type,
-                    "unit": var.unit,
-                    "min": var.min_val,
-                    "max": var.max_val,
-                    "byte_size": var.byte_size,
-                    "display_format": var.display_format,
-                }
-            )
-        logger.debug(
-            f"Variable info collected: {len(var_info)} variables ({len(self.variables)})"
-        )
-        return pd.DataFrame(var_info)
+        """Return channel metadata including ``byte_size``.
 
-    def get_metadata(self) -> dict[str, Any]:
-        """Return metadata dictionary."""
-        if not self.metadata:
-            self.parse_header()
-        return self.metadata
-
-    def print_summary(self) -> None:
-        """Print a summary of the RMS file."""
-        if not self.metadata:
-            self.parse_header()
-
-        print(f"RMS File: {self.filepath.name}")
-        print("=" * 60)
-        print(f"Format: {self.metadata.get('format', 'Unknown')}")
-        print(f"Sampling Frequency: {self.metadata.get('frequency', 'Unknown')} Hz")
-        print(f"Start Time: {self.metadata.get('start_time', 'Unknown')}")
-        print(f"End Time: {self.metadata.get('end_time', 'Unknown')}")
-        print(f"Data Offset: 0x{self.metadata.get('data_offset', 0):x}")
-        print(f"Sample Width: {self.metadata.get('sample_width', 'Unknown')} bytes")
-        print(
-            f"Timestamp Size: {self.metadata.get('timestamp_bytes', 'Unknown')} bytes"
-        )
-        print(f"Number of Variables: {len(self.variables)}")
-
-        # Count analog vs digital
-        analog_count = sum(1 for v in self.variables if v.is_analog)
-        digital_count = len(self.variables) - analog_count
-        print(f"  - Analog: {analog_count}")
-        print(f"  - Digital: {digital_count}")
-
-        if self.data is not None:
-            print(f"Number of Samples: {len(self.data)}")
-            duration = (self.data.index[-1] - self.data.index[0]).total_seconds()
-            print(f"Duration: {duration:.2f} seconds")
-        print(flush=True)
+        Returns
+        -------
+        pd.DataFrame
+            Columns: ``name``, ``type``, ``unit``, ``min``, ``max``,
+            ``byte_size``, ``display_format``.
+        """
+        df = super().get_variable_info()
+        if self.variables:
+            df["byte_size"] = [v.byte_size for v in self.variables]
+        return df
 
 
-# Convenience functions
+# ── convenience functions ─────────────────────────────────────────────────
+
 def read_rms_file(filepath: str, endian: str = "big") -> pd.DataFrame:
-    """
-    Read an RMS file and return the data as a pandas DataFrame.
+    """Read an RMS file and return the data as a :class:`~pandas.DataFrame`.
 
     Parameters
     ----------
     filepath : str
-        Path to the RMS file
+        Path to the RMS file.
     endian : str, optional
-        Endianness of binary data: 'big' or 'little' (default: 'big')
+        Endianness: ``"big"`` (default) or ``"little"``.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame containing the RMS data with timestamps as index
+        DataFrame with UTC timestamp index and one column per channel.
     """
-    reader = RMSFileReader(filepath, endian=endian)
-    return reader.read()
+    return RMSFileReader(filepath, endian=endian).read()
 
 
 def get_rms_info(
     filepath: str, endian: str = "big"
 ) -> tuple[dict[str, Any], pd.DataFrame]:
-    """
-    Get metadata and variable information from an RMS file.
+    """Return metadata and variable information from an RMS file.
 
     Parameters
     ----------
     filepath : str
-        Path to the RMS file
+        Path to the RMS file.
     endian : str, optional
-        Endianness of binary data: 'big' or 'little' (default: 'big')
+        Endianness: ``"big"`` (default) or ``"little"``.
 
     Returns
     -------
     tuple
-        (metadata_dict, variables_dataframe)
+        ``(metadata_dict, variables_dataframe)``.
     """
     reader = RMSFileReader(filepath, endian=endian)
     reader.parse_header()
@@ -385,7 +154,7 @@ def get_rms_info(
 
 
 def main() -> None:
-    """Main function for CLI usage"""
+    """CLI entry point."""
     import argparse
 
     parser = argparse.ArgumentParser(
@@ -394,30 +163,19 @@ def main() -> None:
     )
     parser.add_argument("filepath", help="Path to the RMS file")
     parser.add_argument(
-        "--endian",
-        "-e",
+        "--endian", "-e",
         choices=["big", "little"],
         default="big",
         help="Endianness of binary data (default: big)",
     )
-
     args = parser.parse_args()
 
-    logger.info(f"Reading RMS file with {args.endian}-endian format...")
     reader = RMSFileReader(args.filepath, endian=args.endian)
     reader.print_summary()
-
-    logger.info("\nVariable Information:")
-    logger.info(reader.get_variable_info())
-    logger.info(f"{len(reader.variables)} variables read")
-
-    logger.info("\nReading data...")
+    logger.info("Variable Information:\n%s", reader.get_variable_info())
     df = reader.read()
-    logger.info(f"\nData shape: {df.shape}")
-    logger.info("\nFirst few rows:")
-    logger.info(df.head())
-    logger.info("\nData types:")
-    logger.info(df.dtypes)
+    logger.info("Data shape: %s", df.shape)
+    logger.info("First rows:\n%s", df.head())
 
 
 if __name__ == "__main__":
