@@ -485,6 +485,73 @@ python plot_hybrid_with_pupitre_tdms.py \
 
 See [README_hybrid_plotting.md](README_hybrid_plotting.md) for detailed documentation.
 
+## Interactive Visualization
+
+### `pywry_demo.py`
+
+Opens a MagnetRun data file in a native desktop window powered by
+[pywry](https://github.com/OpenBB-finance/pywry) and Plotly.  No browser tab
+is required — the chart renders inside a lightweight OS webview.  All standard
+Plotly interactions are available: zoom, pan, hover tooltip, and legend-click
+to show/hide individual traces.
+
+If pywry is not installed the figure is saved to a temporary HTML file and
+opened in the default browser instead (useful for a quick preview).
+
+**Requirements:**
+```bash
+pip install python_magnetrun[gui]
+# Linux also needs the WebKit2GTK system package:
+apt install python3-gi gir1.2-webkit2-4.1
+```
+
+**Usage:**
+```bash
+# Bundled M9 sample (no arguments needed)
+python pywry_demo.py
+
+# Pupitre .txt file
+python pywry_demo.py data/M9_2019.02.14---23_00_38.txt --housing M9
+
+# Pigbrother TDMS file
+python pywry_demo.py overview.tdms --housing M10
+
+# Restrict to a subset of channels
+python pywry_demo.py run.txt --housing M9 --keys Field Courant_A1 Debit
+
+# Use wall-clock timestamps on the x-axis instead of elapsed seconds
+python pywry_demo.py run.txt --housing M9 --time-col timestamp
+
+# Adjust the window size
+python pywry_demo.py run.txt --housing M9 --width 1600 --height 900
+```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `file` | bundled M9 sample | Path to a `.txt`, `.tdms`, or `.csv` data file |
+| `--housing` | `M9` | Housing name, e.g. `M9`, `M10` |
+| `--keys` | all channels | One or more channel names to display |
+| `--time-col` | auto-detect | X-axis column: `t` (elapsed seconds) or `timestamp` (wall clock). Auto-detect picks `timestamp` if present, otherwise `t`. |
+| `--width` | `1400` | Window width in pixels |
+| `--height` | `780` | Window height in pixels |
+
+**Public API** (importable from other scripts):
+
+```python
+from pywry_demo import build_figure, show
+
+# Build a go.Figure and do something with it
+fig = build_figure(mrun, keys=["Field", "Courant_A1"], time_col="t")
+fig.write_html("output.html")
+
+# Or open the native window directly
+show("my_run.txt", housing="M9", keys=["Field"], time_col="timestamp")
+```
+
+---
+
 ## Key Concepts Demonstrated
 
 ### 1. Field Name Mapping
