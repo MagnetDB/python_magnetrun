@@ -16,10 +16,17 @@ import tarfile
 from datetime import date, datetime
 from pathlib import Path
 
-BASE_DIR = Path("/home/LNCMI-G/christophe.trophime/LNCMIG-Data")
-PBSURV_DIR = BASE_DIR / "pbsurv"
-SRV_INSTALL_DIR = BASE_DIR / "srv-data-install"
-CEA_DIR = BASE_DIR / "CEA"
+from python_magnetrun.data_dirs import (
+    HYBRID_DATA_DIR,
+    PIGBROTHER_DATA_DIR,
+    PUPITRE_DATA_DIR,
+)
+
+SRV_INSTALL_DIR = Path(PUPITRE_DATA_DIR)
+PBSURV_DIR = Path(PIGBROTHER_DATA_DIR)
+CEA_DIR = Path(HYBRID_DATA_DIR)
+# Common ancestor used for archive arcnames; assumes all three dirs share a root.
+BASE_DIR = SRV_INSTALL_DIR.parent
 
 # Variants observed:
 #   *_YYMMDD-hhmm.tdms               (Archive, Overview, FFT, …)
@@ -126,6 +133,9 @@ def get_pbsurv_files(housing: str, start: date, end: date) -> list[Path]:
     """
     collected: list[Path] = []
 
+    if not PBSURV_DIR.is_dir():
+        return collected
+
     TDMS_SUBDIRS = {"Fichiers_", "Overview", "Model", "Models"}
 
     def scan_housing_dir(hdir: Path) -> None:
@@ -224,6 +234,8 @@ def get_cea_trigger_dirs(start: date, end: date) -> list[Path]:
     Directory name pattern: TRIGGER__YYYY-MM-DD__HH-MM
     """
     dirs: list[Path] = []
+    if not CEA_DIR.is_dir():
+        return dirs
     trigger_base = CEA_DIR / "trigger"
     if not trigger_base.is_dir():
         return dirs

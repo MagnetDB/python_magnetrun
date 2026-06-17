@@ -62,10 +62,59 @@ When `--archive BASE` is given, up to three archives are created depending on wh
 
 Paths inside every archive are relative to `LNCMIG-Data`. Only archives that have matching items are created.
 
-**Data directories searched** (hardcoded in the script, edit `BASE_DIR` as needed):
-- `LNCMIG-Data/pbsurv/{housing}/` — TDMS files
-- `LNCMIG-Data/srv-data-install/{housing}/` — pupitre `.txt` files
-- `LNCMIG-Data/CEA/` — kHz, rms, vprocess, trigger (M8 only)
+**Data directories searched:**
+
+Data directories are resolved from `python_magnetrun.data_dirs` using the same priority chain as the rest of the package: environment variables (`MAGNETRUN_PUPITRE_DATA_DIR`, `MAGNETRUN_PIGBROTHER_DATA_DIR`, `MAGNETRUN_HYBRID_DATA_DIR`) → `~/.config/python_magnetrun/data_dirs.json` → built-in defaults.
+
+| Source | Directory |
+|---|---|
+| pupitre `.txt` | `BASE_DIR/srv-data-install/{housing}/` |
+| pigbrother `.tdms` | `BASE_DIR/pbsurv/{housing}/` and `BASE_DIR/pbsurv/Fichiers_Data_ACQ_ENET_{YYYY}/{housing}/` |
+| CEA hybrid | `BASE_DIR/CEA/{kHz,rms,vprocess,trigger}/` (M8 only) |
+
+**File naming patterns matched:**
+
+Each data source uses a different naming convention; the script filters by date using these patterns:
+
+| Source | Pattern | Example |
+|---|---|---|
+| pupitre `.txt` | `YYYY.MM.DD - HH:MM:SS.txt` | `2024.03.15 - 09:42:01.txt` |
+| pbsurv `.tdms` | `*_YYMMDD-HHMM[SS][_label].tdms` | `M9_Archive_240315-1042.tdms` |
+| CEA dated dirs | `YYYY-MM-DD` (flat) or `YYYY/YYYY-MM-DD` (pre-2025) | `2024-03-15` |
+| CEA trigger dirs | `TRIGGER__YYYY-MM-DD__HH-MM` | `TRIGGER__2024-03-15__10-42` |
+
+**pbsurv directory tree scanned:**
+
+```
+pbsurv/
+└── {housing}/
+    ├── Fichiers_Archive/      ← TDMS files
+    ├── Fichiers_Default/
+    ├── Fichiers_Manuel_Trig/
+    ├── Fichiers_Spike/
+    ├── Overview/
+    ├── Model/
+    └── Models/
+pbsurv/
+└── Fichiers_Data_ACQ_ENET_{YYYY}/   ← legacy yearly layout
+    └── {housing}/
+        └── Fichiers_*/
+```
+
+**Sample output** (list mode, no `--archive`/`--copy-to`):
+
+```
+Housing : M9
+Period  : 2024-01-01 → 2024-12-31
+
+[pbsurv]  (42 item(s))
+  /…/pbsurv/M9/Fichiers_Archive/M9_Archive_240315-1042.tdms
+  …
+
+[srv-data-install]  (87 item(s))
+  /…/srv-data-install/M9/2024.01.03 - 08:11:22.txt
+  …
+```
 
 ---
 
