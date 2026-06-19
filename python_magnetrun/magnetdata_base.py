@@ -222,6 +222,123 @@ class MagnetDataBase(ABC):
     def getUnitKey(self, key: str) -> tuple:
         """Return ``(symbol, unit)`` for *key*."""
 
+    @abstractmethod
+    def get_group_data(self, group: str) -> pd.DataFrame:
+        """Return a DataFrame containing the time column and all channels in *group*.
+
+        Parameters
+        ----------
+        group : str
+            Group name as returned by :meth:`list_groups`.
+
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame with the time column (``"t"``) plus all columns that
+            belong to *group* and are present in the loaded data.
+
+        Raises
+        ------
+        KeyError
+            If *group* is not in :attr:`Groups`.
+        """
+
+    # ------------------------------------------------------------------
+    # Group management — concrete; TDMS subclass overrides mutating methods
+    # ------------------------------------------------------------------
+
+    def list_groups(self) -> list[str]:
+        """Return the names of all defined groups.
+
+        Returns
+        -------
+        list[str]
+            Ordered list of group name strings.
+        """
+        return list(self.Groups.keys())
+
+    def _validate_group_columns(self, columns: list[str]) -> None:
+        """Validate that *columns* are in :attr:`Keys` and have required metadata.
+
+        Parameters
+        ----------
+        columns : list[str]
+            Column names to validate.
+
+        Raises
+        ------
+        KeyError
+            If any column is not in :attr:`Keys`.
+        ValueError
+            If any column has no entry in :attr:`field_meta` (i.e.
+            :meth:`Units` has not been called) or has an empty symbol.
+        """
+        for col in columns:
+            if col not in self.Keys:
+                raise KeyError(
+                    f"Column {col!r} is not in Keys. "
+                    f"Available keys: {self.Keys}"
+                )
+            if col not in self.field_meta:
+                raise ValueError(
+                    f"Column {col!r} has no field metadata — "
+                    "call Units() first or add an entry to the defs file."
+                )
+            meta = self.field_meta[col]
+            if not meta.symbol:
+                raise ValueError(
+                    f"Column {col!r} has no symbol defined in field metadata."
+                )
+            if not meta.label:
+                logger.warning(
+                    f"Column {col!r} has no label defined (optional)."
+                )
+
+    def define_group(self, name: str, columns: list[str]) -> None:
+        """Create or replace the group *name* with *columns*.
+
+        Parameters
+        ----------
+        name : str
+            Group name.
+        columns : list[str]
+            Column names to include; each must be in :attr:`Keys` and have
+            ``symbol`` defined in :attr:`field_meta`.
+
+        Raises
+        ------
+        KeyError
+            If any column is not in :attr:`Keys`.
+        ValueError
+            If any column lacks required field metadata.
+        """
+        self._validate_group_columns(columns)
+        self.Groups[name] = list(columns)
+
+    def add_to_group(self, group: str, columns: str | list[str]) -> None:
+        """Append *columns* to an existing group, creating it if absent.
+
+        Parameters
+        ----------
+        group : str
+            Group name.
+        columns : str or list[str]
+            Column name or list of column names to add.  Columns already
+            present in the group are silently skipped (no duplicates).
+
+        Raises
+        ------
+        KeyError
+            If any column is not in :attr:`Keys`.
+        ValueError
+            If any column lacks required field metadata.
+        """
+        if isinstance(columns, str):
+            columns = [columns]
+        self._validate_group_columns(columns)
+        existing: list[str] = self.Groups.get(group, [])
+        self.Groups[group] = existing + [c for c in columns if c not in existing]
+
     def getFieldMeta(self, key: str) -> FieldMeta | None:
         """Return :class:`FieldMeta` for *key*, or ``None`` if not available.
 

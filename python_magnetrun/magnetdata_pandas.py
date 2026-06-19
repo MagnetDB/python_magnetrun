@@ -263,6 +263,7 @@ class PandasMagnetData(MagnetDataBase):
         resolved = json_file or self.defs_file
         if resolved is not None:
             self.load_units_from_json(resolved, debug=debug)
+            self._build_groups(resolved)
 
         ureg = _make_ureg()
 
@@ -350,6 +351,57 @@ class PandasMagnetData(MagnetDataBase):
                     f"{key} not defined in data - available keys are {self.Keys}"
                 )
         return self.units[key]
+
+    # --- group support -----------------------------------------------
+
+    def _build_groups(self, json_file: str) -> None:
+        """Populate :attr:`Groups` from the ``"group"`` key in the defs file.
+
+        Called automatically by :meth:`Units` after loading the JSON
+        definitions.  Only columns present in :attr:`Keys` are included.
+
+        Parameters
+        ----------
+        json_file : str
+            Path to the field-definition JSON file (same file used by
+            :meth:`~.MagnetDataBase.load_units_from_json`).
+        """
+        from .field_defs import load_defs
+
+        groups: dict[str, list[str]] = {}
+        for key, defn in load_defs(json_file).items():
+            if key.startswith("_") or key not in self.Keys:
+                continue
+            grp = defn.get("group")
+            if grp:
+                groups.setdefault(grp, []).append(key)
+        self.Groups = groups
+
+    def get_group_data(self, group: str) -> pd.DataFrame:
+        """Return a DataFrame with the time column and all channels in *group*.
+
+        Parameters
+        ----------
+        group : str
+            Group name as returned by :meth:`list_groups`.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Slice of :attr:`Data` containing ``"t"`` plus all columns in
+            *group* that are present in the loaded DataFrame.
+
+        Raises
+        ------
+        KeyError
+            If *group* is not in :attr:`Groups`.
+        """
+        if group not in self.Groups:
+            raise KeyError(
+                f"Group {group!r} not found. Available groups: {self.list_groups()}"
+            )
+        cols = ["t"] + self.Groups[group]
+        return self.Data[[c for c in cols if c in self.Data.columns]]
 
     # --- timestamp validation ----------------------------------------
 

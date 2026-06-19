@@ -306,6 +306,47 @@ class TdmsMagnetData(MagnetDataBase):
             return self.Data[group]
         return self.Data[group][channel]
 
+    def get_group_data(self, group: str) -> pd.DataFrame:
+        """Return the DataFrame for *group*.
+
+        Delegates to :meth:`getTdmsData` with ``channel=None``.
+
+        Parameters
+        ----------
+        group : str
+            TDMS group name.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Full DataFrame for the requested group.
+        """
+        return self.getTdmsData(group, None)
+
+    def define_group(self, name: str, columns: list[str]) -> None:
+        """Not supported for TDMS data.
+
+        Raises
+        ------
+        NotImplementedError
+            Always — TDMS groups are defined by the file format.
+        """
+        raise NotImplementedError(
+            "TDMS groups are defined by the file format and cannot be modified."
+        )
+
+    def add_to_group(self, group: str, columns: str | list[str]) -> None:
+        """Not supported for TDMS data.
+
+        Raises
+        ------
+        NotImplementedError
+            Always — TDMS groups are defined by the file format.
+        """
+        raise NotImplementedError(
+            "TDMS groups are defined by the file format and cannot be modified."
+        )
+
     def getData(
         self,
         key: list[str] | str | None = None,
