@@ -182,6 +182,61 @@ python -m python_magnetrun.examples.get-record srvdata/M8*.txt stats --fields te
 
 ---
 
+## Data Inspection and Downsampling Quality
+
+### `field_meta_example.py`
+
+Loads a single pupitre (`.txt`) or pigbrother (`.tdms`) file via `load_mrun`, then:
+
+1. Prints symbol, unit, label, and description for every field read from the file.
+2. Lists the fields belonging to each group.
+3. Shows the first rows of one chosen data column.
+4. Applies a downsampling algorithm to that column and reports reconstruction-quality metrics (RMSE, MAE, max error, MAPE, Hausdorff distance, energy ratio, elapsed time).
+
+**Usage:**
+```bash
+# Pupitre — default key, default stride downsampling at 10 % of signal length
+python field_meta_example.py data/2025.11.05\ -\ 09:53:00.txt --housing M8
+
+# Pigbrother TDMS — explicit key, LTTB method, 500 output points
+python field_meta_example.py data/M8_Overview_251105-0949.tdms --housing M8 \
+    --key Courants_Alimentations/Champ_magn --method lttb --n-out 500
+
+# minmax with custom bucket size
+python field_meta_example.py data/2025.11.05\ -\ 09:53:00.txt --housing M8 \
+    --method minmax --n-out 200 --bucket-size 10
+
+# rdp with explicit epsilon
+python field_meta_example.py data/2025.11.05\ -\ 09:53:00.txt --housing M8 \
+    --method rdp --n-out 300 --epsilon 0.01
+
+# rdp with auto-searched epsilon (from_n_out_rdp)
+python field_meta_example.py data/2025.11.05\ -\ 09:53:00.txt --housing M8 \
+    --method rdp --n-out 300
+```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `file` | — | Path to a pupitre `.txt` or pigbrother `.tdms` file |
+| `--housing` | `unknown` | Housing name, e.g. `M8`, `M9` |
+| `--key` | first meaningful field | Field key to preview and downsample |
+| `--method` | `stride` | Downsampling algorithm: `stride`, `lttb`, `minmax_lttb`, `m4`, `nan_m4`, `minmax`, `rdp`, `vw` |
+| `--n-out` | 10 % of signal | Target number of output points |
+| `--epsilon` | auto-searched | Geometry tolerance for `rdp`/`vw`; when omitted, auto-searched via `from_n_out_rdp` |
+| `--bucket-size` | auto-computed | Bucket size for the `minmax` method |
+| `--debug` | off | Enable debug logging |
+
+**Optional dependencies:**
+
+| Method | Extra required |
+|---|---|
+| `lttb`, `minmax_lttb`, `m4`, `nan_m4` | `pip install python_magnetrun[hybrid]` (`tsdownsample`) |
+| `rdp`, `vw` | `pip install python_magnetrun[rdp]` (`simplification`) |
+
+---
+
 ## User Database Integration
 
 ### `userdb.py`
