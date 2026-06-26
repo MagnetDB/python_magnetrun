@@ -302,6 +302,112 @@ python proposal.py proposals.csv --mdatadir srvdata --show
 
 ---
 
+### `mysql_connect.py`
+
+Connects DuckDB to a remote MySQL server to inspect, export, or live-plot measurement data.
+Four modes are available: `live` (schema inspection), `export` (table copy), `view` (rich terminal table), `plot` (one-shot chart), and `poll` (live chart).
+
+Connection parameters can be supplied as CLI flags or via environment variables (`MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DB`).
+
+**Usage:**
+```bash
+# Inspect schema — print all tables and column types
+python mysql_connect.py --mode live \
+    --host myhost --user myuser --password mypw --database mydb
+
+# Export all tables to CSV
+python mysql_connect.py --mode export --format csv --output-dir ./out \
+    --host myhost --user myuser --password mypw --database mydb
+
+# Export only selected tables to a DuckDB file
+python mysql_connect.py --mode export --format duckdb \
+    --output magnetdb_mysql.duckdb --tables sites magnets \
+    --host myhost --user myuser --password mypw --database mydb
+
+# View the most recent 50 rows of a table in the terminal
+python mysql_connect.py --mode view --table measurements --limit 50 \
+    --host myhost --user myuser --password mypw --database mydb
+
+# One-shot static chart (matplotlib)
+python mysql_connect.py --mode plot --table measurements \
+    --fields timestamp Icoil Ucoil --x-field timestamp \
+    --host myhost --user myuser --password mypw --database mydb
+
+# Live-updating chart, polling every 10 s (matplotlib)
+python mysql_connect.py --mode poll --table measurements \
+    --fields timestamp Icoil Ucoil --x-field timestamp \
+    --interval 10 --limit 200 --plot matplotlib \
+    --host myhost --user myuser --password mypw --database mydb
+```
+
+> **Note — selecting tables for export:**  
+> Use `--tables` to restrict the export to a subset of tables.
+> Multiple table names can be given as a space-separated list:
+> ```bash
+> python mysql_connect.py --mode export --format duckdb \
+>     --output magnetdb_mysql.duckdb --tables sites magnets records \
+>     --host myhost --user myuser --password mypw --database mydb
+> ```
+> When `--tables` is omitted all tables in the database are exported.
+
+**Export arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--format` | `csv` | Output format: `csv`, `parquet`, `duckdb`, or `excel` (requires `pandas openpyxl`) |
+| `--output` | `magnetdb_mysql.duckdb` | Output file for `--format duckdb` |
+| `--output-dir` | `.` | Output directory for CSV/Parquet files |
+| `--tables` | all | Subset of table names to export |
+| `--export-fields` | all | Columns to include (single-table export only) |
+| `--time-field` | auto | TIMESTAMP column for `--start`/`--end` filtering |
+| `--start` | — | Start of time range, ISO 8601 |
+| `--end` | — | End of time range, ISO 8601 |
+
+**Poll/plot arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--table` | — | MySQL table to query |
+| `--query` | — | Raw SELECT query (mutually exclusive with `--table`) |
+| `--fields` | all numeric | Columns to plot on the y-axis |
+| `--x-field` | auto | Column to use as x-axis (auto-selects first TIMESTAMP column) |
+| `--where` | — | SQL WHERE filter |
+| `--limit` | 200 (poll) / 0 (plot) | Max rows fetched; `0` = no cap |
+| `--interval` | 5 s | Seconds between polls |
+| `--plot` | `matplotlib` | Backend: `matplotlib`, `plotly`, `dash`, `textual`, `table` |
+| `--plot-options` | — | JSON object with style options (`type`, `layout`, `colors`, `font`, …) |
+
+### `mysql_csv_to_magnetdata.py`
+
+Demonstrates the round-trip from a MySQL CSV export to a
+:class:`~python_magnetrun.magnetdata_pandas.PandasMagnetData` object.
+
+Two subcommands:
+
+| Subcommand | Description |
+|---|---|
+| `generate` | Create a synthetic DuckDB-style CSV (no MySQL needed) then load and inspect it |
+| `load` | Load any CSV produced by `mysql_connect.py --mode export` |
+
+```bash
+# Generate a 300-row synthetic CSV, load it, and plot
+python mysql_csv_to_magnetdata.py generate --output sample.csv --plot
+
+# Load a real export and inspect all columns
+python mysql_csv_to_magnetdata.py load measurements.csv
+
+# Load, parse a specific timestamp column, plot two fields
+python mysql_csv_to_magnetdata.py load measurements.csv \
+    --timestamp-col timestamp --fields Icoil Ucoil --plot
+```
+
+> **Note — TIMESTAMP columns:** DuckDB serialises MySQL `TIMESTAMP`/`DATETIME`
+> columns as ISO 8601 strings (`"2024-03-15 08:00:00"`).  `CsvReader` loads
+> them as `object` dtype.  Pass `--timestamp-col <name>` (or the column name
+> is auto-detected) to have the script call `pd.to_datetime()` before plotting.
+
+---
+
 ## Run Analysis Examples
 
 ### `bilan.py`
