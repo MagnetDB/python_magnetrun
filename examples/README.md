@@ -118,6 +118,52 @@ Period  : 2024-01-01 → 2024-12-31
 
 ---
 
+### `pupitre_to_duckdb.py`
+
+Reads one or more pupitre `.txt` files, extracts a user-chosen set of fields
+(always including `timestamp`), and upserts them into a dedicated DuckDB file.
+Each housing (M9, M10, …) is stored in its own table; rows with duplicate
+timestamps are silently skipped.
+
+**Usage:**
+```bash
+# Extract Field, Icoil1, Ucoil1 and Pmagnet from all M9 files into pupitre.duckdb
+python pupitre_to_duckdb.py \
+    --fields Field Icoil1 Ucoil1 Pmagnet \
+    --output pupitre.duckdb \
+    "srv-data-install/M9/*.txt"
+
+# Multiple housings in one pass (housing auto-detected from parent directory)
+python pupitre_to_duckdb.py \
+    --fields Field IH IB Pmagnet \
+    --output pupitre.duckdb \
+    "srv-data-install/M9/*.txt" "srv-data-install/M10/*.txt"
+
+# Override housing when the parent directory name is not the magnet name
+python pupitre_to_duckdb.py \
+    --fields Field Pmagnet \
+    --housing M9 \
+    --output pupitre.duckdb \
+    /tmp/flat_dir/*.txt
+```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `PATTERN` | (required) | File paths or glob patterns (e.g. `"M9/*.txt"`); expanded inside the script so quoted patterns always work |
+| `--fields` | (required) | Data columns to extract; `timestamp` is always included |
+| `--output` | `pupitre.duckdb` | DuckDB output file (dedicated to pupitre data) |
+| `--housing` | auto | Housing name override (e.g. `M9`, `M10`); default: detected from the parent directory of each file |
+
+**Notes:**
+- Timestamps are stored in naive UTC (converted from local Paris time by `MagnetRun.fromtxt`).
+- Fields requested but absent in a given file are inserted as `NULL` for that file's rows and a warning is logged.
+- Re-running the script on the same files is safe: existing rows are skipped (`INSERT OR IGNORE` on the `timestamp` primary key).
+- The DuckDB schema is: `timestamp TIMESTAMP NOT NULL PRIMARY KEY, <field1> DOUBLE, <field2> DOUBLE, …`
+
+---
+
 ## Record Selection, Plotting and Statistics
 
 ### `get-record.py`
@@ -338,7 +384,31 @@ python mysql_connect.py --mode poll --table measurements \
     --fields timestamp Icoil Ucoil --x-field timestamp \
     --interval 10 --limit 200 --plot matplotlib \
     --host myhost --user myuser --password mypw --database mydb
+
+# Two-source poll: measurements (Icoil, Ucoil) and temperatures (tsb, teb)
+# in two subplots sharing the same x-axis — matplotlib backend
+python mysql_connect.py --mode poll \
+    --table measurements --fields timestamp Icoil Ucoil --x-field timestamp \
+    --table2 temperatures --fields2 tsb teb \
+    --interval 10 --plot matplotlib \
+    --host myhost --user myuser --password mypw --database mydb
+
+# Two-source poll using raw SQL queries — Dash interactive web app
+python mysql_connect.py --mode poll \
+    --query "SELECT t, Icoil, Ucoil FROM mysqldb.measurements ORDER BY t LIMIT 500" \
+    --fields Icoil Ucoil --x-field t \
+    --query2 "SELECT t, tsb, teb FROM mysqldb.temperatures ORDER BY t LIMIT 500" \
+    --fields2 tsb teb \
+    --interval 10 --plot dash \
+    --host myhost --user myuser --password mypw --database mydb
 ```
+
+> **Two-source mode** (`--table2` / `--query2`): adds a second independent data source
+> displayed in a separate subplot sharing the same x-axis as the first source.
+> Supported backends: `matplotlib`, `plotly`, `dash` (not `table` or `textual`).
+> `--table2` and `--query2` are mutually exclusive.
+> Use `--fields2` to select which columns to plot from the second source, and
+> `--where2` to filter it (applies to `--table2` only).
 
 > **Note — selecting tables for export:**  
 > Use `--tables` to restrict the export to a subset of tables.
@@ -376,6 +446,10 @@ python mysql_connect.py --mode poll --table measurements \
 | `--interval` | 5 s | Seconds between polls |
 | `--plot` | `matplotlib` | Backend: `matplotlib`, `plotly`, `dash`, `textual`, `table` |
 | `--plot-options` | — | JSON object with style options (`type`, `layout`, `colors`, `font`, …) |
+| `--table2` | — | Second MySQL table for two-source mode (mutually exclusive with `--query2`); supported by `matplotlib`, `plotly`, `dash` |
+| `--query2` | — | Raw SELECT for the second subplot (mutually exclusive with `--table2`) |
+| `--fields2` | all numeric | Columns to plot from the second source |
+| `--where2` | — | SQL WHERE filter for `--table2` only |
 
 ### `mysql_csv_to_magnetdata.py`
 

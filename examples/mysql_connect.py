@@ -147,16 +147,17 @@ built-in defaults.
 
 import argparse
 import collections
+import contextlib
+import importlib.util
 import json
 import os
 import sys
 import time
 import webbrowser
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import duckdb
-
 
 # ---------------------------------------------------------------------------
 # Defaults
@@ -173,7 +174,7 @@ _DEFAULT_OUTPUT_DIR = "."
 # ---------------------------------------------------------------------------
 
 
-def _env(key: str, default: Optional[str] = None) -> Optional[str]:
+def _env(key: str, default: str | None = None) -> str | None:
     return os.environ.get(key, default)
 
 
@@ -306,7 +307,7 @@ def _safe_widget_id(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", name)
 
 
-def _auto_x_field(cols: list[tuple[str, str]]) -> Optional[str]:
+def _auto_x_field(cols: list[tuple[str, str]]) -> str | None:
     """Return the name of the first TIMESTAMP column in *cols*, or None."""
     for name, col_type in cols:
         if _is_timestamp_type(col_type):
@@ -385,9 +386,9 @@ def mode_live(args: argparse.Namespace) -> None:
 def _build_export_select(
     table: str,
     fields: list[str],
-    time_field: Optional[str],
-    start: Optional[str],
-    end: Optional[str],
+    time_field: str | None,
+    start: str | None,
+    end: str | None,
 ) -> str:
     """Build a SELECT for exporting *table* with optional column and time filtering."""
     field_list = ", ".join(fields) if fields else "*"
@@ -425,7 +426,12 @@ def mode_export(args: argparse.Namespace) -> None:
     _attach_mysql(con, dsn, args.verbose)
 
     all_tables = list_mysql_tables(con, args.database)
-    tables = args.tables if args.tables else all_tables
+    if args.tables:
+        tables = args.tables
+    elif getattr(args, "table", None):
+        tables = [args.table]
+    else:
+        tables = all_tables
 
     unknown = set(tables) - set(all_tables)
     if unknown:
@@ -517,9 +523,7 @@ def mode_export(args: argparse.Namespace) -> None:
                 print(f"  {table} → {dest}")
 
         elif args.fmt == "excel":
-            try:
-                import pandas as _pd
-            except ImportError:
+            if importlib.util.find_spec("pandas") is None or importlib.util.find_spec("openpyxl") is None:
                 print(
                     "Error: pandas and openpyxl are required for --format excel."
                     "  pip install pandas openpyxl",
@@ -634,7 +638,7 @@ def _resolve_groups(y_fields: list[str], opts: dict[str, Any]) -> list[list[str]
     return [[f] for f in y_fields]
 
 
-def _parse_plot_options(raw: Optional[str]) -> dict[str, Any]:
+def _parse_plot_options(raw: str | None) -> dict[str, Any]:
     """Merge user-supplied JSON plot options with defaults."""
     opts = dict(_POLL_DEFAULTS)
     if raw:
@@ -653,10 +657,10 @@ def _parse_plot_options(raw: Optional[str]) -> dict[str, Any]:
 def _build_poll_query(
     table: str,
     fields: list[str],
-    where: Optional[str],
+    where: str | None,
     limit: int,
-    order_by: Optional[str],
-    start_time: Optional[str] = None,
+    order_by: str | None,
+    start_time: str | None = None,
 ) -> str:
     field_list = ", ".join(fields) if fields else "*"
     sql = f"SELECT {field_list} FROM mysqldb.{table}"
@@ -702,11 +706,11 @@ def _apply_date_format(ax: Any, x_data: list) -> None:
 def _poll_matplotlib(
     con: duckdb.DuckDBPyConnection,
     sql: str,
-    x_field: Optional[str],
+    x_field: str | None,
     y_fields: list[str],
     opts: dict[str, Any],
     interval: float,
-    count: Optional[int],
+    count: int | None,
     verbose: bool,
 ) -> None:
     try:
@@ -746,7 +750,7 @@ def _poll_matplotlib(
             for f in buffers:
                 buffers[f].clear()
             for row in rows:
-                row_dict = dict(zip(cols, row))
+                row_dict = dict(zip(cols, row, strict=False))
                 for f in buffers:
                     if f in row_dict:
                         buffers[f].append(row_dict[f])
@@ -760,7 +764,7 @@ def _poll_matplotlib(
             if x_data:
                 suptitle_obj.set_text(f"{fields_label} ({_fmt_x_latest(x_data[-1])})")
 
-            for ax, group in zip(axes[:, 0], groups):
+            for ax, group in zip(axes[:, 0], groups, strict=False):
                 ax.cla()
                 for y_field in group:
                     y_data = list(buffers[y_field])
@@ -803,7 +807,7 @@ def _poll_matplotlib(
 def _plot_static_matplotlib(
     con: duckdb.DuckDBPyConnection,
     sql: str,
-    x_field: Optional[str],
+    x_field: str | None,
     y_fields: list[str],
     opts: dict[str, Any],
     verbose: bool,
@@ -829,7 +833,7 @@ def _plot_static_matplotlib(
     if verbose:
         print(f"{len(rows)} row(s) fetched")
 
-    row_dicts = [dict(zip(cols, r)) for r in rows]
+    row_dicts = [dict(zip(cols, r, strict=False)) for r in rows]
     x_data = (
         [r[x_field] for r in row_dicts]
         if x_field and row_dicts and x_field in row_dicts[0]
@@ -838,7 +842,7 @@ def _plot_static_matplotlib(
 
     fig, axes = plt.subplots(len(groups), 1, figsize=figsize, sharex=True, squeeze=False)
 
-    for ax, group in zip(axes[:, 0], groups):
+    for ax, group in zip(axes[:, 0], groups, strict=False):
         for y_field in group:
             y_data = [r.get(y_field) for r in row_dicts]
             cidx = field_color[y_field]
@@ -869,7 +873,7 @@ def _plot_static_matplotlib(
 def _plot_static_plotly(
     con: duckdb.DuckDBPyConnection,
     sql: str,
-    x_field: Optional[str],
+    x_field: str | None,
     y_fields: list[str],
     opts: dict[str, Any],
     output_html: str,
@@ -891,7 +895,7 @@ def _plot_static_plotly(
     if verbose:
         print(f"{len(rows)} row(s) fetched")
 
-    row_dicts = [dict(zip(cols, r)) for r in rows]
+    row_dicts = [dict(zip(cols, r, strict=False)) for r in rows]
     x_data = (
         [r[x_field] for r in row_dicts]
         if x_field and row_dicts and x_field in row_dicts[0]
@@ -946,7 +950,7 @@ def _plot_static_plotly(
 def _plot_static_dash(
     con: duckdb.DuckDBPyConnection,
     sql: str,
-    x_field: Optional[str],
+    x_field: str | None,
     y_fields: list[str],
     opts: dict[str, Any],
     host: str,
@@ -954,8 +958,8 @@ def _plot_static_dash(
     verbose: bool,
 ) -> None:
     try:
-        from dash import Dash, dcc, html
         import plotly.graph_objects as go
+        from dash import Dash, dcc, html
     except ImportError:
         print("Error: dash is required for --plot dash.  pip install dash", file=sys.stderr)
         sys.exit(1)
@@ -978,7 +982,7 @@ def _plot_static_dash(
     if verbose:
         print(f"{len(rows)} row(s) fetched")
 
-    row_dicts = [dict(zip(cols, r)) for r in rows]
+    row_dicts = [dict(zip(cols, r, strict=False)) for r in rows]
     x_data = (
         [r[x_field] for r in row_dicts]
         if x_field and row_dicts and x_field in row_dicts[0]
@@ -1040,11 +1044,11 @@ def _plot_static_dash(
 def _poll_plotly(
     con: duckdb.DuckDBPyConnection,
     sql: str,
-    x_field: Optional[str],
+    x_field: str | None,
     y_fields: list[str],
     opts: dict[str, Any],
     interval: float,
-    count: Optional[int],
+    count: int | None,
     output_html: str,
     verbose: bool,
 ) -> None:
@@ -1072,7 +1076,7 @@ def _poll_plotly(
             if verbose:
                 print(f"[poll {poll_n + 1}] {len(rows)} row(s) fetched")
 
-            row_dicts = [dict(zip(cols, r)) for r in rows]
+            row_dicts = [dict(zip(cols, r, strict=False)) for r in rows]
             x_data = (
                 [r[x_field] for r in row_dicts]
                 if x_field and row_dicts and x_field in row_dicts[0]
@@ -1152,16 +1156,15 @@ def _poll_plotly(
 def _poll_textual(
     con: duckdb.DuckDBPyConnection,
     sql: str,
-    x_field: Optional[str],
+    x_field: str | None,
     y_fields: list[str],
     opts: dict[str, Any],
     interval: float,
-    count: Optional[int],
+    count: int | None,
     verbose: bool,
 ) -> None:
     try:
         from textual.app import App, ComposeResult
-        from textual.containers import ScrollableContainer
         from textual.widgets import Footer, Header, Static
     except ImportError:
         print(
@@ -1201,7 +1204,7 @@ def _poll_textual(
                 else float("nan")
                 for v in vals
             ]
-            pairs = [(xn, v) for xn, v in zip(x_num, vals) if xn == xn]  # skip NaN
+            pairs = [(xn, v) for xn, v in zip(x_num, vals, strict=False) if xn == xn]  # skip NaN
             if pairs:
                 step = max(1, len(pairs) // 6)
                 ticks = pairs[::step][:6]
@@ -1277,7 +1280,7 @@ def _poll_textual(
                     self.update(_plt.build())
                 else:
                     self.update("Waiting for data…")
-            except Exception as exc:
+            except (ValueError, RuntimeError, TypeError, AttributeError) as exc:
                 self.update(f"Plot error: {exc}")
 
     class PollApp(App):  # type: ignore[type-arg]
@@ -1323,19 +1326,19 @@ def _poll_textual(
 
             try:
                 cols, rows = _fetch_poll(con, sql)
-            except Exception as exc:
+            except duckdb.Error as exc:
                 self.query_one("#status", Static).update(f"Error: {exc}")
                 return
 
             if x_field and rows:
-                x_latest = dict(zip(cols, rows[-1])).get(x_field)
+                x_latest = dict(zip(cols, rows[-1], strict=False)).get(x_field)
                 if x_latest is not None:
                     self.title = f"{self._fields_label} ({_fmt_x_latest(x_latest)})"
 
             x_data: list = []
             ys: dict[str, list[float]] = {f: [] for f in y_fields}
             for row in rows:
-                rd = dict(zip(cols, row))
+                rd = dict(zip(cols, row, strict=False))
                 if x_field:
                     x_data.append(rd.get(x_field))
                 for f in y_fields:
@@ -1348,10 +1351,8 @@ def _poll_textual(
             if not x_field:
                 x_data = list(range(len(rows)))
 
-            try:
+            with contextlib.suppress(Exception):
                 self.query_one("#plot", PollWidget).refresh_data(x_data, ys)
-            except Exception:
-                pass
 
             self._poll_n += 1
             now = _dt.datetime.now().strftime("%H:%M:%S")
@@ -1373,11 +1374,11 @@ def _poll_textual(
 def _poll_table(
     con: duckdb.DuckDBPyConnection,
     sql: str,
-    x_field: Optional[str],
+    x_field: str | None,
     y_fields: list[str],
     opts: dict[str, Any],
     interval: float,
-    count: Optional[int],
+    count: int | None,
     verbose: bool,
 ) -> None:
     try:
@@ -1414,7 +1415,7 @@ def _poll_table(
             while count is None or poll_n < count:
                 try:
                     cols, rows = _fetch_poll(con, sql)
-                except Exception as exc:
+                except duckdb.Error as exc:
                     live.update(Text(f"Poll error: {exc}", style="red"))
                     time.sleep(interval)
                     continue
@@ -1422,7 +1423,7 @@ def _poll_table(
                 now = _dt.datetime.now().strftime("%H:%M:%S")
                 x_info = ""
                 if x_field and rows:
-                    last_val = dict(zip(cols, rows[-1])).get(x_field)
+                    last_val = dict(zip(cols, rows[-1], strict=False)).get(x_field)
                     if last_val is not None:
                         x_info = f"  ·  {x_field}: {_fmt_x_latest(last_val)}"
 
@@ -1451,19 +1452,19 @@ def _poll_table(
 def _poll_dash(
     con: duckdb.DuckDBPyConnection,
     sql: str,
-    x_field: Optional[str],
+    x_field: str | None,
     y_fields: list[str],
     opts: dict[str, Any],
     interval: float,
-    count: Optional[int],
+    count: int | None,
     host: str,
     port: int,
     verbose: bool,
 ) -> None:
     try:
+        import plotly.graph_objects as go
         from dash import Dash, Input, Output, State, dcc, html, no_update
         from dash.exceptions import PreventUpdate
-        import plotly.graph_objects as go
     except ImportError:
         print(
             "Error: dash is required for --plot dash.  pip install dash",
@@ -1540,22 +1541,19 @@ def _poll_dash(
 
         try:
             cols, rows = _fetch_poll(con, sql)
-        except Exception as exc:
+        except duckdb.Error as exc:
             if verbose:
                 print(f"Poll error: {exc}", file=sys.stderr)
-            raise PreventUpdate
+            raise PreventUpdate from exc
 
-        row_dicts = [dict(zip(cols, r)) for r in rows]
+        row_dicts = [dict(zip(cols, r, strict=False)) for r in rows]
         x_data = (
             [r[x_field] for r in row_dicts]
             if x_field and row_dicts and x_field in row_dicts[0]
             else list(range(len(rows)))
         )
 
-        if x_data:
-            new_heading = f"{fields_label} ({_fmt_x_latest(x_data[-1])})"
-        else:
-            new_heading = no_update
+        new_heading = f"{fields_label} ({_fmt_x_latest(x_data[-1])})" if x_data else no_update
 
         figs = []
         for group in groups:
@@ -1608,12 +1606,12 @@ def _poll_matplotlib_multi(
     con: duckdb.DuckDBPyConnection,
     sql1: str,
     sql2: str,
-    x_field: Optional[str],
+    x_field: str | None,
     y_fields1: list[str],
     y_fields2: list[str],
     opts: dict[str, Any],
     interval: float,
-    count: Optional[int],
+    count: int | None,
     verbose: bool,
 ) -> None:
     """Live matplotlib poll: y_fields1 in subplot 1, y_fields2 in subplot 2, shared x."""
@@ -1647,8 +1645,8 @@ def _poll_matplotlib_multi(
             if verbose:
                 print(f"[poll {poll_n + 1}] src1={len(rows1)} row(s), src2={len(rows2)} row(s)")
 
-            rd1 = [dict(zip(cols1, r)) for r in rows1]
-            rd2 = [dict(zip(cols2, r)) for r in rows2]
+            rd1 = [dict(zip(cols1, r, strict=False)) for r in rows1]
+            rd2 = [dict(zip(cols2, r, strict=False)) for r in rows2]
 
             x1 = (
                 [r[x_field] for r in rd1]
@@ -1727,12 +1725,12 @@ def _poll_plotly_multi(
     con: duckdb.DuckDBPyConnection,
     sql1: str,
     sql2: str,
-    x_field: Optional[str],
+    x_field: str | None,
     y_fields1: list[str],
     y_fields2: list[str],
     opts: dict[str, Any],
     interval: float,
-    count: Optional[int],
+    count: int | None,
     output_html: str,
     verbose: bool,
 ) -> None:
@@ -1766,8 +1764,8 @@ def _poll_plotly_multi(
             if verbose:
                 print(f"[poll {poll_n + 1}] src1={len(rows1)} row(s), src2={len(rows2)} row(s)")
 
-            rd1 = [dict(zip(cols1, r)) for r in rows1]
-            rd2 = [dict(zip(cols2, r)) for r in rows2]
+            rd1 = [dict(zip(cols1, r, strict=False)) for r in rows1]
+            rd2 = [dict(zip(cols2, r, strict=False)) for r in rows2]
 
             x1 = (
                 [r[x_field] for r in rd1]
@@ -1849,21 +1847,21 @@ def _poll_dash_multi(
     con: duckdb.DuckDBPyConnection,
     sql1: str,
     sql2: str,
-    x_field: Optional[str],
+    x_field: str | None,
     y_fields1: list[str],
     y_fields2: list[str],
     opts: dict[str, Any],
     interval: float,
-    count: Optional[int],
+    count: int | None,
     host: str,
     port: int,
     verbose: bool,
 ) -> None:
     """Two-source Dash polling: two rows in one make_subplots figure with shared x-axis."""
     try:
+        import plotly.graph_objects as go
         from dash import Dash, Input, Output, State, dcc, html, no_update
         from dash.exceptions import PreventUpdate
-        import plotly.graph_objects as go
         from plotly.subplots import make_subplots
     except ImportError:
         print("Error: dash is required for --plot dash.  pip install dash", file=sys.stderr)
@@ -1935,13 +1933,13 @@ def _poll_dash_multi(
         try:
             cols1, rows1 = _fetch_poll(con, sql1)
             cols2, rows2 = _fetch_poll(con, sql2)
-        except Exception as exc:
+        except duckdb.Error as exc:
             if verbose:
                 print(f"Poll error: {exc}", file=sys.stderr)
-            raise PreventUpdate
+            raise PreventUpdate from exc
 
-        rd1 = [dict(zip(cols1, r)) for r in rows1]
-        rd2 = [dict(zip(cols2, r)) for r in rows2]
+        rd1 = [dict(zip(cols1, r, strict=False)) for r in rows1]
+        rd2 = [dict(zip(cols2, r, strict=False)) for r in rows2]
 
         x1 = (
             [r[x_field] for r in rd1]
@@ -2039,7 +2037,7 @@ def mode_poll(args: argparse.Namespace) -> None:
 
     # These are needed for second-source resolution in the table path.
     limit: int = 0
-    start_time: Optional[str] = None
+    start_time: str | None = None
 
     if args.query:
         # ── raw-query path ──────────────────────────────────────────────────
@@ -2127,11 +2125,7 @@ def mode_poll(args: argparse.Namespace) -> None:
             if args.verbose:
                 print(f"Auto-selected y-fields: {', '.join(fields)}")
 
-        if x_field:
-            # ensure x_field is fetched even if not listed as a y-field
-            select_fields = [x_field] + fields
-        else:
-            select_fields = fields
+        select_fields = [x_field] + fields if x_field else fields
 
         y_fields = fields
 
@@ -2151,7 +2145,7 @@ def mode_poll(args: argparse.Namespace) -> None:
         sql = _build_poll_query(args.table, select_fields, args.where, limit, x_field, start_time=start_time)
 
     # ── resolve second source (--table2 / --query2) ─────────────────────────
-    sql2: Optional[str] = None
+    sql2: str | None = None
     y_fields2: list[str] = []
 
     has_table2 = bool(getattr(args, "table2", None))
@@ -2362,10 +2356,7 @@ def mode_plot(args: argparse.Namespace) -> None:
             if args.verbose:
                 print(f"Auto-selected y-fields: {', '.join(fields)}")
 
-        if x_field:
-            select_fields = [x_field] + fields
-        else:
-            select_fields = fields
+        select_fields = [x_field] + fields if x_field else fields
 
         y_fields = fields
 
@@ -2715,9 +2706,11 @@ def parse_args() -> argparse.Namespace:
     if args.list_databases and not args.database:
         args.database = "information_schema"
 
-    if args.mode in ("poll", "plot", "view"):
-        if args.table and args.query:
-            parser.error("--table and --query are mutually exclusive")
+    if args.mode == "export" and args.tables and getattr(args, "table", None):
+        parser.error("--table and --tables are mutually exclusive in export mode")
+
+    if args.mode in ("poll", "plot", "view") and args.table and args.query:
+        parser.error("--table and --query are mutually exclusive")
 
     if args.mode == "poll":
         if not args.table and not args.query and not args.list_tables:
@@ -2729,13 +2722,11 @@ def parse_args() -> argparse.Namespace:
         if (table2 or query2) and not (args.table or args.query):
             parser.error("--table2/--query2 require --table or --query for the first source")
 
-    if args.mode == "plot":
-        if not args.table and not args.query and not args.list_tables:
-            parser.error("--mode plot requires --table TABLE or --query SQL (or --list-tables)")
+    if args.mode == "plot" and not args.table and not args.query and not args.list_tables:
+        parser.error("--mode plot requires --table TABLE or --query SQL (or --list-tables)")
 
-    if args.mode == "view":
-        if not args.table and not args.query:
-            parser.error("--mode view requires --table TABLE or --query SQL")
+    if args.mode == "view" and not args.table and not args.query:
+        parser.error("--mode view requires --table TABLE or --query SQL")
 
     return args
 
