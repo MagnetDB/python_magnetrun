@@ -482,6 +482,62 @@ python mysql_csv_to_magnetdata.py load measurements.csv \
 
 ---
 
+## External Weather Data
+
+### `openmeteo_temperature.py`
+
+Fetches current or historical hourly temperature at the machine's location using the
+[Open-Meteo](https://open-meteo.com/) API (no API key required). Location is determined
+automatically from the machine's public IP via `geocoder`.
+
+**Usage:**
+```bash
+# Current temperature
+python openmeteo_temperature.py
+
+# Historical — plain table
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28
+
+# Historical — styled Rich table
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --table
+
+# Export to CSV (default format)
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --output temps.csv
+
+# Export to Excel
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --output temps.xlsx --format xlsx
+
+# Export to DuckDB
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --output temps.duckdb --format duckdb
+
+# Overwrite an existing output file
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --output temps.csv --force
+
+# Plot temperature time series
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --plot
+
+# Combine: Rich table + export + plot
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 \
+    --table --output temps.xlsx --format xlsx --plot
+```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--start` | — | Start date for historical range (`YYYY-MM-DD`); requires `--end` |
+| `--end` | — | End date for historical range (`YYYY-MM-DD`); requires `--start` |
+| `--table` | off | Display as a colour-coded Rich table (requires `--start`/`--end`) |
+| `--output` | — | Destination file path for export (requires `--start`/`--end`) |
+| `--format` | `csv` | Output format: `csv`, `xlsx`, or `duckdb` |
+| `--force` | off | Overwrite output file if it already exists (requires `--output`) |
+| `--plot` | off | Plot hourly temperature as a time series (requires `--start`/`--end`) |
+
+**Dependencies:** `geocoder`, `requests`, `rich`, `matplotlib`, `pandas`,
+`openpyxl` (xlsx export), `duckdb` (duckdb export).
+
+---
+
 ## Run Analysis Examples
 
 ### `bilan.py`

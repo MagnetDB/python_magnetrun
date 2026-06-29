@@ -38,7 +38,6 @@ import plotly.graph_objects as go
 from python_magnetrun.MagnetRun import load_mrun
 from python_magnetrun.utils.timezone import series_utc_to_local_naive
 
-
 # ---------------------------------------------------------------------------
 # Figure builder
 # ---------------------------------------------------------------------------

@@ -41,7 +41,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 # ---------------------------------------------------------------------------
 # Synthetic data generator
 # ---------------------------------------------------------------------------
@@ -155,7 +154,7 @@ def plot_data(df: pd.DataFrame, timestamp_col: str | None, fields: list[str]) ->
     fig, axes = plt.subplots(len(fields), 1, figsize=(12, 3 * len(fields)),
                               sharex=True, squeeze=False)
 
-    for ax, field in zip(axes[:, 0], fields):
+    for ax, field in zip(axes[:, 0], fields, strict=True):
         if field not in df.columns:
             print(f"Warning: column '{field}' not found — skipping")
             continue

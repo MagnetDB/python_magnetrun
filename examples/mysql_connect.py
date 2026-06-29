@@ -154,6 +154,7 @@ import os
 import sys
 import time
 import webbrowser
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -283,15 +284,15 @@ _NUMERIC_PREFIXES = (
 _TIMESTAMP_PREFIXES = ("TIMESTAMP", "TIMESTAMPTZ", "DATE", "DATETIME")
 
 
-def _is_numeric_type(col_type: str) -> bool:
+def _is_numeric_type(col_type: object) -> bool:
     """Return True if the DuckDB column type is numeric / plottable as y."""
-    upper = col_type.upper().strip()
+    upper = str(col_type).upper().strip()
     return upper.startswith(_NUMERIC_PREFIXES)
 
 
-def _is_timestamp_type(col_type: str) -> bool:
+def _is_timestamp_type(col_type: object) -> bool:
     """Return True if the DuckDB column type is temporal (suitable as x-axis)."""
-    upper = col_type.upper().strip()
+    upper = str(col_type).upper().strip()
     return upper.startswith(_TIMESTAMP_PREFIXES)
 
 
@@ -307,7 +308,7 @@ def _safe_widget_id(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", name)
 
 
-def _auto_x_field(cols: list[tuple[str, str]]) -> str | None:
+def _auto_x_field(cols: Sequence[tuple[str, Any]]) -> str | None:
     """Return the name of the first TIMESTAMP column in *cols*, or None."""
     for name, col_type in cols:
         if _is_timestamp_type(col_type):
@@ -507,7 +508,8 @@ def mode_export(args: argparse.Namespace) -> None:
         if args.fmt == "duckdb":
             con.execute(f"CREATE OR REPLACE TABLE {table} AS {select_sql}")
             if args.verbose:
-                n = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                _row = con.execute(f"SELECT COUNT(*) FROM {table}").fetchone()
+                n = _row[0] if _row is not None else 0
                 print(f"  {table}: {n} row(s)")
 
         elif args.fmt == "csv":
@@ -935,11 +937,13 @@ def _plot_static_plotly(
     if opts["fontsize"]:
         font_dict["size"] = opts["fontsize"]
 
-    fig.update_layout(
-        title=f"MySQL — {sql[:80]}…" if len(sql) > 80 else f"MySQL — {sql}",
-        height=max(300, 280 * len(groups)),
-        **({"font": font_dict} if font_dict else {}),
-    )
+    _layout_kw: dict[str, Any] = {
+        "title": f"MySQL — {sql[:80]}…" if len(sql) > 80 else f"MySQL — {sql}",
+        "height": max(300, 280 * len(groups)),
+    }
+    if font_dict:
+        _layout_kw["font"] = font_dict
+    fig.update_layout(**_layout_kw)
 
     html_path = Path(output_html).resolve()
     html_path.write_text(fig.to_html(full_html=True, include_plotlyjs="cdn"), encoding="utf-8")
@@ -1006,14 +1010,16 @@ def _plot_static_dash(
                 trace = go.Scatter(x=x_data, y=y_data, mode="lines", name=y_field, line=marker)
             fig.add_trace(trace)
 
-        fig.update_layout(
-            title=", ".join(group) if len(groups) > 1 else "",
-            height=280,
-            xaxis_title=x_field or "",
-            yaxis_title=group[0] if len(group) == 1 else "",
-            margin={"t": 40, "b": 40, "l": 60, "r": 20},
-            **({"font": font_dict} if font_dict else {}),
-        )
+        _layout_kw: dict[str, Any] = {
+            "title": ", ".join(group) if len(groups) > 1 else "",
+            "height": 280,
+            "xaxis_title": x_field or "",
+            "yaxis_title": group[0] if len(group) == 1 else "",
+            "margin": {"t": 40, "b": 40, "l": 60, "r": 20},
+        }
+        if font_dict:
+            _layout_kw["font"] = font_dict
+        fig.update_layout(**_layout_kw)
         figs.append(fig)
 
     heading = f"MySQL — {sql[:80]}…" if len(sql) > 80 else f"MySQL — {sql}"
@@ -1124,11 +1130,13 @@ def _poll_plotly(
             if opts["fontsize"]:
                 font_dict["size"] = opts["fontsize"]
 
-            fig.update_layout(
-                title=title,
-                height=max(300, 280 * len(groups)),
-                **({"font": font_dict} if font_dict else {}),
-            )
+            _layout_kw: dict[str, Any] = {
+                "title": title,
+                "height": max(300, 280 * len(groups)),
+            }
+            if font_dict:
+                _layout_kw["font"] = font_dict
+            fig.update_layout(**_layout_kw)
 
             # Inject meta-refresh so the browser reloads automatically
             html_body = fig.to_html(full_html=True, include_plotlyjs="cdn")
@@ -1575,14 +1583,16 @@ def _poll_dash(
                                        name=y_field, line=marker)
                 fig.add_trace(trace)
 
-            fig.update_layout(
-                title=", ".join(group) if len(groups) > 1 else "",
-                height=280,
-                xaxis_title=x_field or "",
-                yaxis_title=group[0] if len(group) == 1 else "",
-                margin={"t": 40, "b": 40, "l": 60, "r": 20},
-                **({"font": font_dict} if font_dict else {}),
-            )
+            _layout_kw: dict[str, Any] = {
+                "title": ", ".join(group) if len(groups) > 1 else "",
+                "height": 280,
+                "xaxis_title": x_field or "",
+                "yaxis_title": group[0] if len(group) == 1 else "",
+                "margin": {"t": 40, "b": 40, "l": 60, "r": 20},
+            }
+            if font_dict:
+                _layout_kw["font"] = font_dict
+            fig.update_layout(**_layout_kw)
             figs.append(fig)
 
         poll_n += 1
@@ -1818,11 +1828,10 @@ def _poll_plotly_multi(
                 fig.update_xaxes(title_text=x_field, row=2, col=1)
             fig.update_yaxes(title_text=label1 if len(y_fields1) == 1 else "", row=1, col=1)
             fig.update_yaxes(title_text=label2 if len(y_fields2) == 1 else "", row=2, col=1)
-            fig.update_layout(
-                title=title,
-                height=560,
-                **({"font": font_dict} if font_dict else {}),
-            )
+            _layout_kw: dict[str, Any] = {"title": title, "height": 560}
+            if font_dict:
+                _layout_kw["font"] = font_dict
+            fig.update_layout(**_layout_kw)
 
             html_body = fig.to_html(full_html=True, include_plotlyjs="cdn")
             refresh_tag = f'<meta http-equiv="refresh" content="{int(interval)}">'
@@ -1993,10 +2002,10 @@ def _poll_dash_multi(
             fig.update_xaxes(title_text=x_field, row=2, col=1)
         fig.update_yaxes(title_text=label1 if len(y_fields1) == 1 else "", row=1, col=1)
         fig.update_yaxes(title_text=label2 if len(y_fields2) == 1 else "", row=2, col=1)
-        fig.update_layout(
-            height=560,
-            **({"font": font_dict} if font_dict else {}),
-        )
+        _layout_kw: dict[str, Any] = {"height": 560}
+        if font_dict:
+            _layout_kw["font"] = font_dict
+        fig.update_layout(**_layout_kw)
 
         poll_n += 1
         now = _dt.datetime.now().strftime("%H:%M:%S")
@@ -2153,6 +2162,7 @@ def mode_poll(args: argparse.Namespace) -> None:
 
     if has_query2:
         sql2 = args.query2
+        assert sql2 is not None
         rel2 = con.execute(sql2)
         result_cols2 = [(desc[0], desc[1]) for desc in rel2.description]
         requested2 = getattr(args, "fields2", None) or []
@@ -2450,7 +2460,7 @@ def parse_args() -> argparse.Namespace:
     conn.add_argument(
         "--port",
         type=int,
-        default=int(_env("MYSQL_PORT", str(_DEFAULT_PORT))),
+        default=int(_env("MYSQL_PORT", str(_DEFAULT_PORT)) or str(_DEFAULT_PORT)),
         metavar="PORT",
         help=f"MySQL port (env: MYSQL_PORT, default: {_DEFAULT_PORT})",
     )
