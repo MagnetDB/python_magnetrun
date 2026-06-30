@@ -10,6 +10,7 @@ directory.
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -1018,6 +1019,104 @@ class TestComputeData:
             status == 1
         ), f"computeData should return status=1 for duplicate key, got status={status}"
         pd.testing.assert_series_equal(simple_magnetdata.Data["Field"], original)
+
+
+class TestAddField:
+    def test_adds_column_from_list(self, simple_magnetdata: PandasMagnetData) -> None:
+        status = simple_magnetdata.add_field(
+            "Power",
+            [1.0, 2.0, 3.0],
+            symbol="P",
+            unit=None,
+            label="Power",
+            description="Pre-computed power",
+        )
+        assert status == 0, f"add_field should succeed, got status={status}"
+        assert "Power" in simple_magnetdata.Keys
+        assert simple_magnetdata.Data["Power"].tolist() == [1.0, 2.0, 3.0]
+
+    def test_adds_column_from_ndarray(self, simple_magnetdata: PandasMagnetData) -> None:
+        status = simple_magnetdata.add_field(
+            "Power",
+            np.array([1.0, 2.0, 3.0]),
+            symbol="P",
+            unit=None,
+            label="Power",
+            description="Pre-computed power",
+        )
+        assert status == 0, f"add_field should succeed, got status={status}"
+        assert simple_magnetdata.Data["Power"].tolist() == [1.0, 2.0, 3.0]
+
+    def test_existing_key_is_skipped(self, simple_magnetdata: PandasMagnetData) -> None:
+        original = simple_magnetdata.Data["Field"].copy()
+        status = simple_magnetdata.add_field(
+            "Field",
+            [9.0, 9.0, 9.0],
+            symbol="B",
+            unit="tesla",
+            label="Field",
+            description="Should be skipped",
+        )
+        assert (
+            status == 1
+        ), f"add_field should return status=1 for duplicate key, got status={status}"
+        pd.testing.assert_series_equal(simple_magnetdata.Data["Field"], original)
+
+    def test_length_mismatch_is_skipped(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
+        status = simple_magnetdata.add_field(
+            "Power",
+            [1.0, 2.0],
+            symbol="P",
+            unit=None,
+            label="Power",
+            description="Wrong length",
+        )
+        assert (
+            status == 1
+        ), f"add_field should return status=1 for length mismatch, got status={status}"
+        assert "Power" not in simple_magnetdata.Keys
+
+    def test_group_param_creates_new_group(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
+        status = simple_magnetdata.add_field(
+            "Power",
+            [1.0, 2.0, 3.0],
+            symbol="P",
+            unit=None,
+            label="Power",
+            description="Pre-computed power",
+            group="Derived",
+        )
+        assert status == 0, f"add_field should succeed, got status={status}"
+        assert "Derived" in simple_magnetdata.list_groups()
+        assert "Power" in simple_magnetdata.Groups["Derived"]
+
+    def test_group_param_extends_existing_group(
+        self, simple_magnetdata: PandasMagnetData
+    ) -> None:
+        simple_magnetdata.add_field(
+            "Current",
+            [10.0, 11.0, 12.0],
+            symbol="I",
+            unit=None,
+            label="Current",
+            description="Pre-computed current",
+            group="Coil",
+        )
+        status = simple_magnetdata.add_field(
+            "Power",
+            [1.0, 2.0, 3.0],
+            symbol="P",
+            unit=None,
+            label="Power",
+            description="Pre-computed power",
+            group="Coil",
+        )
+        assert status == 0, f"add_field should succeed, got status={status}"
+        assert simple_magnetdata.Groups["Coil"] == ["Current", "Power"]
 
 
 # ===========================================================================

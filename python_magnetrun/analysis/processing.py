@@ -40,7 +40,7 @@ import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 
@@ -636,7 +636,7 @@ def load_hybrid_data(
         # For vprocess, derive keys from the file header (no housing-config mapping).
         if htype == "vprocess":
             try:
-                vprocess_vars = hrun.HybridData.get_vprocess_variables()["analog"]
+                vprocess_vars = hrun.getMData().get_vprocess_variables()["analog"]
                 hybrid_keys = [f"vprocess/{v}" for v in vprocess_vars]
             except (ImportError, ValueError) as e:
                 logger.warning(f"load_hybrid_data: cannot read vprocess variables: {e}")
@@ -745,6 +745,9 @@ def _check_overview_end_state(
     Logs a warning for each ``Courant*`` column whose last value exceeds 10 A
     and logs a guess for the next overview filename.
     """
+    if record.sources is None:
+        raise ValueError("No sources defined for record")
+
     last_values = {
         col: df_overview[col].iloc[-1]
         for col in df_overview.columns
@@ -790,6 +793,12 @@ def _load_all_sources(
     Also applies pupitre synchronisation when ``config.synchronize`` is set.
     Mutates *record* in place.
     """
+    if record.sources is None:
+        raise ValueError("No sources defined for record")
+    if record.t0 is None:
+        raise ValueError("record.t0 must be set before loading sources")
+    t0: datetime = record.t0
+
     # Archive
     if record.sources.archive:
         df_archive = load_archive_data(record, housing_config, config.group, keys)
@@ -816,7 +825,7 @@ def _load_all_sources(
     _hybrid_reference_t0: datetime | None = (
         record.data["archive"]["timestamp"].iloc[0]
         if record.has_data("archive")
-        else record.t0
+        else t0
     )
 
     # Hybrid kHz
@@ -876,7 +885,7 @@ def _load_all_sources(
         reference_t0 = (
             record.data["archive"]["timestamp"].iloc[0]
             if record.has_data("archive")
-            else record.t0
+            else t0
         )
         result = load_hybrid_incidents_data(
             record, housing_config, config.group, keys, reference_t0
@@ -897,7 +906,7 @@ def _load_all_sources(
         reference_t0 = (
             record.data["archive"]["timestamp"].iloc[0]
             if record.has_data("archive")
-            else record.t0
+            else t0
         )
         incidents = load_incidents_data(
             record, housing_config, config.group, keys, reference_t0
@@ -1041,7 +1050,7 @@ def process_experiment(
     result = ProcessingResult()
 
     # Sort files naturally
-    sorted_files = natsorted(overview_files)
+    sorted_files = cast("list[str]", natsorted(overview_files))
 
     # Determine housing from first file
     if sorted_files:
@@ -1081,6 +1090,9 @@ def process_experiment(
 
 def _synchronize_pupitre(record: OverviewRecord, config: ProcessingConfig) -> None:
     """Synchronize pupitre data with overview reference time."""
+    if record.t0 is None:
+        raise ValueError("record.t0 must be set before synchronization")
+
     df_pupitre = record.data["pupitre"]
     ot0 = record.t0
 

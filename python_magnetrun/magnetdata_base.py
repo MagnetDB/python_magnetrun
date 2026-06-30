@@ -8,6 +8,7 @@ from datetime import datetime
 from enum import IntEnum
 from typing import Any, NamedTuple
 
+import numpy as np
 import pandas as pd
 
 from .utils.downsampling import DownsampleConfig
@@ -592,6 +593,52 @@ class MagnetDataBase(ABC):
         raise NotImplementedError(
             f"{self.__class__.__name__}.computeData not implemented"
         )
+
+    def add_field(
+        self,
+        key: str,
+        values: list[float] | np.ndarray,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
+        group: str | None = None,
+        debug: bool = False,
+    ) -> int:
+        """Store a pre-computed 1D array as a new field *key*.
+
+        Parameters
+        ----------
+        key : str
+            Name for the new column/channel (must not already exist).
+        values : list[float] or numpy.ndarray
+            1D sequence of values; length must match the number of existing
+            rows.
+        symbol : str
+            Short physical symbol (e.g. ``"B"``).
+        unit : pint.Unit or str or None
+            Pint ``Unit``, unit string, or ``None``.
+        label : str
+            Human-readable axis label.
+        description : str
+            Longer free-text description.
+        group : str, optional
+            When given, the field is added to this group (created if it does
+            not already exist) via :meth:`add_to_group`.
+        debug : bool
+            Emit extra debug log messages when ``True``.
+
+        Returns
+        -------
+        int
+            ``0`` on success, non-zero on validation failure.
+
+        Raises
+        ------
+        NotImplementedError
+            If not overridden by a subclass.
+        """
+        raise NotImplementedError(f"{self.__class__.__name__}.add_field not implemented")
 
     def saveData(self, keys: list[str], filename: str) -> int:  # noqa: N802
         """Save selected columns to *filename* as a tab-separated file.
