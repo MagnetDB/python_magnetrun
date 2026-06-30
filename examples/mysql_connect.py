@@ -43,7 +43,7 @@ poll
     selected columns as a live plot.  Backend is selected via ``--plot``:
 
     table        Rich terminal table updated in-place every interval seconds.
-                 All queried columns are shown; Ctrl-C to stop.
+                 All queried columns are shown; Ctrl-C to stop.table
     matplotlib   Live-updating chart in a native window (default).
     plotly       Writes an auto-refreshing HTML file (default: poll_output.html)
                  and opens it in the default browser on the first poll.
