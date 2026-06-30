@@ -573,7 +573,9 @@ def load_hybrid_data(
         )
 
     # Map keys to hybrid channel names (not used for vprocess)
-    hybrid_keys = housing_config.get_hybrid_group_keys(group) if htype != "vprocess" else []
+    hybrid_keys = (
+        housing_config.get_hybrid_group_keys(group) if htype != "vprocess" else []
+    )
     logger.debug(f"hybrid_keys={hybrid_keys} from group={group}")
 
     # Path structure:
@@ -821,7 +823,11 @@ def _load_all_sources(
     if record.sources.hybrid_kHz:
         logger.info(f"hybrid_kHz={record.sources.hybrid_kHz}")
         df_hybrid_kHz = load_hybrid_data(
-            record, housing_config, config.group, keys, htype="kHz",
+            record,
+            housing_config,
+            config.group,
+            keys,
+            htype="kHz",
             reference_t0=_hybrid_reference_t0,
         )
         if not df_hybrid_kHz.empty:
@@ -834,7 +840,11 @@ def _load_all_sources(
     if record.sources.hybrid_rms:
         logger.info(f"hybrid_rms={record.sources.hybrid_rms}")
         df_hybrid_rms = load_hybrid_data(
-            record, housing_config, config.group, keys, htype="rms",
+            record,
+            housing_config,
+            config.group,
+            keys,
+            htype="rms",
             reference_t0=_hybrid_reference_t0,
         )
         if not df_hybrid_rms.empty:
@@ -847,7 +857,11 @@ def _load_all_sources(
     if record.sources.hybrid_vprocess:
         logger.info(f"hybrid_vprocess={record.sources.hybrid_vprocess}")
         df_hybrid_vprocess = load_hybrid_data(
-            record, housing_config, config.group, keys, htype="vprocess",
+            record,
+            housing_config,
+            config.group,
+            keys,
+            htype="vprocess",
             reference_t0=_hybrid_reference_t0,
         )
         if not df_hybrid_vprocess.empty:
@@ -955,6 +969,7 @@ def process_overview_file(
     record = OverviewRecord(filename=filename, housing=housing, mode=mode)
 
     discovery = FileDiscovery(
+        pupitre_datadir=config.pupitre_datadir,
         pigbrother_datadir=config.pigbrother_datadir,
         pigbrother_runlog_dir=os.path.dirname(overview_file) or None,
         hybrid_datadir=config.hybrid_datadir if housing == "M8" else None,
@@ -1340,7 +1355,9 @@ def benchmark_downsample_channel(
             DownsampleConfig(n_out=n_out, method="lttb"),
         ]
 
-    result = benchmark_configs(data, time, configs, compute_memory=compute_memory, memory_tier=memory_tier)
+    result = benchmark_configs(
+        data, time, configs, compute_memory=compute_memory, memory_tier=memory_tier
+    )
 
     cols = ["compression_ratio", "rmse", "max_error", "hausdorff_distance", "elapsed_s"]
     print(f"\nDownsampling benchmark — key={key!r}, n_out={n_out}")
