@@ -631,13 +631,21 @@
     "description": "Voltage in PolyHelices insert",
     "label": "U_H",
     "symbol": "U_H",
-    "unit": "volt"
+    "unit": "volt",
+    "aliases": {
+      "pigbrother": "Tensions_Aimant/ALL_INTERNES",
+      "hybrid": "FEPC-AUX-LNCMI/PH_V"
+    }
   },
   "UB": {
     "description": "Voltage in Bitter insert",
     "label": "U_B",
     "symbol": "U",
-    "unit": "volt"
+    "unit": "volt",
+    "aliases": {
+      "pigbrother": "Tensions_Aimant/ALL_EXTERNES",
+      "hybrid": "FEPC-AUX-LNCMI/BITTER_V"
+    }
   },
   "FlowH": {
     "description": "Waterflow in PolyHelices cooling loop",
