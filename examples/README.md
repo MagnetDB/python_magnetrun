@@ -118,6 +118,52 @@ Period  : 2024-01-01 → 2024-12-31
 
 ---
 
+### `pupitre_to_duckdb.py`
+
+Reads one or more pupitre `.txt` files, extracts a user-chosen set of fields
+(always including `timestamp`), and upserts them into a dedicated DuckDB file.
+Each housing (M9, M10, …) is stored in its own table; rows with duplicate
+timestamps are silently skipped.
+
+**Usage:**
+```bash
+# Extract Field, Icoil1, Ucoil1 and Pmagnet from all M9 files into pupitre.duckdb
+python pupitre_to_duckdb.py \
+    --fields Field Icoil1 Ucoil1 Pmagnet \
+    --output pupitre.duckdb \
+    "srv-data-install/M9/*.txt"
+
+# Multiple housings in one pass (housing auto-detected from parent directory)
+python pupitre_to_duckdb.py \
+    --fields Field IH IB Pmagnet \
+    --output pupitre.duckdb \
+    "srv-data-install/M9/*.txt" "srv-data-install/M10/*.txt"
+
+# Override housing when the parent directory name is not the magnet name
+python pupitre_to_duckdb.py \
+    --fields Field Pmagnet \
+    --housing M9 \
+    --output pupitre.duckdb \
+    /tmp/flat_dir/*.txt
+```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `PATTERN` | (required) | File paths or glob patterns (e.g. `"M9/*.txt"`); expanded inside the script so quoted patterns always work |
+| `--fields` | (required) | Data columns to extract; `timestamp` is always included |
+| `--output` | `pupitre.duckdb` | DuckDB output file (dedicated to pupitre data) |
+| `--housing` | auto | Housing name override (e.g. `M9`, `M10`); default: detected from the parent directory of each file |
+
+**Notes:**
+- Timestamps are stored in naive UTC (converted from local Paris time by `MagnetRun.fromtxt`).
+- Fields requested but absent in a given file are inserted as `NULL` for that file's rows and a warning is logged.
+- Re-running the script on the same files is safe: existing rows are skipped (`INSERT OR IGNORE` on the `timestamp` primary key).
+- The DuckDB schema is: `timestamp TIMESTAMP NOT NULL PRIMARY KEY, <field1> DOUBLE, <field2> DOUBLE, …`
+
+---
+
 ## Record Selection, Plotting and Statistics
 
 ### `get-record.py`
@@ -179,6 +225,61 @@ python -m python_magnetrun.examples.get-record srvdata/M8*.txt stats --fields te
 | `--tlcc` | Time-lagged cross-correlation |
 | `--dtw` | Dynamic time-warping correlation |
 | `--show` / `--save` | Display / save plots |
+
+---
+
+## Data Inspection and Downsampling Quality
+
+### `field_meta_example.py`
+
+Loads a single pupitre (`.txt`) or pigbrother (`.tdms`) file via `load_mrun`, then:
+
+1. Prints symbol, unit, label, and description for every field read from the file.
+2. Lists the fields belonging to each group.
+3. Shows the first rows of one chosen data column.
+4. Applies a downsampling algorithm to that column and reports reconstruction-quality metrics (RMSE, MAE, max error, MAPE, Hausdorff distance, energy ratio, elapsed time).
+
+**Usage:**
+```bash
+# Pupitre — default key, default stride downsampling at 10 % of signal length
+python field_meta_example.py data/2025.11.05\ -\ 09:53:00.txt --housing M8
+
+# Pigbrother TDMS — explicit key, LTTB method, 500 output points
+python field_meta_example.py data/M8_Overview_251105-0949.tdms --housing M8 \
+    --key Courants_Alimentations/Champ_magn --method lttb --n-out 500
+
+# minmax with custom bucket size
+python field_meta_example.py data/2025.11.05\ -\ 09:53:00.txt --housing M8 \
+    --method minmax --n-out 200 --bucket-size 10
+
+# rdp with explicit epsilon
+python field_meta_example.py data/2025.11.05\ -\ 09:53:00.txt --housing M8 \
+    --method rdp --n-out 300 --epsilon 0.01
+
+# rdp with auto-searched epsilon (from_n_out_rdp)
+python field_meta_example.py data/2025.11.05\ -\ 09:53:00.txt --housing M8 \
+    --method rdp --n-out 300
+```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `file` | — | Path to a pupitre `.txt` or pigbrother `.tdms` file |
+| `--housing` | `unknown` | Housing name, e.g. `M8`, `M9` |
+| `--key` | first meaningful field | Field key to preview and downsample |
+| `--method` | `stride` | Downsampling algorithm: `stride`, `lttb`, `minmax_lttb`, `m4`, `nan_m4`, `minmax`, `rdp`, `vw` |
+| `--n-out` | 10 % of signal | Target number of output points |
+| `--epsilon` | auto-searched | Geometry tolerance for `rdp`/`vw`; when omitted, auto-searched via `from_n_out_rdp` |
+| `--bucket-size` | auto-computed | Bucket size for the `minmax` method |
+| `--debug` | off | Enable debug logging |
+
+**Optional dependencies:**
+
+| Method | Extra required |
+|---|---|
+| `lttb`, `minmax_lttb`, `m4`, `nan_m4` | `pip install python_magnetrun[hybrid]` (`tsdownsample`) |
+| `rdp`, `vw` | `pip install python_magnetrun[rdp]` (`simplification`) |
 
 ---
 
@@ -244,6 +345,196 @@ python proposal.py proposals.csv --mdatadir srvdata --show
 3. Matches each proposal's time window to pupitre record files.
 4. Computes per-record statistics and detects current plateaux.
 5. Exports `anonymized_proposals.csv` and `project_records.csv`.
+
+---
+
+### `mysql_connect.py`
+
+Connects DuckDB to a remote MySQL server to inspect, export, or live-plot measurement data.
+Four modes are available: `live` (schema inspection), `export` (table copy), `view` (rich terminal table), `plot` (one-shot chart), and `poll` (live chart).
+
+Connection parameters can be supplied as CLI flags or via environment variables (`MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_USER`, `MYSQL_PASSWORD`, `MYSQL_DB`).
+
+**Usage:**
+```bash
+# Inspect schema — print all tables and column types
+python mysql_connect.py --mode live \
+    --host myhost --user myuser --password mypw --database mydb
+
+# Export all tables to CSV
+python mysql_connect.py --mode export --format csv --output-dir ./out \
+    --host myhost --user myuser --password mypw --database mydb
+
+# Export only selected tables to a DuckDB file
+python mysql_connect.py --mode export --format duckdb \
+    --output magnetdb_mysql.duckdb --tables sites magnets \
+    --host myhost --user myuser --password mypw --database mydb
+
+# View the most recent 50 rows of a table in the terminal
+python mysql_connect.py --mode view --table measurements --limit 50 \
+    --host myhost --user myuser --password mypw --database mydb
+
+# One-shot static chart (matplotlib)
+python mysql_connect.py --mode plot --table measurements \
+    --fields timestamp Icoil Ucoil --x-field timestamp \
+    --host myhost --user myuser --password mypw --database mydb
+
+# Live-updating chart, polling every 10 s (matplotlib)
+python mysql_connect.py --mode poll --table measurements \
+    --fields timestamp Icoil Ucoil --x-field timestamp \
+    --interval 10 --limit 200 --plot matplotlib \
+    --host myhost --user myuser --password mypw --database mydb
+
+# Two-source poll: measurements (Icoil, Ucoil) and temperatures (tsb, teb)
+# in two subplots sharing the same x-axis — matplotlib backend
+python mysql_connect.py --mode poll \
+    --table measurements --fields timestamp Icoil Ucoil --x-field timestamp \
+    --table2 temperatures --fields2 tsb teb \
+    --interval 10 --plot matplotlib \
+    --host myhost --user myuser --password mypw --database mydb
+
+# Two-source poll using raw SQL queries — Dash interactive web app
+python mysql_connect.py --mode poll \
+    --query "SELECT t, Icoil, Ucoil FROM mysqldb.measurements ORDER BY t LIMIT 500" \
+    --fields Icoil Ucoil --x-field t \
+    --query2 "SELECT t, tsb, teb FROM mysqldb.temperatures ORDER BY t LIMIT 500" \
+    --fields2 tsb teb \
+    --interval 10 --plot dash \
+    --host myhost --user myuser --password mypw --database mydb
+```
+
+> **Two-source mode** (`--table2` / `--query2`): adds a second independent data source
+> displayed in a separate subplot sharing the same x-axis as the first source.
+> Supported backends: `matplotlib`, `plotly`, `dash` (not `table` or `textual`).
+> `--table2` and `--query2` are mutually exclusive.
+> Use `--fields2` to select which columns to plot from the second source, and
+> `--where2` to filter it (applies to `--table2` only).
+
+> **Note — selecting tables for export:**  
+> Use `--tables` to restrict the export to a subset of tables.
+> Multiple table names can be given as a space-separated list:
+> ```bash
+> python mysql_connect.py --mode export --format duckdb \
+>     --output magnetdb_mysql.duckdb --tables sites magnets records \
+>     --host myhost --user myuser --password mypw --database mydb
+> ```
+> When `--tables` is omitted all tables in the database are exported.
+
+**Export arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--format` | `csv` | Output format: `csv`, `parquet`, `duckdb`, or `excel` (requires `pandas openpyxl`) |
+| `--output` | `magnetdb_mysql.duckdb` | Output file for `--format duckdb` |
+| `--output-dir` | `.` | Output directory for CSV/Parquet files |
+| `--tables` | all | Subset of table names to export |
+| `--export-fields` | all | Columns to include (single-table export only) |
+| `--time-field` | auto | TIMESTAMP column for `--start`/`--end` filtering |
+| `--start` | — | Start of time range, ISO 8601 |
+| `--end` | — | End of time range, ISO 8601 |
+
+**Poll/plot arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--table` | — | MySQL table to query |
+| `--query` | — | Raw SELECT query (mutually exclusive with `--table`) |
+| `--fields` | all numeric | Columns to plot on the y-axis |
+| `--x-field` | auto | Column to use as x-axis (auto-selects first TIMESTAMP column) |
+| `--where` | — | SQL WHERE filter |
+| `--limit` | 200 (poll) / 0 (plot) | Max rows fetched; `0` = no cap |
+| `--interval` | 5 s | Seconds between polls |
+| `--plot` | `matplotlib` | Backend: `matplotlib`, `plotly`, `dash`, `textual`, `table` |
+| `--plot-options` | — | JSON object with style options (`type`, `layout`, `colors`, `font`, …) |
+| `--table2` | — | Second MySQL table for two-source mode (mutually exclusive with `--query2`); supported by `matplotlib`, `plotly`, `dash` |
+| `--query2` | — | Raw SELECT for the second subplot (mutually exclusive with `--table2`) |
+| `--fields2` | all numeric | Columns to plot from the second source |
+| `--where2` | — | SQL WHERE filter for `--table2` only |
+
+### `mysql_csv_to_magnetdata.py`
+
+Demonstrates the round-trip from a MySQL CSV export to a
+:class:`~python_magnetrun.magnetdata_pandas.PandasMagnetData` object.
+
+Two subcommands:
+
+| Subcommand | Description |
+|---|---|
+| `generate` | Create a synthetic DuckDB-style CSV (no MySQL needed) then load and inspect it |
+| `load` | Load any CSV produced by `mysql_connect.py --mode export` |
+
+```bash
+# Generate a 300-row synthetic CSV, load it, and plot
+python mysql_csv_to_magnetdata.py generate --output sample.csv --plot
+
+# Load a real export and inspect all columns
+python mysql_csv_to_magnetdata.py load measurements.csv
+
+# Load, parse a specific timestamp column, plot two fields
+python mysql_csv_to_magnetdata.py load measurements.csv \
+    --timestamp-col timestamp --fields Icoil Ucoil --plot
+```
+
+> **Note — TIMESTAMP columns:** DuckDB serialises MySQL `TIMESTAMP`/`DATETIME`
+> columns as ISO 8601 strings (`"2024-03-15 08:00:00"`).  `CsvReader` loads
+> them as `object` dtype.  Pass `--timestamp-col <name>` (or the column name
+> is auto-detected) to have the script call `pd.to_datetime()` before plotting.
+
+---
+
+## External Weather Data
+
+### `openmeteo_temperature.py`
+
+Fetches current or historical hourly temperature at the machine's location using the
+[Open-Meteo](https://open-meteo.com/) API (no API key required). Location is determined
+automatically from the machine's public IP via `geocoder`.
+
+**Usage:**
+```bash
+# Current temperature
+python openmeteo_temperature.py
+
+# Historical — plain table
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28
+
+# Historical — styled Rich table
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --table
+
+# Export to CSV (default format)
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --output temps.csv
+
+# Export to Excel
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --output temps.xlsx --format xlsx
+
+# Export to DuckDB
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --output temps.duckdb --format duckdb
+
+# Overwrite an existing output file
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --output temps.csv --force
+
+# Plot temperature time series
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 --plot
+
+# Combine: Rich table + export + plot
+python openmeteo_temperature.py --start 2026-06-27 --end 2026-06-28 \
+    --table --output temps.xlsx --format xlsx --plot
+```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--start` | — | Start date for historical range (`YYYY-MM-DD`); requires `--end` |
+| `--end` | — | End date for historical range (`YYYY-MM-DD`); requires `--start` |
+| `--table` | off | Display as a colour-coded Rich table (requires `--start`/`--end`) |
+| `--output` | — | Destination file path for export (requires `--start`/`--end`) |
+| `--format` | `csv` | Output format: `csv`, `xlsx`, or `duckdb` |
+| `--force` | off | Overwrite output file if it already exists (requires `--output`) |
+| `--plot` | off | Plot hourly temperature as a time series (requires `--start`/`--end`) |
+
+**Dependencies:** `geocoder`, `requests`, `rich`, `matplotlib`, `pandas`,
+`openpyxl` (xlsx export), `duckdb` (duckdb export).
 
 ---
 

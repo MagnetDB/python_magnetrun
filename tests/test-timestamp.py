@@ -249,6 +249,45 @@ class TestSeriesLocalToUtcNaive:
         s = self._make_series(_PARIS_LOCAL)
         assert series_local_to_utc_naive(s).dt.tz is None
 
+    def test_fall_back_partial_pass_resolves_as_dst(self) -> None:
+        # Monotonic series ending inside the fall-back ambiguous hour with
+        # only a single pass (no backward jump) — "infer" cannot disambiguate
+        # and must fall back to resolving as the first (DST) occurrence.
+        s = self._make_series(
+            datetime(2022, 10, 30, 1, 59, 58),
+            datetime(2022, 10, 30, 1, 59, 59),
+            datetime(2022, 10, 30, 2, 0, 0),
+            datetime(2022, 10, 30, 2, 0, 1),
+        )
+        result = series_local_to_utc_naive(s)
+        assert result.iloc[2] == pd.Timestamp(datetime(2022, 10, 30, 0, 0, 0))
+        assert result.iloc[3] == pd.Timestamp(datetime(2022, 10, 30, 0, 0, 1))
+
+    def test_fall_back_full_pass_still_infers(self) -> None:
+        # Series containing both passes through the ambiguous hour (with the
+        # backward jump visible) must still be resolved correctly by "infer".
+        s = self._make_series(
+            datetime(2022, 10, 30, 2, 0, 0),
+            datetime(2022, 10, 30, 2, 30, 0),  # first pass (DST, +02:00)
+            datetime(2022, 10, 30, 2, 59, 59),
+            datetime(2022, 10, 30, 2, 0, 0),  # backward jump
+            datetime(2022, 10, 30, 2, 30, 0),  # second pass (CET, +01:00)
+        )
+        result = series_local_to_utc_naive(s)
+        assert result.iloc[1] == pd.Timestamp(datetime(2022, 10, 30, 0, 30, 0))
+        assert result.iloc[4] == pd.Timestamp(datetime(2022, 10, 30, 1, 30, 0))
+
+    def test_spring_forward_gap_shifts(self) -> None:
+        # 2023-03-26 02:30:00 does not exist in Europe/Paris (clocks jump
+        # from 02:00 to 03:00) — must be shifted forward, not raise.
+        s = self._make_series(
+            datetime(2023, 3, 26, 1, 59, 0),
+            datetime(2023, 3, 26, 2, 30, 0),
+        )
+        result = series_local_to_utc_naive(s)
+        assert result.iloc[0] == pd.Timestamp(datetime(2023, 3, 26, 0, 59, 0))
+        assert result.iloc[1] == pd.Timestamp(datetime(2023, 3, 26, 1, 0, 0))
+
 
 # ---------------------------------------------------------------------------
 # series_utc_to_local_naive

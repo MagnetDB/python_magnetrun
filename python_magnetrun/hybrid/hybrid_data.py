@@ -1373,6 +1373,20 @@ class HybridData(MagnetDataBase):
     # MagnetData-like Interface Methods
     # -------------------------------------------------------------------------
 
+    def get_group_data(self, group: str) -> "pd.DataFrame":
+        """Not supported for HybridData.
+
+        Raises
+        ------
+        NotImplementedError
+            Always — HybridData organises data by type/system/variable,
+            not by column group.
+        """
+        raise NotImplementedError(
+            "get_group_data() is not supported for HybridData. "
+            "Use getData(key) with a 'type/system' or 'type/system/variable' key."
+        )
+
     def getData(  # type: ignore[override]
         self,
         key: str | None = None,

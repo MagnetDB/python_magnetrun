@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .utils.downsampling import DownsampleConfig
 
+import numpy as np
 import pandas as pd
 from natsort import natsorted
 
@@ -263,6 +264,7 @@ class PandasMagnetData(MagnetDataBase):
         resolved = json_file or self.defs_file
         if resolved is not None:
             self.load_units_from_json(resolved, debug=debug)
+            self._build_groups(resolved)
 
         ureg = _make_ureg()
 
@@ -350,6 +352,57 @@ class PandasMagnetData(MagnetDataBase):
                     f"{key} not defined in data - available keys are {self.Keys}"
                 )
         return self.units[key]
+
+    # --- group support -----------------------------------------------
+
+    def _build_groups(self, json_file: str) -> None:
+        """Populate :attr:`Groups` from the ``"group"`` key in the defs file.
+
+        Called automatically by :meth:`Units` after loading the JSON
+        definitions.  Only columns present in :attr:`Keys` are included.
+
+        Parameters
+        ----------
+        json_file : str
+            Path to the field-definition JSON file (same file used by
+            :meth:`~.MagnetDataBase.load_units_from_json`).
+        """
+        from .field_defs import load_defs
+
+        groups: dict[str, list[str]] = {}
+        for key, defn in load_defs(json_file).items():
+            if key.startswith("_") or key not in self.Keys:
+                continue
+            grp = defn.get("group")
+            if grp:
+                groups.setdefault(grp, []).append(key)
+        self.Groups = groups
+
+    def get_group_data(self, group: str) -> pd.DataFrame:
+        """Return a DataFrame with the time column and all channels in *group*.
+
+        Parameters
+        ----------
+        group : str
+            Group name as returned by :meth:`list_groups`.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Slice of :attr:`Data` containing ``"t"`` plus all columns in
+            *group* that are present in the loaded DataFrame.
+
+        Raises
+        ------
+        KeyError
+            If *group* is not in :attr:`Groups`.
+        """
+        if group not in self.Groups:
+            raise KeyError(
+                f"Group {group!r} not found. Available groups: {self.list_groups()}"
+            )
+        cols = ["t"] + self.Groups[group]
+        return self.Data[[c for c in cols if c in self.Data.columns]]
 
     # --- timestamp validation ----------------------------------------
 
@@ -855,6 +908,87 @@ class PandasMagnetData(MagnetDataBase):
             symbol=symbol, unit=pint_unit, label=label, description=description
         )
         logger.debug("done")
+        return 0
+
+    def add_field(
+        self,
+        key: str,
+        values: list[float] | np.ndarray,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
+        group: str | None = None,
+        debug: bool = False,
+    ) -> int:
+        """Store a pre-computed 1D array/list as a new column *key*.
+
+        Parameters
+        ----------
+        key : str
+            New column name (must not already exist).
+        values : list[float] or numpy.ndarray
+            1D sequence of values; length must match the number of rows in
+            :attr:`Data`.
+        symbol : str
+            Short physical symbol.
+        unit : pint.Unit or str or None
+            Pint ``Unit``, unit string, or ``None``.
+        label : str
+            Human-readable axis label.
+        description : str
+            Longer free-text description.
+        group : str, optional
+            When given, the field is added to this group (created if absent)
+            via :meth:`~.MagnetDataBase.add_to_group`.
+        debug : bool
+            Emit extra debug log messages when ``True``.
+
+        Returns
+        -------
+        int
+            ``0`` on success, ``1`` if *key* already exists or *values*
+            length does not match the number of rows.
+        """
+        from pint.errors import UndefinedUnitError
+
+        from .magnetdata_base import FieldMeta, _make_ureg
+
+        assert isinstance(self.Data, pd.DataFrame)
+        if key in self.Keys:
+            logger.warning(
+                f"add_field: key '{key}' already exists in DataFrame, skipping addition"
+            )
+            return 1
+
+        n_rows = len(self.Data)
+        if len(values) != n_rows:
+            logger.warning(
+                f"add_field: '{key}': values length {len(values)} does not match "
+                f"DataFrame row count {n_rows}, skipping addition"
+            )
+            return 1
+
+        self.Data[key] = values
+        self.Keys = _dataframe_keys(self.Data)
+        if isinstance(unit, str) and unit:
+            try:
+                ureg = _make_ureg()
+                parsed = ureg.parse_expression(unit)
+                pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+            except (ValueError, UndefinedUnitError):
+                pint_unit = None
+        else:
+            pint_unit = unit if unit else None  # empty string → None
+        self.units[key] = (symbol, pint_unit)
+        self.field_meta[key] = FieldMeta(
+            symbol=symbol, unit=pint_unit, label=label, description=description
+        )
+
+        if group is not None:
+            self.add_to_group(group, key)
+
+        logger.debug(f"add_field: {key} added (group={group!r})")
         return 0
 
     # --- time utilities ----------------------------------------------

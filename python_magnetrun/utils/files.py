@@ -6,6 +6,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import cast
 
 import pandas as pd
 from natsort import natsorted
@@ -46,8 +47,8 @@ def _open_text_with_fallback(path: str | Path):
 
 
 def expand_input_files(
-    input_patterns: list, datadir: dict, housing: str | None = None
-) -> list:
+    input_patterns: list[str], datadir: dict[str, str], housing: str | None = None
+) -> list[str]:
     """Expand glob patterns in input file arguments.
 
     Search order for patterns without an explicit directory component:
@@ -488,7 +489,7 @@ def select_files(
     list[str]
         Filtered and naturally sorted list of files
     """
-    natsortedfiles = natsorted(files)
+    natsortedfiles = cast("list[str]", natsorted(files))
     logger.info(
         f"select_files: files={natsortedfiles}, housing={housing}, start={start}, end={end}"
     )
@@ -528,7 +529,7 @@ def select_files(
             logger.warning(f"Error processing {file}: {e}")
             continue
 
-    return natsorted(selected) if selected else []
+    return cast("list[str]", natsorted(selected)) if selected else []
 
 
 # =============================================================================
@@ -591,7 +592,9 @@ def load_df(
 
             channels = list(mdata.getData(group).keys())
             logger.debug(f"channels={channels}")
-            df = mdata.getTdmsData(group, keys)
+            from ..magnetdata_tdms import TdmsMagnetData
+
+            df = cast(TdmsMagnetData, mdata).getTdmsData(group, keys)
 
             first_key = channels[0] if keys is None or not keys else keys[0]
             logger.debug(f"first_key: {first_key}")

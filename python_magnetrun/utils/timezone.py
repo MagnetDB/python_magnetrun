@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 import pandas as pd
 import pytz
+
+logger = logging.getLogger(__name__)
 
 
 def utc_naive_to_local(
@@ -65,16 +68,33 @@ def series_local_to_utc_naive(
 ) -> pd.Series:
     """Convert a Series of naive local datetimes to naive UTC.
 
+    Ambiguous local times (autumn DST fall-back, e.g. ``02:30`` occurring
+    twice) are normally disambiguated by ``ambiguous="infer"``, which relies
+    on detecting both passes through the repeated hour. When a series only
+    contains a partial pass (e.g. a recording that stops shortly after the
+    fall-back hour begins, without showing the backward jump), inference is
+    impossible and pandas raises :class:`pytz.exceptions.AmbiguousTimeError`.
+    In that case, ambiguous times are resolved as the first (DST) occurrence.
+
     :param series: datetime Series in local time (naive)
     :param time_zone: IANA timezone name (default ``"Europe/Paris"``)
     :return: naive UTC datetime Series
     """
     tz = pytz.timezone(time_zone)
-    return (
-        series.dt.tz_localize(tz, ambiguous="infer", nonexistent="shift_forward")
-        .dt.tz_convert(pytz.utc)
-        .dt.tz_localize(None)
-    )
+    try:
+        localized = series.dt.tz_localize(
+            tz, ambiguous="infer", nonexistent="shift_forward"
+        )
+    except pytz.exceptions.AmbiguousTimeError:
+        logger.warning(
+            "series_local_to_utc_naive: cannot infer DST for ambiguous "
+            "timestamps in series spanning "
+            f"{series.min()} to {series.max()} — resolving as DST (first occurrence)"
+        )
+        localized = series.dt.tz_localize(
+            tz, ambiguous=True, nonexistent="shift_forward"
+        )
+    return localized.dt.tz_convert(pytz.utc).dt.tz_localize(None)
 
 
 def series_utc_to_local_naive(

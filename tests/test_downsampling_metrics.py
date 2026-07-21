@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import cast
 
 import numpy as np
 import pytest
@@ -130,7 +131,7 @@ def test_benchmark_configs_best_method(sine_arrays):
     ]
     df = benchmark_configs(data, t, configs)
     # minmax RMSE should not be worse than stride by a significant margin
-    assert df.loc["minmax", "rmse"] <= df.loc["stride", "rmse"] * 2.0
+    assert cast(float, df.loc["minmax", "rmse"]) <= cast(float, df.loc["stride", "rmse"]) * 2.0
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +192,7 @@ def test_memory_overhead_ratio_positive(sine_arrays):
     data, t = sine_arrays
     config = DownsampleConfig(n_out=500, method="stride")
     m = evaluate_downsampling(data, t, config, compute_memory=True)
+    assert m.memory_overhead_ratio is not None
     assert m.memory_overhead_ratio >= 0
 
 
@@ -198,6 +200,7 @@ def test_output_bytes_lt_input_bytes(sine_arrays):
     data, t = sine_arrays
     config = DownsampleConfig(n_out=N // 10, method="stride")
     m = evaluate_downsampling(data, t, config, compute_memory=True)
+    assert m.output_memory_bytes is not None and m.input_memory_bytes is not None
     assert m.output_memory_bytes < m.input_memory_bytes
 
 
@@ -211,6 +214,7 @@ def test_tier2_runs(sine_arrays):
     data, t = sine_arrays
     config = DownsampleConfig(n_out=500, method="minmax")
     m = evaluate_downsampling(data, t, config, compute_memory=True, memory_tier=2)
+    assert m.peak_memory_bytes is not None
     assert m.peak_memory_bytes >= 0
 
 
@@ -224,4 +228,5 @@ def test_tier3_memray_captures_native(sine_arrays):
     data, t = sine_arrays
     config = DownsampleConfig(n_out=500, method="stride")
     m = evaluate_downsampling(data, t, config, compute_memory=True, memory_tier=3)
+    assert m.peak_memory_bytes is not None
     assert m.peak_memory_bytes >= 0
