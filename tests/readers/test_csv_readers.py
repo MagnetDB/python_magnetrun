@@ -50,7 +50,7 @@ class TestPupitreReader:
     def test_read_kwargs_keys(self):
         kw = self.reader.read_kwargs()
         assert "sep" in kw
-        assert "engine" in kw
+        assert "engine" not in kw
         assert "skiprows" in kw
         assert "on_bad_lines" in kw
 
@@ -58,7 +58,6 @@ class TestPupitreReader:
         kw = self.reader.read_kwargs()
         assert kw["skiprows"] == 1
         assert kw["sep"] == r"\s+"
-        assert kw["engine"] == "python"
 
     def test_validate_ok(self):
         assert self.reader.validate(SAMPLE_PUPITRE) is True

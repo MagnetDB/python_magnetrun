@@ -16,8 +16,6 @@ class PupitreReader:
     ----------
     sep : str
         Column separator regex (``r"\\s+"``).
-    engine : str
-        pandas CSV engine (``"python"``).
     skip_rows : int
         Header rows to skip (``1`` — first line is a comment).
     on_bad_lines : str
@@ -27,7 +25,6 @@ class PupitreReader:
     """
 
     sep: str = r"\s+"
-    engine: str = "python"
     skip_rows: int = 1
     on_bad_lines: str = "warn"
     defs_file: str = "pupitre-defs.json"
@@ -49,7 +46,6 @@ class PupitreReader:
             return pd.read_csv(
                 f,
                 sep=self.sep,
-                engine=self.engine,
                 skiprows=self.skip_rows,
                 on_bad_lines=self.on_bad_lines,
             )
@@ -71,7 +67,6 @@ class PupitreReader:
             return pd.read_csv(
                 f,
                 sep=self.sep,
-                engine=self.engine,
                 skiprows=self.skip_rows,
                 on_bad_lines=self.on_bad_lines,
                 nrows=1,
@@ -87,7 +82,6 @@ class PupitreReader:
         """
         return {
             "sep": self.sep,
-            "engine": self.engine,
             "skiprows": self.skip_rows,
             "on_bad_lines": self.on_bad_lines,
         }
