@@ -2518,7 +2518,10 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         metavar="COL",
         dest="export_fields",
-        help="columns to include in the export; requires exactly one table in --tables",
+        help=(
+            "columns to include in the export; requires exactly one table "
+            "(via --table or a single --tables value)"
+        ),
     )
     exp.add_argument(
         "--time-field",

@@ -892,6 +892,59 @@ show("my_run.txt", housing="M9", keys=["Field"], time_col="timestamp")
 
 ---
 
+## Performance Benchmarking
+
+### `benchmark_loading.py`
+
+Measures wall-clock load time for magnet data files across all file types.
+For each TDMS overview file supplied, [`FileDiscovery`](../python_magnetrun/analysis/loaders.py)
+discovers the related archive, pupitre, and incident files automatically; standalone `.txt` and
+`.csv` inputs are benchmarked directly.  Results are printed as a per-category statistics table
+and optionally saved as a figure (box plot / scatter / bar).
+
+**Usage:**
+```bash
+# Benchmark all files discovered from one overview (uses default data dirs)
+python benchmark_loading.py M8_Overview_251105-0949.tdms --housing M8 --show
+
+# Benchmark two overviews and write figure + CSV
+python benchmark_loading.py M8_Overview_25*.tdms --housing M8 \
+    --save --output-dir results
+
+# Mix of TDMS overviews and standalone pupitre files
+python benchmark_loading.py M8_Overview_25*.tdms 2025*.txt \
+    --housing M8 --pigbrother_datadir /data/pbsurv --pupitre_datadir /data/pupitre --show
+
+# Skip file discovery — benchmark only the supplied files
+python benchmark_loading.py M8_Overview_251105-0949.tdms --housing M8 --no-discovery
+
+# Repeat each load 3 times for more stable timing
+python benchmark_loading.py M8_Overview_25*.tdms --housing M8 --repeat 3 --show
+```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `input_file` | — | One or more `.tdms`, `.txt`, or `.csv` files (globs expanded by the shell) |
+| `--housing` | `notdefined` | Housing name (e.g. `M8`, `M9`, `M10`); forwarded to the loader and discovery |
+| `--pigbrother_datadir` | configured default | Root directory for TDMS files |
+| `--pupitre_datadir` | configured default | Root directory for pupitre `.txt` files |
+| `--no-discovery` | off | Benchmark only the supplied input files; skip `FileDiscovery` |
+| `--repeat N` | `1` | Number of load repetitions per file for stable timing |
+| `--output-dir DIR` | `.` | Directory for saved figure (`benchmark_loading.png`) and CSV (`benchmark_loading.csv`) |
+| `--show` | — | Display figure interactively (requires X11); mutually exclusive with `--save` |
+| `--save` | — | Save figure and raw CSV to `--output-dir`; mutually exclusive with `--show` |
+| `--log-level` | `WARNING` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` |
+
+**Output:**
+
+- Console: per-category table with count, mean/max file size [MB], min/mean/max load time [s], median row count.
+- Figure (3 panels): load-time box plot per category · load time vs file size scatter · median row count bar.
+- `benchmark_loading.csv`: raw per-file results (with `--save`).
+
+---
+
 ## Key Concepts Demonstrated
 
 ### 1. Field Name Mapping

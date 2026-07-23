@@ -258,7 +258,10 @@ def main() -> None:
         description="Get temperature at current location via Open-Meteo."
     )
     parser.add_argument("--start", metavar="YYYY-MM-DD", help="Start date for historical range.")
-    parser.add_argument("--end", metavar="YYYY-MM-DD", help="End date for historical range.")
+    parser.add_argument(
+        "--end", metavar="YYYY-MM-DD",
+        help="End date for historical range (default: today).",
+    )
     parser.add_argument("--output", metavar="FILE", help="Export historical data to a file.")
     parser.add_argument(
         "--format", dest="fmt", choices=["csv", "xlsx", "duckdb"], default="csv",
@@ -269,8 +272,8 @@ def main() -> None:
     parser.add_argument("--table", action="store_true", help="Display historical data as a Rich table.")
     args = parser.parse_args()
 
-    if bool(args.start) != bool(args.end):
-        parser.error("--start and --end must be provided together.")
+    if args.end and not args.start:
+        parser.error("--end requires --start.")
 
     if (args.output or args.plot or args.table) and not args.start:
         parser.error("--output, --plot and --table require --start and --end.")
@@ -280,7 +283,7 @@ def main() -> None:
 
     if args.start:
         start = date.fromisoformat(args.start)
-        end = date.fromisoformat(args.end)
+        end = date.fromisoformat(args.end) if args.end else date.today()
         df, unit, city, country = fetch_historical_temperature(start, end)
         if args.table:
             print_rich_table(df, unit, city, country, start, end)
