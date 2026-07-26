@@ -29,10 +29,13 @@ MagnetData class so they can be used from CLIs, notebooks, or any data class.
 from __future__ import annotations
 
 import argparse
+import functools
 import importlib.resources
 import json
 import logging
 from pathlib import Path
+
+from .magnetdata_base import DataType
 
 logger = logging.getLogger(__name__)
 
@@ -424,6 +427,129 @@ def build_crossref(
             if aliases:
                 index[fmt][key] = dict(aliases)
     return index
+
+
+# ---------------------------------------------------------------------------
+# Cross-format channel matching
+# ---------------------------------------------------------------------------
+
+_DEFS_FILE_BY_DATATYPE = {
+    DataType.PUPITRE: "pupitre",
+    DataType.ENSIGHT: "pupitre",  # Ensight reuses pupitre-defs.json (bare channel names)
+    DataType.TDMS: "pigbrother",
+}
+
+
+@functools.lru_cache(maxsize=8)
+def _cached_defs(fmt: str) -> dict:
+    """Load and cache "<fmt>-defs.json" via resolve_defs_file's normal search order."""
+    return load_defs(f"{fmt}-defs.json")
+
+
+def _match_key(fmt: str, group_name: str, channel: str) -> str:
+    """Return the *-defs.json lookup key for *channel* in *group_name*.
+
+    PigBrother entries are keyed by the full "Group/Channel" path; every
+    other format is keyed by the bare channel name.
+    """
+    return f"{group_name}/{channel}" if fmt == "pigbrother" else channel
+
+
+def _resolve_entry_meta(group_name: str, matched: dict[str, str]) -> dict:
+    """Build a UI-ready entry for one physical channel matched across formats.
+
+    *matched* is ``{format_name: channel_name}`` for one or more formats.
+    Label/unit/description are taken from the first format (in *matched*
+    iteration order) whose field definition provides them.
+    """
+    infos = {
+        fmt: _cached_defs(fmt).get(_match_key(fmt, group_name, ch), {})
+        for fmt, ch in matched.items()
+    }
+
+    def _first(key):
+        for info in infos.values():
+            value = info.get(key)
+            if value:
+                return value
+        return None
+
+    unit = _first("unit") or ""
+    unit_str = f" [{unit}]" if unit else ""
+    label = _first("label") or _first("symbol") or next(iter(matched.values()))
+
+    return {
+        "id": group_name + "__" + "_".join(f"{f}-{c}" for f, c in sorted(matched.items())),
+        "label": f"{label}{unit_str}",
+        "description": _first("description") or "",
+        "channels": matched,
+    }
+
+
+def match_channels_across_formats(
+    channels_by_type: dict[DataType, set[str]],
+    group_name: str,
+) -> list[dict]:
+    """Match channels across formats for one group, via cross-format aliases.
+
+    *channels_by_type* is ``{DataType: {channel_names...}}`` — channels
+    actually present in *group_name*, gathered by the caller from
+    already-loaded MagnetData objects (``list_groups()``/``get_group_data()``).
+    DataTypes with no defs/aliases support (e.g. HYBRID, HTS) are silently
+    skipped. Only channels present in more than one format are returned — a
+    channel with no counterpart elsewhere isn't a comparison.
+
+    Parameters
+    ----------
+    channels_by_type:
+        ``{DataType: {channel_names...}}`` for the selected files.
+    group_name:
+        Group name the channels belong to (used for PigBrother's
+        ``"Group/Channel"`` defs-file keying).
+
+    Returns
+    -------
+    list of dict
+        Each entry has ``"id"``, ``"label"``, ``"description"``, and
+        ``"channels"`` (``{format_name: channel_name}``) — ready for direct
+        display.
+    """
+    channels_by_format: dict[str, set[str]] = {}
+    for dtype, channels in channels_by_type.items():
+        fmt = _DEFS_FILE_BY_DATATYPE.get(dtype)
+        if fmt is None:
+            continue
+        channels_by_format.setdefault(fmt, set()).update(channels)
+
+    if not channels_by_format:
+        return []
+
+    # PigBrother channels carry the group in their key ("Group/Channel"), so
+    # they are the most reliable side to resolve aliases from when present.
+    reference_fmt = (
+        "pigbrother" if "pigbrother" in channels_by_format else next(iter(channels_by_format))
+    )
+
+    entries = []
+    for channel in sorted(channels_by_format[reference_fmt]):
+        aliases = _cached_defs(reference_fmt).get(
+            _match_key(reference_fmt, group_name, channel), {}
+        ).get("aliases", {})
+
+        matched = {reference_fmt: channel}
+        for other_fmt, other_channels in channels_by_format.items():
+            if other_fmt == reference_fmt:
+                continue
+            target = aliases.get(other_fmt)
+            if target and target in other_channels:
+                matched[other_fmt] = target
+
+        # Only keep channels matched across more than one format — a
+        # standalone channel with no counterpart isn't a comparison.
+        if len(matched) > 1:
+            entries.append(_resolve_entry_meta(group_name, matched))
+
+    return entries
 
 
 # ---------------------------------------------------------------------------

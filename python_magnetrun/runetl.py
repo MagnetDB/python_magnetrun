@@ -33,11 +33,18 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase, cfg) -> None:
 
     df = data.getData()
 
+    # Never drop the GR1/GR2 reference current columns (e.g. IH/IB), even if
+    # all-zero: a magnet running on a single supply reports zeros for the
+    # unused GR, but the column is still expected downstream.
+    protected_cols = {cfg.reference_gr1_current, cfg.reference_gr2_current} - {""}
+
     # Drop all-zero columns (skip columns matched by Fkeys patterns)
     zero_cols = [
         col
         for col in df.columns
-        if (df[col] == 0).all() and not _FKEYS_PATTERN.match(col)
+        if (df[col] == 0).all()
+        and not _FKEYS_PATTERN.match(col)
+        and col not in protected_cols
     ]
     if zero_cols:
         logger.warning(

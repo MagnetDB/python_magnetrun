@@ -191,112 +191,112 @@
     "label": "I_H1",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil2": {
     "description": "Current in H2 or H3/H4",
     "label": "I_H2",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil3": {
     "description": "Current in H3 or H5/H6",
     "label": "I_H3",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil4": {
     "description": "Current in H4 or H7/H8",
     "label": "I_H4",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil5": {
     "description": "Current in H5 or H9/H10",
     "label": "I_H5",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil6": {
     "description": "Current in H6 or H11/H12",
     "label": "I_H6",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil7": {
     "description": "Current in H7 or H13/H14",
     "label": "I_H7",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil8": {
     "description": "Current in H8",
     "label": "I_H8",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil9": {
     "description": "Current in H9",
     "label": "I_H9",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil10": {
     "description": "Current in H10",
     "label": "I_H10",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil11": {
     "description": "Current in H11",
     "label": "I_H11",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil12": {
     "description": "Current in H12",
     "label": "I_H12",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil13": {
     "description": "Current in H13",
     "label": "I_H13",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil14": {
     "description": "Current in H14",
     "label": "I_H14",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil15": {
     "description": "Current in Inner Bitter",
     "label": "I_B1",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Icoil16": {
     "description": "Current in Outer Bitter",
     "label": "I_B2",
     "symbol": "I",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "Ucoil1": {
     "description": "Voltage tap on H1 or H1/H2",
@@ -710,14 +710,14 @@
     "label": "I_H",
     "symbol": "I_H",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "IB": {
     "description": "Current in Bitter insert",
     "label": "I_B",
     "symbol": "I_B",
     "unit": "ampere",
-    "group": "Courants_Aimants"
+    "group": "Courants_Alimentations"
   },
   "UH": {
     "description": "Voltage in PolyHelices insert",

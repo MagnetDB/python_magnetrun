@@ -401,7 +401,7 @@ class PandasMagnetData(MagnetDataBase):
             raise KeyError(
                 f"Group {group!r} not found. Available groups: {self.list_groups()}"
             )
-        cols = ["t"] + self.Groups[group]
+        cols = ["t", "timestamp"] + self.Groups[group]
         return self.Data[[c for c in cols if c in self.Data.columns]]
 
     # --- timestamp validation ----------------------------------------
@@ -548,6 +548,7 @@ class PandasMagnetData(MagnetDataBase):
             + [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
             + [_key for _key in self.Keys if re.match(r"Ptot", _key)]
             + [_key for _key in self.Keys if re.match(r"Idcct\d", _key)]
+            + [_key for _key in self.Keys if re.match(r"IH$|IB$", _key)]
             + [
                 _key
                 for _key in self.Keys

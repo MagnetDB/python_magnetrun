@@ -20,8 +20,10 @@ from python_magnetrun.field_defs import (
     build_crossref,
     get_aliases,
     load_defs,
+    match_channels_across_formats,
     update_field_def,
 )
+from python_magnetrun.magnetdata_base import DataType
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -276,3 +278,54 @@ class TestBuildCrossref:
                 assert isinstance(aliases, dict), (
                     f"index[{fmt!r}][{field_name!r}] is not a dict"
                 )
+
+
+# ---------------------------------------------------------------------------
+# match_channels_across_formats
+# ---------------------------------------------------------------------------
+
+
+class TestMatchChannelsAcrossFormats:
+    """Exercised against the bundled pupitre-defs.json/pigbrother-defs.json,
+    which are known to alias Idcct1 (pupitre) <-> Courants_Alimentations/Courant_A1
+    (pigbrother) — see TestAliases.test_get_aliases_bundled_pupitre_idcct1.
+    """
+
+    def test_matches_known_alias_pair(self):
+        channels_by_type = {
+            DataType.PUPITRE: {"Idcct1"},
+            DataType.TDMS: {"Courant_A1"},
+        }
+        entries = match_channels_across_formats(channels_by_type, "Courants_Alimentations")
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry["channels"] == {"pupitre": "Idcct1", "pigbrother": "Courant_A1"}
+        assert entry["label"]
+        for key in ("id", "label", "description", "channels"):
+            assert key in entry
+
+    def test_channel_without_counterpart_is_dropped(self):
+        """A channel present in only one format has nothing to compare against."""
+        channels_by_type = {DataType.PUPITRE: {"Idcct1"}}
+        entries = match_channels_across_formats(channels_by_type, "Courants_Alimentations")
+        assert entries == []
+
+    def test_unsupported_datatype_is_skipped_not_erroring(self):
+        """HYBRID has no *-defs.json/aliases support here and should be ignored,
+        while the still-comparable pupitre/pigbrother pair is still returned."""
+        channels_by_type = {
+            DataType.PUPITRE: {"Idcct1"},
+            DataType.TDMS: {"Courant_A1"},
+            DataType.HYBRID: {"whatever"},
+        }
+        entries = match_channels_across_formats(channels_by_type, "Courants_Alimentations")
+        assert len(entries) == 1
+
+    def test_only_unsupported_datatype_returns_empty(self):
+        entries = match_channels_across_formats(
+            {DataType.HYBRID: {"whatever"}}, "Courants_Alimentations"
+        )
+        assert entries == []
+
+    def test_empty_input_returns_empty(self):
+        assert match_channels_across_formats({}, "Courants_Alimentations") == []
