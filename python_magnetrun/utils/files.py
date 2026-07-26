@@ -26,10 +26,51 @@ DIR_DEFAULT: str = "Fichiers_Default"
 DIR_TRIGGER: str = "Fichiers_Manuel_Trig"
 DIR_SPIKE: str = "Fichiers_Spike"
 
+# Mapping from TDMS mode name (2nd underscore-part of filename) to subdirectory name.
+_TDMS_MODE_DIRS: dict[str, str] = {
+    "Overview": "Overview",
+    "Archive": DIR_ARCHIVE,
+    "Default": DIR_DEFAULT,
+    "Spikes": DIR_SPIKE,
+    "ManuelTrig": DIR_TRIGGER,
+}
+
+# Mapping from the same TDMS mode name to a normalized (lower-case, singular)
+# key, for callers that key styling/config off acquisition mode rather than
+# the on-disk subdirectory name (e.g. plot color/dash per PigBrother type).
+_TDMS_MODE_STYLE_KEYS: dict[str, str] = {
+    "Overview": "overview",
+    "Archive": "archive",
+    "Default": "default",
+    "Spikes": "spike",
+    "ManuelTrig": "trigger",
+}
+
 
 def get_extension(path: str) -> str:
     """Return the lower-cased file extension of *path* (e.g. ``".tdms"``)."""
     return os.path.splitext(path)[-1].lower()
+
+
+def classify_pigbrother_file(filename: str) -> str | None:
+    """Return the normalized acquisition-mode key encoded in a PigBrother filename.
+
+    PigBrother filenames follow ``{housing}_{mode}_{timestamp}[...].tdms``,
+    e.g. ``M9_Archive_251202-1430.tdms`` -> ``"archive"``. The mode is the
+    2nd underscore-part of the filename, mapped through
+    ``_TDMS_MODE_STYLE_KEYS`` (the same mode vocabulary ``expand_input_files``
+    resolves to subdirectory names via ``_TDMS_MODE_DIRS``).
+
+    :return: one of ``"overview"``, ``"archive"``, ``"default"``, ``"spike"``,
+        ``"trigger"``, or ``None`` for non-``.tdms`` files or unrecognised modes.
+    """
+    name, ext = os.path.splitext(os.path.basename(filename))
+    if ext.lower() != ".tdms":
+        return None
+    parts = name.split("_")
+    if len(parts) < 2:
+        return None
+    return _TDMS_MODE_STYLE_KEYS.get(parts[1])
 
 
 @contextlib.contextmanager
@@ -66,15 +107,6 @@ def expand_input_files(
     :return: List of expanded file paths
     :rtype: list
     """
-    # Mapping from TDMS mode name (2nd underscore-part of filename) to subdirectory name.
-    _TDMS_MODE_DIRS: dict[str, str] = {
-        "Overview": "Overview",
-        "Archive": DIR_ARCHIVE,
-        "Default": DIR_DEFAULT,
-        "Spikes": DIR_SPIKE,
-        "ManuelTrig": DIR_TRIGGER,
-    }
-
     logger.debug(f"Expanding input files ({input_patterns})...")
     expanded_files = []
     for pattern in input_patterns:

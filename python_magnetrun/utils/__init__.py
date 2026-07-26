@@ -6,7 +6,7 @@ from .downsampling_metrics import (
     evaluate_downsampling,
     evaluate_downsampling_segments,
 )
-from .files import SUPPORTED_EXTENSIONS, get_extension
+from .files import SUPPORTED_EXTENSIONS, classify_pigbrother_file, get_extension
 from .scalar_metrics import (
     calc_correlation,
     calc_euclidean,
@@ -61,6 +61,7 @@ __all__ = [
     "evaluate_downsampling",
     "evaluate_downsampling_segments",
     "SUPPORTED_EXTENSIONS",
+    "classify_pigbrother_file",
     "get_extension",
     "TXT_TIMESTAMP_FORMATS",
     "align_to_common_time",
