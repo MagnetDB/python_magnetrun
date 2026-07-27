@@ -283,6 +283,37 @@ python field_meta_example.py data/2025.11.05\ -\ 09:53:00.txt --housing M8 \
 
 ---
 
+### `field_correspondence_example.py`
+
+Prints the pupitre <-> pigbrother field correspondence for a given housing, combining
+housing-independent aliases (`*-defs.json`) with housing-dependent GR role assignments
+(`housing_config.py`). No data files needed — the correspondence is a property of the
+configuration, not of any particular run.
+
+**Usage:**
+```bash
+python field_correspondence_example.py --housing M9
+python field_correspondence_example.py --housing M8
+python field_correspondence_example.py --housing M10
+```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--housing` | `M9` | Housing name, e.g. `M8`, `M9`, `M10` |
+
+**Output:**
+
+1. Fixed field aliases (housing-independent) — e.g. `Idcct1` <-> `Courants_Alimentations/Courant_A1`.
+2. Housing-dependent role assignments — current, voltage, flow, rpm, and inlet-pressure roles
+   for GR1/GR2, showing e.g. that GR1 current is `IH` on M9 but `IB` on M8/M10. Flow/rpm/pressure
+   have no pigbrother counterpart.
+3. Per-probe voltage channels by GR — `Ucoil1`..`Ucoil16` grouped by GR1/GR2 for the housing,
+   cross-referenced with their fixed `Tensions_Aimant/Interne*`/`Externe*` pigbrother alias.
+
+---
+
 ## User Database Integration
 
 ### `userdb.py`
