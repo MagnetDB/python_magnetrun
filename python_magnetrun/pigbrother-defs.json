@@ -97,5 +97,10 @@
   "Puissances/Puissance_A2":                {"description": "Active power, converter A2",            "label": "P_A2",      "symbol": "Power", "unit": "watt"},
   "Puissances/Puissance_A3":                {"description": "Active power, converter A3",            "label": "P_A3",      "symbol": "Power", "unit": "watt"},
   "Puissances/Puissance_A4":                {"description": "Active power, converter A4",            "label": "P_A4",      "symbol": "Power", "unit": "watt"},
-  "Puissances/Puissance_Alims":             {"description": "Total active power, all converters",    "label": "P_total",   "symbol": "Power", "unit": "watt"}
+  "Puissances/Puissance_Alims":             {"description": "Total active power, all converters",    "label": "P_total",   "symbol": "Power", "unit": "watt"},
+
+  "Infos/Duration":                         {"description": "Acquisition duration",                   "label": "Duration",  "symbol": "t", "unit": "second"},
+  "Infos/Energy":                           {"description": "Total energy delivered during the run",  "label": "Energy",    "symbol": "E", "unit": "megawatt_hour"},
+  "Infos/Pmax":                             {"description": "Maximum total power during the run",     "label": "P_max",     "symbol": "P", "unit": "megawatt"},
+  "Infos/Bmax":                             {"description": "Maximum magnetic field during the run",   "label": "B_max",     "symbol": "B", "unit": "tesla"}
 }

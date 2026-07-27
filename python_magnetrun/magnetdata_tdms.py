@@ -6,7 +6,7 @@ import contextlib
 import logging
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -24,6 +24,10 @@ from .utils.timezone import (
 )
 
 logger = logging.getLogger(__name__)
+
+# LabVIEW timestamp epoch (1904-01-01 UTC), used by the TDMS "Infos" group's
+# raw Start/End scalars.
+_LABVIEW_EPOCH = pytz.utc.localize(datetime(1904, 1, 1))
 
 
 class _LazyGroupDict(dict):
@@ -1585,10 +1589,34 @@ class TdmsMagnetData(MagnetDataBase):
                 )
         return None
 
+    def _format_infos_value(self, key: str, value: Any) -> Any:
+        """Format an Infos scalar; renders Start/End LabVIEW epoch as Europe/Paris local time."""
+        if key not in ("Start", "End") or not isinstance(value, int | float):
+            return value
+        utc_dt = _LABVIEW_EPOCH + timedelta(seconds=float(value))
+        local_dt = utc_dt.astimezone(pytz.timezone("Europe/Paris"))
+        return local_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+    def _infos_unit(self, key: str, field_defs: dict) -> str:
+        """Return the abbreviated unit string for an Infos key, or "" when undefined."""
+        unit_str = field_defs.get(f"Infos/{key}", {}).get("unit")
+        if not unit_str:
+            return ""
+        from pint.errors import UndefinedUnitError
+
+        from .magnetdata_base import _make_ureg
+
+        try:
+            return f"{_make_ureg().parse_units(unit_str):~P}"
+        except UndefinedUnitError:
+            return unit_str
+
     def info(self) -> None:
         """Print a formatted summary of TDMS groups, channels, and their properties.
 
-        Prints the ``Infos`` group key/value pairs first, then a table of
+        Prints the ``Infos`` group key/value/unit rows first (with ``Start``/
+        ``End`` converted from their raw LabVIEW epoch to Europe/Paris local
+        time, and units looked up from ``self.defs_file``), then a table of
         group names, channel names, sample counts, increments, start times,
         and start offsets.  Output is written to stdout via :func:`print`.
         """
@@ -1600,17 +1628,42 @@ class TdmsMagnetData(MagnetDataBase):
 
         # Display "Infos" group content first
         if "Infos" in self.Groups:
+            field_defs: dict = {}
+            if self.defs_file is not None:
+                from .field_defs import load_defs
+
+                try:
+                    field_defs = load_defs(self.defs_file)
+                except (FileNotFoundError, ValueError) as exc:
+                    logger.warning(
+                        f"info: cannot load field definitions from {self.defs_file!r}: {exc}"
+                    )
+
             infos = self.Groups["Infos"]
             if isinstance(infos, dict):
-                info_rows = [[k, v] for k, v in infos.items()]
+                info_rows = [
+                    [k, self._format_infos_value(k, v), self._infos_unit(k, field_defs)]
+                    for k, v in infos.items()
+                ]
             else:
                 # TdmsGroup stored directly — read scalar value from each channel
                 info_rows = []
                 for ch in infos.channels():
                     data = ch.read_data()
-                    info_rows.append([ch.name, data[0] if len(data) > 0 else ""])
+                    value = data[0] if len(data) > 0 else ""
+                    info_rows.append(
+                        [
+                            ch.name,
+                            self._format_infos_value(ch.name, value),
+                            self._infos_unit(ch.name, field_defs),
+                        ]
+                    )
             if info_rows:
-                print(tabulate(info_rows, headers=["Key", "Value"], tablefmt="simple"))
+                print(
+                    tabulate(
+                        info_rows, headers=["Key", "Value", "Unit"], tablefmt="simple"
+                    )
+                )
                 print()
 
         headers = [
