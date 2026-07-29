@@ -421,6 +421,9 @@ class ThresholdConfig:
             Configuration with default threshold values
         """
         thresholds = {
+            # Field
+            "Field": 0.001,
+            "Champ_Magn": 0.001,
             # Reference and current channels (TDMS)
             "Référence_GR1": 0.5,
             "Courant_GR1": 0.5,
