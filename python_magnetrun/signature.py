@@ -114,6 +114,43 @@ class Signature:
     def values(self, value: list[float]):
         self._values = value
 
+    def compact(self) -> None:
+        """Merge consecutive regimes sharing the same tag into a single regime.
+
+        ``changes``, ``regimes``, ``times`` and ``values`` are parallel lists
+        where entry ``i`` marks the start of a regime segment tagged
+        ``regimes[i]``. Because regime detection can split a run of the same
+        tag on abrupt slope changes, the same tag may appear in several
+        consecutive entries. This method collapses each such run down to its
+        first entry, updating ``changes``, ``times`` and ``values`` in place
+        to match.
+
+        Returns
+        -------
+        None
+            The instance is updated in place.
+        """
+        if not self._regimes:
+            return
+
+        new_changes = [self._changes[0]]
+        new_regimes = [self._regimes[0]]
+        new_times = [self._times[0]]
+        new_values = [self._values[0]]
+
+        for i in range(1, len(self._regimes)):
+            if self._regimes[i] == new_regimes[-1]:
+                continue
+            new_changes.append(self._changes[i])
+            new_regimes.append(self._regimes[i])
+            new_times.append(self._times[i])
+            new_values.append(self._values[i])
+
+        self._changes = new_changes
+        self._regimes = new_regimes
+        self._times = new_times
+        self._values = new_values
+
     @classmethod
     def from_df(
         cls,

@@ -33,6 +33,81 @@ def test_signature_default():
     assert len(signature.regimes) > 0
 
 
+def test_signature_compact():
+    from datetime import datetime
+
+    from python_magnetrun.signature import Signature
+
+    signature = Signature(
+        name="Field",
+        symbol="B",
+        unit="T",
+        t0=datetime.now(),
+        timeshift=0,
+        changes=[0, 5, 10, 15, 20],
+        regimes=["U", "U", "P", "D", "D"],
+        times=[0, 5, 10, 15, 20],
+        values=[0, 10, 10, 5, 0],
+    )
+
+    signature.compact()
+
+    assert signature.changes == [0, 10, 15]
+    assert signature.regimes == ["U", "P", "D"]
+    assert signature.times == [0, 10, 15]
+    assert signature.values == [0, 10, 5]
+
+
+def test_signature_compact_no_duplicates():
+    from datetime import datetime
+
+    from python_magnetrun.signature import Signature
+
+    signature = Signature(
+        name="Field",
+        symbol="B",
+        unit="T",
+        t0=datetime.now(),
+        timeshift=0,
+        changes=[0, 5, 10],
+        regimes=["U", "P", "D"],
+        times=[0, 5, 10],
+        values=[0, 10, 5],
+    )
+
+    signature.compact()
+
+    assert signature.changes == [0, 5, 10]
+    assert signature.regimes == ["U", "P", "D"]
+    assert signature.times == [0, 5, 10]
+    assert signature.values == [0, 10, 5]
+
+
+def test_signature_compact_all_same():
+    from datetime import datetime
+
+    from python_magnetrun.signature import Signature
+
+    signature = Signature(
+        name="Field",
+        symbol="B",
+        unit="T",
+        t0=datetime.now(),
+        timeshift=0,
+        changes=[0, 5, 10],
+        regimes=["U", "U", "U"],
+        times=[0, 5, 10],
+        values=[0, 10, 20],
+    )
+
+    signature.compact()
+
+    assert signature.changes == [0]
+    assert signature.regimes == ["U"]
+    assert signature.times == [0]
+    assert signature.values == [0]
+
+
 def test_signature_plot():
     import matplotlib.axes
 
