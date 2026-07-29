@@ -35,7 +35,7 @@ def addtime(mdata: MagnetData, group: str, channel: str) -> pd.DataFrame:  # noq
 import argparse  # noqa: E402
 
 _default_input = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "data", "M9_2019.02.14-23_00_38.txt"
+    os.path.dirname(os.path.abspath(__file__)), "..", "data", "M9_2019.02.14---23_00_38.txt"
 )
 
 parser = argparse.ArgumentParser()
