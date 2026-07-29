@@ -726,7 +726,7 @@
     "unit": "volt",
     "group": "Tensions_Aimant",
     "aliases": {
-      "pigbrother": "Tensions_Aimant/ALL_INTERNES",
+      "pigbrother": "Tensions_Aimant/ALL_internes",
       "hybrid": "FEPC-AUX-LNCMI/PH_V"
     }
   },
@@ -737,7 +737,7 @@
     "unit": "volt",
     "group": "Tensions_Aimant",
     "aliases": {
-      "pigbrother": "Tensions_Aimant/ALL_EXTERNES",
+      "pigbrother": "Tensions_Aimant/ALL_externes",
       "hybrid": "FEPC-AUX-LNCMI/BITTER_V"
     }
   },
