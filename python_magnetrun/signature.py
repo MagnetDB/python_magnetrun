@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from typing import Any
 
 import pandas as pd
 import pint
@@ -275,3 +276,65 @@ class Signature:
             del data["values"]
             json.dump(data, file, indent=4)
         logger.info(f"Signature saved to {os.path.abspath(sfilename)}")
+
+    def plot(
+        self,
+        ax: Any | None = None,
+        colors: Any | None = None,
+        alpha: float = 0.2,
+        show: bool = False,
+        save: bool = False,
+        filename: str | None = None,
+    ) -> Any:
+        """Plot the signature as a time series with regime-colored overlay spans.
+
+        Draws the recorded change points (:attr:`times`, :attr:`values`) as a
+        line and overlays colored :func:`~matplotlib.axes.Axes.axvspan`
+        rectangles for each regime segment (``"U"``, ``"D"``, ``"P"``).
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes, optional
+            Axes to draw on. A new figure and axes are created if ``None``.
+        colors : PlotColors, optional
+            Regime color configuration. Defaults to
+            :data:`~python_magnetrun.plotting.style.DEFAULT_COLORS`
+            (U=green, D=red, P=blue).
+        alpha : float, optional
+            Transparency of the regime overlay spans (default ``0.2``).
+        show : bool, optional
+            Call :func:`matplotlib.pyplot.show` after plotting (default ``False``).
+        save : bool, optional
+            Save the figure to *filename* (default ``False``).
+        filename : str, optional
+            Output path used when *save* is ``True``. Defaults to
+            ``f"{self.name}_signature.png"``.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axes the signature was plotted on.
+        """
+        import matplotlib.pyplot as plt
+
+        from .analysis.plotting import plot_regimes
+        from .plotting.style import DEFAULT_COLORS
+
+        if ax is None:
+            _fig, ax = plt.subplots()
+
+        ax.plot(self.times, self.values, marker=".", label=self.name)
+        plot_regimes(ax, self.regimes, self.times, colors=colors or DEFAULT_COLORS, alpha=alpha)
+
+        ax.set_xlabel("Time [s]")
+        ax.set_ylabel(f"{self.symbol} [{self.unit}]")
+        ax.set_title(f"Signature: {self.name}")
+        ax.grid(True)
+        ax.legend()
+
+        if save:
+            plt.savefig(filename or f"{self.name}_signature.png", dpi=300)
+        if show:
+            plt.show()
+
+        return ax
