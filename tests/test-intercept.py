@@ -34,6 +34,8 @@ parser.add_argument(
 )
 parser.add_argument("--window", help="stopping criteria for nlopt", type=int, default=10)
 args, _unknown = parser.parse_known_args()
+if _unknown:
+    parser.error(f"unrecognized arguments: {' '.join(_unknown)}")
 print(f"args: {args}", flush=True)
 
 file = args.input_file

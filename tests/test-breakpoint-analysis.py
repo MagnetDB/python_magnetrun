@@ -145,6 +145,8 @@ parser.add_argument(
     "--site", help="specify a site (ex. M8, M9,...)", default="M9"
 )  # use housing instead
 args, _unknown = parser.parse_known_args()
+if _unknown:
+    parser.error(f"unrecognized arguments: {' '.join(_unknown)}")
 print(f"args: {args}", flush=True)
 
 file = args.input_file

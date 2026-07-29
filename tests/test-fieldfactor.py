@@ -35,6 +35,8 @@ parser.add_argument(
     "--window", help="stopping criteria for nlopt", type=int, default=10
 )
 args, _unknown = parser.parse_known_args()
+if _unknown:
+    parser.error(f"unrecognized arguments: {' '.join(_unknown)}")
 setup_logging(level=args.log_level, log_file=args.log_file)
 logger.debug(f"args: {args}")
 

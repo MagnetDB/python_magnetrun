@@ -46,6 +46,8 @@ parser.add_argument(
     help="enter input file (ex: ~/M9_2024.05.13---16_30_51.txt)",
 )
 args, _unknown = parser.parse_known_args()
+if _unknown:
+    parser.error(f"unrecognized arguments: {' '.join(_unknown)}")
 print(f"args: {args}", flush=True)
 
 file = args.input_file

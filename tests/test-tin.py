@@ -33,6 +33,8 @@ parser.add_argument("--list", help="list valid ikeys values", action="store_true
 parser.add_argument("--debug", help="acticate debug", action="store_true")
 parser.add_argument("--save", help="save graphs (png format)", action="store_true")
 args, _unknown = parser.parse_known_args()
+if _unknown:
+    parser.error(f"unrecognized arguments: {' '.join(_unknown)}")
 print(f"args: {args}", flush=True)
 
 # set width of bar

@@ -2,10 +2,6 @@ import argparse
 import logging
 import os
 
-import matplotlib
-
-matplotlib.use("Agg")  # non-interactive backend — must be set before any plt import
-
 import pandas as pd
 
 from python_magnetrun.cli_args import create_base_parser
@@ -22,44 +18,45 @@ _default_input = os.path.join(
 logger = logging.getLogger("python_magnetrun")
 
 
-def test_signature_default():
-    from python_magnetrun.signature import Signature
+def test_plateau_default():
+    from python_magnetrun.processing.plateaux import nplateaus
 
     mrun = MagnetRun.fromtxt("M9", "notdefined", _default_input)
     mdata = mrun.getMData()
-    signature = Signature.from_mdata(mdata, "Field", "t", 1.0e-3)
-    print(f"regimes: {len(signature.regimes)}")
-    print(signature)
-    assert len(signature.regimes) > 0
-
-
-def test_signature_plot():
-    import matplotlib.axes
-
-    from python_magnetrun.signature import Signature
-
-    mrun = MagnetRun.fromtxt("M9", "notdefined", _default_input)
-    mdata = mrun.getMData()
-    signature = Signature.from_mdata(mdata, "Field", "t", 1.0e-3)
-
-    ax = signature.plot(show=False, save=False)
-
-    assert isinstance(ax, matplotlib.axes.Axes)
-    assert len(ax.lines) > 0
-    assert len(ax.patches) == max(0, min(len(signature.regimes), len(signature.times) - 1))
+    # see utils/plateaux.py
+    pdata = nplateaus(
+        mdata,
+        xField=("t", *mrun.getUnit("t")),
+        yField=("Field", *mrun.getUnit("Field")),
+        threshold=1.0e-3,
+        num_points_threshold=600,
+        show=False,
+        save=False,
+        verbose=False,
+    )
+    print(f"plateaux: {len(pdata)}")
+    print(pdata)
+    assert len(pdata) > 0
 
 
 if __name__ == "__main__":
-    from python_magnetrun.signature import Signature  # noqa: E402
+    from python_magnetrun.processing.plateaux import nplateaus
 
     base_parser = create_base_parser()
-    parser = argparse.ArgumentParser("Record signature", parents=[base_parser])
-    parser.add_argument("--key", help="set key to consider", type=str, default="Field")
-    parser.add_argument("--window", help="set a window", type=int, default=10)
+    parser = argparse.ArgumentParser(
+        "Plateau detection for Magnetic Field", parents=[base_parser]
+    )
     parser.add_argument(
         "--threshold", help="set a threshold for detection", type=float, default=1.0e-3
     )
+    parser.add_argument(
+        "--num_points",
+        help="set num_points_threshold for detection",
+        type=int,
+        default=600,
+    )
     parser.add_argument("--save", help="activate plot", action="store_true")
+    parser.add_argument("--show", help="show plot", action="store_true")
     args, _unknown = parser.parse_known_args()
     if _unknown:
         parser.error(f"unrecognized arguments: {' '.join(_unknown)}")
@@ -100,29 +97,24 @@ if __name__ == "__main__":
                 f"File not found: {args.input_file[0]!r}\nAlso searched: {datadir}"
             )
 
+    print(
+        f"Detection threshold: {args.threshold}, num_points_threshold: {args.num_points}"
+    )
     mrun = load_mrun(file, housing, site)
 
     mdata = mrun.getMData()
 
-    # TODO get key symbol and unit from MagnetRun
-    key = args.key
-    # signature = trends(mdata, tkey, key, window=args.window, threshold=args.threshold, save=args.save, debug=True)
-    # print(signature)
+    # if tdms, use "" instead of Field
 
-    signature = Signature.from_mdata(mdata, key, "t", args.threshold)
-    print("regimes:", len(signature.regimes))
-    print(signature)
-
-    # Column names as strings
-    column_names = ["time", key]
-
-    df = pd.DataFrame(
-        {column_names[0]: signature.times, column_names[1]: signature.values}
+    pdata = nplateaus(
+        mdata,
+        xField=(tkey, *mrun.getUnit(tkey)),
+        yField=("Field", *mrun.getUnit("Field")),
+        threshold=args.threshold,
+        num_points_threshold=600,
+        show=args.show,
+        save=args.save,
+        verbose=False,
     )
-
-    basename = os.path.basename(args.input_file[0])
-    keyname = key.replace("/", "_")
-    csv_filename = basename.replace(f_extension, f"-{keyname}.csv")
-    print(f"save to {csv_filename}")
-
-    df.to_csv(csv_filename, index=False)
+    print(f"plateaux: {len(pdata)}")
+    print(pdata)
