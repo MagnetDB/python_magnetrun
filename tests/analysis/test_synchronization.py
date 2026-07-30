@@ -8,6 +8,7 @@ basic synchronization, lag computation, and regime matching.
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
+import numpy as np
 import pandas as pd
 
 from python_magnetrun.analysis.synchronization import (
@@ -18,6 +19,8 @@ from python_magnetrun.analysis.synchronization import (
     add_time_column,
     apply_lag_correction,
     check_lag_reliability,
+    compute_lag,
+    compute_lag_interpolated,
     compute_regime_score,
     compute_simple_timeshift,
     find_best_matching_regime,
@@ -496,3 +499,148 @@ class TestIntegration:
         # First timestamp should be target_t0 - 1s
         expected_t0 = target_t0 - timedelta(seconds=1)
         assert df_corrected["timestamp"].iloc[0] == expected_t0
+
+
+# =============================================================================
+# compute_lag_interpolated
+# =============================================================================
+def _gaussian_bump_df(t: np.ndarray, origin: pd.Timestamp, lag: float = 0.0) -> pd.DataFrame:
+    """Build a DataFrame with a single sharp Gaussian bump (unambiguous peak)."""
+    value = np.exp(-((t - 5.0 - lag) ** 2) / (2 * 0.5**2))
+    return pd.DataFrame({"timestamp": origin + pd.to_timedelta(t, unit="s"), "value": value})
+
+
+class TestComputeLagInterpolated:
+    """Tests for compute_lag_interpolated against mismatched/irregular rates.
+
+    ``compute_lag`` always resamples the second series to a fixed 1 s grid
+    and treats each correlation index step as 1 second, which is only valid
+    when the first series is itself ~1 Hz (e.g. Overview). These tests use a
+    120 Hz first series (like Archive) against an irregularly-sampled second
+    series (like pupitre) to show the fix.
+    """
+
+    ORIGIN = pd.Timestamp(datetime(2024, 1, 1, 0, 0, 0))
+    TRUE_LAG = 1.7  # seconds; series 2 lags behind series 1 by this much
+
+    def _mismatched_rate_fixture(self) -> tuple[dict, dict]:
+        dt1 = 1.0 / 120.0
+        t1 = np.arange(0, 10, dt1)
+        df1 = _gaussian_bump_df(t1, self.ORIGIN)
+
+        rng = np.random.default_rng(42)
+        steps = 0.4 + rng.uniform(-0.15, 0.15, size=60)
+        t2 = np.cumsum(steps)
+        t2 = t2[t2 < 10]
+        df2 = _gaussian_bump_df(t2, self.ORIGIN, lag=self.TRUE_LAG)
+
+        df1_data = {
+            "df": df1[["timestamp", "value"]],
+            "field": "value",
+            "range": {"start": 0, "end": None},
+        }
+        df2_data = {
+            "df": df2[["timestamp", "value"]],
+            "field": "value",
+            "range": {"start": 0, "end": None},
+        }
+        return df1_data, df2_data
+
+    def test_recovers_known_sub_second_lag(self):
+        """Lag should be recovered to within roughly one fine-grid step."""
+        df1_data, df2_data = self._mismatched_rate_fixture()
+        result = compute_lag_interpolated("timestamp", df1_data, df2_data)
+
+        assert isinstance(result, LagResult)
+        assert abs(result.lag.total_seconds() - self.TRUE_LAG) < 0.05
+        assert result.correlation > 0.8
+        assert result.method == "interpolated"
+
+    def test_round_trip_with_apply_lag_correction(self):
+        """Applying the returned lag via apply_lag_correction should remove it."""
+        df1_data, df2_data = self._mismatched_rate_fixture()
+        result = compute_lag_interpolated("timestamp", df1_data, df2_data)
+
+        corrected = apply_lag_correction(df2_data["df"], result.lag)
+        df2_corrected_data = {
+            "df": corrected[["timestamp", "value"]],
+            "field": "value",
+            "range": {"start": 0, "end": None},
+        }
+        residual = compute_lag_interpolated("timestamp", df1_data, df2_corrected_data)
+
+        assert abs(residual.lag.total_seconds()) < 0.02
+
+    def test_existing_compute_lag_is_unreliable_for_mismatched_rates(self):
+        """Documents the bug this function fixes: compute_lag hardcodes
+        '1 correlation index = 1 second', which is wrong when the first
+        series is not ~1 Hz (here it's 120 Hz, like Archive)."""
+        df1_data, df2_data = self._mismatched_rate_fixture()
+        old_lag = compute_lag("timestamp", df1_data, df2_data)
+
+        assert abs(old_lag.total_seconds() - self.TRUE_LAG) > 10
+
+    def test_regular_1hz_case_agrees_with_compute_lag(self):
+        """When the first series genuinely is ~1 Hz, both functions should
+        agree closely (this is the case compute_lag was designed for)."""
+        t1 = np.arange(0, 20, 1.0)
+        df1 = _gaussian_bump_df(t1, self.ORIGIN)
+        t2 = np.arange(0, 20, 1.0)
+        df2 = _gaussian_bump_df(t2, self.ORIGIN, lag=3.0)
+
+        df1_data = {
+            "df": df1[["timestamp", "value"]],
+            "field": "value",
+            "range": {"start": 0, "end": None},
+        }
+        df2_data = {
+            "df": df2[["timestamp", "value"]],
+            "field": "value",
+            "range": {"start": 0, "end": None},
+        }
+
+        new_result = compute_lag_interpolated("timestamp", df1_data, df2_data)
+        old_lag = compute_lag("timestamp", df1_data, df2_data)
+
+        assert abs(new_result.lag.total_seconds() - old_lag.total_seconds()) <= 1.0
+
+    def test_raises_when_series_too_short(self):
+        df1_data = {
+            "df": pd.DataFrame({"timestamp": [self.ORIGIN], "value": [1.0]}),
+            "field": "value",
+            "range": {"start": 0, "end": None},
+        }
+        df2_data = {
+            "df": pd.DataFrame(
+                {"timestamp": [self.ORIGIN, self.ORIGIN + timedelta(seconds=1)], "value": [1.0, 2.0]}
+            ),
+            "field": "value",
+            "range": {"start": 0, "end": None},
+        }
+        try:
+            compute_lag_interpolated("timestamp", df1_data, df2_data)
+            raise AssertionError("expected ValueError")
+        except ValueError:
+            pass
+
+    def test_raises_when_no_overlap(self):
+        t1 = np.arange(0, 5, 0.5)
+        df1 = _gaussian_bump_df(t1, self.ORIGIN)
+        t2 = np.arange(100, 105, 0.5)
+        df2 = _gaussian_bump_df(t2, self.ORIGIN)
+
+        df1_data = {
+            "df": df1[["timestamp", "value"]],
+            "field": "value",
+            "range": {"start": 0, "end": None},
+        }
+        df2_data = {
+            "df": df2[["timestamp", "value"]],
+            "field": "value",
+            "range": {"start": 0, "end": None},
+        }
+        try:
+            compute_lag_interpolated("timestamp", df1_data, df2_data)
+            raise AssertionError("expected ValueError")
+        except ValueError:
+            pass

@@ -37,6 +37,7 @@ Submodules
 - metrics: Distance and similarity metrics
 - plotting: Visualization functions
 - processing: Core data processing logic
+- field_comparison: Alias-driven pupitre <-> pigbrother field comparison
 - cli: Command-line interface and main entry point
 """
 

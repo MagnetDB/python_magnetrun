@@ -522,6 +522,120 @@ def _plot_lag_correlation(
     plt.close()
 
 
+def compute_lag_interpolated(
+    tkey: str,
+    df1_data: dict[str, Any],
+    df2_data: dict[str, Any],
+    target_dt: float | None = None,
+    max_points: int = 200_000,
+) -> LagResult:
+    """
+    Compute lag between two time series via interpolation onto a common grid.
+
+    :func:`compute_lag` always resamples the second series to a fixed 1 s
+    grid and leaves the first series at its native rate, then treats each
+    index step of the correlation as 1 second — which is only correct when
+    the first series is itself sampled at 1 Hz (e.g. Overview). Against a
+    120 Hz Archive series this silently misinterprets the lag.
+
+    This function instead interpolates *both* series onto one common grid
+    sized to the finer of their two native sampling intervals, then
+    cross-correlates and converts the winning lag index back to seconds
+    using that grid spacing — giving correct, sub-second lag precision
+    regardless of which series is faster or how irregularly either is
+    sampled.
+
+    Parameters
+    ----------
+    tkey : str
+        Name of time/index column (e.g., "timestamp").
+    df1_data : dict
+        First series data with keys "df", "field" (see :func:`compute_lag`).
+    df2_data : dict
+        Second series data (same format as *df1_data*).
+    target_dt : float, optional
+        Grid spacing in seconds. Defaults to the finer (smaller) of the two
+        series' median sampling intervals.
+    max_points : int, optional
+        Upper bound on the number of grid points; *target_dt* is coarsened
+        if necessary to stay under this bound (memory/compute guard).
+
+    Returns
+    -------
+    LagResult
+        Computed lag, with ``correlation`` and ``confidence`` populated from
+        the normalized cross-correlation peak.
+    """
+    from scipy.signal import correlate, correlation_lags
+
+    key1 = df1_data["field"]
+    key2 = df2_data["field"]
+
+    ts1 = df1_data["df"][[tkey, key1]].dropna()
+    ts2 = df2_data["df"][[tkey, key2]].dropna()
+
+    if len(ts1) < 2 or len(ts2) < 2:
+        raise ValueError(
+            f"compute_lag_interpolated: need at least 2 points per series "
+            f"(got {len(ts1)} for {key1!r}, {len(ts2)} for {key2!r})"
+        )
+
+    origin = min(ts1[tkey].iloc[0], ts2[tkey].iloc[0])
+    x1 = ((ts1[tkey] - origin) / pd.Timedelta(seconds=1)).to_numpy()
+    x2 = ((ts2[tkey] - origin) / pd.Timedelta(seconds=1)).to_numpy()
+    v1 = ts1[key1].to_numpy(dtype=float)
+    v2 = ts2[key2].to_numpy(dtype=float)
+
+    if target_dt is None:
+        target_dt = min(float(np.median(np.diff(x1))), float(np.median(np.diff(x2))))
+    if target_dt <= 0:
+        raise ValueError(f"compute_lag_interpolated: invalid target_dt={target_dt}")
+
+    overlap_start = max(x1[0], x2[0])
+    overlap_end = min(x1[-1], x2[-1])
+    if overlap_end <= overlap_start:
+        raise ValueError(
+            f"compute_lag_interpolated: no time overlap between {key1!r} and {key2!r}"
+        )
+
+    n_points = int((overlap_end - overlap_start) / target_dt) + 1
+    if n_points > max_points:
+        target_dt = (overlap_end - overlap_start) / max_points
+        n_points = max_points
+        logger.debug(
+            f"compute_lag_interpolated: coarsened target_dt to {target_dt:.6f}s "
+            f"to stay under max_points={max_points}"
+        )
+
+    grid = overlap_start + np.arange(n_points) * target_dt
+    g1 = np.interp(grid, x1, v1)
+    g2 = np.interp(grid, x2, v2)
+
+    correlation_arr = correlate(g1 - g1.mean(), g2 - g2.mean())
+    lags = correlation_lags(len(g1), len(g2), mode="full")
+    best = int(np.argmax(correlation_arr))
+    # Negated so a positive result means df2 lags behind df1 (df1 leads),
+    # consistent with compute_lag's convention and directly usable as
+    # apply_lag_correction(df2, lag) without the caller negating it.
+    lag_seconds = -float(lags[best]) * target_dt
+
+    denom = float(np.sqrt(np.sum((g1 - g1.mean()) ** 2) * np.sum((g2 - g2.mean()) ** 2)))
+    correlation = float(correlation_arr[best] / denom) if denom > 0 else 0.0
+    confidence = float(np.clip(abs(correlation), 0.0, 1.0))
+
+    logger.debug(
+        f'compute_lag_interpolated: "{key1}" vs "{key2}", target_dt={target_dt:.6f}s, '
+        f"lag={lag_seconds:.3f}s, correlation={correlation:.3f}"
+    )
+
+    return LagResult(
+        lag=timedelta(seconds=lag_seconds),
+        correlation=correlation,
+        confidence=confidence,
+        method="interpolated",
+    )
+
+
 # =============================================================================
 # Regime-based matching
 # =============================================================================

@@ -35,6 +35,7 @@ python_magnetrun/analysis/
 ├── metrics.py           # Distance metrics, DTW, correlation
 ├── plotting.py          # Visualization with downsampling
 ├── processing.py        # Main orchestration & workflow
+├── field_comparison.py  # Alias-driven pupitre <-> pigbrother field comparison
 ├── cli.py               # Logging infrastructure & CLI
 └── py.typed             # PEP 561 type checking marker
 ```
@@ -384,6 +385,59 @@ overview_dict = create_overview_dict(result)
 - `ProcessingConfig` - Workflow configuration
 - `OverviewRecord` - Complete record for one overview file
 - `ProcessingResult` - Results for multiple files
+
+### field_comparison.py - Alias-Driven Field Comparison
+
+Compares pupitre and pigbrother (Overview/Archive only — incidents and
+hybrid data are out of scope) timeseries for every field with a
+cross-format alias in `pupitre-defs.json` (see `field_defs.py`), instead of
+the housing-config-based GR1/GR2 current mapping used elsewhere in this
+module.
+
+The lag between pupitre and pigbrother is a clock-synchronization property
+of the whole acquisition, not of an individual channel, so it is computed
+**once per `(record, source)`** from the strongest signal available
+(`Idcct1`/`Courant_A1`, falling back to `Idcct3`/`Courant_A3`) and then
+reused for every field. If neither reference pair is present, that
+indicates a problem in the data files, so `compute_reference_lag` raises
+rather than silently skipping.
+
+```python
+from python_magnetrun.analysis.processing import process_overview_file, ProcessingConfig
+from python_magnetrun.analysis.field_comparison import (
+    discover_pupitre_pigbrother_fields,
+    compare_all_fields,
+    print_comparison_summary,
+)
+
+record = process_overview_file("M9_Overview_241106-091500.tdms", ProcessingConfig())
+
+# See which fields have a pupitre <-> pigbrother alias
+fields = discover_pupitre_pigbrother_fields()
+
+# Compare all of them against both Overview and Archive
+results = compare_all_fields(record, lag_method="resample_1s")
+print_comparison_summary(results)
+
+# results["Idcct1"]["overview"].metrics["distances"].correlation
+```
+
+**Key Classes:**
+- `AliasedField` - A pupitre field with its pigbrother group/channel counterpart
+- `FieldComparisonResult` - Per-field, per-source comparison outcome
+
+**Key Functions:**
+- `discover_pupitre_pigbrother_fields()` - Discover every aliased field
+- `compute_reference_lag()` - Compute the single reference lag for a source
+- `compare_field()` / `compare_all_fields()` - Compare one/all fields
+- `print_comparison_summary()` - Log a per-field/source summary
+
+`lag_method` selects the lag algorithm from `synchronization.py`:
+- `"resample_1s"` (default) - the original `compute_lag`; correct when the
+  pigbrother source is ~1 Hz (Overview), imprecise/wrong-scale otherwise.
+- `"interpolated"` - `compute_lag_interpolated`, which interpolates both
+  series onto a common fine grid before cross-correlating, giving correct
+  sub-second lag precision against 120 Hz Archive data too.
 
 ### cli.py - Logging & CLI
 

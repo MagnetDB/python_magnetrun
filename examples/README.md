@@ -314,6 +314,49 @@ python field_correspondence_example.py --housing M10
 
 ---
 
+### `field_comparison_demo.py`
+
+Demonstrates `python_magnetrun.analysis.field_comparison`: discovers pupitre <-> pigbrother
+aliased fields, computes a single reference lag per source (`Idcct1`/`Courant_A1`, falling
+back to `Idcct3`/`Courant_A3`) and compares two fields against it, then benchmarks the two
+lag algorithms in `analysis.synchronization` — `compute_lag` (fixed 1 s resample) vs.
+`compute_lag_interpolated` (common fine grid) — for timing and accuracy against a known
+injected lag. Uses synthetic data throughout, so no real Overview/Archive/pupitre files
+are needed.
+
+**Usage:**
+```bash
+# Discovery + comparison + benchmark table (no plots, fast)
+python field_comparison_demo.py
+
+# More timing repetitions / a different RNG seed for the irregular sampling
+python field_comparison_demo.py --repeat 10 --seed 7
+
+# With plots (off by default so the script stays fast/non-interactive)
+python field_comparison_demo.py --show
+python field_comparison_demo.py --output-dir ./plots
+```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--repeat` | `5` | Timing repetitions per lag method |
+| `--seed` | `0` | RNG seed for the irregular pupitre-like sampling |
+| `--show` | off | Display plots interactively (requires a display) |
+| `--output-dir` | — | Directory to save plots as PNG (created if missing) |
+
+**Output:**
+
+- Console: discovered field count, reference lag, per-field comparison summary
+  (correlation, MAPE, Euclidean), and a benchmark table (time, recovered lag,
+  absolute error) for both an Overview-like (1 Hz) and an Archive-like (120 Hz)
+  scenario.
+- With `--show`/`--output-dir`: two field-comparison overlay plots plus one
+  benchmark chart (`lag_benchmark.png`) with time and log-scaled accuracy panels.
+
+---
+
 ## User Database Integration
 
 ### `userdb.py`
