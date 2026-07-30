@@ -7,14 +7,17 @@ Overview/Archive/pupitre files are available in this repository.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
+import matplotlib
 import numpy as np
 import pandas as pd
 import pytest
 
-from python_magnetrun.analysis import field_comparison
-from python_magnetrun.analysis.field_comparison import (
+matplotlib.use("Agg")
+
+from python_magnetrun.analysis import field_comparison  # noqa: E402
+from python_magnetrun.analysis.field_comparison import (  # noqa: E402
     AliasedField,
     compare_all_fields,
     compare_field,
@@ -22,7 +25,8 @@ from python_magnetrun.analysis.field_comparison import (
     discover_pupitre_pigbrother_fields,
     print_comparison_summary,
 )
-from python_magnetrun.analysis.processing import OverviewRecord
+from python_magnetrun.analysis.processing import OverviewRecord  # noqa: E402
+from python_magnetrun.analysis.synchronization import LagResult  # noqa: E402
 
 ORIGIN = pd.Timestamp(datetime(2024, 1, 1, 0, 0, 0))
 
@@ -49,12 +53,30 @@ class TestDiscoverPupitrePigbrotherFields:
         fields = discover_pupitre_pigbrother_fields()
         by_key = {f.pupitre_key: f for f in fields}
 
-        assert by_key["Idcct1"] == AliasedField("Idcct1", "Courants_Alimentations", "Courant_A1")
-        assert by_key["Idcct3"] == AliasedField("Idcct3", "Courants_Alimentations", "Courant_A3")
-        assert by_key["Field"] == AliasedField("Field", "Courants_Alimentations", "Champ_magn")
-        assert by_key["Ucoil1"] == AliasedField("Ucoil1", "Tensions_Aimant", "Interne1")
-        assert by_key["UH"] == AliasedField("UH", "Tensions_Aimant", "ALL_internes")
-        assert by_key["UB"] == AliasedField("UB", "Tensions_Aimant", "ALL_externes")
+        assert by_key["Idcct1"] == AliasedField(
+            "Idcct1", "Courants_Alimentations", "Courant_A1",
+            pupitre_unit="ampere", pigbrother_unit="ampere", pupitre_symbol="I",
+        )
+        assert by_key["Idcct3"] == AliasedField(
+            "Idcct3", "Courants_Alimentations", "Courant_A3",
+            pupitre_unit="ampere", pigbrother_unit="ampere", pupitre_symbol="I",
+        )
+        assert by_key["Field"] == AliasedField(
+            "Field", "Courants_Alimentations", "Champ_magn",
+            pupitre_unit="tesla", pigbrother_unit="millitesla", pupitre_symbol="Bz",
+        )
+        assert by_key["Ucoil1"] == AliasedField(
+            "Ucoil1", "Tensions_Aimant", "Interne1",
+            pupitre_unit="volt", pigbrother_unit="volt", pupitre_symbol="U",
+        )
+        assert by_key["UH"] == AliasedField(
+            "UH", "Tensions_Aimant", "ALL_internes",
+            pupitre_unit="volt", pigbrother_unit="volt", pupitre_symbol="U_H",
+        )
+        assert by_key["UB"] == AliasedField(
+            "UB", "Tensions_Aimant", "ALL_externes",
+            pupitre_unit="volt", pigbrother_unit="volt", pupitre_symbol="U",
+        )
 
     def test_expected_count(self):
         # Field, Idcct1-4, Ucoil1-7, Ucoil15, Ucoil16, UH, UB
@@ -65,6 +87,23 @@ class TestDiscoverPupitrePigbrotherFields:
         fields = discover_pupitre_pigbrother_fields()
         for f in fields:
             assert "/" not in f.pupitre_key
+
+
+# =============================================================================
+# _find_combined_tap_channel
+# =============================================================================
+class TestFindCombinedTapChannel:
+    def test_finds_merged_channel_for_high_tap(self):
+        result = field_comparison._find_combined_tap_channel("Interne2", {"Interne1-2", "Interne3"})
+        assert result == "Interne1-2"
+
+    def test_no_match_for_unrelated_tap(self):
+        result = field_comparison._find_combined_tap_channel("Interne3", {"Interne1-2"})
+        assert result is None
+
+    def test_no_match_for_non_tap_channel(self):
+        result = field_comparison._find_combined_tap_channel("ALL_internes", {"Interne1-2"})
+        assert result is None
 
 
 # =============================================================================
@@ -84,30 +123,33 @@ class TestComputeReferenceLag:
         pupitre_df = _bump_df(t, {"Idcct1": (1.0, 2.0), "Idcct3": (1.0, 2.0)})
         pigbrother_df = _bump_df(t, {"Courant_A1": (1.0, 0.0), "Courant_A3": (1.0, 0.0)})
 
-        result = compute_reference_lag(
+        result, field = compute_reference_lag(
             self._record(), "overview", pupitre_df, pigbrother_df, self.REFERENCE_FIELDS
         )
         assert abs(result.lag.total_seconds() - 2.0) < 0.5
+        assert field.pupitre_key == "Idcct1"
 
     def test_falls_back_to_idcct3_when_idcct1_missing(self):
         t = np.arange(0, 20, 1.0)
         pupitre_df = _bump_df(t, {"Idcct3": (1.0, 3.0)})  # no Idcct1 column
         pigbrother_df = _bump_df(t, {"Courant_A3": (1.0, 0.0)})  # no Courant_A1 column
 
-        result = compute_reference_lag(
+        result, field = compute_reference_lag(
             self._record(), "overview", pupitre_df, pigbrother_df, self.REFERENCE_FIELDS
         )
         assert abs(result.lag.total_seconds() - 3.0) < 0.5
+        assert field.pupitre_key == "Idcct3"
 
     def test_falls_back_when_pigbrother_channel_missing(self):
         t = np.arange(0, 20, 1.0)
         pupitre_df = _bump_df(t, {"Idcct1": (1.0, 1.0), "Idcct3": (1.0, 1.0)})
         pigbrother_df = _bump_df(t, {"Courant_A3": (1.0, 0.0)})  # Courant_A1 absent
 
-        result = compute_reference_lag(
+        result, field = compute_reference_lag(
             self._record(), "overview", pupitre_df, pigbrother_df, self.REFERENCE_FIELDS
         )
         assert abs(result.lag.total_seconds() - 1.0) < 0.5
+        assert field.pupitre_key == "Idcct3"
 
     def test_raises_when_neither_pair_available(self):
         t = np.arange(0, 20, 1.0)
@@ -171,6 +213,173 @@ class TestCompareField:
 
 
 # =============================================================================
+# compare_field -- unit conversion
+# =============================================================================
+class TestCompareFieldUnitConversion:
+    def test_converts_pigbrother_unit_to_pupitre_unit(self, caplog):
+        t = np.arange(0, 20, 1.0)
+        field = AliasedField(
+            "Field", "Courants_Alimentations", "Champ_magn",
+            pupitre_unit="tesla", pigbrother_unit="millitesla",
+        )
+        # Same physical field, same shape/timing -- 1.0 tesla == 1000.0 millitesla.
+        pigbrother_df = _bump_df(t, {"Champ_magn": (1000.0, 0.0)})
+        pupitre_df = _bump_df(t, {"Field": (1.0, 0.0)})
+
+        with caplog.at_level("WARNING", logger="python_magnetrun.analysis.field_comparison"):
+            result = compare_field(field, "overview", pigbrother_df, pupitre_df)
+
+        assert result.available
+        # Without the conversion, MAPE would be ~99900% (1000x scale mismatch).
+        assert result.metrics["distances"].correlation > 0.999
+        assert result.metrics["distances"].mape < 1.0
+        assert any("unit mismatch" in r.message for r in caplog.records)
+
+    def test_no_conversion_when_units_match(self):
+        t = np.arange(0, 20, 1.0)
+        field = AliasedField(
+            "Ucoil1", "Tensions_Aimant", "Interne1",
+            pupitre_unit="volt", pigbrother_unit="volt",
+        )
+        pigbrother_df = _bump_df(t, {"Interne1": (2.0, 0.0)})
+        pupitre_df = _bump_df(t, {"Ucoil1": (2.0, 0.0)})
+
+        result = compare_field(field, "overview", pigbrother_df, pupitre_df)
+
+        assert result.available
+        assert result.metrics["distances"].correlation > 0.999
+
+    def test_raises_on_undefined_unit(self):
+        t = np.arange(0, 20, 1.0)
+        field = AliasedField(
+            "Field", "Courants_Alimentations", "Champ_magn",
+            pupitre_unit="tesla", pigbrother_unit="bogus_unit_xyz",
+        )
+        pigbrother_df = _bump_df(t, {"Champ_magn": (1000.0, 0.0)})
+        pupitre_df = _bump_df(t, {"Field": (1.0, 0.0)})
+
+        with pytest.raises(ValueError, match="cannot convert"):
+            compare_field(field, "overview", pigbrother_df, pupitre_df)
+
+    def test_raises_on_incompatible_dimensions(self):
+        t = np.arange(0, 20, 1.0)
+        field = AliasedField(
+            "Ucoil1", "Tensions_Aimant", "Interne1",
+            pupitre_unit="volt", pigbrother_unit="ampere",
+        )
+        pigbrother_df = _bump_df(t, {"Interne1": (2.0, 0.0)})
+        pupitre_df = _bump_df(t, {"Ucoil1": (2.0, 0.0)})
+
+        with pytest.raises(ValueError, match="cannot convert"):
+            compare_field(field, "overview", pigbrother_df, pupitre_df)
+
+
+# =============================================================================
+# compare_field -- plotting (lag_method/lag value in filename & title, ylabel)
+# =============================================================================
+class TestCompareFieldPlotting:
+    def _capture_plot_comparison(self, monkeypatch):
+        captured = {}
+
+        def fake_plot_comparison(df1, df2, x_col, y_col1, y_col2, **kwargs):
+            captured["df1"] = df1
+            captured["y_col1"] = y_col1
+            captured["kwargs"] = kwargs
+            return None
+
+        monkeypatch.setattr(field_comparison, "plot_comparison", fake_plot_comparison)
+        return captured
+
+    def test_filename_and_title_include_lag_method_and_value(self, monkeypatch, tmp_path):
+        captured = self._capture_plot_comparison(monkeypatch)
+        t = np.arange(0, 20, 1.0)
+        field = AliasedField("Ucoil1", "Tensions_Aimant", "Interne1")
+        pigbrother_df = _bump_df(t, {"Interne1": (2.0, 0.0)})
+        pupitre_df = _bump_df(t, {"Ucoil1": (2.0, 0.0)})
+        lag = LagResult(lag=timedelta(seconds=0.523), method="interpolated")
+
+        compare_field(
+            field, "overview", pigbrother_df, pupitre_df,
+            plot=True, output_dir=str(tmp_path), reference_lag=lag,
+        )
+
+        kwargs = captured["kwargs"]
+        assert kwargs["output_path"] == f"{tmp_path}/Ucoil1_overview_interpolated_comparison.png"
+        assert "lag_method=interpolated" in kwargs["title"]
+        assert "lag=0.523s" in kwargs["title"]
+
+    def test_filename_and_title_say_none_without_reference_lag(self, monkeypatch, tmp_path):
+        captured = self._capture_plot_comparison(monkeypatch)
+        t = np.arange(0, 20, 1.0)
+        field = AliasedField("Ucoil1", "Tensions_Aimant", "Interne1")
+        pigbrother_df = _bump_df(t, {"Interne1": (2.0, 0.0)})
+        pupitre_df = _bump_df(t, {"Ucoil1": (2.0, 0.0)})
+
+        compare_field(
+            field, "overview", pigbrother_df, pupitre_df,
+            plot=True, output_dir=str(tmp_path),
+        )
+
+        kwargs = captured["kwargs"]
+        assert kwargs["output_path"] == f"{tmp_path}/Ucoil1_overview_none_comparison.png"
+        assert "lag_method=none" in kwargs["title"]
+        assert "lag=n/a" in kwargs["title"]
+
+    def test_ylabel_uses_pupitre_symbol_and_unit(self, monkeypatch, tmp_path):
+        captured = self._capture_plot_comparison(monkeypatch)
+        t = np.arange(0, 20, 1.0)
+        field = AliasedField(
+            "Field", "Courants_Alimentations", "Champ_magn",
+            pupitre_unit="tesla", pigbrother_unit="millitesla", pupitre_symbol="Bz",
+        )
+        pigbrother_df = _bump_df(t, {"Champ_magn": (1000.0, 0.0)})
+        pupitre_df = _bump_df(t, {"Field": (1.0, 0.0)})
+
+        compare_field(
+            field, "overview", pigbrother_df, pupitre_df,
+            plot=True, output_dir=str(tmp_path),
+        )
+
+        assert captured["kwargs"]["ylabel"] == "Bz [T]"
+        # Plotted pigbrother data was converted into the pupitre unit too --
+        # amplitude should read ~1.0 (tesla), not 1000.0 (millitesla).
+        assert captured["df1"][captured["y_col1"]].max() == pytest.approx(1.0, rel=1e-6)
+
+    def test_ylabel_falls_back_to_key_without_symbol_or_unit(self, monkeypatch, tmp_path):
+        captured = self._capture_plot_comparison(monkeypatch)
+        t = np.arange(0, 20, 1.0)
+        field = AliasedField("Ucoil1", "Tensions_Aimant", "Interne1")
+        pigbrother_df = _bump_df(t, {"Interne1": (2.0, 0.0)})
+        pupitre_df = _bump_df(t, {"Ucoil1": (2.0, 0.0)})
+
+        compare_field(
+            field, "overview", pigbrother_df, pupitre_df,
+            plot=True, output_dir=str(tmp_path),
+        )
+
+        assert captured["kwargs"]["ylabel"] == "Ucoil1"
+
+    def test_saves_real_png_end_to_end(self, tmp_path):
+        t = np.arange(0, 20, 1.0)
+        field = AliasedField(
+            "Field", "Courants_Alimentations", "Champ_magn",
+            pupitre_unit="tesla", pigbrother_unit="millitesla", pupitre_symbol="Bz",
+        )
+        pigbrother_df = _bump_df(t, {"Champ_magn": (1000.0, 0.0)})
+        pupitre_df = _bump_df(t, {"Field": (1.0, 0.0)})
+        lag = LagResult(lag=timedelta(seconds=0.0), method="resample_1s")
+
+        result = compare_field(
+            field, "overview", pigbrother_df, pupitre_df,
+            plot=True, output_dir=str(tmp_path), reference_lag=lag,
+        )
+
+        expected_path = tmp_path / "Field_overview_resample_1s_comparison.png"
+        assert result.plot_path == str(expected_path)
+        assert expected_path.exists()
+
+
+# =============================================================================
 # compare_all_fields
 # =============================================================================
 class TestCompareAllFields:
@@ -228,6 +437,29 @@ class TestCompareAllFields:
         # Should not raise
         print_comparison_summary(results)
 
+    def test_lag_method_none_skips_lag_correction(self, monkeypatch):
+        self._patch_loaders(monkeypatch)
+        record = self._record()
+
+        corrected = compare_all_fields(record, fields=self.FIELDS, sources=("overview",))
+        raw = compare_all_fields(
+            record, fields=self.FIELDS, sources=("overview",), lag_method="none"
+        )
+
+        assert raw["Idcct1"]["overview"].reference_lag is None
+        assert raw["Idcct1"]["overview"].reference_field is None
+        assert raw["Idcct1"]["overview"].available
+
+        # Without lag correction, the TRUE_LAG-shifted bumps line up worse
+        # than the lag-corrected comparison -- proving no shift was applied.
+        assert (
+            raw["Idcct1"]["overview"].metrics["distances"].correlation
+            < corrected["Idcct1"]["overview"].metrics["distances"].correlation
+        )
+
+        # Should not raise
+        print_comparison_summary(raw)
+
     def test_reference_group_loaded_only_once(self, monkeypatch):
         load_calls, _ = self._patch_loaders(monkeypatch)
         record = self._record()
@@ -284,3 +516,73 @@ class TestCompareAllFields:
 
         assert "archive" not in results["Idcct1"]
         assert "overview" in results["Idcct1"]
+
+    def test_no_channel_map_skips_filtering(self, monkeypatch):
+        # record.sources is None (default OverviewRecord), so
+        # _load_overview_channel_map returns {} and no field is dropped.
+        self._patch_loaders(monkeypatch)
+        record = self._record()
+
+        results = compare_all_fields(record, fields=self.FIELDS, sources=("overview",))
+
+        assert set(results.keys()) == {"Idcct1", "Ucoil1"}
+
+    def test_drops_field_absent_from_overview_channel_map(self, monkeypatch):
+        self._patch_loaders(monkeypatch)
+        record = self._record()
+        monkeypatch.setattr(
+            field_comparison,
+            "_load_overview_channel_map",
+            lambda record: {"Courants_Alimentations": {"Courant_A1", "Courant_A3"}},
+        )
+
+        results = compare_all_fields(record, fields=self.FIELDS, sources=("overview",))
+
+        # Ucoil1 -> Tensions_Aimant/Interne1 isn't in the fake channel map,
+        # so it should be dropped entirely rather than marked unavailable.
+        assert set(results.keys()) == {"Idcct1"}
+        assert results["Idcct1"]["overview"].available
+
+    def test_redirects_field_to_merged_tap_channel(self, monkeypatch):
+        t = np.arange(0, 20, 1.0)
+        pupitre_df = _bump_df(
+            t, {"Idcct1": (1.0, self.TRUE_LAG), "Idcct3": (1.0, self.TRUE_LAG), "Ucoil2": (2.0, self.TRUE_LAG)}
+        )
+        pigbrother_data = {
+            ("overview", "Courants_Alimentations"): _bump_df(t, {"Courant_A1": (1.0, 0.0)}),
+            ("overview", "Tensions_Aimant"): _bump_df(t, {"Interne1-2": (2.0, 0.0)}),
+        }
+
+        def fake_load_pigbrother_group(record, source, group, cache):
+            key = (source, group)
+            if key not in cache:
+                cache[key] = pigbrother_data.get(key, pd.DataFrame())
+            return cache[key]
+
+        def fake_load_pupitre_fields(record, keys):
+            return pupitre_df
+
+        monkeypatch.setattr(field_comparison, "_load_pigbrother_group", fake_load_pigbrother_group)
+        monkeypatch.setattr(field_comparison, "_load_pupitre_fields", fake_load_pupitre_fields)
+        monkeypatch.setattr(
+            field_comparison,
+            "_load_overview_channel_map",
+            lambda record: {
+                "Courants_Alimentations": {"Courant_A1", "Courant_A3"},
+                "Tensions_Aimant": {"Interne1-2"},
+            },
+        )
+
+        record = self._record()
+        fields = [
+            AliasedField("Ucoil1", "Tensions_Aimant", "Interne1"),
+            AliasedField("Ucoil2", "Tensions_Aimant", "Interne2"),
+        ]
+        results = compare_all_fields(record, fields=fields, sources=("overview",))
+
+        # Ucoil1 has no standalone reading (tap 1 isn't independently
+        # wired) and is dropped entirely.
+        assert "Ucoil1" not in results
+        # Ucoil2 is redirected to the merged "Interne1-2" channel.
+        assert results["Ucoil2"]["overview"].available
+        assert results["Ucoil2"]["overview"].metrics["distances"].correlation > 0.9

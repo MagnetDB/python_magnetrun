@@ -7,10 +7,16 @@ Note: Most plotting tests use mocking to avoid actual display/save operations.
 
 from unittest.mock import MagicMock, patch
 
+import matplotlib
 import numpy as np
 import pandas as pd
+import pytest
 
-from python_magnetrun.analysis.plotting import (
+matplotlib.use("Agg")
+
+import matplotlib.dates as mdates  # noqa: E402
+
+from python_magnetrun.analysis.plotting import (  # noqa: E402
     DEFAULT_COLORS,
     # Constants
     DEFAULT_STYLE,
@@ -19,6 +25,7 @@ from python_magnetrun.analysis.plotting import (
     PlotStyle,
     create_figure_grid,
     estimate_downsample_percent,
+    plot_comparison,
     plot_incidents_markers,
     # Plotting functions
     plot_regimes,
@@ -322,6 +329,37 @@ class TestPlotDataFunction:
 
         # Verify figure was created
         mock_plt.subplots.assert_called_once()
+
+
+class TestPlotComparison:
+    """Verify x-axis handling (t vs. timestamp) in plot_comparison()."""
+
+    def test_timestamp_axis_converted_to_french_local_time(self):
+        # December -> CET (UTC+1): 10:00 UTC should render as 11:00 local.
+        t = pd.date_range("2025-12-03 10:00:00", periods=5, freq="1min")
+        df1 = pd.DataFrame({"timestamp": t, "y1": np.arange(5, dtype=float)})
+        df2 = pd.DataFrame({"timestamp": t, "y2": np.arange(5, dtype=float) * 2})
+
+        fig = plot_comparison(
+            df1, df2, x_col="timestamp", y_col1="y1", y_col2="y2",
+            show=False, save=False,
+        )
+
+        ax = fig.axes[0]
+        assert ax.get_xlabel() == "timestamp (Europe/Paris)"
+        expected_first = mdates.date2num(pd.Timestamp("2025-12-03 11:00:00"))
+        assert ax.lines[0].get_xdata()[0] == pytest.approx(expected_first)
+
+    def test_t_axis_labeled_in_seconds(self):
+        df1 = pd.DataFrame({"t": np.arange(5, dtype=float), "y1": np.arange(5, dtype=float)})
+        df2 = pd.DataFrame({"t": np.arange(5, dtype=float), "y2": np.arange(5, dtype=float) * 2})
+
+        fig = plot_comparison(
+            df1, df2, x_col="t", y_col1="y1", y_col2="y2",
+            show=False, save=False,
+        )
+
+        assert fig.axes[0].get_xlabel() == "t [s]"
 
 
 class TestPlotDataUnits:

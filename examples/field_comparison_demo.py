@@ -136,36 +136,43 @@ def run_demo(show: bool = False, output_dir: str | None = None) -> None:
         "Idcct1": AliasedField("Idcct1", "Courants_Alimentations", "Courant_A1"),
         "Idcct3": AliasedField("Idcct3", "Courants_Alimentations", "Courant_A3"),
     }
-    reference_lag = compute_reference_lag(
+    reference_lag, reference_field = compute_reference_lag(
         _FakeRecord(), "overview", pupitre_df, overview_currents, reference_fields
     )
-    print(f"\nReference lag (Idcct1 vs Courant_A1): {reference_lag.lag.total_seconds():.3f} s")
+    print(
+        f"\nReference lag ({reference_field.pupitre_key} vs "
+        f"{reference_field.pigbrother_channel}): {reference_lag.lag.total_seconds():.3f} s"
+    )
 
     pupitre_corrected = apply_lag_correction(pupitre_df, reference_lag.lag)
 
+    idcct1_result = compare_field(
+        AliasedField("Idcct1", "Courants_Alimentations", "Courant_A1"),
+        "overview",
+        overview_currents,
+        pupitre_corrected,
+        plot=plot_enabled,
+        output_dir=output_dir,
+        show=show,
+    )
+    idcct1_result.reference_lag = reference_lag
+    idcct1_result.reference_field = reference_field
+
+    ucoil1_result = compare_field(
+        AliasedField("Ucoil1", "Tensions_Aimant", "Interne1"),
+        "overview",
+        overview_voltages,
+        pupitre_corrected,
+        plot=plot_enabled,
+        output_dir=output_dir,
+        show=show,
+    )
+    ucoil1_result.reference_lag = reference_lag
+    ucoil1_result.reference_field = reference_field
+
     results = {
-        "Idcct1": {
-            "overview": compare_field(
-                AliasedField("Idcct1", "Courants_Alimentations", "Courant_A1"),
-                "overview",
-                overview_currents,
-                pupitre_corrected,
-                plot=plot_enabled,
-                output_dir=output_dir,
-                show=show,
-            )
-        },
-        "Ucoil1": {
-            "overview": compare_field(
-                AliasedField("Ucoil1", "Tensions_Aimant", "Interne1"),
-                "overview",
-                overview_voltages,
-                pupitre_corrected,
-                plot=plot_enabled,
-                output_dir=output_dir,
-                show=show,
-            )
-        },
+        "Idcct1": {"overview": idcct1_result},
+        "Ucoil1": {"overview": ucoil1_result},
     }
     print()
     print_comparison_summary(results)

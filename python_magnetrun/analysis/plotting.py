@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -500,6 +501,7 @@ def plot_comparison(
     label1: str = "Series 1",
     label2: str = "Series 2",
     title: str = "Comparison",
+    ylabel: str | None = None,
     downsample_percent: float = 100.0,
     show: bool = False,
     save: bool = False,
@@ -515,13 +517,20 @@ def plot_comparison(
     df1, df2 : pd.DataFrame
         DataFrames to compare
     x_col : str
-        X-axis column name
+        X-axis column name. ``"t"`` (elapsed seconds) is labeled ``"t [s]"``.
+        ``"timestamp"`` (absolute, naive-UTC datetime) is converted to and
+        displayed in French local time (``"Europe/Paris"``) instead of the
+        plain UTC value, labeled ``"timestamp (Europe/Paris)"``. Any other
+        column name is used verbatim as the label.
     y_col1, y_col2 : str
         Y-axis column names in each DataFrame
     label1, label2 : str
         Labels for legend
     title : str
         Plot title
+    ylabel : str, optional
+        Y-axis label, e.g. ``"Bz [tesla]"`` (symbol + unit). ``None`` leaves
+        the axis unlabeled.
     downsample_percent : float
         Percentage of data to plot (converted to DownsampleConfig internally)
     show : bool
@@ -558,6 +567,23 @@ def plot_comparison(
         .reset_index(drop=True)
     )
 
+    from python_magnetrun.plotting.matplotlib_backend import MatplotlibBackend
+    from python_magnetrun.utils.timezone import series_utc_to_local_naive
+
+    is_matplotlib = isinstance(b, MatplotlibBackend)
+    is_timestamp_axis = x_col == "timestamp"
+    if is_timestamp_axis:
+        local_ts = series_utc_to_local_naive(merged[x_col])
+        # plot_overlay() casts t_col to float64 -- pre-convert to matplotlib's
+        # date2num scale so those values survive the cast as valid date floats
+        # instead of being reinterpreted as raw epoch nanoseconds.
+        merged[x_col] = mdates.date2num(local_ts) if is_matplotlib else local_ts
+        xlabel = f"{x_col} (Europe/Paris)"
+    elif x_col == "t":
+        xlabel = f"{x_col} [s]"
+    else:
+        xlabel = x_col
+
     fig = plot_overlay(
         merged,
         [label1, label2],
@@ -568,8 +594,16 @@ def plot_comparison(
         colors=["blue", "red"],
         downsample=ds_config,
     )
-    fig._magnetrun_xlabel = x_col  # type: ignore[attr-defined]
+    fig._magnetrun_xlabel = xlabel  # type: ignore[attr-defined]
+    if ylabel:
+        fig._magnetrun_ylabel = ylabel  # type: ignore[attr-defined]
     b.finalize(fig)
+
+    if is_timestamp_axis and is_matplotlib:
+        for ax in getattr(fig, "_magnetrun_axes", None) or fig.axes:
+            ax.xaxis_date()
+            ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m-%d %H:%M:%S"))
+        fig.autofmt_xdate()
 
     if save and output_path:
         b.save(fig, Path(output_path), dpi=style.dpi)
