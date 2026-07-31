@@ -746,28 +746,28 @@
     "label": "Q_H",
     "symbol": "Q",
     "unit": "liter / second",
-    "group": "Refroidissement"
+    "group": "Hydraulics"
   },
   "FlowB": {
     "description": "Waterflow in Bitter cooling loop",
     "label": "Q_B",
     "symbol": "Q",
     "unit": "liter / second",
-    "group": "Refroidissement"
+    "group": "Hydraulics"
   },
   "RpmH": {
     "description": "Rotational speed of PolyHelices cooling loop",
     "label": "Rpm_H",
     "symbol": "Rpm",
     "unit": "rpm",
-    "group": "Refroidissement"
+    "group": "Pumps"
   },
   "RpmB": {
     "description": "Rotational speed of Bitter cooling loop",
     "label": "Rpm_B",
     "symbol": "Rpm",
     "unit": "rpm",
-    "group": "Refroidissement"
+    "group": "Pumps"
   },
   "TinH": {
     "description": "Input Temperature in primary cooling loop for PolyHelices insert",
@@ -788,7 +788,7 @@
     "label": "HP_H",
     "symbol": "P",
     "unit": "bar",
-    "group": "Refroidissement"
+    "group": "Pressures_Hydraulics"
   },
   "HPB": {
     "description": "High pressure in primary cooling loop for Bitter insert",
