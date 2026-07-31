@@ -392,7 +392,7 @@ class TestCompareAllFields:
     def _record(self) -> OverviewRecord:
         return OverviewRecord(filename="test", housing="M9")
 
-    def _patch_loaders(self, monkeypatch):
+    def _patch_loaders(self, monkeypatch, include_archive: bool = False):
         t = np.arange(0, 20, 1.0)
         pupitre_df = _bump_df(
             t, {"Idcct1": (1.0, self.TRUE_LAG), "Idcct3": (1.0, self.TRUE_LAG), "Ucoil1": (2.0, self.TRUE_LAG)}
@@ -401,6 +401,13 @@ class TestCompareAllFields:
             ("overview", "Courants_Alimentations"): _bump_df(t, {"Courant_A1": (1.0, 0.0)}),
             ("overview", "Tensions_Aimant"): _bump_df(t, {"Interne1": (2.0, 0.0)}),
         }
+        if include_archive:
+            pigbrother_data[("archive", "Courants_Alimentations")] = _bump_df(
+                t, {"Courant_A1": (1.0, 0.0)}
+            )
+            pigbrother_data[("archive", "Tensions_Aimant")] = _bump_df(
+                t, {"Interne1": (2.0, 0.0)}
+            )
 
         load_calls: list[tuple[str, str]] = []
         pupitre_key_requests: list[list[str]] = []
@@ -455,6 +462,35 @@ class TestCompareAllFields:
         assert (
             raw["Idcct1"]["overview"].metrics["distances"].correlation
             < corrected["Idcct1"]["overview"].metrics["distances"].correlation
+        )
+
+        # Should not raise
+        print_comparison_summary(raw)
+
+    def test_archive_resample_1s_skips_lag_and_warns(self, monkeypatch, caplog):
+        self._patch_loaders(monkeypatch, include_archive=True)
+        record = self._record()
+
+        with caplog.at_level("WARNING", logger="python_magnetrun.analysis.field_comparison"):
+            raw = compare_all_fields(
+                record, fields=self.FIELDS, sources=("archive",), lag_method="resample_1s"
+            )
+        none = compare_all_fields(
+            record, fields=self.FIELDS, sources=("archive",), lag_method="none"
+        )
+
+        assert raw["Idcct1"]["archive"].reference_lag is None
+        assert raw["Idcct1"]["archive"].reference_field is None
+        assert raw["Idcct1"]["archive"].available
+
+        # Same result as lag_method="none" -- no shift was computed or applied.
+        assert (
+            raw["Idcct1"]["archive"].metrics["distances"].correlation
+            == none["Idcct1"]["archive"].metrics["distances"].correlation
+        )
+
+        assert any(
+            "resample_1s" in r.message and "archive" in r.message for r in caplog.records
         )
 
         # Should not raise

@@ -647,7 +647,12 @@ def compare_all_fields(
     lag_method : {"resample_1s", "interpolated", "none"}, optional
         Reference-lag algorithm (see :func:`compute_reference_lag`). ``"none"``
         skips reference-lag computation entirely and compares pupitre data
-        against pigbrother as-is, with no shift applied.
+        against pigbrother as-is, with no shift applied. ``"resample_1s"``
+        combined with ``source="archive"`` is also skipped (with a logged
+        warning) rather than computed: that method assumes a 1 Hz native
+        rate and silently misinterprets the lag against 120 Hz Archive data
+        (see :func:`~python_magnetrun.analysis.synchronization.compute_lag_interpolated`'s
+        docstring) — use ``"interpolated"`` for reliable Archive lags.
     compute_dtw : bool, optional
         Whether to also compute DTW distance per field (slower).
     plot : bool, optional
@@ -732,6 +737,18 @@ def compare_all_fields(
             logger.info(
                 f"compare_all_fields: lag_method='none' for source={source!r} — "
                 "comparing pupitre data with no lag correction applied"
+            )
+        elif source == "archive" and lag_method == "resample_1s":
+            reference_lag, reference_field = None, None
+            pupitre_corrected = pupitre_df
+            logger.warning(
+                "compare_all_fields: lag_method='resample_1s' is unreliable for "
+                "source='archive' — it treats each cross-correlation index step as "
+                "1 second, which is only correct at a 1 Hz native rate (Overview); "
+                "against 120 Hz Archive data it silently misinterprets the lag (see "
+                "compute_lag_interpolated's docstring). Skipping lag computation for "
+                "this source — comparing pupitre data with no lag correction applied. "
+                "Use lag_method='interpolated' instead for reliable Archive lags."
             )
         else:
             reference_lag, reference_field = compute_reference_lag(
