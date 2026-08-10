@@ -55,6 +55,7 @@ from .config import (
     SAMPLING_RATE_INCIDENTS,
     HousingConfig,
 )
+from .field_comparison import discover_pupitre_pigbrother_fields
 from .loaders import (
     FileDiscovery,
     FileSet,
@@ -425,20 +426,27 @@ def load_pupitre_data(
     pupitre_keys = housing_config.get_pupitre_group_keys(group)
     logger.debug(f"pupitre_keys={pupitre_keys} from group={group}")
 
+    # Housing-independent pigbrother -> pupitre aliases (e.g. Courant_A1 -> Idcct1)
+    aliased = {
+        af.pigbrother_channel: af.pupitre_key
+        for af in discover_pupitre_pigbrother_fields()
+        if af.pigbrother_group == group
+    }
+
     logger.debug(f"Mapping keys to pupitre channels for keys={keys}")
     for key in keys:
-        pupitre_channel = housing_config.get_pupitre_current_channel(key)
+        pupitre_channel = housing_config.get_pupitre_current_channel(key) or aliased.get(key)
         logger.debug(f"pupitre_channel={pupitre_channel}, key={key}")
-        if pupitre_channel:
+        if pupitre_channel and pupitre_channel not in pupitre_keys:
             pupitre_keys.append(pupitre_channel)
 
     # Add flow parameter keys
-    pupitre_keys += housing_config.get_pupitre_flow_keys()
+    pupitre_keys += [k for k in housing_config.get_pupitre_flow_keys() if k not in pupitre_keys]
     logger.debug(f"Added flow keys, pupitre_keys={pupitre_keys}")
 
     # Add extra keys
     if extra_keys:
-        pupitre_keys.extend(extra_keys)
+        pupitre_keys.extend(k for k in extra_keys if k not in pupitre_keys)
 
     # Add standard pupitre fields
     standard_keys = ["BP", "teb", "tsb", "debitbrut", "Pmagnet", "Ptot"]
@@ -1007,9 +1015,8 @@ def process_overview_file(
     _check_overview_end_state(df_overview, record, time_zone)
 
     keys = [
-        key.replace(config.group, "")
-        for key in df_overview.columns.tolist()
-        if key.startswith(config.group)
+        key for key in df_overview.columns.tolist()
+        if key not in ("t", "timestamp")
     ]
     logger.info(f"{overview_file}: group={config.group}, keys={keys}")
 

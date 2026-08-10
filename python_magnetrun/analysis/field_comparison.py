@@ -695,7 +695,9 @@ def compare_all_fields(
             if af.pigbrother_channel in available:
                 kept.append(af)
                 continue
-            merged_channel = _find_combined_tap_channel(af.pigbrother_channel, available)
+            merged_channel = _find_combined_tap_channel(
+                af.pigbrother_channel, available
+            )
             if merged_channel is not None:
                 kept.append(replace(af, pigbrother_channel=merged_channel))
                 redirected.append((af, merged_channel))
@@ -819,6 +821,8 @@ def print_comparison_summary(
         "correlation",
         "mape [%]",
         "euclidean",
+        "rmse",
+        "mae",
         "note",
     ]
     for source, entries in by_source.items():
@@ -843,7 +847,7 @@ def print_comparison_summary(
         for pupitre_key, result in entries:
             alias = f"{result.field.pigbrother_group}/{result.field.pigbrother_channel}"
             if not result.available:
-                rows.append([pupitre_key, alias, "-", "-", "-", "-", result.reason])
+                rows.append([pupitre_key, alias, "-", "-", "-", "-", "-", "-", result.reason])
                 continue
             dist = result.metrics["distances"]
             rows.append(
@@ -854,8 +858,10 @@ def print_comparison_summary(
                     f"{dist.correlation:.3f}",
                     f"{dist.mape:.2f}",
                     f"{dist.euclidean:.3f}",
+                    f"{dist.rmse:.3f}",
+                    f"{dist.mae:.3f}",
                     "",
                 ]
             )
 
-        logger.info(f"{title}\n" + tabulate(rows, headers=headers, tablefmt="simple"))
+        print(f"{title}\n" + tabulate(rows, headers=headers, tablefmt="simple"))
