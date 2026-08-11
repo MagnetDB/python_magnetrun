@@ -162,24 +162,45 @@ class Signature:
         unit: pint.Unit,
         tkey: str,
         threshold: float,
+        window: int = 1,
         timeshift: float = 0,
         show: bool = False,
         debug: bool = False,
     ) -> "Signature":
-        """
-        Create a Signature instance from a magnetdata.
+        """Create a Signature instance from a DataFrame.
 
-        Parameters:
-        - df: pandas DataFrame containing 'regime', 'time', and 'value' columns.
-        - key: key Field
-        - symbol: Symbol of the signature.
-        - unit: Unit of the signature.
-        - tkey:
-        - threshold: threshold for regime detection.
-        - timeshift: lag in second
+        Parameters
+        ----------
+        filename : str
+            Source filename, used for plot titles when ``show``/``save`` are enabled.
+        t0 : datetime
+            Reference start time of the series.
+        df : :class:`~pandas.DataFrame`
+            DataFrame containing the ``tkey`` and ``key`` columns.
+        key : str
+            Column name of the field to analyze.
+        symbol : str
+            Symbol of the signature.
+        unit : pint.Unit
+            Unit of the signature.
+        tkey : str
+            Column name of the time axis.
+        threshold : float
+            Threshold for regime detection, in the signal's own units.
+        window : int, optional
+            ``period`` passed to :func:`~statsmodels.tsa.seasonal.seasonal_decompose`
+            for trend smoothing before thresholding (default ``1``, i.e. no smoothing).
+        timeshift : float, optional
+            Lag in seconds (default ``0``).
+        show : bool, optional
+            Display diagnostic plots (default ``False``).
+        debug : bool, optional
+            Print debug information (default ``False``).
 
-        Returns:
-        - A Signature instance.
+        Returns
+        -------
+        Signature
+            The constructed signature.
         """
         from .processing.trends import trends_df
 
@@ -187,7 +208,7 @@ class Signature:
             df,
             tkey,
             key,
-            window=1,
+            window=window,
             threshold=threshold,
             filename=filename,
             show=show,
@@ -214,20 +235,31 @@ class Signature:
         key: str,
         tkey: str,
         threshold: float,
+        window: int = 1,
         timeshift: float = 0,
     ) -> "Signature":
-        """
-        Create a Signature instance from a magnetdata.
+        """Create a Signature instance from a MagnetDataBase.
 
-        Parameters:
-        - mdata: MagnetData
-        - key: key Field
-        - tkey:
-        - threshold: threshold for regime detection.
-        - timeshift: lag in second
+        Parameters
+        ----------
+        mdata : MagnetDataBase
+            Source data object (TDMS or text-backed).
+        key : str
+            Field key to analyze (``"group/channel"`` for TDMS data).
+        tkey : str
+            Column name of the time axis.
+        threshold : float
+            Threshold for regime detection, in the signal's own units.
+        window : int, optional
+            ``period`` passed to :func:`~statsmodels.tsa.seasonal.seasonal_decompose`
+            for trend smoothing before thresholding (default ``1``, i.e. no smoothing).
+        timeshift : float, optional
+            Lag in seconds (default ``0``).
 
-        Returns:
-        - A Signature instance.
+        Returns
+        -------
+        Signature
+            The constructed signature.
         """
         from datetime import datetime
 
@@ -247,7 +279,7 @@ class Signature:
             mdata,
             tkey,
             key,
-            window=1,
+            window=window,
             threshold=threshold,
             show=False,
             save=False,
