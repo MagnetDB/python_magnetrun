@@ -19,23 +19,35 @@ from .plot import plot_bkpts
 logger = logging.getLogger(__name__)
 
 
-def display_stats(file, inputs, args, multiindex, columns, data):
+def display_stats(file, inputs, args, multiindex, columns, data, plateau_index):
     """Display and calculate statistics for MagnetRun data.
 
-    :param file: Input file path
-    :type file: str
-    :param inputs: Dictionary containing MagnetRun data for each file
-    :type inputs: dict
-    :param args: Parsed command line arguments
-    :type args: argparse.Namespace
-    :param multiindex: Multi-index for DataFrame
-    :type multiindex: list
-    :param columns: Column names for DataFrame
-    :type columns: list
-    :param data: Data rows for DataFrame
-    :type data: list
-    :return: Updated columns and data
-    :rtype: tuple
+    Parameters
+    ----------
+    file : str
+        Input file path.
+    inputs : dict
+        Dictionary containing MagnetRun data for each file.
+    args : argparse.Namespace
+        Parsed command line arguments.
+    multiindex : list
+        Two-element list of per-level index values (file basenames,
+        table/key names) used to build a :class:`~pandas.MultiIndex`
+        via ``from_product`` for the non-plateau output modes.
+    columns : list
+        Column names for the output DataFrame.
+    data : list
+        Data rows for the output DataFrame; mutated in place.
+    plateau_index : list
+        ``(file, key)`` tuples, one per row appended to `data` in the
+        ``--plateau`` branch; mutated in place and consumed via
+        :meth:`~pandas.MultiIndex.from_tuples`, since plateau rows are
+        not one-per-``(file, key)``.
+
+    Returns
+    -------
+    tuple
+        Updated `columns` and `data`.
     """
     from ..processing import stats
 
@@ -43,7 +55,8 @@ def display_stats(file, inputs, args, multiindex, columns, data):
     mrun: MagnetRun = inputs[file]["data"]
     mdata = mrun.getMData()
 
-    multiindex[0].append(os.path.basename(file).replace(extension, ""))
+    file_basename = os.path.basename(file).replace(extension, "")
+    multiindex[0].append(file_basename)
 
     if not args.plateau and not args.detect_bkpts and not args.localmax:
         result = stats.stats(mdata, display=False)
@@ -65,7 +78,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
             for key in args.keys:
                 if mdata.Type == DataType.PUPITRE:
                     logger.info(f"pupitre: stats for {key}")
-                    (symbol, unit) = mdata.getUnitKey(key)
+                    symbol, unit = mdata.getUnitKey(key)
 
                     period = 1
                     num_points_threshold = int(args.dthreshold / period)
@@ -73,10 +86,10 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                     channel = key
                 elif mdata.Type == DataType.TDMS:
                     logger.info(f"pigbrother: stats for {key}")
-                    (symbol, unit) = mdata.getUnitKey(key)
+                    symbol, unit = mdata.getUnitKey(key)
 
                     # compute num_points_threshold from dthresold
-                    (group, channel) = key.split("/")
+                    group, channel = key.split("/")
                     period = mdata.Groups[group][channel]["wf_increment"]
                     num_points_threshold = int(args.dthreshold / period)
 
@@ -117,7 +130,9 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                 if args.plateau:
                     from ..processing.plateaux import nplateaus
 
-                    logger.info(f"display plateaus for {key}")
+                    logger.info(
+                        f"display plateaus for {key} with threshold={args.threshold}, num_points_threshold={num_points_threshold}"
+                    )
                     pdata = nplateaus(
                         mdata,
                         xField=("t", "t", "s"),
@@ -135,14 +150,12 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                     df_plateaux["duration"] = df_plateaux["end"] - df_plateaux["start"]
 
                     # print only if plateaux
-                    (nrows, ncols) = df_plateaux.shape
+                    nrows, ncols = df_plateaux.shape
                     logger.debug(f"df_plateaux: {df_plateaux.shape}")
                     if nrows != 0:
-                        data.append(
-                            df_plateaux.loc[df_plateaux["duration"].idxmax()]
-                            .to_numpy()
-                            .tolist()
-                        )
+                        for row in df_plateaux.itertuples(index=False):
+                            data.append(list(row))
+                            plateau_index.append((file_basename, key))
                         # rename column value using symbol and unit
                         df_plateaux.rename(
                             columns={
@@ -154,7 +167,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                             inplace=True,
                         )
                         columns = list(df_plateaux.keys())
-                        logger.info(
+                        print(
                             tabulate(
                                 df_plateaux,
                                 headers="keys",
@@ -173,6 +186,7 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                                 stats.numpy_NaN,
                             ]
                         )
+                        plateau_index.append((file_basename, key))
                         logger.warning(
                             f"{file.replace(extension, '')}: no peaks detected - duration={mdata.getDuration()}, {mdata.getData(key).describe()}"
                         )
@@ -316,9 +330,9 @@ def display_stats(file, inputs, args, multiindex, columns, data):
                         ]
                         logger.debug(f"selected: {selected}")
                         for key in selected:
-                            (symbol, unit) = mdata.getUnitKey(key)
+                            symbol, unit = mdata.getUnitKey(key)
 
-                            (group, channel) = key.split("/")
+                            group, channel = key.split("/")
                             period = mdata.Groups[group][channel]["wf_increment"]
                             num_points_threshold = int(args.dthreshold / period)
 
@@ -419,7 +433,9 @@ def _run(args: "argparse.Namespace") -> int:
     from ..log_utils import setup_logging
     from ._shared import load_inputs
 
-    log_level = getattr(logging, getattr(args, "log_level", "WARNING").upper(), logging.WARNING)
+    log_level = getattr(
+        logging, getattr(args, "log_level", "WARNING").upper(), logging.WARNING
+    )
     setup_logging(level=log_level, log_file=getattr(args, "log_file", None))
 
     input_files, inputs, _extensions = load_inputs(args)
@@ -444,13 +460,22 @@ def _run(args: "argparse.Namespace") -> int:
     multiindex: list = [[], []]
     columns: list = []
     data: list = []
+    plateau_index: list = []
 
     for file in input_files:
         if file in inputs:
-            columns, data = display_stats(file, inputs, args, multiindex, columns, data)
+            columns, data = display_stats(
+                file, inputs, args, multiindex, columns, data, plateau_index
+            )
 
-    df = pd.DataFrame(data, pd.MultiIndex.from_product(multiindex), columns=columns)
-    print(df.to_markdown(tablefmt="simple"))
+    logger.debug(f"columns: {columns}")
+    logger.debug(f"data: {len(data)}")
+
+    if getattr(args, "plateau", False):
+        index = pd.MultiIndex.from_tuples(plateau_index, names=["file", "key"])
+    else:
+        index = pd.MultiIndex.from_product(multiindex)
+    df = pd.DataFrame(data, index, columns=columns)
     df.to_csv(f"{output}.csv")
     return 0
 
@@ -475,10 +500,16 @@ def register(sub: "argparse._SubParsersAction") -> None:
         "--threshold", type=float, default=1e-3, help="regime-detection threshold"
     )
     p.add_argument(
-        "--bthreshold", type=float, default=1e-3, help="B threshold for regime detection"
+        "--bthreshold",
+        type=float,
+        default=1e-3,
+        help="B threshold for regime detection",
     )
     p.add_argument(
-        "--dthreshold", type=float, default=10, help="duration threshold for regime detection"
+        "--dthreshold",
+        type=float,
+        default=10,
+        help="duration threshold for regime detection",
     )
     p.add_argument("--window", type=int, default=10, help="rolling window size")
     p.add_argument("--level", type=int, default=90, help="percentile level")

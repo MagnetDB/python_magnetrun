@@ -250,6 +250,7 @@ def main():
         columns = []
         data = []
         df_data = []
+        plateau_index = []
         output = "stats"
         if args.plateau:
             if not args.keys:
@@ -265,7 +266,9 @@ def main():
             output += "-bkpts"
 
         for file in inputs:
-            columns, data = display_stats(file, inputs, args, multiindex, columns, data)
+            columns, data = display_stats(
+                file, inputs, args, multiindex, columns, data, plateau_index
+            )
 
         logger.debug(
             f"concat tabs: "
@@ -277,9 +280,13 @@ def main():
         logger.debug(f"columns: {columns}")
         logger.debug(f"data: {data}")
 
+        if args.plateau:
+            index = pd.MultiIndex.from_tuples(plateau_index, names=["file", "key"])
+        else:
+            index = pd.MultiIndex.from_product(multiindex)
         df = pd.DataFrame(
             data,
-            pd.MultiIndex.from_product(multiindex),
+            index,
             columns=columns,
         )
         print(df.to_markdown(tablefmt="simple"))

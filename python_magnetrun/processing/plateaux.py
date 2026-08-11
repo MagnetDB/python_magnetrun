@@ -1,6 +1,6 @@
 #! /usr/bin/python3
-
 import logging
+import os
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -41,7 +41,7 @@ def nplateaus(
     df = pd.DataFrame()
     if Data.Type == DataType.TDMS:
         if xField[0] == "t":
-            (group, channel) = yField[0].split("/")
+            group, channel = yField[0].split("/")
 
             dt = Data.Groups[group][channel]["wf_increment"]
             df = Data.getData(yField[0])
@@ -137,6 +137,9 @@ def nplateaus(
     if show:
         plt.show()
     if save:
+        print(
+            f"save figure: {os.path.join(os.getcwd(), f'{ykey}-{xField[0]}.png')}, threshold={threshold}, min_num_points={min_number_points})"
+        )
         plt.savefig(f"{ykey}-{xField[0]}.png")
 
     plt.close()
@@ -148,7 +151,6 @@ def nplateaus(
         _start = plateau_data[i - 1]["start"]
         _end = plateau_data[i - 1]["end"]
         _value = plateau_data[i - 1]["value"]
-        # print(f'plateau[{i-1}]: _start={_start}, _end={plateau_data[i-1]["end"]}, _value={_value}')
 
         if (plateau_data[i]["start"] - _end) == 1:
             _value_diff = abs(_value / plateau_data[i]["value"] - 1)
@@ -180,7 +182,6 @@ def nplateaus(
 
         for i in reversed(drop_plateau):
             del plateau_data[i]
-
     return plateau_data
 
 
@@ -201,7 +202,7 @@ def plateaus(
     group = None
     df = pd.DataFrame()
     if Data.Type == DataType.TDMS:
-        (group, channel) = yField[0].split("/")
+        group, channel = yField[0].split("/")
         df = Data.getData([f"{group}/t", yField[0]])
         ykey = channel
     else:
@@ -254,7 +255,9 @@ def plateaus(
     outlier_idx = difference > threshold
     # print("median[%d]:" % df_[gradkey][outlier_idx].size, df_[gradkey][outlier_idx])
 
-    kw = dict(marker="o", linestyle="none", color="g", label=str(threshold), legend=True)
+    kw = dict(
+        marker="o", linestyle="none", color="g", label=str(threshold), legend=True
+    )
     df_[gradkey][outlier_idx].plot(**kw)
 
     # not needed if center=True
@@ -272,7 +275,7 @@ def plateaus(
     if save:
         # imagefile = self.Site + "_" + self.Insert
         imagefile = "plateaux"
-        (start_date, start_time, end_date, end_time) = Data.getStartDate(group)
+        start_date, start_time, end_date, end_time = Data.getStartDate(group)
 
         plt.savefig(
             f"{imagefile}_{str(start_date)}---{str(start_time)}.png",
@@ -374,8 +377,12 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("input_files", help="input txt file (ex. HL31_2018.04.13.txt)", nargs="+")
-    parser.add_argument("--difference", help="specify difference", type=float, default=2.0e-2)
+    parser.add_argument(
+        "input_files", help="input txt file (ex. HL31_2018.04.13.txt)", nargs="+"
+    )
+    parser.add_argument(
+        "--difference", help="specify difference", type=float, default=2.0e-2
+    )
     parser.add_argument(
         "--min_num_points",
         help="specify minimum number of points",
