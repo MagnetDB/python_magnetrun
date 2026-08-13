@@ -91,56 +91,56 @@
     "label": "HP_GR1",
     "symbol": "P",
     "unit": "bar",
-    "group": "Refroidissement"
+    "group": "Pressures_Hydraulics"
   },
   "HP2": {
     "description": "High pressure in primary cooling loop GR2",
     "label": "HP_GR2",
     "symbol": "P",
     "unit": "bar",
-    "group": "Refroidissement"
+    "group": "Pressures_Hydraulics"
   },
   "BP": {
     "description": "Low pressure in primary cooling loop",
     "label": "BP",
     "symbol": "P",
     "unit": "bar",
-    "group": "Refroidissement"
+    "group": "Pressures_Hydraulics"
   },
   "Flow1": {
     "description": "primary cooling loop Waterflow for GR1",
     "label": "Q_GR1",
     "symbol": "Q",
     "unit": "liter / second",
-    "group": "Refroidissement"
+    "group": "Hydraulics"
   },
   "Flow2": {
     "description": "primary cooling loop Waterflow for GR2",
     "label": "Q_GR2",
     "symbol": "Q",
     "unit": "liter / second",
-    "group": "Refroidissement"
+    "group": "Hydraulics"
   },
   "debitbrut": {
     "description": "secondary cooling loop Waterflow ",
     "label": "Q_sec",
     "symbol": "Q",
     "unit": "meter ** 3 / hour",
-    "group": "Refroidissement"
+    "group": "Hydraulics"
   },
   "Rpm1": {
     "description": "Rotational speed of primary cooling loop GR1",
     "label": "Rpm_GR1",
     "symbol": "Rpm",
     "unit": "rpm",
-    "group": "Refroidissement"
+    "group": "Pumps"
   },
   "Rpm2": {
     "description": "Rotational speed of primary cooling loop GR2",
     "label": "Rpm_GR2",
     "symbol": "Rpm",
     "unit": "rpm",
-    "group": "Refroidissement"
+    "group": "Pumps"
   },
   "Idcct1": {
     "description": "Current in A1 supply",
@@ -451,259 +451,259 @@
     "label": "dR_coil1",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil2": {
     "description": "",
     "label": "dR_coil2",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil3": {
     "description": "",
     "label": "dR_coil3",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil4": {
     "description": "",
     "label": "dR_coil4",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil5": {
     "description": "",
     "label": "dR_coil5",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil6": {
     "description": "",
     "label": "dR_coil6",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil7": {
     "description": "",
     "label": "dR_coil7",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil8": {
     "description": "",
     "label": "dR_coil8",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil9": {
     "description": "",
     "label": "dR_coil9",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil10": {
     "description": "",
     "label": "dR_coil10",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil11": {
     "description": "",
     "label": "dR_coil11",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil12": {
     "description": "",
     "label": "dR_coil12",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil13": {
     "description": "",
     "label": "dR_coil13",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil14": {
     "description": "",
     "label": "dR_coil14",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil15": {
     "description": "",
     "label": "dR_coil15",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "DRcoil16": {
     "description": "",
     "label": "dR_coil16",
     "symbol": "%",
     "unit": "percent",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Monitoring"
   },
   "Tcal1": {
     "description": "Estimated mean coil temperature in H1/H2 (calibrated from Tin1/Tin2 and Ucoil1/Icoil1)",
     "label": "T_cal1",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal2": {
     "description": "",
     "label": "T_cal2",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal3": {
     "description": "",
     "label": "T_cal3",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal4": {
     "description": "",
     "label": "T_cal4",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal5": {
     "description": "",
     "label": "T_cal5",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal6": {
     "description": "",
     "label": "T_cal6",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal7": {
     "description": "",
     "label": "T_cal7",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal8": {
     "description": "",
     "label": "T_cal8",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal9": {
     "description": "",
     "label": "T_cal9",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal10": {
     "description": "",
     "label": "T_cal10",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal11": {
     "description": "",
     "label": "T_cal11",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal12": {
     "description": "",
     "label": "T_cal12",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal13": {
     "description": "",
     "label": "T_cal13",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal14": {
     "description": "",
     "label": "T_cal14",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal15": {
     "description": "",
     "label": "T_cal15",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Tcal16": {
     "description": "",
     "label": "T_cal16",
     "symbol": "T",
     "unit": "degC",
-    "group": "Donnees_Calculees"
+    "group": "Donnees_Calculees_Refroidissement"
   },
   "Pmagnet": {
     "description": "Total power dissipated in the magnet coils (calibrated from Icoil1-16 and Ucoil1-16)",
     "label": "P_magnet",
     "symbol": "Power",
     "unit": "megawatt",
-    "group": "Donnees_Calculees"
+    "group": "Puissances"
   },
   "PowerH": {
     "description": "Total power dissipated in insert H1-H14 (calibrated from Icoil1-14 and Ucoil1-14)",
     "label": "P_H",
     "symbol": "Power",
     "unit": "megawatt",
-    "group": "Donnees_Calculees"
+    "group": "Puissances"
   },
   "PowerB": {
     "description": "Total power dissipated in insert B1-B14 (calibrated from Icoil1-14 and Ucoil1-14)",
     "label": "P_B",
     "symbol": "Power",
     "unit": "megawatt",
-    "group": "Donnees_Calculees"
+    "group": "Puissances"
   },
   "Ptot": {
     "description": "Total power dissipated in the system: Pmagnet + pump power + other loads)",
     "label": "P_tot",
     "symbol": "Power",
     "unit": "megawatt",
-    "group": "Donnees_Calculees"
+    "group": "Puissances"
   },
   "Q": {
     "description": "",
     "label": "P_reac",
     "symbol": "Preac",
     "unit": "megavar",
-    "group": "Donnees_Calculees"
+    "group": "Puissances"
   },
   "IH": {
     "description": "Current in PolyHelices insert",
@@ -795,27 +795,27 @@
     "label": "HP_B",
     "symbol": "P",
     "unit": "bar",
-    "group": "Refroidissement"
+    "group": "Pressures_Hydraulics"
   },
   "Power": {
     "description": "Total power dissipated in the system",
     "label": "P_total",
     "symbol": "Power",
     "unit": "megawatt",
-    "group": "Donnees_Calculees"
+    "group": "Puissances"
   },
   "PeH": {
     "description": "Power dissipated in PolyHelices insert",
     "label": "P_H",
     "symbol": "Power",
     "unit": "megawatt",
-    "group": "Donnees_Calculees"
+    "group": "Puissances"
   },
   "PeB": {
     "description": "Power dissipated in Bitter insert",
     "label": "P_B",
     "symbol": "Power",
     "unit": "megawatt",
-    "group": "Donnees_Calculees"
+    "group": "Puissances"
   }
 }
