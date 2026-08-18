@@ -98,7 +98,7 @@ A `.devcontainer` configuration is provided for VS Code / GitHub Codespaces.
 
 ### `Pupitre`
 
-`Pupitre` is the LNCMI magnet control/monitoring system. It records time-series data for each magnet run (currents, voltages, temperatures, water-flow rates, …) and saves them as plain-text (`.txt`) files named after the magnet site and the start timestamp, e.g.:
+`Pupitre` is the LNCMI magnet control/monitoring system. It records time-series data for each magnet run (currents, voltages, temperatures, water-flow rates, …) and saves them as plain-text (`.txt`) files named after the magnet assembly and the start timestamp, e.g.:
 
 ```
 M9_2024.05.09---16_34_03.txt
@@ -112,7 +112,7 @@ See [Mounting Data Directories](#mounting-data-directories) for how to access `P
 
 `PigBrother` is a secondary surveillance/monitoring system that records data independently of `Pupitre`, typically at a higher sampling rate and with a wider set of voltage and current channels. Data are stored as National Instruments TDMS (`.tdms`) files.
 
-Files are organised by magnet site and acquisition type under a base directory:
+Files are organised by magnet assembly and acquisition type under a base directory:
 
 ```
 <pigbrother_datadir>/
@@ -1312,7 +1312,7 @@ python3 examples/corr_Ih_Ib.py \
 
 ### Field factor identification
 
-Estimate the field factors (fH, fB) for a given magnet site via OLS regression:
+Estimate the field factors (fH, fB) for a given magnet assembly via OLS regression:
 
 ```bash
 python3 tests/test-fieldfactor.py \
