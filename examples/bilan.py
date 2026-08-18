@@ -28,27 +28,27 @@ tdms_file_path = tdms_files[0]
 
 filename = os.path.basename(tdms_file_path)
 index = filename.index("_")
-site = filename[0:index]
+assembly = filename[0:index]
 
 # get insert name from magnetdb
 insert = "tututu"
-print(f"site={site}, insert={insert}")
-tdms_data = MagnetRun.fromtdms(site, insert, tdms_file_path).getMData()
+print(f"assembly={assembly}, insert={insert}")
+tdms_data = MagnetRun.fromtdms(assembly, insert, tdms_file_path).getMData()
 
 # Load pupitre file ( make it more general)
 pupitre = filename.replace(".tdms", "")
 print(f"pupitre={pupitre}")
-(site, ftype, date) = pupitre.split("_")
-print(f"site={site}, ftype={ftype}, date={date}")
+(assembly, ftype, date) = pupitre.split("_")
+print(f"assembly={assembly}, ftype={ftype}, date={date}")
 time = date.split("-")
 print(f"time={time}")
-pupitre_pattern = f"{site}_20{time[0][0:2]}.{time[0][2:4]}.{time[0][4:]}---{time[1][0:2]}:{time[1][2:]}:*.txt"
+pupitre_pattern = f"{assembly}_20{time[0][0:2]}.{time[0][2:4]}.{time[0][4:]}---{time[1][0:2]}:{time[1][2:]}:*.txt"
 print(f'pupitre_pattern="{pupitre_pattern}"')
 
 pupitre_files = expand_input_files([pupitre_pattern], {".txt": args.pupitre_datadir})
 # just get the first one for the moment, eg. "srvdata/M10_2024.10.14---09:51:32.txt"
 pupitre_file_path = pupitre_files[0]
-pupitre_data = MagnetRun.fromtxt(site, insert, pupitre_file_path).getMData()
+pupitre_data = MagnetRun.fromtxt(assembly, insert, pupitre_file_path).getMData()
 
 # Add data for HT tension to pigbrother
 # watch out HT tension data are derived from sinusoidal signals

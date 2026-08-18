@@ -98,29 +98,29 @@ def main():
         filename = os.path.basename(file)
         insert = args.insert if args.insert else "notdefined"
         housing = args.housing if args.housing else "notdefined"
-        site = args.site if args.site else "notdefined"
+        assembly = args.assembly if args.assembly else "notdefined"
         result = filename.startswith("M")
         if result:
             try:
                 index = filename.index("_")
                 housing = filename[0:index] if housing == "notdefined" else housing
-                # print(f"site detected: {site}")
+                # print(f"assembly detected: {assembly}")
             except ValueError:
                 logger.warning(
-                    f"{file}: no site detected - use args.site argument instead"
+                    f"{file}: no assembly detected - use args.assembly argument instead"
                 )
                 continue
         if args.log_level == "DEBUG":
-            logger.debug(f"housing={housing}, site={site}")
+            logger.debug(f"housing={housing}, assembly={assembly}")
 
         try:
             match f_extension:
                 case ".txt":
-                    mrun = MagnetRun.fromtxt(housing=housing, site=site, filename=file)
+                    mrun = MagnetRun.fromtxt(housing=housing, assembly=assembly, filename=file)
                 case ".tdms":
-                    mrun = MagnetRun.fromtdms(housing=housing, site=site, filename=file)
+                    mrun = MagnetRun.fromtdms(housing=housing, assembly=assembly, filename=file)
                 case ".csv":
-                    mrun = MagnetRun.fromcsv(housing=housing, site=site, filename=file)
+                    mrun = MagnetRun.fromcsv(housing=housing, assembly=assembly, filename=file)
                 case _:
                     raise RuntimeError(
                         f"so far file with extension in {supported_formats} are implemented"
@@ -166,7 +166,7 @@ def main():
                 base_dir=args.hybrid_datadir,
                 date_str=args.hybrid_date,
                 fepc_system=args.fepc_system,
-                site=args.site or "",
+                assembly=args.assembly or "",
             )
             inputs["hybrid"] = {"data": hrun}
             logger.info(

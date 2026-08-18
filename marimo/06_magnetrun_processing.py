@@ -90,9 +90,9 @@ def _(file_input, housing_input, mo):
 
     match _ext:
         case ".txt":
-            mrun = MagnetRun.fromtxt(housing=_housing, site="", filename=_path)
+            mrun = MagnetRun.fromtxt(housing=_housing, assembly="", filename=_path)
         case ".tdms":
-            mrun = MagnetRun.fromtdms(housing=_housing, site="", filename=_path)
+            mrun = MagnetRun.fromtdms(housing=_housing, assembly="", filename=_path)
         case _:
             mo.stop(True, mo.callout(mo.md(f"Unsupported extension: `{_ext}`"), kind="danger"))
 

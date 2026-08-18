@@ -213,7 +213,7 @@ if __name__ == "__main__":
 
     base_parser = create_base_parser()
     parser = argparse.ArgumentParser(parents=[base_parser])
-    parser.add_argument("--plot", help="acticate plot", action="store_true")
+    parser.add_argument("--plot", help="activate plot", action="store_true")
     parser.add_argument("--save", help="activate plot", action="store_true")
     parser.add_argument("--normalize", help="normalize data", action="store_true")
 
@@ -251,17 +251,16 @@ if __name__ == "__main__":
             )
 
         filename = os.path.basename(file)
-        result = filename.startswith("M")
-        insert = "tututu"
-        site = "tttt"
+        assembly = "tututu"
+        housing = "tttt"
 
         try:
             index = filename.index("_")
-            site = filename[0:index]
+            housing = filename[0:index]
 
             match f_extension:
                 case ".tdms":
-                    mrun = MagnetRun.fromtdms(site, insert, file)
+                    mrun = MagnetRun.fromtdms(housing, assembly, file)
                 case _:
                     raise RuntimeError(
                         f"so far file with extension in {supported_formats} are implemented"

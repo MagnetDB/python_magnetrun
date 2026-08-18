@@ -33,8 +33,8 @@ class BFieldRun:
         Underlying :class:`~python_magnetrun.magnetdata_pandas.BProfileMagnetData`.
     housing:
         Housing identifier (e.g. ``"M8"``).
-    site:
-        Site identifier (e.g. ``"grenoble"``).
+    assembly:
+        Assembly identifier (e.g. ``"M9Ch1Lips"``).
     measurement_time:
         UTC datetime of the measurement.  When ``None``, :meth:`get_time_range`
         raises :exc:`NotImplementedError`.
@@ -44,12 +44,12 @@ class BFieldRun:
         self,
         data: BProfileMagnetData,
         housing: str = "unknown",
-        site: str = "",
+        assembly: str = "",
         measurement_time: datetime | None = None,
     ) -> None:
         self._data = data
         self.Housing = housing
-        self.Site = site
+        self.Assembly = assembly
         self._measurement_time = measurement_time
 
     # ------------------------------------------------------------------
@@ -61,14 +61,14 @@ class BFieldRun:
         cls,
         filename: str,
         housing: str = "",
-        site: str = "",
+        assembly: str = "",
         measurement_time: datetime | None = None,
     ) -> BFieldRun:
         """Create from a B-profile CSV file (Index, Position, Profile columns)."""
         from ..magnetdata_pandas import BProfileMagnetData
 
         data = BProfileMagnetData.frombprofile(filename)
-        return cls(data, housing=housing, site=site, measurement_time=measurement_time)
+        return cls(data, housing=housing, assembly=assembly, measurement_time=measurement_time)
 
     # ------------------------------------------------------------------
     # DataLoader protocol
@@ -83,8 +83,8 @@ class BFieldRun:
     def getType(self) -> int:
         return int(self._data.Type)
 
-    def getSite(self) -> str:
-        return self.Site
+    def getAssembly(self) -> str:
+        return self.Assembly
 
     def getHousing(self) -> str:
         return self.Housing

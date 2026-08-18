@@ -142,7 +142,7 @@ _default_input = os.path.join(
 parser = argparse.ArgumentParser()
 parser.add_argument("input_file", nargs="?", default=_default_input, help="enter input file")
 parser.add_argument(
-    "--site", help="specify a site (ex. M8, M9,...)", default="M9"
+    "--assembly", help="specify an assembly (ex. M8, M9,...)", default="M9"
 )  # use housing instead
 args, _unknown = parser.parse_known_args()
 if _unknown:
@@ -152,12 +152,12 @@ print(f"args: {args}", flush=True)
 file = args.input_file
 filename = os.path.basename(file)
 index = filename.index("_")
-site = filename[0:index]
-print(f"site detected: {site}")
+assembly = filename[0:index]
+print(f"assembly detected: {assembly}")
 
 insert = "tututu"
 
-mrun = MagnetRun.fromtxt(site, insert, file)
+mrun = MagnetRun.fromtxt(assembly, insert, file)
 
 data = mrun.getData("Field").to_numpy().reshape(-1)
 

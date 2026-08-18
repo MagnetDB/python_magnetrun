@@ -146,13 +146,13 @@ class TestJSONFormatter:
             args=(),
             exc_info=None,
         )
-        record.extra_data = {"file": "test.tdms", "site": "M9"}
+        record.extra_data = {"file": "test.tdms", "assembly": "M9"}
 
         output = formatter.format(record)
         parsed = json.loads(output)
 
         assert parsed["extra"]["file"] == "test.tdms"
-        assert parsed["extra"]["site"] == "M9"
+        assert parsed["extra"]["assembly"] == "M9"
 
 
 class TestSetupLogging:
@@ -354,7 +354,7 @@ class TestLogContext:
 
     def test_context_applied(self):
         """Test that context is applied to records."""
-        with LogContext(file="test.tdms", site="M9"):
+        with LogContext(file="test.tdms", assembly="M9"):
             factory = logging.getLogRecordFactory()
             record = factory(
                 name="test",
@@ -368,7 +368,7 @@ class TestLogContext:
 
             assert hasattr(record, "extra_data")
             assert record.extra_data["file"] == "test.tdms"
-            assert record.extra_data["site"] == "M9"
+            assert record.extra_data["assembly"] == "M9"
 
     def test_context_removed_after_exit(self):
         """Test that context is removed after exit."""
@@ -499,7 +499,7 @@ class TestMain:
         mock_natsorted.return_value = ["test.tdms"]
         mock_record = MagicMock()
         mock_record.filename = "test"
-        mock_record.site = "M9"
+        mock_record.assembly = "M9"
         mock_record.mode = "overview"
         mock_record.t0 = None
         mock_record.duration = 100.0

@@ -883,7 +883,7 @@ def _run(args: "argparse.Namespace") -> int:
                 base_dir=args.hybrid_datadir,
                 date_str=args.hybrid_date,
                 fepc_system=getattr(args, "fepc_system", "FEPC-LNCMI"),
-                site=getattr(args, "site", "") or "",
+                assembly=getattr(args, "assembly", "") or "",
             )
             inputs["hybrid"] = {"data": hrun}
         except (OSError, ValueError, RuntimeError) as e:

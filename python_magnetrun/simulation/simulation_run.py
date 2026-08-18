@@ -29,8 +29,8 @@ class SimulationRun:
         Underlying pandas-backed data object.
     housing:
         Housing identifier (e.g. ``"M8"``).
-    site:
-        Site identifier (e.g. ``"grenoble"``).
+    assembly:
+        Assembly identifier (e.g. ``"M9Ch1Lips"``).
     time_column:
         Column name to use as the time axis for :meth:`get_time_range`.
         Simulation data may be steady-state (no time column) or transient.
@@ -40,12 +40,12 @@ class SimulationRun:
         self,
         data: PandasMagnetData,
         housing: str = "unknown",
-        site: str = "",
+        assembly: str = "",
         time_column: str | None = None,
     ) -> None:
         self._data = data
         self.Housing = housing
-        self.Site = site
+        self.Assembly = assembly
         self._time_column = time_column
 
     # ------------------------------------------------------------------
@@ -57,21 +57,21 @@ class SimulationRun:
         cls,
         filename: str,
         housing: str = "",
-        site: str = "",
+        assembly: str = "",
         time_column: str | None = None,
     ) -> SimulationRun:
         """Create from an Ensight CSV file."""
         from ..magnetdata_pandas import EnsightMagnetData
 
         data = EnsightMagnetData.fromensight(filename)
-        return cls(data, housing=housing, site=site, time_column=time_column)
+        return cls(data, housing=housing, assembly=assembly, time_column=time_column)
 
     @classmethod
     def from_feelpp(
         cls,
         filename: str,
         housing: str = "",
-        site: str = "",
+        assembly: str = "",
         skiprows: int = 0,
         time_column: str | None = None,
     ) -> SimulationRun:
@@ -79,21 +79,21 @@ class SimulationRun:
         from ..magnetdata_pandas import FeelppMagnetData
 
         data = FeelppMagnetData.fromfeelpp(filename, skiprows=skiprows)
-        return cls(data, housing=housing, site=site, time_column=time_column)
+        return cls(data, housing=housing, assembly=assembly, time_column=time_column)
 
     @classmethod
     def from_magnettools(
         cls,
         filename: str,
         housing: str = "",
-        site: str = "",
+        assembly: str = "",
         time_column: str | None = None,
     ) -> SimulationRun:
         """Create from a magnettools output file (stub — format TBD)."""
         from .magnettools_reader import load_magnettools
 
         data = load_magnettools(filename)
-        return cls(data, housing=housing, site=site, time_column=time_column)
+        return cls(data, housing=housing, assembly=assembly, time_column=time_column)
 
     # ------------------------------------------------------------------
     # DataLoader protocol
@@ -108,8 +108,8 @@ class SimulationRun:
     def getType(self) -> int:
         return int(self._data.Type)
 
-    def getSite(self) -> str:
-        return self.Site
+    def getAssembly(self) -> str:
+        return self.Assembly
 
     def getHousing(self) -> str:
         return self.Housing

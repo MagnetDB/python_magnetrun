@@ -26,13 +26,13 @@ def load_record(file: str, args, show: bool = False) -> MagnetDataBase:
     filename = os.path.basename(file)
     extension = os.path.splitext(filename)[-1]
     housing = args.housing if args.housing != "notdefined" else filename.split("_")[0]
-    site = args.site
+    assembly = args.assembly
 
     try:
         if extension == ".txt":
-            mrun = MagnetRun.fromtxt(housing, site, file)
+            mrun = MagnetRun.fromtxt(housing, assembly, file)
         elif extension == ".tdms":
-            mrun = MagnetRun.fromtdms(site, housing, file)
+            mrun = MagnetRun.fromtdms(housing, assembly, file)
         else:
             raise RuntimeError(f"unsupported file extension: {extension}")
     except RuntimeError:

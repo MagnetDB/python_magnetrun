@@ -22,12 +22,13 @@ Example usage:
     data_ds = hrun.getData("kHz/FEPC-LNCMI/I_H1", downsample=10000)
 
     # Compare with MagnetRun
-    mrun = MagnetRun.fromtdms(housing, site, tdms_file)
+    mrun = MagnetRun.fromtdms(housing, assembly, tdms_file)
     # Both have similar interfaces for getData(), getKeys(), etc.
 """
 
 import logging
 import os
+import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -359,8 +360,8 @@ class HybridRun:
     ----------
     housing : str
         Housing name (for MagnetRun compatibility)
-    site : str
-        Site identifier (e.g., 'Hybrid')
+    assembly : str
+        Assembly identifier (e.g., 'Hybrid')
     data : HybridData
         HybridData instance
     start_time : datetime, optional
@@ -387,12 +388,12 @@ class HybridRun:
     def __init__(
         self,
         housing: str = "Hybrid",
-        site: str = "",
+        assembly: str = "",
         data: HybridData | None = None,
         start_time: datetime | None = None,
     ):
         self.Housing = housing
-        self.Site = site
+        self.Assembly = assembly
         self.HybridData = data
         self.StartTime = start_time
 
@@ -415,7 +416,7 @@ class HybridRun:
         fepc_system: str | None = None,
         endian: str = "big",
         housing: str = "Hybrid",
-        site: str = "",
+        assembly: str = "",
         defs_file: str | None = None,
     ) -> "HybridRun":
         """
@@ -435,8 +436,8 @@ class HybridRun:
             Endianness for binary data
         housing : str
             Housing name (for compatibility)
-        site : str
-            Site identifier
+        assembly : str
+            Assembly identifier
 
         Returns
         -------
@@ -455,7 +456,7 @@ class HybridRun:
 
         return cls(
             housing=housing,
-            site=site or date_str,
+            assembly=assembly or date_str,
             data=data,
             start_time=start_time,
         )
@@ -463,11 +464,11 @@ class HybridRun:
     def __repr__(self):
         if self.HybridData:
             return (
-                f"HybridRun(Housing={self.Housing!r}, Site={self.Site!r}, "
+                f"HybridRun(Housing={self.Housing!r}, Assembly={self.Assembly!r}, "
                 f"date={self.HybridData.date_str}, "
                 f"systems={self.HybridData._info.fepc_systems})"
             )
-        return f"HybridRun(Housing={self.Housing!r}, Site={self.Site!r})"
+        return f"HybridRun(Housing={self.Housing!r}, Assembly={self.Assembly!r})"
 
     # -------------------------------------------------------------------------
     # MagnetRun-compatible interface
@@ -479,17 +480,33 @@ class HybridRun:
             return self.HybridData.FileName
         return ""
 
-    def getSite(self) -> str:
-        """Returns Site"""
-        return self.Site
+    def getAssembly(self) -> str:
+        """Returns Assembly"""
+        return self.Assembly
+
+    def getSite(self) -> str:  # noqa: N802
+        warnings.warn(
+            "getSite() is deprecated, use getAssembly() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.getAssembly()
 
     def getHousing(self) -> str:
         """Returns Housing"""
         return self.Housing
 
-    def setSite(self, site: str) -> None:
-        """Set Site"""
-        self.Site = site
+    def setAssembly(self, assembly: str) -> None:
+        """Set Assembly"""
+        self.Assembly = assembly
+
+    def setSite(self, site: str) -> None:  # noqa: N802
+        warnings.warn(
+            "setSite() is deprecated, use setAssembly() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.setAssembly(site)
 
     def getType(self) -> int:
         """Returns Data Type"""

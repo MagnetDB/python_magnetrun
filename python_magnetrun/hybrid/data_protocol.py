@@ -13,7 +13,7 @@ Example::
     from python_magnetrun.hybrid.data_protocol import DataLoader, load_and_compare
 
     # Both MagnetRun and HybridRun implement DataLoader protocol
-    mrun: DataLoader = MagnetRun.fromtdms(housing, site, file)
+    mrun: DataLoader = MagnetRun.fromtdms(housing, assembly, file)
     hrun: DataLoader = HybridRun.fromdir(base_dir, date_str)
 
     # Generic function that works with any DataLoader
@@ -127,8 +127,8 @@ class DataLoader(Protocol):
         """
         ...
 
-    def getSite(self) -> str:
-        """Get site identifier"""
+    def getAssembly(self) -> str:
+        """Get assembly identifier"""
         ...
 
     def getHousing(self) -> str:

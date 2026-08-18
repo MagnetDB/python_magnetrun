@@ -384,9 +384,15 @@ def create_base_parser(
             parser.add_argument("input_file", nargs="+", help="enter input file")
 
     parser.add_argument(
-        "--site",
-        help="specify a site (ex. M9_M25032101_0)",
+        "--assembly",
+        dest="assembly",
+        help="specify an assembly (ex. M9_M25032101_0)",
         default="notdefined",
+    )
+    parser.add_argument(
+        "--site",
+        dest="assembly",
+        help=argparse.SUPPRESS,  # deprecated alias for --assembly, kept for one release cycle
     )
     parser.add_argument(
         "--insert", help="specify an insert (ex: M25032101)", default="notdefined"

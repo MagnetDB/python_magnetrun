@@ -5,6 +5,7 @@
 import datetime
 import json
 import logging
+import warnings
 from typing import Any
 
 from .connect import download
@@ -16,22 +17,22 @@ class MRecord:
     """
     timestamp
     housing
-    site
+    assembly
     link
     """
 
-    def __init__(self, timestamp: datetime.datetime, housing: str, site: str, link: str) -> None:
+    def __init__(self, timestamp: datetime.datetime, housing: str, assembly: str, link: str) -> None:
         """default constructor"""
         self.timestamp = timestamp
         self.housing = housing
-        self.site = site
+        self.assembly = assembly
         self.link = link
 
     def __repr__(self) -> str:
         """
         representation of object
         """
-        return f"{self.__class__.__name__}(timestamp={self.timestamp!r}, housing={self.housing!r}, site={self.site!r}, link={self.link!r})"
+        return f"{self.__class__.__name__}(timestamp={self.timestamp!r}, housing={self.housing!r}, assembly={self.assembly!r}, link={self.link!r})"
 
     def getTimestamp(self) -> datetime.datetime:
         """get timestamp"""
@@ -41,9 +42,17 @@ class MRecord:
         """get experimental site"""
         return self.housing
 
-    def getSite(self) -> str:
-        """get experimental site magnet"""
-        return self.site
+    def getAssembly(self) -> str:
+        """get experimental assembly magnet"""
+        return self.assembly
+
+    def getSite(self) -> str:  # noqa: N802
+        warnings.warn(
+            "getSite() is deprecated, use getAssembly() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.getAssembly()
 
     def getLink(self) -> str:
         """get link"""
@@ -53,9 +62,17 @@ class MRecord:
         """set timestamp"""
         self.timestamp = timestamp
 
-    def setSite(self, site: str) -> None:
-        """set Site"""
-        self.site = site
+    def setAssembly(self, assembly: str) -> None:
+        """set Assembly"""
+        self.assembly = assembly
+
+    def setSite(self, site: str) -> None:  # noqa: N802
+        warnings.warn(
+            "setSite() is deprecated, use setAssembly() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.setAssembly(site)
 
     def setLink(self, link: str) -> None:
         """set Link"""
@@ -97,7 +114,7 @@ class MRecord:
         if isinstance(other, MRecord):
             return (
                 self.timestamp == other.timestamp
-                and self.site == other.site
+                and self.assembly == other.assembly
                 and self.link == other.link
             )
         return False

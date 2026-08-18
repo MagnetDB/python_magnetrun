@@ -1055,8 +1055,8 @@ from python_magnetrun.MagnetRun import load_mrun
 hrun = HybridRun.fromdir(base_dir, date_str, fepc_system=fepc_system, housing=housing)
 
 # Pupitre (.txt) and TDMS (.tdms) data — load_mrun dispatches by extension
-pupitre = load_mrun(pupitre_file, housing=housing, site=insert)
-tdms    = load_mrun(tdms_file,    housing=housing, site=insert)
+pupitre = load_mrun(pupitre_file, housing=housing, assembly=insert)
+tdms    = load_mrun(tdms_file,    housing=housing, assembly=insert)
 ```
 
 ### 4. Data Access and Plotting

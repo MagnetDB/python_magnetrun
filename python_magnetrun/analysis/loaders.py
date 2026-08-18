@@ -22,7 +22,7 @@ Example usage::
     file_set = discovery.discover("M9_Overview_241106-1643.tdms")
 
     # Load and merge data
-    dfs = load_data(file_set.archive, housing="M9", site="", group="Courants_Alimentations", keys=["Courant_GR1"])
+    dfs = load_data(file_set.archive, housing="M9", assembly="", group="Courants_Alimentations", keys=["Courant_GR1"])
     df = merge_data(dfs)
 """
 
@@ -793,7 +793,7 @@ class FileDiscovery:
             logger.info(f"Overview file {overview_file} has housing M8, hybrid data will be discovered")
 
         start, end, skip = extract_data(
-            resolved_overview, housing, site="", key=None, dry_run=dry_run
+            resolved_overview, housing, assembly="", key=None, dry_run=dry_run
         )
         logger.info(f"Overview file time range: start={start}, end={end}, skip={skip}")
 

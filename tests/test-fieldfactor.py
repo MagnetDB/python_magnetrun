@@ -45,9 +45,9 @@ window = args.window
 
 filename = os.path.basename(file)
 housing = filename.split("_")[0] if args.housing is None else args.housing
-site = args.site
+assembly = args.assembly
 insert = args.insert
-mrun = MagnetRun.fromtxt(housing, site, file)
+mrun = MagnetRun.fromtxt(housing, assembly, file)
 mdata = mrun.getMData()
 
 

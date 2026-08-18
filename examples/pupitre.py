@@ -86,12 +86,11 @@ if __name__ == "__main__":
         filename = os.path.basename(file).replace(f_extension, "")
         print(f"dirname={dirname}, filename={filename}: ", flush=True)
 
-        result = filename.startswith("M")
-        insert = "tututu"
+        assembly = "tututu"
         index = filename.index("_")
-        site = filename[0:index]
+        housing = filename[0:index]
 
-        mrun = MagnetRun.fromtxt(site, insert, file)
+        mrun = MagnetRun.fromtxt(housing, assembly, file)
         mdata = mrun.getMData()
 
         DRkeys = [_key for _key in mdata.Keys if re.match(r"DRcoil\d+", _key)]

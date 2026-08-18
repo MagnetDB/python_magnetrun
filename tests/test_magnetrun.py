@@ -31,12 +31,12 @@ def simple_data() -> PandasMagnetData:
 
 @pytest.fixture()
 def mrun_with_data(simple_data) -> MagnetRun:
-    return MagnetRun("M9", "test_site", simple_data)
+    return MagnetRun("M9", "test_assembly", simple_data)
 
 
 @pytest.fixture()
 def mrun_no_data() -> MagnetRun:
-    return MagnetRun("M9", "test_site", None)
+    return MagnetRun("M9", "test_assembly", None)
 
 
 # ---------------------------------------------------------------------------
@@ -48,8 +48,8 @@ class TestConstructor:
     def test_housing_stored(self, mrun_with_data):
         assert mrun_with_data.Housing == "M9"
 
-    def test_site_stored(self, mrun_with_data):
-        assert mrun_with_data.Site == "test_site"
+    def test_assembly_stored(self, mrun_with_data):
+        assert mrun_with_data.Assembly == "test_assembly"
 
     def test_data_stored(self, mrun_with_data, simple_data):
         assert mrun_with_data.MagnetData is simple_data
@@ -70,8 +70,8 @@ class TestGettersSetters:
     def test_gethousing(self, mrun_with_data):
         assert mrun_with_data.getHousing() == "M9"
 
-    def test_getsite(self, mrun_with_data):
-        assert mrun_with_data.getSite() == "test_site"
+    def test_getassembly(self, mrun_with_data):
+        assert mrun_with_data.getAssembly() == "test_assembly"
 
     def test_getdomain(self, mrun_with_data):
         assert mrun_with_data.getDomain() == "operational"
@@ -80,15 +80,15 @@ class TestGettersSetters:
         mrun_with_data.setHousing("M10")
         assert mrun_with_data.getHousing() == "M10"
 
-    def test_setsite(self, mrun_with_data):
-        mrun_with_data.setSite("other_site")
-        assert mrun_with_data.getSite() == "other_site"
+    def test_setassembly(self, mrun_with_data):
+        mrun_with_data.setAssembly("other_assembly")
+        assert mrun_with_data.getAssembly() == "other_assembly"
 
     def test_repr_contains_housing(self, mrun_with_data):
         assert "M9" in repr(mrun_with_data)
 
-    def test_repr_contains_site(self, mrun_with_data):
-        assert "test_site" in repr(mrun_with_data)
+    def test_repr_contains_assembly(self, mrun_with_data):
+        assert "test_assembly" in repr(mrun_with_data)
 
 
 # ---------------------------------------------------------------------------
@@ -152,49 +152,49 @@ class TestDataDelegation:
 
 class TestFromStringIO:
     def test_returns_magnetrun(self):
-        mrun = MagnetRun.fromStringIO("M9", "site", _PUPITRE_STRING)
+        mrun = MagnetRun.fromStringIO("M9", "assembly", _PUPITRE_STRING)
         assert isinstance(mrun, MagnetRun)
 
     def test_housing_set(self):
-        mrun = MagnetRun.fromStringIO("M9", "site", _PUPITRE_STRING)
+        mrun = MagnetRun.fromStringIO("M9", "assembly", _PUPITRE_STRING)
         assert mrun.getHousing() == "M9"
 
-    def test_site_set(self):
-        mrun = MagnetRun.fromStringIO("M9", "site", _PUPITRE_STRING)
-        assert mrun.getSite() == "site"
+    def test_assembly_set(self):
+        mrun = MagnetRun.fromStringIO("M9", "assembly", _PUPITRE_STRING)
+        assert mrun.getAssembly() == "assembly"
 
     def test_type_is_pupitre(self):
-        mrun = MagnetRun.fromStringIO("M9", "site", _PUPITRE_STRING)
+        mrun = MagnetRun.fromStringIO("M9", "assembly", _PUPITRE_STRING)
         assert mrun.getType() == DataType.PUPITRE
 
     def test_keys_non_empty(self):
-        mrun = MagnetRun.fromStringIO("M9", "site", _PUPITRE_STRING)
+        mrun = MagnetRun.fromStringIO("M9", "assembly", _PUPITRE_STRING)
         assert len(mrun.getKeys()) > 0
 
     def test_empty_string_raises(self):
         with pytest.raises((RuntimeError, ValueError, Exception)):
-            MagnetRun.fromStringIO("M9", "site", "")
+            MagnetRun.fromStringIO("M9", "assembly", "")
 
 
 class TestFromTxt:
     def test_returns_magnetrun(self):
-        mrun = MagnetRun.fromtxt("M9", "site", str(SAMPLE_TXT))
+        mrun = MagnetRun.fromtxt("M9", "assembly", str(SAMPLE_TXT))
         assert isinstance(mrun, MagnetRun)
 
     def test_housing_set(self):
-        mrun = MagnetRun.fromtxt("M9", "site", str(SAMPLE_TXT))
+        mrun = MagnetRun.fromtxt("M9", "assembly", str(SAMPLE_TXT))
         assert mrun.getHousing() == "M9"
 
     def test_type_is_pupitre(self):
-        mrun = MagnetRun.fromtxt("M9", "site", str(SAMPLE_TXT))
+        mrun = MagnetRun.fromtxt("M9", "assembly", str(SAMPLE_TXT))
         assert mrun.getType() == DataType.PUPITRE
 
     def test_start_time_set(self):
-        mrun = MagnetRun.fromtxt("M9", "site", str(SAMPLE_TXT))
+        mrun = MagnetRun.fromtxt("M9", "assembly", str(SAMPLE_TXT))
         assert mrun.StartTime is not None
 
     def test_keys_non_empty(self):
-        mrun = MagnetRun.fromtxt("M9", "site", str(SAMPLE_TXT))
+        mrun = MagnetRun.fromtxt("M9", "assembly", str(SAMPLE_TXT))
         assert len(mrun.getKeys()) > 0
 
 

@@ -154,8 +154,7 @@ if __name__ == "__main__":
         housing = args.housing if args.housing is not None else "notdefined"
         print(f"no housing detected - use args.housing {housing} argument instead")
 
-    site = args.site
-    insert = args.insert
+    assembly = args.assembly
     tkey = "t"
 
     # Resolve bare filename against predefined data directories
@@ -175,7 +174,7 @@ if __name__ == "__main__":
                 f"File not found: {args.input_file[0]!r}\nAlso searched: {datadir}"
             )
 
-    mrun = load_mrun(file, housing, site)
+    mrun = load_mrun(file, housing, assembly)
 
     mdata = mrun.getMData()
 

@@ -18,7 +18,7 @@ def test_magnetrun_satisfies_protocol():
     mrun = MagnetRun()
     assert isinstance(mrun, DataLoader), (
         "MagnetRun does not satisfy the DataLoader protocol — "
-        f"missing: {[m for m in ('getData','getKeys','getType','getSite','getHousing','getDomain','get_time_range') if not hasattr(mrun, m)]}"
+        f"missing: {[m for m in ('getData','getKeys','getType','getAssembly','getHousing','getDomain','get_time_range') if not hasattr(mrun, m)]}"
     )
 
 
@@ -26,7 +26,7 @@ def test_hybridrun_satisfies_protocol():
     hrun = HybridRun()
     assert isinstance(hrun, DataLoader), (
         "HybridRun does not satisfy the DataLoader protocol — "
-        f"missing: {[m for m in ('getData','getKeys','getType','getSite','getHousing','getDomain','get_time_range') if not hasattr(hrun, m)]}"
+        f"missing: {[m for m in ('getData','getKeys','getType','getAssembly','getHousing','getDomain','get_time_range') if not hasattr(hrun, m)]}"
     )
 
 
@@ -39,7 +39,7 @@ def test_hybridrun_getdomain():
 
 
 def test_dataloader_required_methods():
-    required = {"getData", "getKeys", "getType", "getSite", "getHousing", "getDomain", "get_time_range"}
+    required = {"getData", "getKeys", "getType", "getAssembly", "getHousing", "getDomain", "get_time_range"}
     protocol_attrs = set(m for m in dir(DataLoader) if not m.startswith("_"))
     missing = required - protocol_attrs
     assert not missing, f"DataLoader protocol is missing: {missing}"
@@ -72,10 +72,10 @@ def _make_bprofile_magnetdata():
 
 def test_simulation_run_satisfies_protocol():
     data = _make_pandas_magnetdata()
-    srun = SimulationRun(data, housing="M8", site="grenoble")
+    srun = SimulationRun(data, housing="M8", assembly="grenoble")
     assert isinstance(srun, DataLoader), (
         "SimulationRun does not satisfy the DataLoader protocol — "
-        f"missing: {[m for m in ('getData','getKeys','getType','getSite','getHousing','getDomain','get_time_range') if not hasattr(srun, m)]}"
+        f"missing: {[m for m in ('getData','getKeys','getType','getAssembly','getHousing','getDomain','get_time_range') if not hasattr(srun, m)]}"
     )
 
 
@@ -90,11 +90,11 @@ def test_simulation_run_getkeys():
     assert set(srun.getKeys()) == {"IH", "IB"}
 
 
-def test_simulation_run_gethousing_getsite():
+def test_simulation_run_gethousing_getassembly():
     data = _make_pandas_magnetdata()
-    srun = SimulationRun(data, housing="M9", site="saclay")
+    srun = SimulationRun(data, housing="M9", assembly="saclay")
     assert srun.getHousing() == "M9"
-    assert srun.getSite() == "saclay"
+    assert srun.getAssembly() == "saclay"
 
 
 def test_simulation_run_get_time_range_no_column():
@@ -120,10 +120,10 @@ def test_simulation_run_is_transient_true():
 
 def test_bfield_run_satisfies_protocol():
     data = _make_bprofile_magnetdata()
-    brun = BFieldRun(data, housing="M8", site="grenoble")
+    brun = BFieldRun(data, housing="M8", assembly="grenoble")
     assert isinstance(brun, DataLoader), (
         "BFieldRun does not satisfy the DataLoader protocol — "
-        f"missing: {[m for m in ('getData','getKeys','getType','getSite','getHousing','getDomain','get_time_range') if not hasattr(brun, m)]}"
+        f"missing: {[m for m in ('getData','getKeys','getType','getAssembly','getHousing','getDomain','get_time_range') if not hasattr(brun, m)]}"
     )
 
 

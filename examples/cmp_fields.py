@@ -97,7 +97,7 @@ if __name__ == "__main__":
         result = filename.startswith("M")
         insert = args.insert if args.insert else None
         housing = args.housing if args.housing else None
-        site = args.site if args.site else None
+        assembly = args.assembly if args.assembly else None
         if result:
             try:
                 index = filename.index("_")
@@ -109,9 +109,9 @@ if __name__ == "__main__":
 
         match f_extension:
             case ".txt":
-                mrun = MagnetRun.fromtxt(housing=housing, site=site, filename=filename)
+                mrun = MagnetRun.fromtxt(housing=housing, assembly=assembly, filename=filename)
             case ".tdms":
-                mrun = MagnetRun.fromtdms(housing=housing, site=site, filename=filename)
+                mrun = MagnetRun.fromtdms(housing=housing, assembly=assembly, filename=filename)
             case _:
                 raise RuntimeError(
                     f"so far file with extension in {supported_formats} are implemented"

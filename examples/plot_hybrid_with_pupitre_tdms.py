@@ -82,7 +82,7 @@ def load_pupitre_data(
 ) -> MagnetRun:
     """Load pupitre data from a text file."""
     logger.info(f"Loading pupitre data from: {pupitre_file}")
-    return load_mrun(str(pupitre_file), housing=housing, site=insert)
+    return load_mrun(str(pupitre_file), housing=housing, assembly=insert)
 
 
 def load_tdms_data(
@@ -90,7 +90,7 @@ def load_tdms_data(
 ) -> MagnetRun:
     """Load TDMS data from a pigbrother Overview file."""
     logger.info(f"Loading TDMS data from: {tdms_file}")
-    return load_mrun(str(tdms_file), housing=housing, site=insert)
+    return load_mrun(str(tdms_file), housing=housing, assembly=insert)
 
 
 def plot_comparison(

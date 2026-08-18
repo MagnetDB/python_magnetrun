@@ -59,7 +59,7 @@ from `hybrid/data_protocol.py`.
 ### A1 — Add `getDomain()` and `get_time_range()` to the protocol *(done)*
 
 Both `get_time_range()` and `getDomain()` are in `DataLoader` (`data_protocol.py:138,142`).
-The protocol now requires `getData`, `getKeys`, `getType`, `getSite`, `getHousing`,
+The protocol now requires `getData`, `getKeys`, `getType`, `getAssembly`, `getHousing`,
 `get_time_range`, `getDomain`.
 
 ```python
@@ -127,31 +127,31 @@ class SimulationRun:
         self,
         data: PandasMagnetData,
         housing: str = "unknown",
-        site: str = "",
+        assembly: str = "",
         time_column: str | None = None,  # column name for time axis, if any
     ) -> None:
         self._data = data
         self.Housing = housing
-        self.Site = site
+        self.Assembly = assembly
         self._time_column = time_column
 
     @classmethod
-    def from_ensight(cls, filename: str, housing: str = "", site: str = "") -> "SimulationRun":
+    def from_ensight(cls, filename: str, housing: str = "", assembly: str = "") -> "SimulationRun":
         from ..magnetdata_pandas import EnsightMagnetData
         data = EnsightMagnetData.fromcsv(filename)
-        return cls(data, housing=housing, site=site)
+        return cls(data, housing=housing, assembly=assembly)
 
     @classmethod
-    def from_feelpp(cls, filename: str, housing: str = "", site: str = "") -> "SimulationRun":
+    def from_feelpp(cls, filename: str, housing: str = "", assembly: str = "") -> "SimulationRun":
         from ..magnetdata_pandas import FeelppMagnetData
         data = FeelppMagnetData.fromcsv(filename)
-        return cls(data, housing=housing, site=site)
+        return cls(data, housing=housing, assembly=assembly)
 
     @classmethod
-    def from_magnettools(cls, filename: str, housing: str = "", site: str = "") -> "SimulationRun":
+    def from_magnettools(cls, filename: str, housing: str = "", assembly: str = "") -> "SimulationRun":
         from .magnettools_reader import load_magnettools
         data = load_magnettools(filename)
-        return cls(data, housing=housing, site=site)
+        return cls(data, housing=housing, assembly=assembly)
 
     # DataLoader protocol implementation
     def getData(self, key: str | None = None) -> pd.DataFrame:
@@ -163,8 +163,8 @@ class SimulationRun:
     def getType(self) -> int:
         return int(self._data.Type)
 
-    def getSite(self) -> str:
-        return self.Site
+    def getAssembly(self) -> str:
+        return self.Assembly
 
     def getHousing(self) -> str:
         return self.Housing
@@ -234,12 +234,12 @@ class BFieldRun:
         self,
         data: BProfileMagnetData,
         housing: str = "unknown",
-        site: str = "",
+        assembly: str = "",
         measurement_time: datetime | None = None,
     ) -> None:
         self._data = data
         self.Housing = housing
-        self.Site = site
+        self.Assembly = assembly
         self._measurement_time = measurement_time
 
     @classmethod
@@ -247,12 +247,12 @@ class BFieldRun:
         cls,
         filename: str,
         housing: str = "",
-        site: str = "",
+        assembly: str = "",
         measurement_time: datetime | None = None,
     ) -> "BFieldRun":
         from ..magnetdata_pandas import BProfileMagnetData
         data = BProfileMagnetData.fromcsv(filename)
-        return cls(data, housing=housing, site=site, measurement_time=measurement_time)
+        return cls(data, housing=housing, assembly=assembly, measurement_time=measurement_time)
 
     # DataLoader protocol
     def getData(self, key: str | None = None) -> pd.DataFrame:
@@ -264,8 +264,8 @@ class BFieldRun:
     def getType(self) -> int:
         return int(self._data.Type)
 
-    def getSite(self) -> str:
-        return self.Site
+    def getAssembly(self) -> str:
+        return self.Assembly
 
     def getHousing(self) -> str:
         return self.Housing
@@ -523,7 +523,7 @@ def register(sub: "argparse._SubParsersAction") -> None:
     p.add_argument("--magnettools",  metavar="FILE",  help="simulation magnettools")
     p.add_argument("--bprofile",     metavar="FILE",  help="B-field measurement")
     p.add_argument("--housing",      metavar="HOUSING")
-    p.add_argument("--site",         metavar="SITE")
+    p.add_argument("--assembly",     metavar="ASSEMBLY")
     p.add_argument("--channels",     nargs="+", metavar="KEY",
                    help="logical channel names (default: all common)")
     p.add_argument("--resample-freq", default="1s", metavar="FREQ")

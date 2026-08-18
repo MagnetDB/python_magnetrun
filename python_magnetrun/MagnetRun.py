@@ -1,12 +1,13 @@
 """MagnetRun — high-level container for a single magnet experimental run.
 
-Combines a housing/site identity with a :class:`.MagnetDataBase` data object
+Combines a housing/assembly identity with a :class:`.MagnetDataBase` data object
 and a UTC start timestamp.  Use :func:`load_mrun` (or the classmethod
 constructors) to create instances; do not instantiate directly unless you
 already have a :class:`.MagnetDataBase` object.
 """
 
 import logging
+import warnings
 from datetime import datetime
 from typing import Any
 
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 def load_mrun(
     filename: str,
     housing: str = "unknown",
-    site: str = "",
+    assembly: str = "",
     time_zone: str = "Europe/Paris",
     auto_resolve: bool = True,
     **kwargs,
@@ -42,8 +43,8 @@ def load_mrun(
         Path to the data file (can be a simple filename or full path).
     housing : str
         Housing name (default ``"unknown"``).
-    site : str
-        Site name.
+    assembly : str
+        Assembly name.
     time_zone : str
         Local timezone for timestamp conversion (txt/tdms).
     auto_resolve : bool
@@ -101,13 +102,13 @@ def load_mrun(
 
     ext = os.path.splitext(resolved_filename)[-1].lower()
     if ext == ".tdms":
-        return MagnetRun.fromtdms(housing, site, resolved_filename, time_zone=time_zone)
+        return MagnetRun.fromtdms(housing, assembly, resolved_filename, time_zone=time_zone)
     elif ext == ".txt":
         return MagnetRun.fromtxt(
-            housing, site, resolved_filename, time_zone=time_zone, **kwargs
+            housing, assembly, resolved_filename, time_zone=time_zone, **kwargs
         )
     elif ext == ".csv":
-        return MagnetRun.fromcsv(housing, site, resolved_filename)
+        return MagnetRun.fromcsv(housing, assembly, resolved_filename)
     else:
         raise ValueError(f"load_mrun: unsupported file extension {ext!r}")
 
@@ -115,11 +116,11 @@ def load_mrun(
 class MagnetRun:
     """High-level container for a single magnet experimental run.
 
-    Wraps a :class:`.MagnetDataBase` data object together with the housing/site
+    Wraps a :class:`.MagnetDataBase` data object together with the housing/assembly
     identity and the UTC start timestamp of the acquisition.
 
     :ivar Housing: name of the magnet housing (e.g. ``"M9"``).
-    :ivar Site: name of the site in the magnetdb sense (e.g. ``"M9Ch1Lips"``).
+    :ivar Assembly: name of the assembly in the magnetdb sense (e.g. ``"M9Ch1Lips"``).
     :ivar MagnetData: the underlying data object; ``None`` when no data is
         associated.
     :ivar StartTime: naive UTC :class:`~datetime.datetime` of the first sample,
@@ -129,7 +130,7 @@ class MagnetRun:
     def __init__(
         self,
         housing: str = "unknown",
-        site: str = "",
+        assembly: str = "",
         data: MagnetDataBase | None = None,
         start_time: datetime | None = None,
     ):
@@ -139,15 +140,15 @@ class MagnetRun:
         ----------
         housing : str
             Name of the magnet housing (default ``"unknown"``).
-        site : str
-            Site name in the magnetdb sense (default ``""``).
+        assembly : str
+            Assembly name in the magnetdb sense (default ``""``).
         data : MagnetDataBase, optional
             Pre-loaded data object; may be ``None`` to create an empty run.
         start_time : datetime, optional
             Naive UTC start timestamp (no tzinfo); ``None`` when unknown.
         """
         self.Housing = housing
-        self.Site = site
+        self.Assembly = assembly
         self.MagnetData = data
         self.StartTime = start_time
 
@@ -155,7 +156,7 @@ class MagnetRun:
     def fromtdms(
         cls,
         housing: str,
-        site: str,
+        assembly: str,
         filename: str,
         time_zone: str = "Europe/Paris",
     ) -> "MagnetRun":
@@ -165,8 +166,8 @@ class MagnetRun:
         ----------
         housing : str
             Name of the magnet housing.
-        site : str
-            Site name in the magnetdb sense.
+        assembly : str
+            Assembly name in the magnetdb sense.
         filename : str
             Path to the ``.tdms`` file.
         time_zone : str
@@ -182,7 +183,7 @@ class MagnetRun:
         # print(f"MagnetRun:fromtdms: {filename}", flush=True)
         # with open(filename, "r") as f:
         logger.debug(
-            f"MagnetRun:fromtdms: housing={housing}, site={site}, filename={filename}"
+            f"MagnetRun:fromtdms: housing={housing}, assembly={assembly}, filename={filename}"
         )
         data = load_magnetdata(filename)
         prepareData(data, housing)
@@ -202,13 +203,13 @@ class MagnetRun:
             f"magnetrun.fromtdms: start_time={start_time} (naive UTC), "
             f"wf_start_offset={wf_start_offset} s (already in t values, not added to StartTime)"
         )
-        return cls(housing, site, data, start_time=start_time)
+        return cls(housing, assembly, data, start_time=start_time)
 
     @classmethod
     def fromtxt(
         cls,
         housing: str,
-        site: str,
+        assembly: str,
         filename: str,
         keys_to_remove: list[str] | None = None,
         keys_to_rename: dict[str, str] | None = None,
@@ -221,8 +222,8 @@ class MagnetRun:
         ----------
         housing : str
             Name of the magnet housing.
-        site : str
-            Site name in the magnetdb sense.
+        assembly : str
+            Assembly name in the magnetdb sense.
         filename : str
             Path to the ``.txt`` file.
         keys_to_remove : list[str], optional
@@ -242,7 +243,7 @@ class MagnetRun:
             equivalent of the first data row's date/time.
         """
         logger.debug(
-            f"MagnetRun/fromtxt: housing={housing}, site={site}, filename={filename}"
+            f"MagnetRun/fromtxt: housing={housing}, assembly={assembly}, filename={filename}"
         )
         # with open(filename, "r") as f:
         # insert = f.readline().split()[-1]
@@ -263,18 +264,18 @@ class MagnetRun:
         start_t = datetime.strptime(f"{start_date} {start_time}", "%Y.%m.%d %H:%M:%S")
         start_t = local_to_utc_naive(start_t, time_zone)
         logger.debug(f"MagnetRun/from_txt: start_t={start_t} (naive UTC)")
-        return cls(housing, site, data, start_time=start_t)
+        return cls(housing, assembly, data, start_time=start_t)
 
     @classmethod
-    def fromcsv(cls, housing: str, site: str, filename: str) -> "MagnetRun":
+    def fromcsv(cls, housing: str, assembly: str, filename: str) -> "MagnetRun":
         """Create a :class:`MagnetRun` from a CSV file.
 
         Parameters
         ----------
         housing : str
             Name of the magnet housing.
-        site : str
-            Site name in the magnetdb sense.
+        assembly : str
+            Assembly name in the magnetdb sense.
         filename : str
             Path to the ``.csv`` file.
 
@@ -285,18 +286,18 @@ class MagnetRun:
             carry no reliable timestamp).
         """
         data = load_magnetdata(filename)
-        return cls(housing, site, data)
+        return cls(housing, assembly, data)
 
     @classmethod
-    def fromStringIO(cls, housing: str, site: str, name: str) -> "MagnetRun":
+    def fromStringIO(cls, housing: str, assembly: str, name: str) -> "MagnetRun":
         """Create a :class:`MagnetRun` from an in-memory string (StringIO).
 
         Parameters
         ----------
         housing : str
             Name of the magnet housing.
-        site : str
-            Site name in the magnetdb sense.
+        assembly : str
+            Assembly name in the magnetdb sense.
         name : str
             Raw text content in pupitre ``.txt`` format.
 
@@ -310,7 +311,7 @@ class MagnetRun:
         RuntimeError
             If the string cannot be parsed as pupitre data.
         """
-        logger.info(f"MagnetRun/fromStringIO: housing={housing}, site={site}")
+        logger.info(f"MagnetRun/fromStringIO: housing={housing}, assembly={assembly}")
         from io import StringIO
 
         insert = "Unknown"
@@ -321,8 +322,8 @@ class MagnetRun:
             headers = ioname.readline().split()
             if len(headers) >= 2:
                 insert = headers[1]
-            if not site.startswith(insert):
-                logger.debug(f"MagnetRun:fromStringIO: site={site}, insert={insert}")
+            if not assembly.startswith(insert):
+                logger.debug(f"MagnetRun:fromStringIO: assembly={assembly}, insert={insert}")
             data = PandasMagnetData.fromStringIO(name)
             logger.debug(
                 f"MagnetRun:fromStringIO: data keys({len(data.getKeys())}): {data.getKeys()}"
@@ -331,17 +332,17 @@ class MagnetRun:
 
         except (ValueError, KeyError, AttributeError, IndexError) as e:
             logger.error(
-                f"cannot load data for {housing}, {insert} insert, {site} site: {e}"
+                f"cannot load data for {housing}, {insert} insert, {assembly} assembly: {e}"
             )
             raise RuntimeError(
-                f"cannot load data for {housing}, {insert} insert, {site} site"
+                f"cannot load data for {housing}, {insert} insert, {assembly} assembly"
             ) from e
 
         data.Units()
-        return cls(housing, site, data)
+        return cls(housing, assembly, data)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}(Housing={self.Housing!r}, Site={self.Site!r}, MagnetData={self.MagnetData!r})"
+        return f"{self.__class__.__name__}(Housing={self.Housing!r}, Assembly={self.Assembly!r}, MagnetData={self.MagnetData!r})"
 
     def getInsert(self) -> str:
         """Return the insert name derived from the data filename (stem without extension).
@@ -358,15 +359,23 @@ class MagnetRun:
 
         return filename.replace(f_extension, "")
 
-    def getSite(self) -> str:
-        """Return the site name.
+    def getAssembly(self) -> str:
+        """Return the assembly name.
 
         Returns
         -------
         str
-            Site name string.
+            Assembly name string.
         """
-        return self.Site
+        return self.Assembly
+
+    def getSite(self) -> str:  # noqa: N802
+        warnings.warn(
+            "getSite() is deprecated, use getAssembly() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.getAssembly()
 
     def getHousing(self) -> str:
         """Return the housing name.
@@ -401,15 +410,23 @@ class MagnetRun:
         """
         return self.MagnetData.get_time_range()
 
-    def setSite(self, site: str) -> None:
-        """Set the site name.
+    def setAssembly(self, assembly: str) -> None:
+        """Set the assembly name.
 
         Parameters
         ----------
-        site : str
-            New site name.
+        assembly : str
+            New assembly name.
         """
-        self.Site = site
+        self.Assembly = assembly
+
+    def setSite(self, site: str) -> None:  # noqa: N802
+        warnings.warn(
+            "setSite() is deprecated, use setAssembly() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.setAssembly(site)
 
     def setHousing(self, housing: str) -> None:
         """Set the housing name.

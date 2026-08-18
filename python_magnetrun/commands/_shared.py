@@ -59,7 +59,7 @@ def load_inputs(args):
 
         filename = os.path.basename(file)
         housing = getattr(args, "housing", None) or "notdefined"
-        site = getattr(args, "site", None) or "notdefined"
+        assembly = getattr(args, "assembly", None) or "notdefined"
 
         if filename.startswith("M"):
             try:
@@ -73,11 +73,11 @@ def load_inputs(args):
         try:
             match f_extension:
                 case ".txt":
-                    mrun = MagnetRun.fromtxt(housing=housing, site=site, filename=file)
+                    mrun = MagnetRun.fromtxt(housing=housing, assembly=assembly, filename=file)
                 case ".tdms":
-                    mrun = MagnetRun.fromtdms(housing=housing, site=site, filename=file)
+                    mrun = MagnetRun.fromtdms(housing=housing, assembly=assembly, filename=file)
                 case ".csv":
-                    mrun = MagnetRun.fromcsv(housing=housing, site=site, filename=file)
+                    mrun = MagnetRun.fromcsv(housing=housing, assembly=assembly, filename=file)
                 case _:
                     raise RuntimeError(f"unhandled extension '{f_extension}'")
         except (OSError, ValueError, RuntimeError) as error:

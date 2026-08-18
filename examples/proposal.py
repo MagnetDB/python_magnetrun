@@ -36,9 +36,9 @@ def load_record(file: str) -> MagnetData:
 
     filename = os.path.basename(file)
     (housing, timestamp) = filename.split("_")
-    site = "blbl"
+    assembly = "blbl"
 
-    mrun = MagnetRun.fromtxt(housing, site, file)
+    mrun = MagnetRun.fromtxt(housing, assembly, file)
     data = mrun.MagnetData
     if not isinstance(data, MagnetData):
         raise RuntimeError(f"{file}: cannot load data as MagnetData")

@@ -131,7 +131,7 @@ def expand_input_files(
         # 1. Current working directory.
         candidates.append(os.path.join(os.getcwd(), pattern))
 
-        # 2 & 3. Extension-specific datadir, with and without housing/site subdir.
+        # 2 & 3. Extension-specific datadir, with and without housing/assembly subdir.
         if extension in datadir:
             base_datadir = datadir[extension]
             if base_datadir:
@@ -320,7 +320,7 @@ def _pupitre_end_from_last_line(file: str, keys: list[str]) -> str:
 def extract_data(
     file: str,
     housing: str,
-    site: str = "",
+    assembly: str = "",
     key: str | None = None,
     dry_run: bool = False,
 ) -> tuple[str, str, bool]:
@@ -339,8 +339,8 @@ def extract_data(
         Path to the data file (.txt or .tdms)
     housing : str
         Housing identifier (used for loading)
-    site : str, optional
-        Site identifier (used for loading)
+    assembly : str, optional
+        Assembly identifier (used for loading)
     key : str, optional
         Key to verify exists in the file
     dry_run : bool, optional
@@ -361,7 +361,7 @@ def extract_data(
     from ..MagnetRun import MagnetRun  # lazy import to avoid circular dependency
 
     logger.info(
-        f"extract_data: file={file}, housing={housing}, site={site}, key={key}, dry_run={dry_run}"
+        f"extract_data: file={file}, housing={housing}, assembly={assembly}, key={key}, dry_run={dry_run}"
     )
     extension = os.path.splitext(file)[-1]
 
@@ -387,7 +387,7 @@ def extract_data(
                 _keys = _hdr.columns.tolist()
                 end_ftimestamp = _pupitre_end_from_last_line(file, _keys)
             else:
-                mrun = MagnetRun.fromtxt(housing, site, file)
+                mrun = MagnetRun.fromtxt(housing, assembly, file)
                 logger.info(f"Loaded pupitre file: {file}")
 
     elif extension == ".tdms":
@@ -398,7 +398,7 @@ def extract_data(
                     file, start_timestamp, start_ftimestamp
                 )
             else:
-                mrun = MagnetRun.fromtdms(housing, site, file)
+                mrun = MagnetRun.fromtdms(housing, assembly, file)
                 logger.info(f"Loaded TDMS file: {file}")
     else:
         raise RuntimeError(f"{file}: unsupported extension {extension}")
@@ -535,7 +535,7 @@ def select_files(
     for file in natsortedfiles:
         try:
             file_start, file_end, skip = extract_data(
-                file, housing, site="", key=None, dry_run=False
+                file, housing, assembly="", key=None, dry_run=False
             )
             logger.info(
                 f"File {file}: extracted start={file_start}, end={file_end}, skip={skip}"
@@ -570,7 +570,7 @@ def select_files(
 def load_df(
     file: str,
     housing: str,
-    site: str,
+    assembly: str,
     group: str,
     keys: list[str] | None,
 ) -> tuple[pd.DataFrame, datetime | None]:
@@ -585,8 +585,8 @@ def load_df(
         Path to the data file
     housing : str
         Housing identifier
-    site : str
-        Site identifier
+    assembly : str
+        Assembly identifier
     group : str
         TDMS group name (for .tdms files)
     keys : list[str] or None
@@ -607,7 +607,7 @@ def load_df(
 
     try:
         if extension == ".txt":
-            mrun = MagnetRun.fromtxt(housing, site, file)
+            mrun = MagnetRun.fromtxt(housing, assembly, file)
             mdata = mrun.getMData()
             logger.debug(f"load_df --pupitre -- {file}: mdata keys={mdata.getKeys()}")
             t0 = mdata.start_timestamp
@@ -618,7 +618,7 @@ def load_df(
             df = pd.DataFrame(mdata.getData(selected_keys))
 
         elif extension == ".tdms":
-            mrun = MagnetRun.fromtdms(housing, site, file)
+            mrun = MagnetRun.fromtdms(housing, assembly, file)
             mdata = mrun.getMData()
             logger.debug(f"load_df --tdms -- {file}: mdata keys={mdata.getKeys()}")
 
@@ -650,7 +650,7 @@ def load_df(
 def load_data(
     files: list[str],
     housing: str,
-    site: str,
+    assembly: str,
     group: str,
     keys: list[str] | None,
 ) -> list[pd.DataFrame]:
@@ -662,8 +662,8 @@ def load_data(
         List of file paths to load
     housing : str
         Housing identifier
-    site : str
-        Site identifier
+    assembly : str
+        Assembly identifier
     group : str
         TDMS group name
     keys : list[str] or None
@@ -675,11 +675,11 @@ def load_data(
         List of loaded DataFrames
     """
     logger.info(
-        f"load_data: files={files}, housing={housing}, site={site}, group={group}, keys={keys}"
+        f"load_data: files={files}, housing={housing}, assembly={assembly}, group={group}, keys={keys}"
     )
     df_list = []
     for file in files:
-        df, t0 = load_df(file, housing, site, group, keys)
+        df, t0 = load_df(file, housing, assembly, group, keys)
         if not df.empty:
             df_list.append(df)
     return df_list

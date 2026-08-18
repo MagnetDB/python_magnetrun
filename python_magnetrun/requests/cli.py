@@ -60,22 +60,22 @@ def normalize_cad_ref(value: str) -> str:
     return m.group(1).upper() if m else stem
 
 
-def cleanup(remove_site: list, msg: str, site_names: dict, Sites: dict):
-    logger.info(f"Remove Site in {remove_site}: {msg}")
-    for item in remove_site:
-        Sites.pop(item)
-        if item in site_names:
-            # watch out if site_names is not empty
-            if site_names[item]:
-                s_ = site_names[item][0]
-                site_names[s_] = site_names[item]
-                site_names[s_].remove(s_)
-            site_names.pop(item)
+def cleanup(remove_assembly: list, msg: str, assembly_names: dict, Assemblies: dict):
+    logger.info(f"Remove Assembly in {remove_assembly}: {msg}")
+    for item in remove_assembly:
+        Assemblies.pop(item)
+        if item in assembly_names:
+            # watch out if assembly_names is not empty
+            if assembly_names[item]:
+                s_ = assembly_names[item][0]
+                assembly_names[s_] = assembly_names[item]
+                assembly_names[s_].remove(s_)
+            assembly_names.pop(item)
         else:
-            for name in site_names:
-                if item in site_names[name]:
-                    logger.debug(f"remove {item} from site_names[{name}]")
-                    site_names[name].remove(item)
+            for name in assembly_names:
+                if item in assembly_names[name]:
+                    logger.debug(f"remove {item} from assembly_names[{name}]")
+                    assembly_names[name].remove(item)
 
 
 def _build_fetch_parser(prog: str = "magnetrun-fetch") -> "argparse.ArgumentParser":
@@ -158,8 +158,8 @@ def main():
     payload = {"email": args.user, "password": password}
 
     # Magnets
-    db_Sites = dict()
-    SiteRecords = dict()
+    db_Assemblies = dict()
+    AssemblyRecords = dict()
     Magnets = dict()
     Mats = dict()
 
@@ -201,13 +201,13 @@ def main():
         use E. Verney instead
 
         # Get data from Status page
-        # actually list of site in magnetdb sens
+        # actually list of assembly in magnetdb sens
         (_data, jid) = getTable(s, url_status, 2, [1, 3, 4], debug=args.debug)
         if args.debug:
             for item in _data:
                 logger.debug(f"{item}: status={_data[item]}, jid={jid[item]}")
 
-        logger.info("ordered site data bt time")
+        logger.info("ordered assembly data bt time")
         from collections import OrderedDict
 
         ordered_data = OrderedDict(sorted(_data.items(), key=lambda x: x[1][0]))
@@ -217,7 +217,7 @@ def main():
 
         _data = {}
         _counter = {}
-        logger.info("Load site history from M9_M10-history.csv")
+        logger.info("Load assembly history from M9_M10-history.csv")
         with open("M9_M10-history.csv") as f:
             _raw = csv.reader(f)
 
@@ -239,22 +239,22 @@ def main():
                             _counter[name] = 0
 
                         # see L680-689
-                        site = f"{name}_{_counter[name]}"
+                        assembly = f"{name}_{_counter[name]}"
 
                         created_at = None
                         stopped_at = None
                         logger.debug(f"status={status}, date={row[0]}")
                         if status.lower() == "en service":
                             created_at = datetime.datetime.strptime(row[0], tformat)
-                            # rename site with create_at # see L680-689
-                            if site in db_Sites:
-                                db_Sites[site]["status"] = status.lower()
-                                db_Sites[site]["commissioned_at"] = stopped_at
-                                db_Sites[site]["housing"] = housing
-                                db_Sites[site]["bitter"] = bitter
+                            # rename assembly with create_at # see L680-689
+                            if assembly in db_Assemblies:
+                                db_Assemblies[assembly]["status"] = status.lower()
+                                db_Assemblies[assembly]["commissioned_at"] = stopped_at
+                                db_Assemblies[assembly]["housing"] = housing
+                                db_Assemblies[assembly]["bitter"] = bitter
                             else:
-                                db_Sites[site] = {
-                                    "name": site,
+                                db_Assemblies[assembly] = {
+                                    "name": assembly,
                                     "description": "",
                                     "status": status.lower(),
                                     "magnets": _magnets,
@@ -268,12 +268,12 @@ def main():
                         else:
                             stopped_at = datetime.datetime.strptime(row[0], tformat)
                             _counter[name] += 1
-                            if site in db_Sites:
-                                db_Sites[site]["status"] = status.lower()
-                                db_Sites[site]["decommissioned_at"] = stopped_at
+                            if assembly in db_Assemblies:
+                                db_Assemblies[assembly]["status"] = status.lower()
+                                db_Assemblies[assembly]["decommissioned_at"] = stopped_at
                             else:
-                                db_Sites[site] = {
-                                    "name": site,
+                                db_Assemblies[assembly] = {
+                                    "name": assembly,
                                     "description": "",
                                     "status": status.lower(),
                                     "magnets": _magnets,
@@ -287,8 +287,8 @@ def main():
                     logger.warning(f"problem loading: {row} - {str(e)} - skipped")
                     pass
 
-        logger.info("db_Sites: definition")
-        for item, values in db_Sites.items():
+        logger.info("db_Assemblies: definition")
+        for item, values in db_Assemblies.items():
             housing = values["housing"]
             name = values["name"]
             if "Bitters" not in item:
@@ -298,16 +298,16 @@ def main():
                     values["magnets"].append(values["bitter"])
             # et ici? # see L680-689
             values["name"] = f"{housing}_{name}"
-            logger.debug(f"site={item}: {values}")
+            logger.debug(f"assembly={item}: {values}")
 
-        for item in db_Sites:
-            del db_Sites[item]["bitter"]
-        for item, values in db_Sites.items():
-            logger.debug(f"site={item}: {values}")
-        # TODO rename site with housing
-        logger.info(f" {len(db_Sites)} sites loaded")
+        for item in db_Assemblies:
+            del db_Assemblies[item]["bitter"]
+        for item, values in db_Assemblies.items():
+            logger.debug(f"assembly={item}: {values}")
+        # TODO rename assembly with housing
+        logger.info(f" {len(db_Assemblies)} assemblies loaded")
 
-        for _site, values in db_Sites.items():
+        for _assembly, values in db_Assemblies.items():
             status = values["status"]
             for magnet in values["magnets"]:
                 Magnets[magnet] = HMagnet(magnet, "", status, parts=[])
@@ -441,7 +441,7 @@ def main():
 
         # Create Parts from Magnets
         diameter = {14: 34, 12: 50, 6: 170}
-        logger.info(f"Magnets ({len(Magnets)}): create and attached to site")
+        logger.info(f"Magnets ({len(Magnets)}): create and attached to assembly")
         PartName = {}
         db_Magnets = {}
         for magnet in Magnets:
@@ -450,11 +450,11 @@ def main():
                 "status": Magnets[magnet].status,
                 "design_office_reference": "",
             }
-            for site in db_Sites:
-                if magnet in site:
-                    if "sites" not in db_Magnets[magnet]:
-                        db_Magnets[magnet]["sites"] = []
-                    db_Magnets[magnet]["sites"].append(magnet)
+            for assembly in db_Assemblies:
+                if magnet in assembly:
+                    if "assemblies" not in db_Magnets[magnet]:
+                        db_Magnets[magnet]["assemblies"] = []
+                    db_Magnets[magnet]["assemblies"].append(magnet)
 
             # magconf = Magnets[magnet].MAGfile
             # if magconf:
@@ -627,7 +627,7 @@ def main():
             logger.info(f"records: {url_housing} - found {len(record_names)} records")
         logger.info(f" {len(record_names)} records found")
 
-        # Assign records to site from timestamps
+        # Assign records to assembly from timestamps
         # Create a panda datafram with ['link','timestamp']
         df_records = pd.DataFrame(
             list(zip(record_names, record_timestamps, strict=False)),
@@ -635,17 +635,17 @@ def main():
         )
         df_records.to_csv("df_records.csv")
 
-        # for each site
-        #     get record with a timestamp in between site.commisionned_at and site.decommisioned_at
-        logger.info("Assign records to sites based on timestamps:")
-        for site, values in db_Sites.items():
+        # for each assembly
+        #     get record with a timestamp in between assembly.commisionned_at and assembly.decommisioned_at
+        logger.info("Assign records to assemblies based on timestamps:")
+        for assembly, values in db_Assemblies.items():
             housing = values["housing"]
             t0 = values["commissioned_at"]
             t1 = values["decommissioned_at"]
 
-            # Skip sites with invalid timestamps
+            # Skip assemblies with invalid timestamps
             if t0 is None:
-                logger.warning(f"{site}: skipping - commissioned_at is None")
+                logger.warning(f"{assembly}: skipping - commissioned_at is None")
                 continue
 
             selected = None
@@ -653,16 +653,16 @@ def main():
                 selected = df_records[
                     df_records["timestamp"].between(t0, t1, inclusive="left")
                 ]
-                # logger.info(f"{site}: records={len(selected.index)}")
+                # logger.info(f"{assembly}: records={len(selected.index)}")
             else:
                 selected = df_records[df_records["timestamp"] >= t0]
-            #  logger.info(f"{site}: records={len(selected.index)} **")
+            #  logger.info(f"{assembly}: records={len(selected.index)} **")
 
             for link, timestamp in zip(
                 selected["name"].tolist(), selected["timestamp"].tolist(), strict=False
             ):
                 if housing in link:
-                    record = MRecord(timestamp, housing, site, link)
+                    record = MRecord(timestamp, housing, assembly, link)
                     values["records"].append(record)
             first_record = (
                 values["records"][0].getDataFilename()
@@ -675,13 +675,13 @@ def main():
                 else "N/A"
             )
             logger.info(
-                f'site={site}, housing="{housing}, t0={t0}, t1={t1}, assigned records={len(values["records"])} from {first_record} to {last_record}'
+                f'assembly={assembly}, housing="{housing}, t0={t0}, t1={t1}, assigned records={len(values["records"])} from {first_record} to {last_record}'
             )
-        logger.info("Assign records to sites based on timestamps Done")
+        logger.info("Assign records to assemblies based on timestamps Done")
 
         logger.info("Save records and Check if requested:")
-        for site, values in db_Sites.items():
-            sname = site.split("_")[0]
+        for assembly, values in db_Assemblies.items():
+            sname = assembly.split("_")[0]
             for record in values["records"]:
                 if args.save:
                     filepath = os.path.join(args.datadir, record.getDataFilename())
@@ -698,21 +698,21 @@ def main():
                             insert = headers[1]
                             if not sname.startswith(insert):
                                 logger.warning(
-                                    f"{site}: {record} - expected site={sname} got {insert}"
+                                    f"{assembly}: {record} - expected assembly={sname} got {insert}"
                                 )
 
-                    # mrun = MagnetRun.fromStringIO(record.getHousing(), record.getSite(), data)
+                    # mrun = MagnetRun.fromStringIO(record.getHousing(), record.getAssembly(), data)
 
                     # from ..processing.stats import plateaus
                     # plateaus(Data=mrun.MagnetData, duration=10, save=args.save, debug=args.debug)
 
                     if not len(data) > 0:
                         raise ValueError(
-                            f"Cannot save record {record} for site {site} to {args.datadir}, filename={record.getDataFilename()}: empty file"
+                            f"Cannot save record {record} for assembly {assembly} to {args.datadir}, filename={record.getDataFilename()}: empty file"
                         )
                     record.saveData(data, args.datadir)
                     logger.info(
-                        f"Saved record {record} for site {site} to {args.datadir}, filename={record.getDataFilename()}"
+                        f"Saved record {record} for assembly {assembly} to {args.datadir}, filename={record.getDataFilename()}"
                     )
         logger.info("Save records and Check if requested Done")
 
@@ -722,26 +722,26 @@ def main():
         """
         if args.check:
             logger.info("\nOrphaned records:")
-            record_sites = [db_Sites[site]["records"] for site in db_Sites]
+            record_assemblies = [db_Assemblies[assembly]["records"] for assembly in db_Assemblies]
             # print(f"record_names: {record_names[-1]}")
-            record_name_sites = [record.getLink() for record in flatten(record_sites)]
-            logger.debug(f"record_name_sites: {record_name_sites[-1]}")
+            record_name_assemblies = [record.getLink() for record in flatten(record_assemblies)]
+            logger.debug(f"record_name_assemblies: {record_name_assemblies[-1]}")
             orphan_records = list(
-                set(record_names).symmetric_difference(set(flatten(record_name_sites)))
+                set(record_names).symmetric_difference(set(flatten(record_name_assemblies)))
             )
 
             logger.info(
-                f"orphan_records={len(orphan_records)} / {len(record_name_sites)} registered / {len(record_names)} records"
+                f"orphan_records={len(orphan_records)} / {len(record_name_assemblies)} registered / {len(record_names)} records"
             )
 
             for housing in ["M1", "M3", "M5", "M7", "M8", "M9", "M10"]:
-                record_sites = [
-                    db_Sites[site]["records"]
-                    for site in db_Sites
-                    if housing == db_Sites[site]["housing"]
+                record_assemblies = [
+                    db_Assemblies[assembly]["records"]
+                    for assembly in db_Assemblies
+                    if housing == db_Assemblies[assembly]["housing"]
                 ]
-                record_name_sites = [
-                    record.getLink() for record in flatten(record_sites)
+                record_name_assemblies = [
+                    record.getLink() for record in flatten(record_assemblies)
                 ]
                 search_housing = f"/{housing}/"
                 record_names_housing = [
@@ -749,23 +749,23 @@ def main():
                 ]
                 orphan_records = list(
                     set(record_names_housing).symmetric_difference(
-                        set(flatten(record_name_sites))
+                        set(flatten(record_name_assemblies))
                     )
                 )
 
                 logger.info(
-                    f"{housing}: orphan_records={len(orphan_records)} / {len(record_name_sites)} registered / {len(record_names_housing)} records"
+                    f"{housing}: orphan_records={len(orphan_records)} / {len(record_name_assemblies)} registered / {len(record_names_housing)} records"
                 )
 
                 logger.info(f"{housing}: Saved Orphaned records {len(orphan_records)}")
                 for orphan in orphan_records:
                     logger.debug(f"{orphan} ({type(orphan)})")
-                    site = "unknown"
+                    assembly = "unknown"
                     link = orphan
                     fname = link.split("/")[-1].replace("%20", " ").strip()
                     timestamp = parse_filename_timestamp(fname)
                     logger.info(f"orphan record: {orphan}, timestamp={timestamp}")
-                    orecord = MRecord(timestamp, housing, site, link)
+                    orecord = MRecord(timestamp, housing, assembly, link)
                     logger.debug(f"{orecord}")
                     filepath = os.path.join(args.datadir, orecord.getDataFilename())
                     if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
@@ -778,26 +778,26 @@ def main():
                     if args.save:
                         orecord.saveData(data, args.datadir)
 
-        # Display site history per site for M9 and M10 only
+        # Display assembly history per assembly for M9 and M10 only
 
-        logger.info("\nSite History per Housing:")
+        logger.info("\nAssembly History per Housing:")
 
         history = {}
         for housing in housing_names:
             history[housing] = {
-                "site": [],
+                "assembly": [],
                 "commissioned_at": [],
                 "decommissioned_at": [],
             }
 
-        for site in db_Sites:
-            data = db_Sites[site]
+        for assembly in db_Assemblies:
+            data = db_Assemblies[assembly]
             housing = data["housing"]
-            logger.debug(f"site={site}, housing={housing}")
+            logger.debug(f"assembly={assembly}, housing={housing}")
 
-            logger.debug(f"site={site}, housing={housing}, data={data}")
+            logger.debug(f"assembly={assembly}, housing={housing}, data={data}")
             hdata = history[housing]
-            hdata["site"].append(site.replace("_", "-"))
+            hdata["assembly"].append(assembly.replace("_", "-"))
             hdata["commissioned_at"].append(data["commissioned_at"])
             hdata["decommissioned_at"].append(data["decommissioned_at"])
 
@@ -805,8 +805,8 @@ def main():
         for housing in ["M9", "M10"]:
             hdata = history[housing]
             df = pd.DataFrame(hdata)
-            ax = df.plot(x="site", y="decommissioned_at", kind="bar")
-            df.plot(x="site", y="commissioned_at", kind="bar", ax=ax, color="white")
+            ax = df.plot(x="assembly", y="decommissioned_at", kind="bar")
+            df.plot(x="assembly", y="commissioned_at", kind="bar", ax=ax, color="white")
 
             today = datetime.date.today()
 
@@ -825,13 +825,13 @@ def main():
             "\nOrphaned magnet/part/material - Generate files for import in MagnetDB:"
         )
         magnet_names = [db_Magnets[magnet]["name"] for magnet in db_Magnets]
-        site_magnets = [
+        assembly_magnets_list = [
             svalues["magnets"]
-            for site, svalues in db_Sites.items()
+            for assembly, svalues in db_Assemblies.items()
             if "magnets" in svalues
         ]
         orphan_magnets = list(
-            set(magnet_names).symmetric_difference(set(flatten(site_magnets)))
+            set(magnet_names).symmetric_difference(set(flatten(assembly_magnets_list)))
         )
 
         part_names = [db_Parts[part]["name"] for part in db_Parts]
@@ -884,8 +884,8 @@ def main():
         magnet_json_files = []
         logger.info("\nGenerate files for import in MagnetDB:")
         for magnet, mvalues in db_Magnets.items():
-            if "sites" in mvalues:
-                del mvalues["sites"]
+            if "assemblies" in mvalues:
+                del mvalues["assemblies"]
 
             mvalues["status"] = magnet_status[mvalues["status"].lower()]
             mvalues["db_parts"] = []
@@ -920,23 +920,23 @@ def main():
         for f in natsorted(magnet_json_files):
             logger.info(f"  {f}")
 
-        site_status = {"en service": "in_operation", "en stock": "decommisioned"}
-        site_json_files = []
+        assembly_status = {"en service": "in_operation", "en stock": "decommisioned"}
+        assembly_json_files = []
 
         logger.info("\nGenerate files for import in MagnetDB:")
-        for site, svalues in sorted(
-            db_Sites.items(),
+        for assembly, svalues in sorted(
+            db_Assemblies.items(),
             key=lambda x: (x[1]["commissioned_at"] is None, x[1]["commissioned_at"]),
         ):
             housing = svalues["housing"]
             name = svalues["name"]
             # svalues["name"] = f"{housing}_{name}"
 
-            svalues["status"] = site_status[svalues["status"].lower()]
+            svalues["status"] = assembly_status[svalues["status"].lower()]
             svalues["commissioned_at"] = str(svalues["commissioned_at"])
             svalues["decommissioned_at"] = str(svalues["decommissioned_at"])
             logger.info(
-                f"db_Sites[{site}]: housing={housing}, magnet={svalues['magnets']}, status={svalues['status']}, commissioned_at={svalues['commissioned_at']}, decommissioned_at={svalues['decommissioned_at']}, records={len(svalues['records'])}"
+                f"db_Assemblies[{assembly}]: housing={housing}, magnet={svalues['magnets']}, status={svalues['status']}, commissioned_at={svalues['commissioned_at']}, decommissioned_at={svalues['decommissioned_at']}, records={len(svalues['records'])}"
             )
 
             svalues["data_records"] = []
@@ -956,7 +956,7 @@ def main():
             del svalues["data_records"]
 
             for magnet in svalues["magnets"]:
-                logger.debug(f"magnets[{site}]: {magnet}")
+                logger.debug(f"magnets[{assembly}]: {magnet}")
 
             # filename = f'{svalues["name"]}.json'
             _commissioned_str = svalues["commissioned_at"]
@@ -971,12 +971,12 @@ def main():
             if args.datadir != ".":
                 filename = f"{args.datadir}/{filename}"
             with open(filename, "w") as f:
-                logger.info(f"db_Sites/write_to_json: {filename}")
+                logger.info(f"db_Assemblies/write_to_json: {filename}")
                 f.write(json.dumps(svalues, indent=4))
-            site_json_files.append(filename)
+            assembly_json_files.append(filename)
 
-        logger.info("\nCreated site JSON files:")
-        for f in natsorted(site_json_files):
+        logger.info("\nCreated assembly JSON files:")
+        for f in natsorted(assembly_json_files):
             logger.info(f"  {f}")
         logger.info("\nDone.")
 

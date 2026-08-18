@@ -76,7 +76,7 @@ if __name__ == "__main__":
         housing = args.housing if args.housing is not None else "notdefined"
         print(f"no housing detected - use args.housing {housing} argument instead")
 
-    site = args.site
+    assembly = args.assembly
     insert = args.insert
     tkey = "t"
 
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     print(
         f"Detection threshold: {args.threshold}, num_points_threshold: {args.num_points}"
     )
-    mrun = load_mrun(file, housing, site)
+    mrun = load_mrun(file, housing, assembly)
 
     mdata = mrun.getMData()
 

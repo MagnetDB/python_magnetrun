@@ -79,16 +79,16 @@ if __name__ == "__main__":
         filename = os.path.basename(file)
         result = filename.startswith("M")
         insert = args.insert if args.insert is not None else "tutu"
-        site = args.site if args.site is not None else "Mtutu"
+        assembly = args.assembly if args.assembly is not None else "Mtutu"
         housing = args.housing if args.housing is not None else "notdefined"
         print(
-            f"file={file}, filename={filename}, site={site}, insert={insert}, housing={housing}, f_extension={f_extension}",
+            f"file={file}, filename={filename}, assembly={assembly}, insert={insert}, housing={housing}, f_extension={f_extension}",
             flush=True,
         )
         try:
             index = filename.index("_")
             housing = filename[0:index] if housing == "notdefined" else housing
-            # print(f"site detected: {site}")
+            # print(f"assembly detected: {assembly}")
         except ValueError:
             print(f"no housing detected - use args.housing {housing} argument instead")
             pass
@@ -97,9 +97,9 @@ if __name__ == "__main__":
             case ".txt":
                 if not os.path.exists(file):
                     file = os.path.join(args.pupitre_datadir, housing, filename)
-                mrun = MagnetRun.fromtxt(housing, site, file)
+                mrun = MagnetRun.fromtxt(housing, assembly, file)
             case ".tdms":
-                mrun = MagnetRun.fromtdms(housing, site, file)
+                mrun = MagnetRun.fromtdms(housing, assembly, file)
 
                 # check keys
                 (group, channel) = ykey.split("/")
