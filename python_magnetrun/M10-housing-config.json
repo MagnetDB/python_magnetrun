@@ -1,0 +1,52 @@
+{
+  "_comment": "Default housing configuration for M10. Same GR1/GR2 convention as M8: GR1 = B supply (IB), GR2 = H supply (IH). voltage_channels_gr* contain ONLY the Ucoil source probes (UB/UH are derived via get_pupitre_voltage_formulas).",
+  "name": "M10",
+  "formats": ["pupitre", "pigbrother"],
+  "reference_gr1_current": "IB",
+  "reference_gr2_current": "IH",
+  "reference_gr1_flow": "FlowB",
+  "reference_gr2_flow": "FlowH",
+  "reference_gr1_rpm": "RpmB",
+  "reference_gr2_rpm": "RpmH",
+  "reference_gr1_pin": "HPB",
+  "reference_gr2_pin": "HPH",
+  "voltage_channels_gr1": ["Ucoil15", "Ucoil16"],
+  "voltage_channels_gr2": ["Ucoil1", "Ucoil2", "Ucoil3", "Ucoil4", "Ucoil5",
+                            "Ucoil6", "Ucoil7", "Ucoil8", "Ucoil9", "Ucoil10",
+                            "Ucoil11", "Ucoil12", "Ucoil13", "Ucoil14"],
+  "reference_gr1_voltage": "UB",
+  "reference_gr2_voltage": "UH",
+  "pupitre_formula_map": {
+    "IH": {
+      "formula": "IH = Idcct3 + Idcct4",
+      "symbol": "I_H",
+      "unit": "ampere",
+      "label": "Upper Coil Current",
+      "description": "Upper coil current sum from DCCT sensors"
+    },
+    "IB": {
+      "formula": "IB = Idcct1 + Idcct2",
+      "symbol": "I_B",
+      "unit": "ampere",
+      "label": "Lower Coil Current",
+      "description": "Lower coil current sum from DCCT sensors"
+    }
+  },
+  "pigbrother_formula_map": {
+    "Courants_Alimentations/Référence_GR1": {
+      "formula": "Courants_Alimentations/Référence_GR1 = Référence_A1 + Référence_A2",
+      "symbol": "I_ref_GR1",
+      "unit": "ampere",
+      "label": "GR1 Reference Current",
+      "description": "Group 1 reference current sum from power supply outputs"
+    },
+    "Courants_Alimentations/Référence_GR2": {
+      "formula": "Courants_Alimentations/Référence_GR2 = Référence_A3 + Référence_A4",
+      "symbol": "I_ref_GR2",
+      "unit": "ampere",
+      "label": "GR2 Reference Current",
+      "description": "Group 2 reference current sum from power supply outputs"
+    }
+  },
+  "hybrid_formula_map": {}
+}

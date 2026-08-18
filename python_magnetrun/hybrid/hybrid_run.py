@@ -22,50 +22,56 @@ Example usage:
     data_ds = hrun.getData("kHz/FEPC-LNCMI/I_H1", downsample=10000)
 
     # Compare with MagnetRun
-    mrun = MagnetRun.fromtdms(site, insert, tdms_file)
+    mrun = MagnetRun.fromtdms(housing, assembly, tdms_file)
     # Both have similar interfaces for getData(), getKeys(), etc.
 """
 
-from pathlib import Path
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any, Tuple, Union, Protocol
-from dataclasses import dataclass
 import logging
 import os
+import warnings
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 # Local imports
+from ..utils.downsampling import (
+    DownsampleConfig,
+    downsample_arrays,
+    downsample_dataframe,
+)
 from .hybrid_data import HybridData
 
 # Setup logger
 logger = logging.getLogger(__name__)
 
-# Try to import tsdownsample for efficient downsampling
-try:
-    from tsdownsample import MinMaxLTTBDownsampler
 
-    HAS_TSDOWNSAMPLE = True
-except ImportError:
-    HAS_TSDOWNSAMPLE = False
-    logger.debug("tsdownsample not available - downsampling will use simple stride")
+@dataclass
+class BinarizeConfig:
+    """Parameters forwarded to :func:`~python_magnetrun.processing.signal.binarize_signal`.
 
+    Parameters
+    ----------
+    method : str
+        Thresholding method: ``'otsu'`` (default), ``'fixed'``, or ``'noise'``.
+    tolerance : float
+        Threshold used only when *method* is ``'fixed'``.
+    n_bins : int
+        Histogram bins for Otsu's method.
+    normalize : bool
+        Normalize the signal by its maximum absolute value before thresholding.
+    noise_percentile : float
+        Percentile defining the noise population for method ``'noise'``.
+    """
 
-class DataProvider(Protocol):
-    """Protocol defining common interface for data providers (MagnetRun, HybridRun)"""
-
-    def getData(self, key: Optional[str] = None) -> Any:
-        """Get data for a specific key"""
-        ...
-
-    def getKeys(self) -> List[str]:
-        """Get list of available data keys"""
-        ...
-
-    def getType(self) -> int:
-        """Get data type identifier"""
-        ...
+    method: str = "otsu"
+    tolerance: float = 0.005
+    n_bins: int = 256
+    normalize: bool = True
+    noise_percentile: float = 40.0
 
 
 @dataclass
@@ -77,17 +83,19 @@ class LoadOptions:
     cache: bool = True  # Cache loaded data
 
     # Downsampling options
-    downsample: Optional[int] = None  # Target number of points (None = no downsampling)
-    downsample_method: str = "minmax_lttb"  # 'minmax_lttb', 'lttb', 'stride'
+    downsample: DownsampleConfig | None = None
 
     # Time range selection
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    hours: Optional[List[int]] = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    hours: range | list[int] | None = None
 
     # Calibration
     apply_calib: bool = True
-    cnv_dir: Optional[str] = None
+    cnv_dir: str | None = None
+
+    # Voltage-mask binarization
+    binarize_config: BinarizeConfig | None = None
 
 
 @dataclass
@@ -112,7 +120,7 @@ class LazyArrayLoader:
         self,
         filepath: Path,
         dtype: np.dtype,
-        shape: Tuple[int, ...],
+        shape: tuple[int, ...],
         offset: int = 0,
         block_size: int = 1614,  # Default for analog blocks
         samples_per_block: int = 50,
@@ -126,8 +134,8 @@ class LazyArrayLoader:
         self.samples_per_block = samples_per_block
         self.header_size = header_size
 
-        self._mmap: Optional[np.memmap] = None
-        self._data: Optional[np.ndarray] = None
+        self._mmap: np.memmap | None = None
+        self._data: np.ndarray | None = None
 
     def _create_mmap(self) -> None:
         """Create memory-mapped file"""
@@ -137,11 +145,11 @@ class LazyArrayLoader:
             file_size = os.path.getsize(self.filepath)
             logger.debug(f"Creating memmap for {self.filepath}, size={file_size}")
 
-    def __getitem__(self, key) -> np.ndarray:
+    def __getitem__(self, key) -> np.ndarray:  # type: ignore[no-untyped-def]
         """Array-like access with lazy loading"""
         if self._data is None:
             self._load_data()
-        return self._data[key]
+        return self._data[key]  # type: ignore[index]
 
     def _load_data(self) -> None:
         """Load data from file (called on first access)"""
@@ -174,7 +182,7 @@ class LazyKHzLoader(LazyArrayLoader):
         filepath: Path,
         card_type: str,  # 'ANA' or 'DIG'
         endian: str = "big",
-        channel: Optional[int] = None,  # Load specific channel only
+        channel: int | None = None,  # Load specific channel only
     ):
         self.card_type = card_type
         self.endian = endian
@@ -197,7 +205,7 @@ class LazyKHzLoader(LazyArrayLoader):
         total_samples = num_blocks * self.SAMPLES_PER_BLOCK
 
         if channel is not None:
-            shape = (total_samples,)
+            shape: tuple[int, ...] = (total_samples,)
         else:
             shape = (total_samples, num_channels)
 
@@ -221,7 +229,7 @@ class LazyKHzLoader(LazyArrayLoader):
         logger.debug(f"Loading kHz data from {self.filepath}")
 
         # Use existing reader for full data
-        full_data = read_hour_file(
+        full_data, _timestamps = read_hour_file(
             str(self.filepath),
             self.card_type,
             num_blocks=self.num_blocks,
@@ -237,7 +245,7 @@ class LazyKHzLoader(LazyArrayLoader):
         self,
         start_sample: int,
         end_sample: int,
-        channel: Optional[int] = None,
+        channel: int | None = None,
     ) -> np.ndarray:
         """
         Read a specific range of samples efficiently.
@@ -331,86 +339,12 @@ class LazyKHzLoader(LazyArrayLoader):
         return data
 
 
-def downsample_data(
-    data: np.ndarray,
-    time: np.ndarray,
-    target_points: int,
-    method: str = "minmax_lttb",
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Downsample time series data for visualization.
-
-    Parameters
-    ----------
-    data : np.ndarray
-        Data array to downsample
-    time : np.ndarray
-        Time array
-    target_points : int
-        Target number of points after downsampling
-    method : str
-        Downsampling method: 'minmax_lttb', 'lttb', 'stride', 'minmax'
-
-    Returns
-    -------
-    tuple
-        (downsampled_data, downsampled_time)
-    """
-    if len(data) <= target_points:
-        return data, time
-
-    logger.debug(f"Downsampling {len(data)} points to {target_points} using {method}")
-
-    if method == "minmax_lttb" and HAS_TSDOWNSAMPLE:
-        # Use tsdownsample MinMaxLTTB (best for visualization)
-        downsampler = MinMaxLTTBDownsampler()
-        indices = downsampler.downsample(time, data, n_out=target_points)
-        return data[indices], time[indices]
-
-    elif method == "lttb" and HAS_TSDOWNSAMPLE:
-        from tsdownsample import LTTBDownsampler
-
-        downsampler = LTTBDownsampler()
-        indices = downsampler.downsample(time, data, n_out=target_points)
-        return data[indices], time[indices]
-
-    elif method == "minmax":
-        # Simple min/max downsampling (preserves peaks)
-        bucket_size = len(data) // (target_points // 2)
-        n_buckets = len(data) // bucket_size
-
-        result_data = []
-        result_time = []
-
-        for i in range(n_buckets):
-            start = i * bucket_size
-            end = start + bucket_size
-            bucket_data = data[start:end]
-            bucket_time = time[start:end]
-
-            min_idx = np.argmin(bucket_data)
-            max_idx = np.argmax(bucket_data)
-
-            # Add min first, then max (or vice versa based on order)
-            if min_idx < max_idx:
-                result_data.extend([bucket_data[min_idx], bucket_data[max_idx]])
-                result_time.extend([bucket_time[min_idx], bucket_time[max_idx]])
-            else:
-                result_data.extend([bucket_data[max_idx], bucket_data[min_idx]])
-                result_time.extend([bucket_time[max_idx], bucket_time[min_idx]])
-
-        return np.array(result_data), np.array(result_time)
-
-    else:
-        # Simple stride-based downsampling
-        stride = len(data) // target_points
-        indices = np.arange(0, len(data), stride)[:target_points]
-        return data[indices], time[indices]
-
-
 class HybridRun:
     """
     MagnetRun-compatible interface for hybrid magnet data.
+
+    Implements the :class:`~python_magnetrun.hybrid.data_protocol.DataLoader` protocol
+    (structural subtyping — no explicit base class required).
 
     Provides the same interface as MagnetRun while supporting:
     - kHz data from FEPC acquisition
@@ -426,8 +360,8 @@ class HybridRun:
     ----------
     housing : str
         Housing name (for MagnetRun compatibility)
-    site : str
-        Site identifier (e.g., 'Hybrid')
+    assembly : str
+        Assembly identifier (e.g., 'Hybrid')
     data : HybridData
         HybridData instance
     start_time : datetime, optional
@@ -454,22 +388,22 @@ class HybridRun:
     def __init__(
         self,
         housing: str = "Hybrid",
-        site: str = "",
-        data: Optional[HybridData] = None,
-        start_time: Optional[datetime] = None,
+        assembly: str = "",
+        data: HybridData | None = None,
+        start_time: datetime | None = None,
     ):
         self.Housing = housing
-        self.Site = site
+        self.Assembly = assembly
         self.HybridData = data
         self.StartTime = start_time
 
         # Cache for loaded data
-        self._cache: Dict[str, CacheEntry] = {}
+        self._cache: dict[str, CacheEntry] = {}
         self._cache_max_size_bytes = 1024 * 1024 * 1024  # 1 GB default
         self._cache_size_bytes = 0
 
         # Lazy loaders
-        self._lazy_loaders: Dict[str, LazyKHzLoader] = {}
+        self._lazy_loaders: dict[str, LazyKHzLoader] = {}
 
         # Default load options
         self.default_options = LoadOptions()
@@ -479,10 +413,11 @@ class HybridRun:
         cls,
         base_dir: str,
         date_str: str,
-        fepc_system: Optional[str] = None,
+        fepc_system: str | None = None,
         endian: str = "big",
         housing: str = "Hybrid",
-        site: str = "",
+        assembly: str = "",
+        defs_file: str | None = None,
     ) -> "HybridRun":
         """
         Create HybridRun from a directory for a given date.
@@ -501,15 +436,15 @@ class HybridRun:
             Endianness for binary data
         housing : str
             Housing name (for compatibility)
-        site : str
-            Site identifier
+        assembly : str
+            Assembly identifier
 
         Returns
         -------
         HybridRun
             HybridRun instance
         """
-        data = HybridData(base_dir, date_str, fepc_system, endian)
+        data = HybridData(base_dir, date_str, fepc_system, endian, defs_file=defs_file)
 
         # Determine start time from first available data
         start_time = None
@@ -521,7 +456,7 @@ class HybridRun:
 
         return cls(
             housing=housing,
-            site=site or date_str,
+            assembly=assembly or date_str,
             data=data,
             start_time=start_time,
         )
@@ -529,11 +464,11 @@ class HybridRun:
     def __repr__(self):
         if self.HybridData:
             return (
-                f"HybridRun(Housing={self.Housing!r}, Site={self.Site!r}, "
+                f"HybridRun(Housing={self.Housing!r}, Assembly={self.Assembly!r}, "
                 f"date={self.HybridData.date_str}, "
                 f"systems={self.HybridData._info.fepc_systems})"
             )
-        return f"HybridRun(Housing={self.Housing!r}, Site={self.Site!r})"
+        return f"HybridRun(Housing={self.Housing!r}, Assembly={self.Assembly!r})"
 
     # -------------------------------------------------------------------------
     # MagnetRun-compatible interface
@@ -545,17 +480,33 @@ class HybridRun:
             return self.HybridData.FileName
         return ""
 
-    def getSite(self) -> str:
-        """Returns Site"""
-        return self.Site
+    def getAssembly(self) -> str:
+        """Returns Assembly"""
+        return self.Assembly
+
+    def getSite(self) -> str:  # noqa: N802
+        warnings.warn(
+            "getSite() is deprecated, use getAssembly() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.getAssembly()
 
     def getHousing(self) -> str:
         """Returns Housing"""
         return self.Housing
 
-    def setSite(self, site: str) -> None:
-        """Set Site"""
-        self.Site = site
+    def setAssembly(self, assembly: str) -> None:
+        """Set Assembly"""
+        self.Assembly = assembly
+
+    def setSite(self, site: str) -> None:  # noqa: N802
+        warnings.warn(
+            "setSite() is deprecated, use setAssembly() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.setAssembly(site)
 
     def getType(self) -> int:
         """Returns Data Type"""
@@ -569,12 +520,75 @@ class HybridRun:
             return self.HybridData
         raise RuntimeError("No HybridData attached to this HybridRun")
 
+    def getUnitKey(self, key: str) -> tuple:
+        """Return ``(symbol, unit)`` for *key* — delegates to :attr:`HybridData`."""
+        return self.getMData().getUnitKey(key)
+
+    def _resolve_hybrid_formula(
+        self,
+        key: str,
+        formula_str: str,
+        opts: "LoadOptions",
+    ) -> "tuple[np.ndarray, np.ndarray]":
+        """Evaluate a hybrid_formula_map formula string and return (data, time).
+
+        Only additive formulas (``A = B + C [+ ...]``) are supported.
+        Each operand is a bare ``SYSTEM/VARIABLE`` name that maps to
+        ``kHz/SYSTEM/VARIABLE`` in the HybridRun data model.
+        """
+        if "=" not in formula_str:
+            raise ValueError(
+                f"_resolve_hybrid_formula: expected 'LHS = RHS' in {formula_str!r}"
+            )
+        rhs = formula_str.split("=", 1)[1]
+        if "+" not in rhs:
+            raise NotImplementedError(
+                f"_resolve_hybrid_formula: only '+' is supported, got {rhs!r}"
+            )
+        operands = [tok.strip() for tok in rhs.split("+")]
+
+        arrays: list[np.ndarray] = []
+        time_ref: np.ndarray | None = None
+        for operand in operands:
+            parts = operand.split("/")
+            if len(parts) != 2:
+                raise ValueError(
+                    f"_resolve_hybrid_formula: expected SYSTEM/VARIABLE operand, "
+                    f"got {operand!r}"
+                )
+            system, variable = parts
+            result = self.getData(f"kHz/{system}/{variable}", options=opts)
+            if not (isinstance(result, tuple) and len(result) == 2):
+                raise ValueError(
+                    f"_resolve_hybrid_formula: getData returned unexpected type for "
+                    f"operand {operand!r}"
+                )
+            op_data, op_time = result
+            op_data = np.asarray(op_data)
+            op_time = np.asarray(op_time)
+            if time_ref is None:
+                time_ref = op_time
+            elif op_data.shape != arrays[0].shape:
+                raise ValueError(
+                    f"_resolve_hybrid_formula: shape mismatch between operands of "
+                    f"{key!r}: {arrays[0].shape} vs {op_data.shape}"
+                )
+            arrays.append(op_data)
+
+        data = np.sum(arrays, axis=0)
+        logger.debug(
+            f"_resolve_hybrid_formula: resolved {key!r} from {operands} "
+            f"(shape={data.shape})"
+        )
+        return data, time_ref  # type: ignore[return-value]
+
     def getData(
         self,
-        key: Optional[str] = None,
-        downsample: Optional[int] = None,
-        options: Optional[LoadOptions] = None,
-    ) -> Union[Dict, Tuple[np.ndarray, np.ndarray], pd.DataFrame]:
+        key: str | None = None,
+        hours: range | list[int] | None = None,
+        downsample: DownsampleConfig | int | None = None,
+        options: LoadOptions | None = None,
+    ) -> dict | tuple[np.ndarray, np.ndarray] | pd.DataFrame:
         """
         Get data for a specific key.
 
@@ -586,6 +600,8 @@ class HybridRun:
             - 'kHz/FEPC-LNCMI/I_H1' - specific kHz variable
             - 'rms/FEPC-LNCMI/I_H1' - specific RMS variable
             - 'kHz/FEPC-LNCMI' - list of available kHz variables
+        hours : range or list of int, optional
+            Specific hours to load
         downsample : int, optional
             Target number of points for downsampling (for plotting)
         options : LoadOptions, optional
@@ -598,43 +614,84 @@ class HybridRun:
             - For group keys: dict of available variables
             - For None: all loaded data
         """
+        logger.info(
+            f"HybridRun.getData: key={key}, hours={hours},downsample={downsample}, options={options}"
+        )
+
         if self.HybridData is None:
             raise RuntimeError("HybridRun.getData: no HybridData associated")
 
         opts = options or self.default_options
+        if hours is not None:
+            opts.hours = hours
+
         if downsample is not None:
+            ds_config = (
+                DownsampleConfig(n_out=downsample)
+                if isinstance(downsample, int)
+                else downsample
+            )
             opts = LoadOptions(
                 lazy=opts.lazy,
                 cache=opts.cache,
-                downsample=downsample,
-                downsample_method=opts.downsample_method,
+                downsample=ds_config,
                 start_time=opts.start_time,
                 end_time=opts.end_time,
                 hours=opts.hours,
                 apply_calib=opts.apply_calib,
                 cnv_dir=opts.cnv_dir,
+                binarize_config=opts.binarize_config,
             )
+            logger.debug(f"LoadOptions opts: {opts}")
+        logger.debug(f"opts: {opts}")
 
         if key is None:
-            return self.HybridData.Data
+            return self.HybridData  # .Data
 
         # Check cache first
-        cache_key = f"{key}:{opts.downsample}:{opts.hours}"
+        ds = opts.downsample
+        cache_key = (
+            f"{key}:{ds.n_out}:{ds.method}:{opts.hours}"
+            if ds is not None
+            else f"{key}:None:{opts.hours}"
+        )
         if opts.cache and cache_key in self._cache:
             entry = self._cache[cache_key]
             logger.debug(f"Cache hit for {cache_key}")
             return entry.data, entry.time
 
+        # Resolve hybrid_formula_map keys (e.g. "FEPC-AUX-LNCMI/ALIM1")
+        formula_entry = None
+        try:
+            from ..housing_config import get_housing_config
+
+            hcfg = get_housing_config(self.Housing)
+            formula_entry = hcfg.hybrid_formula_map.get(key)
+        except (ValueError, KeyError):
+            pass  # housing unknown — fall through
+
+        if formula_entry:
+            data, time = self._resolve_hybrid_formula(
+                key, formula_entry["formula"], opts
+            )
+            if opts.cache:
+                self._add_to_cache(cache_key, data, time, opts)
+            return data, time
+
         # Parse key
         parts = key.split("/")
+        # print("parts:", parts)
         if len(parts) < 2:
             raise ValueError(
                 f"Invalid key format: {key}. Expected 'type/system[/variable]'"
             )
 
         data_type = parts[0]
+        logger.debug(f"data_type: {data_type}")
         system = parts[1]
         variable = parts[2] if len(parts) >= 3 else None
+        logger.debug(f"system: {system}")
+        logger.debug(f"variable: {variable}")
 
         # Load data based on type
         if data_type == "kHz":
@@ -649,6 +706,8 @@ class HybridRun:
                 cnv_dir=opts.cnv_dir,
             )
 
+            data = self._apply_voltage_mask(data, time, system, variable, key, opts, opts.binarize_config)
+
         elif data_type == "rms":
             if variable is None:
                 return self.HybridData.get_rms_variables(system)
@@ -658,18 +717,35 @@ class HybridRun:
                 variable,
                 hours=opts.hours,
             )
+            data = self._apply_voltage_mask(data, time, system, variable, key, opts, opts.binarize_config)
 
         elif data_type == "trigger":
-            return self.HybridData.list_trigger_files(system)
+            if variable is None:
+                return self.HybridData.list_trigger_events(system)
+
+            data, time = self.HybridData.read_trigger_variable(
+                system,
+                variable,
+                apply_calib=opts.apply_calib,
+                cnv_dir=opts.cnv_dir,
+            )
+
+        elif data_type == "vprocess":
+            if variable is not None:
+                raise ValueError(
+                    f"Invalid vprocess key: {key!r}. Expected 'vprocess/VARIABLE'"
+                )
+            # system holds the variable name (no FEPC system layer for vprocess)
+            data, time = self.HybridData.read_vprocess_variable(
+                system, hours=opts.hours
+            )
 
         else:
             raise ValueError(f"Unknown data type: {data_type}")
 
         # Apply downsampling if requested
-        if opts.downsample and len(data) > opts.downsample:
-            data, time = downsample_data(
-                data, time, opts.downsample, opts.downsample_method
-            )
+        if opts.downsample is not None and len(data) > opts.downsample.n_out:
+            data, time = downsample_arrays(data, time, opts.downsample)
 
         # Cache result
         if opts.cache:
@@ -677,19 +753,114 @@ class HybridRun:
 
         return data, time
 
-    def getKeys(self) -> List[str]:
+    def _apply_voltage_mask(
+        self,
+        data: np.ndarray,
+        time: np.ndarray,
+        system: str,
+        variable: str,
+        key: str,
+        opts,
+        binarize_config: BinarizeConfig | None = None,
+    ) -> np.ndarray:
+        """Zero out samples in *data* that fall outside the voltage-on intervals.
+
+        The voltage channel is always kHz; its binary mask is projected onto
+        *data*'s (possibly lower-rate) time grid via nearest-neighbour lookup.
+        Returns *data* unchanged when no mask is configured or on any error.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Signal array to mask.
+        time : np.ndarray
+            Time axis for *data* (seconds from start of day).
+        system : str
+            FEPC system name (e.g. ``'FEPC-LNCMI'``).
+        variable : str
+            Variable name within *system*.
+        key : str
+            Full data key (used only for log messages).
+        opts : LoadOptions
+            Active load options; ``opts.binarize_config`` is used when
+            *binarize_config* is ``None``.
+        binarize_config : BinarizeConfig, optional
+            Override for the binarization parameters.  When ``None`` the value
+            from *opts.binarize_config* is used; when that is also ``None``
+            the defaults of
+            :func:`~python_magnetrun.processing.signal.binarize_signal` apply.
+        """
+        try:
+            from ..housing_config import get_housing_config
+            from ..processing.signal import binarize_signal
+
+            hcfg = get_housing_config(self.Housing)
+            cfg_key = f"{system}/{variable}"
+            voltage_chan = hcfg.hybrid_voltage_mask_map.get(cfg_key)
+            logger.warning(
+                f"voltage mask lookup: {cfg_key!r} → {voltage_chan!r}"
+            )
+            if not voltage_chan:
+                return data
+
+            v_sys, v_var = voltage_chan.split("/", 1)
+            voltage_data, v_time = self.HybridData.read_khz_variable(
+                v_sys, v_var, hours=opts.hours, apply_calib=opts.apply_calib
+            )
+            logger.warning(
+                f"voltage_data stats for {voltage_chan!r}: "
+                f"n={voltage_data.size}, "
+                f"min={voltage_data.min():.4g}, max={voltage_data.max():.4g}, "
+                f"mean={voltage_data.mean():.4g}, std={voltage_data.std():.4g}, "
+                f"n_nonzero={int(np.count_nonzero(voltage_data))}"
+            )
+            bcfg = binarize_config or opts.binarize_config
+            if bcfg is not None:
+                v_mask = binarize_signal(
+                    voltage_data,
+                    method=bcfg.method,
+                    tolerance=bcfg.tolerance,
+                    n_bins=bcfg.n_bins,
+                    normalize=bcfg.normalize,
+                    noise_percentile=bcfg.noise_percentile,
+                )
+            else:
+                v_mask = binarize_signal(voltage_data)
+            logger.warning(
+                f"voltage mask stats: n_on={int(v_mask.sum())}/{v_mask.size} "
+                f"({100.0 * v_mask.mean():.1f}% on)"
+            )
+            # Project v_mask onto data's time grid via nearest-neighbour lookup.
+            # Works regardless of whether data is kHz or rms (different rates).
+            idx = np.clip(
+                np.searchsorted(v_time, time, side="left"), 0, len(v_mask) - 1
+            )
+            data = data * v_mask[idx]
+            logger.warning(f"Applied voltage mask {voltage_chan!r} to {key!r}")
+        except (ValueError, KeyError) as exc:
+            logger.warning(f"voltage mask skipped for {key!r}: {exc}")
+        return data
+
+    def getKeys(self) -> list[str]:
         """Return list of data keys (MagnetRun compatible)"""
         if self.HybridData is not None:
-            return self.HybridData.Keys
+            return self.HybridData.getKeys()
         raise RuntimeError("HybridRun.getKeys: no HybridData associated")
 
-    def getUnit(self, key: str = "") -> Tuple:
+    def Units(self, debug: bool = False, json_file: str | None = None) -> None:
+        """Populate units — delegates to :meth:`HybridData.Units`."""
+        if self.HybridData is not None:
+            self.HybridData.Units(debug=debug, json_file=json_file)
+        else:
+            raise RuntimeError("HybridRun.Units: no HybridData associated")
+
+    def getUnit(self, key: str = "") -> tuple:
         """Return Unit for a key"""
         if self.HybridData is not None:
             return self.HybridData.getUnitKey(key)
         raise RuntimeError("HybridRun.getUnit: no HybridData associated")
 
-    def getStats(self, key: Optional[str] = None) -> Dict:
+    def getStats(self, key: str | None = None) -> dict:
         """
         Return basic statistics for a field.
 
@@ -723,7 +894,34 @@ class HybridRun:
             "duration_s": float(time[-1] - time[0]) if len(time) > 1 else 0,
         }
 
-    def saveData(self, filename: str, key: Optional[str] = None) -> None:
+    def getDataFrame(
+        self,
+        downsample: DownsampleConfig | None = None,
+    ) -> list[pd.DataFrame]:
+        """Return data as a list of DataFrames, one per available key.
+
+        Each DataFrame has a 'time' column (seconds from start of day) and
+        a column named after the variable key.
+        """
+        if self.HybridData is None:
+            raise RuntimeError("HybridRun.getDataFrame: no HybridData associated")
+        frames = []
+        for key in self.getKeys():
+            result = self.getData(key, downsample=downsample)
+            if isinstance(result, tuple) and len(result) == 2:
+                data, time = result
+                df = pd.DataFrame({"time": time, key: data})
+                if downsample is not None:
+                    # Route through downsample_dataframe so the config is
+                    # stamped on df.attrs.  No actual downsampling occurs
+                    # because the arrays are already at target size.
+                    df = downsample_dataframe(
+                        df, time_col="time", value_cols=[key], config=downsample
+                    )
+                frames.append(df)
+        return frames
+
+    def saveData(self, filename: str, key: str | None = None) -> None:
         """
         Save data to file.
 
@@ -735,7 +933,13 @@ class HybridRun:
             Specific key to save (saves all if None)
         """
         if key:
-            data, time = self.getData(key)
+            result = self.getData(key)
+            if not (isinstance(result, tuple) and len(result) == 2):
+                raise ValueError(
+                    f"saveData: key {key!r} does not resolve to (data, time) — "
+                    "use a variable key, not a group key"
+                )
+            data, time = result
             df = pd.DataFrame({"time": time, key: data})
             df.to_csv(filename, index=False)
         else:
@@ -745,6 +949,25 @@ class HybridRun:
     # Cache management
     # -------------------------------------------------------------------------
 
+    def _evict_oldest_cache_entry(self) -> None:
+        """Remove the oldest cache entry (LRU eviction).
+
+        Strategy: each entry is timestamped at insertion via
+        ``CacheEntry.loaded_at``.  The entry with the earliest timestamp is
+        removed and its size is subtracted from :attr:`_cache_size_bytes`.
+
+        Called by :meth:`_add_to_cache` in a loop until the projected total
+        cache size (current + incoming) falls within
+        :attr:`_cache_max_size_bytes` (default 1 GB, adjustable via
+        :meth:`set_cache_size`).  No-op if the cache is already empty.
+        """
+        if not self._cache:
+            return
+        oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].loaded_at)
+        evicted = self._cache.pop(oldest_key)
+        self._cache_size_bytes -= evicted.size_bytes
+        logger.debug(f"Evicted cache entry: {oldest_key}")
+
     def _add_to_cache(
         self,
         key: str,
@@ -752,21 +975,15 @@ class HybridRun:
         time: np.ndarray,
         options: LoadOptions,
     ) -> None:
-        """Add data to cache with size management"""
+        """Store (data, time) in the LRU cache, evicting old entries if needed."""
         size_bytes = data.nbytes + time.nbytes
 
-        # Evict old entries if needed
         while (
             self._cache_size_bytes + size_bytes > self._cache_max_size_bytes
             and self._cache
         ):
-            # Remove oldest entry
-            oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].loaded_at)
-            evicted = self._cache.pop(oldest_key)
-            self._cache_size_bytes -= evicted.size_bytes
-            logger.debug(f"Evicted cache entry: {oldest_key}")
+            self._evict_oldest_cache_entry()
 
-        # Add new entry
         self._cache[key] = CacheEntry(
             data=data,
             time=time,
@@ -792,24 +1009,40 @@ class HybridRun:
     # Convenience methods for comparison with MagnetRun data
     # -------------------------------------------------------------------------
 
-    def get_time_range(self) -> Tuple[datetime, datetime]:
-        """Get time range of available data"""
+    def getDomain(self) -> str:
+        return "operational"
+
+    def get_time_range(self) -> tuple[datetime, datetime]:
+        """Get time range of available data.
+
+        Delegates to
+        :meth:`~python_magnetrun.hybrid.hybrid_data.HybridData.get_time_range`,
+        mirroring the pattern used by
+        :meth:`~python_magnetrun.MagnetRun.MagnetRun.get_time_range`.
+
+        Returns
+        -------
+        tuple[datetime, datetime]
+            ``(start_timestamp, end_timestamp)`` as naive UTC datetimes.
+
+        Raises
+        ------
+        RuntimeError
+            If no :class:`~python_magnetrun.hybrid.hybrid_data.HybridData`
+            is associated.
+        NotImplementedError
+            If no timestamps could be inferred from the data files.
+        """
         if self.HybridData is None:
             raise RuntimeError("No HybridData associated")
-
-        # Start of day
-        start = datetime.combine(self.HybridData.date, datetime.min.time())
-        # End of day
-        end = start + timedelta(days=1)
-
-        return start, end
+        return self.HybridData.get_time_range()
 
     def get_data_at_time(
         self,
         key: str,
         target_time: datetime,
         window_seconds: float = 1.0,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Get data around a specific time.
 
@@ -832,7 +1065,7 @@ class HybridRun:
         data, time = self.getData(key)
 
         # Convert target time to seconds from start of day
-        day_start = datetime.combine(self.HybridData.date, datetime.min.time())
+        day_start = datetime.combine(self.HybridData.date, datetime.min.time())  # type: ignore[union-attr]
         target_seconds = (target_time - day_start).total_seconds()
 
         # Find indices within window
@@ -847,7 +1080,7 @@ class HybridRun:
         mrun: Any,  # MagnetRun
         hybrid_key: str,
         magnetrun_key: str,
-        downsample: int = 10000,
+        downsample: DownsampleConfig | int = 10000,
     ) -> pd.DataFrame:
         """
         Create comparison DataFrame between HybridRun and MagnetRun data.
@@ -869,7 +1102,12 @@ class HybridRun:
             Comparison DataFrame with columns: time_hybrid, hybrid_data, time_mr, mr_data
         """
         # Get hybrid data
-        h_data, h_time = self.getData(hybrid_key, downsample=downsample)
+        ds_config = (
+            DownsampleConfig(n_out=downsample)
+            if isinstance(downsample, int)
+            else downsample
+        )
+        h_data, h_time = self.getData(hybrid_key, downsample=ds_config)
 
         # Get MagnetRun data
         mdata = mrun.getMData()
@@ -890,7 +1128,7 @@ class HybridRun:
 def load_hybrid(
     base_dir: str,
     date_str: str,
-    fepc_system: Optional[str] = None,
+    fepc_system: str | None = None,
     **kwargs,
 ) -> HybridRun:
     """

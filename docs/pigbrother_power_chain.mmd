@@ -1,0 +1,37 @@
+flowchart TD
+    subgraph Grid["Elec Grid (AC) — group: HT default"]
+        HT1["HT1\n15 kV · 3-phase"]
+        HT2["HT2\n15 kV · 3-phase"]
+    end
+
+    subgraph ACDC["AC/DC Conversion — groups: Tensions MC1 / MC2"]
+        TRA1["Transformer TRA1\n15 kV → 400 V"]
+        TRA2["Transformer TRA2\n15 kV → 400 V"]
+        A1["Supply A1\nthyristor bridge"]
+        A2["Supply A2\nthyristor bridge"]
+        A3["Supply A3\nthyristor bridge"]
+        A4["Supply A4\nthyristor bridge"]
+        TRA1 --> A1 & A2
+        TRA2 --> A3 & A4
+    end
+
+    subgraph DCSup["DC Supply — groups: Courants/Tensions Alimentations"]
+        INV1["Polarity inverter\n+ bus bars / switches\n70 A/cm²"]
+        INV2["Polarity inverter\n+ bus bars / switches\n70 A/cm²"]
+    end
+
+    subgraph Magnet["Magnet — groups: Tensions Aimant, Courants Alimentations"]
+        GR1["GR1\nHelix or Bitter\n(housing-dependent)\n700 A/cm²"]
+        GR2["GR2\nBitter or Helix\n(housing-dependent)\n700 A/cm²"]
+        Helices["Helix coils\nInterne1..7\n30 000 A/cm²"]
+        Bitters["Bitter coils\nExterne1..2\n30 000 A/cm²"]
+        GR1 --> Helices
+        GR2 --> Bitters
+    end
+
+    HT1 --> TRA1
+    HT2 --> TRA2
+    A1 & A2 --> INV1
+    A3 & A4 --> INV2
+    INV1 --> GR1
+    INV2 --> GR2

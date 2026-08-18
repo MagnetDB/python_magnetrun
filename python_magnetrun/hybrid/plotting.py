@@ -19,141 +19,39 @@ Performance features:
 - Set downsample parameter to target number of points for plotting
 
 Note:
-- Outlier detection is now handled by the separate `python_magnetrun.hybrid.outliers` module
-- For outlier analysis, use `from python_magnetrun.hybrid.outliers import OutlierDetector, detect_outliers`
+- Outlier detection is now handled by the separate `python_magnetrun.outliers` module
+- For outlier analysis, use `from python_magnetrun.outliers import OutlierDetector, detect_outliers`
 - Plotting functions accept pre-computed outlier masks via `outlier_mask` parameter
 """
 
 import logging
 import struct
-from typing import Optional, List, Tuple, Dict, TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, Optional
 
 import numpy as np
+import pandas as pd
+
+from python_magnetrun.plotting.backend import PlottingBackend, get_backend
+from python_magnetrun.plotting.timeseries import plot_overlay, plot_subplots
+from python_magnetrun.utils.downsampling import DownsampleConfig, downsample_arrays
 
 # Type checking import to avoid circular import
 if TYPE_CHECKING:
+    from ..outliers import OutlierResult
     from .hybrid_data import HybridData
-    from .outliers import OutlierResult
 
 # Import outlier detection from dedicated module
-from .outliers import OutlierResult
+from ..outliers import OutlierResult
 
 # Setup logger
 logger = logging.getLogger(__name__)
 
-# Try to import tsdownsample for efficient downsampling
-try:
-    from tsdownsample import MinMaxLTTBDownsampler
 
-    HAS_TSDOWNSAMPLE = True
-except ImportError:
-    HAS_TSDOWNSAMPLE = False
-    logger.debug("tsdownsample not available - downsampling will use simple stride")
-
-
-def downsample_for_plot(
-    data: np.ndarray,
-    time: np.ndarray,
-    target_points: int = 50000,
-    method: str = "auto",
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Downsample data for efficient plotting while preserving visual features.
-
-    Uses MinMaxLTTB algorithm when available (tsdownsample package),
-    which preserves peaks and valleys for accurate visualization.
-
-    Parameters
-    ----------
-    data : np.ndarray
-        Data array to downsample
-    time : np.ndarray
-        Time array
-    target_points : int
-        Target number of points after downsampling (default: 50000)
-        - For interactive plots, 10000-50000 is usually sufficient
-        - For high-resolution exports, use higher values
-    method : str
-        Downsampling method:
-        - 'auto': Use MinMaxLTTB if available, else stride
-        - 'minmax_lttb': Force MinMaxLTTB (requires tsdownsample)
-        - 'stride': Simple stride-based (fastest, may miss peaks)
-        - 'minmax': Min/max in buckets (preserves peaks, 2x points)
-
-    Returns
-    -------
-    tuple
-        (downsampled_data, downsampled_time)
-
-    Examples
-    --------
-    >>> # For a 3.6M point dataset (1 hour at 1kHz)
-    >>> data_ds, time_ds = downsample_for_plot(data, time, target_points=10000)
-    >>> plt.plot(time_ds, data_ds)  # Fast plotting with visual accuracy
-    """
-    n_points = len(data)
-
-    if n_points <= target_points:
-        return data, time
-
-    logger.debug(
-        f"Downsampling {n_points:,} points to {target_points:,} "
-        f"(ratio: {n_points/target_points:.1f}x)"
-    )
-
-    # Ensure proper data types for tsdownsample
-    data = np.asarray(data, dtype=np.float64)
-    time = np.asarray(time, dtype=np.float64)
-
-    if method == "auto":
-        method = "minmax_lttb" if HAS_TSDOWNSAMPLE else "stride"
-
-    if method == "minmax_lttb":
-        if not HAS_TSDOWNSAMPLE:
-            logger.warning(
-                "tsdownsample not installed, falling back to stride method. "
-                "Install with: pip install tsdownsample"
-            )
-            method = "stride"
-        else:
-            downsampler = MinMaxLTTBDownsampler()
-            indices = downsampler.downsample(time, data, n_out=target_points)
-            return data[indices], time[indices]
-
-    if method == "minmax":
-        # Min/max in buckets - preserves peaks but doubles point count
-        bucket_size = n_points // (target_points // 2)
-        n_buckets = n_points // bucket_size
-
-        result_data = []
-        result_time = []
-
-        for i in range(n_buckets):
-            start = i * bucket_size
-            end = min(start + bucket_size, n_points)
-            bucket_data = data[start:end]
-            bucket_time = time[start:end]
-
-            min_idx = np.argmin(bucket_data)
-            max_idx = np.argmax(bucket_data)
-
-            # Add in order (min first if it comes before max)
-            if min_idx <= max_idx:
-                result_data.extend([bucket_data[min_idx], bucket_data[max_idx]])
-                result_time.extend([bucket_time[min_idx], bucket_time[max_idx]])
-            else:
-                result_data.extend([bucket_data[max_idx], bucket_data[min_idx]])
-                result_time.extend([bucket_time[max_idx], bucket_time[min_idx]])
-
-        return np.array(result_data), np.array(result_time)
-
-    # Default: stride-based downsampling
-    stride = max(1, n_points // target_points)
-    indices = np.arange(0, n_points, stride)
-    if len(indices) > target_points:
-        indices = indices[:target_points]
-
-    return data[indices], time[indices]
+def _make_downsample_config(target_points: int, method: str) -> DownsampleConfig:
+    """Map hybrid plot method names to DownsampleConfig."""
+    ds_method = "minmax_lttb" if method == "auto" else method
+    return DownsampleConfig(n_out=target_points, method=ds_method)
 
 
 def _get_khz_unit(hybrid_data: "HybridData", system: str, variable: str) -> str:
@@ -183,28 +81,341 @@ def _get_rms_unit(
         var_row = var_info[var_info["name"] == variable]
         if not var_row.empty and var_row.iloc[0]["unit"]:
             return var_row.iloc[0]["unit"]
-    except Exception:
+    except (OSError, ValueError, RuntimeError, KeyError):
         pass
     return ""
+
+
+def _get_vprocess_unit(hybrid_data: "HybridData", variable: str) -> str:
+    """Get unit for a VProcess variable from the first available file."""
+    try:
+        files = hybrid_data.list_vprocess_files()
+        if not files:
+            return ""
+        from ..vprocess.vprocess_reader import VProcessFileReader
+
+        reader = VProcessFileReader(str(files[0]), endian=hybrid_data.endian)
+        reader.parse_header()
+        var_info = reader.get_variable_info()
+        row = var_info[var_info["name"] == variable]
+        if not row.empty and row.iloc[0]["unit"]:
+            return str(row.iloc[0]["unit"])
+    except (OSError, ValueError, KeyError):
+        pass
+    return ""
+
+
+def _get_trigger_unit(hybrid_data: "HybridData", system: str, variable: str) -> str:
+    """Get unit for a trigger variable (reuses kHz FEPC config)."""
+    return _get_khz_unit(hybrid_data, system, variable)
+
+
+def _handle_output(
+    b: PlottingBackend,
+    fig: Any,
+    show: bool,
+    save: str | None,
+) -> None:
+    b.finalize(fig, xlabel="Time (s)")
+    if save:
+        from pathlib import Path
+        b.save(fig, Path(save))
+    if show:
+        b.show(fig)
+
+
+def _apply_outlier_strategy(
+    data: np.ndarray,
+    time: np.ndarray,
+    outlier_result: "OutlierResult",
+    strategy: str,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Apply non-highlight outlier strategy, returning cleaned (data, time)."""
+    data = outlier_result.apply_to_data(data, strategy=strategy)
+    if strategy in ("remove", "nan"):
+        valid = ~np.isnan(data)
+        data = data[valid]
+        time = time[valid]
+    logger.info(
+        "Applied %s to %d outliers", strategy, outlier_result.n_outliers
+    )
+    return data, time
+
+
+def _scatter_outliers(
+    b: PlottingBackend,
+    fig: Any,
+    ax_idx: int,
+    data: np.ndarray,
+    time: np.ndarray,
+    outlier_result: "OutlierResult",
+    label: str,
+    downsample: int | None,
+    downsample_method: str,
+) -> None:
+    """Scatter-plot outlier points on top of the main series."""
+    mask = outlier_result.mask
+    outlier_data = data[mask[: len(data)]]
+    outlier_time = time[mask[: len(time)]]
+    if len(outlier_data) == 0:
+        return
+    if downsample is not None and len(outlier_data) > downsample // 10:
+        outlier_data, outlier_time = downsample_arrays(
+            outlier_data,
+            outlier_time,
+            DownsampleConfig(n_out=downsample // 10, method="stride"),
+        )
+    b.add_scatter(fig, ax_idx, outlier_time, outlier_data, label=label)
+
+
+def _plot_variable_impl(
+    data: np.ndarray,
+    time: np.ndarray,
+    system: str,
+    variable: str,
+    ylabel: str,
+    title: str,
+    ax_series_label: str,
+    ax: Any,
+    show: bool,
+    save: str | None,
+    outlier_result: Optional["OutlierResult"],
+    outlier_strategy: str,
+    downsample: int | None,
+    downsample_method: str,
+    backend: str | PlottingBackend,
+) -> tuple:
+    """Shared plotting pipeline for a single variable (kHz or RMS).
+
+    Parameters
+    ----------
+    data : numpy.ndarray
+        Signal values [variable units].
+    time : numpy.ndarray
+        Time axis [s].
+    system : str
+        FEPC system name (used for logging only).
+    variable : str
+        Variable name (used as DataFrame column and for logging).
+    ylabel : str
+        Y-axis label including units, e.g. ``"I_H1 [A]"``.
+    title : str
+        Plot title (caller builds the full title string).
+    ax_series_label : str
+        Series label for the ax-injection path (e.g. ``"I_H1"`` or ``"I_H1 (RMS)"``).
+    ax : matplotlib.axes.Axes or None
+        Pre-existing axes for injection (matplotlib only); ``None`` creates a new figure.
+    show : bool
+        Call backend show after plotting.
+    save : str or None
+        Path to save the figure; ``None`` skips saving.
+    outlier_result : OutlierResult or None
+        Pre-computed outlier detection result.
+    outlier_strategy : str
+        How to handle outliers: ``'remove'``, ``'interpolate'``, ``'highlight'``, ``'none'``.
+    downsample : int or None
+        Target number of points; ``None`` disables downsampling.
+    downsample_method : str
+        Downsampling method name (``'auto'``, ``'minmax_lttb'``, ``'stride'``, ``'minmax'``).
+    backend : str or PlottingBackend
+        Plotting backend.
+
+    Returns
+    -------
+    tuple
+        ``(fig, ax)`` — ``ax`` is ``None`` for non-matplotlib backends.
+    """
+    orig_data, orig_time = data, time
+    highlight = outlier_result is not None and outlier_strategy == "highlight"
+
+    if outlier_result is not None and outlier_strategy not in ("none", "highlight"):
+        data, time = _apply_outlier_strategy(data, time, outlier_result, outlier_strategy)
+
+    if downsample is not None and len(data) > downsample:
+        orig_len = len(data)
+        data, time = downsample_arrays(
+            data, time, _make_downsample_config(downsample, downsample_method)
+        )
+        logger.info("Downsampled %s: %d -> %d points", variable, orig_len, len(data))
+
+    if ax is not None:
+        fig = ax.get_figure()
+        fig._magnetrun_axes = [ax]
+        b = get_backend("matplotlib")
+    else:
+        b = get_backend(backend)
+        df = pd.DataFrame({"t": time, variable: data})
+        fig = plot_overlay(df, [variable], t_col="t", backend=b, title=title)
+        if ylabel != variable and hasattr(b, "_get_ax"):
+            b._get_ax(fig, 0).set_ylabel(ylabel)
+
+        if highlight and outlier_result is not None:
+            _scatter_outliers(
+                b, fig, 0, orig_data, orig_time, outlier_result,
+                f"Outliers ({outlier_result.n_outliers:,})",
+                downsample, downsample_method,
+            )
+
+        _handle_output(b, fig, show, save)
+        out_ax = fig._magnetrun_axes[0] if hasattr(fig, "_magnetrun_axes") else None
+        return fig, out_ax
+
+    # ax-injection path (matplotlib only).
+    b.add_series(fig, 0, time, data, label=ax_series_label)
+    if highlight and outlier_result is not None:
+        _scatter_outliers(
+            b, fig, 0, orig_data, orig_time, outlier_result,
+            f"Outliers ({outlier_result.n_outliers:,})",
+            downsample, downsample_method,
+        )
+    _handle_output(b, fig, show, save)
+    return fig, ax
+
+
+def _plot_variables_impl(
+    hybrid_data: "HybridData",
+    system: str,
+    variables: list[str],
+    read_fn: Callable[[str], tuple[np.ndarray, np.ndarray]],
+    get_unit_fn: Callable[[str], str],
+    title: str,
+    layout: str,
+    show: bool,
+    save: str | None,
+    outlier_results: dict[str, "OutlierResult"] | None,
+    outlier_strategy: str,
+    downsample: int | None,
+    downsample_method: str,
+    backend: str | PlottingBackend,
+) -> tuple:
+    """Shared plotting pipeline for multiple variables (kHz or RMS).
+
+    Parameters
+    ----------
+    hybrid_data : HybridData
+        HybridData instance (used only for :attr:`date_str` logging).
+    system : str
+        FEPC system name.
+    variables : list of str
+        Variable names to plot.
+    read_fn : callable
+        ``read_fn(variable) -> (data, time)`` — reads one variable's arrays.
+    get_unit_fn : callable
+        ``get_unit_fn(variable) -> str`` — returns the physical unit string.
+    title : str
+        Plot title.
+    layout : str
+        ``'subplots'`` or ``'overlay'``.
+    show : bool
+        Call backend show after plotting.
+    save : str or None
+        Path to save the figure; ``None`` skips saving.
+    outlier_results : dict or None
+        Maps variable names to :class:`~python_magnetrun.outliers.OutlierResult`.
+    outlier_strategy : str
+        How to handle outliers: ``'remove'``, ``'interpolate'``, ``'highlight'``, ``'none'``.
+    downsample : int or None
+        Target number of points; ``None`` disables downsampling.
+    downsample_method : str
+        Downsampling method name.
+    backend : str or PlottingBackend
+        Plotting backend.
+
+    Returns
+    -------
+    tuple
+        ``(fig, axes)`` — axes is a list for subplots, a single axes for overlay,
+        or ``None`` for non-matplotlib backends.
+    """
+    b = get_backend(backend)
+
+    series: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    highlight_vars: list[str] = []
+    orig_series: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+
+    for variable in variables:
+        try:
+            data, time = read_fn(variable)
+            var_outlier = outlier_results.get(variable) if outlier_results else None
+            if var_outlier is not None and outlier_strategy not in ("none", "highlight"):
+                data, time = _apply_outlier_strategy(data, time, var_outlier, outlier_strategy)
+            elif var_outlier is not None and outlier_strategy == "highlight":
+                orig_series[variable] = (data.copy(), time.copy())
+                highlight_vars.append(variable)
+
+            if downsample is not None and len(data) > downsample:
+                orig_len = len(data)
+                data, time = downsample_arrays(
+                    data, time, _make_downsample_config(downsample, downsample_method)
+                )
+                logger.info("Downsampled %s: %d -> %d points", variable, orig_len, len(data))
+
+            series[variable] = (data, time)
+        except (OSError, ValueError, RuntimeError, KeyError) as e:
+            logger.error("Error loading %s: %s", variable, e)
+
+    if not series:
+        raise RuntimeError(f"No data loaded for {system}")
+
+    dfs = [
+        pd.DataFrame({"t": time, variable: data})
+        for variable, (data, time) in series.items()
+    ]
+    merged = (
+        pd.concat(dfs, ignore_index=True)
+        .sort_values("t", kind="stable")
+        .reset_index(drop=True)
+    )
+
+    valid_vars = list(series.keys())
+    units = {v: get_unit_fn(v) for v in valid_vars}
+    ylabel_map = {v: f"{v} [{units[v]}]" if units[v] else v for v in valid_vars}
+
+    _plot_fn = plot_subplots if layout != "overlay" else plot_overlay
+    fig = _plot_fn(merged, valid_vars, t_col="t", backend=b, title=title)
+
+    for i, v in enumerate(valid_vars):
+        if ylabel_map[v] != v and hasattr(b, "_get_ax"):
+            ax = b._get_ax(fig, i if layout != "overlay" else 0)
+            ax.set_ylabel(ylabel_map[v])
+
+    for variable in highlight_vars:
+        var_outlier = (outlier_results or {}).get(variable)
+        if var_outlier is None:
+            continue
+        orig_data, orig_time = orig_series.get(variable, series[variable])
+        ax_idx = valid_vars.index(variable) if layout != "overlay" else 0
+        _scatter_outliers(
+            b, fig, ax_idx, orig_data, orig_time, var_outlier,
+            f"{variable} outliers", downsample, downsample_method,
+        )
+
+    _handle_output(b, fig, show, save)
+
+    axes = None
+    if hasattr(fig, "_magnetrun_axes"):
+        axes = fig._magnetrun_axes if layout != "overlay" else fig._magnetrun_axes[0]
+    return fig, axes
 
 
 def plot_khz_variables(
     hybrid_data: "HybridData",
     system: str,
-    variables: List[str],
-    hours: Optional[List[int]] = None,
+    variables: list[str],
+    hours: list[int] | None = None,
     apply_calib: bool = True,
-    cnv_dir: Optional[str] = None,
+    cnv_dir: str | None = None,
     layout: str = "subplots",
     share_x: bool = True,
     show: bool = True,
-    save: Optional[str] = None,
-    outlier_results: Optional[Dict[str, "OutlierResult"]] = None,
+    save: str | None = None,
+    outlier_results: dict[str, "OutlierResult"] | None = None,
     outlier_strategy: str = "interpolate",
-    downsample: Optional[int] = 50000,
+    downsample: int | None = 50000,
     downsample_method: str = "auto",
+    backend: str | PlottingBackend = "matplotlib",
     **plot_kwargs,
-) -> Tuple:
+) -> tuple:
     """
     Plot multiple kHz variables
 
@@ -231,214 +442,72 @@ def plot_khz_variables(
     save : str, optional
         Save plot to file
     outlier_results : dict, optional
-        Dictionary mapping variable names to OutlierResult objects
-        from pre-computed outlier detection. Use hybrid.outliers.detect_outliers()
-        or OutlierDetector to compute outliers before plotting.
+        Dictionary mapping variable names to OutlierResult objects.
     outlier_strategy : str, optional
         Strategy for handling outliers: 'remove', 'interpolate', 'highlight', 'none'
-        Default: 'interpolate'
     downsample : int, optional
         Target number of points for plotting (default: 50000).
-        Set to None to disable downsampling.
-        For 1-hour kHz data (~3.6M points), 50000 provides good balance.
     downsample_method : str, optional
         Downsampling method: 'auto', 'minmax_lttb', 'stride', 'minmax'
-    **plot_kwargs : dict
-        Additional arguments passed to plt.plot()
+    backend : str or PlottingBackend, optional
+        Plotting backend (default: 'matplotlib').
 
     Returns
     -------
     tuple
-        (fig, axes) matplotlib figure and axes (array for subplots, single for overlay)
-
-    Example
-    -------
-    >>> from python_magnetrun.hybrid.outliers import detect_outliers
-    >>> # Pre-compute outliers for each variable
-    >>> outlier_results = {}
-    >>> for var in ['U1', 'U2', 'I1']:
-    ...     data, time = hybrid_data.read_khz_variable(system, var)
-    ...     outlier_results[var] = detect_outliers(data, method='iqr')
-    >>> # Plot with pre-computed outliers
-    >>> fig, axes = plot_khz_variables(
-    ...     hybrid_data, system, ['U1', 'U2', 'I1'],
-    ...     outlier_results=outlier_results,
-    ...     outlier_strategy='highlight'
-    ... )
+        (fig, axes) where axes is a list for subplots, a single axes for overlay,
+        or None for non-matplotlib backends.
     """
-    import matplotlib.pyplot as plt
-
     n_vars = len(variables)
     if n_vars == 0:
         raise ValueError("At least one variable must be specified")
 
-    # Single variable - delegate to single variable function
     if n_vars == 1:
         var_outlier = outlier_results.get(variables[0]) if outlier_results else None
         return plot_khz_variable(
-            hybrid_data,
-            system,
-            variables[0],
-            hours=hours,
-            apply_calib=apply_calib,
-            cnv_dir=cnv_dir,
-            show=show,
-            save=save,
-            outlier_result=var_outlier,
-            outlier_strategy=outlier_strategy,
-            downsample=downsample,
-            downsample_method=downsample_method,
-            **plot_kwargs,
+            hybrid_data, system, variables[0],
+            hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir,
+            show=show, save=save,
+            outlier_result=var_outlier, outlier_strategy=outlier_strategy,
+            downsample=downsample, downsample_method=downsample_method,
+            backend=backend,
         )
 
-    logger.debug(f"plot_khz_variables: system={system}, variables={variables}")
+    logger.debug("plot_khz_variables: system=%s, variables=%s", system, variables)
 
-    # Create figure based on layout
-    if layout == "overlay":
-        fig, ax = plt.subplots(figsize=(14, 8))
-        axes = [ax]
-        colors = plt.cm.tab10.colors
-    else:  # subplots
-        fig, axes = plt.subplots(n_vars, 1, figsize=(14, 4 * n_vars), sharex=share_x)
-        if n_vars == 1:
-            axes = [axes]
-        colors = None
-
-    # Plot each variable
-    for i, variable in enumerate(variables):
-        try:
-            data, time = hybrid_data.read_khz_variable(
-                system, variable, hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir
-            )
-
-            # Get outlier result for this variable if provided
-            var_outlier = outlier_results.get(variable) if outlier_results else None
-            highlight_outliers = False
-
-            # Apply outlier handling if result provided
-            if var_outlier is not None and outlier_strategy != "none":
-                if outlier_strategy == "highlight":
-                    highlight_outliers = True
-                else:
-                    # Apply strategy to data
-                    data = var_outlier.apply_to_data(data, strategy=outlier_strategy)
-                    # Remove NaN values if strategy was 'remove' or 'nan'
-                    if outlier_strategy in ("remove", "nan"):
-                        valid_mask = ~np.isnan(data)
-                        data = data[valid_mask]
-                        time = time[valid_mask]
-                    logger.info(
-                        f"Applied {outlier_strategy} to {var_outlier.n_outliers} "
-                        f"outliers in {variable}"
-                    )
-
-            # Apply downsampling for efficient plotting
-            if downsample is not None and len(data) > downsample:
-                original_len = len(data)
-                data, time = downsample_for_plot(
-                    data, time, downsample, downsample_method
-                )
-                logger.info(
-                    f"Downsampled {variable}: {original_len:,} -> {len(data):,} points"
-                )
-
-            unit = _get_khz_unit(hybrid_data, system, variable)
-            ylabel = f"{variable}" + (f" [{unit}]" if unit else "")
-
-            if layout == "overlay":
-                ax = axes[0]
-                color = colors[i % len(colors)]
-                ax.plot(time, data, label=variable, color=color, **plot_kwargs)
-                # Highlight outliers if requested (on overlay)
-                if highlight_outliers and var_outlier is not None:
-                    outlier_data = data[var_outlier.mask[: len(data)]]
-                    outlier_time = time[var_outlier.mask[: len(time)]]
-                    if len(outlier_data) > 0:
-                        ax.scatter(
-                            outlier_time,
-                            outlier_data,
-                            c="red",
-                            s=10,
-                            alpha=0.7,
-                            label=f"{variable} outliers",
-                            zorder=5,
-                        )
-            else:
-                ax = axes[i]
-                ax.plot(time, data, label=variable, **plot_kwargs)
-                # Highlight outliers if requested
-                if highlight_outliers and var_outlier is not None:
-                    outlier_data = data[var_outlier.mask[: len(data)]]
-                    outlier_time = time[var_outlier.mask[: len(time)]]
-                    if len(outlier_data) > 0:
-                        ax.scatter(
-                            outlier_time,
-                            outlier_data,
-                            c="red",
-                            s=10,
-                            alpha=0.7,
-                            label="Outliers",
-                            zorder=5,
-                        )
-                ax.set_ylabel(ylabel)
-                ax.set_title(f"{variable}")
-                ax.grid(True, alpha=0.3)
-                ax.legend(loc="upper right")
-
-        except Exception as e:
-            logger.error(f"Error plotting {variable}: {e}")
-            if layout != "overlay":
-                axes[i].text(
-                    0.5,
-                    0.5,
-                    f"Error: {e}",
-                    ha="center",
-                    va="center",
-                    transform=axes[i].transAxes,
-                )
-                axes[i].set_title(f"{variable} (ERROR)")
-
-    # Finalize plot
-    if layout == "overlay":
-        axes[0].set_xlabel("Time (s)")
-        axes[0].set_ylabel("Value")
-        axes[0].set_title(f"{system} - kHz Data ({hybrid_data.date_str})")
-        axes[0].grid(True, alpha=0.3)
-        axes[0].legend()
-    else:
-        axes[-1].set_xlabel("Time (s)")
-        fig.suptitle(
-            f"{system} - kHz Data ({hybrid_data.date_str})",
-            fontsize=14,
-            fontweight="bold",
+    def _read(variable: str) -> tuple[np.ndarray, np.ndarray]:
+        return hybrid_data.read_khz_variable(
+            system, variable, hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir
         )
 
-    plt.tight_layout()
-
-    if save:
-        fig.savefig(save, dpi=150, bbox_inches="tight")
-        logger.info(f"Saved plot to {save}")
-
-    if show:
-        plt.show()
-
-    return fig, axes if layout != "overlay" else axes[0]
+    title = f"{system} - kHz Data ({hybrid_data.date_str})"
+    return _plot_variables_impl(
+        hybrid_data, system, variables,
+        _read,
+        lambda v: _get_khz_unit(hybrid_data, system, v),
+        title, layout, show, save,
+        outlier_results, outlier_strategy,
+        downsample, downsample_method, backend,
+    )
 
 
 def plot_rms_variables(
     hybrid_data: "HybridData",
     system: str,
-    variables: List[str],
-    file_idx: Optional[int] = None,
-    hours: Optional[List[int]] = None,
+    variables: list[str],
+    file_idx: int | None = None,
+    hours: list[int] | None = None,
     layout: str = "subplots",
     share_x: bool = True,
     show: bool = True,
-    save: Optional[str] = None,
-    outlier_results: Optional[Dict[str, "OutlierResult"]] = None,
+    save: str | None = None,
+    outlier_results: dict[str, "OutlierResult"] | None = None,
     outlier_strategy: str = "interpolate",
+    downsample: int | None = None,
+    downsample_method: str = "auto",
+    backend: str | PlottingBackend = "matplotlib",
     **plot_kwargs,
-) -> Tuple:
+) -> tuple:
     """
     Plot multiple RMS variables
 
@@ -463,183 +532,73 @@ def plot_rms_variables(
     save : str, optional
         Save plot to file
     outlier_results : dict, optional
-        Dictionary mapping variable names to OutlierResult objects
-        from pre-computed outlier detection. Use hybrid.outliers.detect_outliers()
-        or OutlierDetector to compute outliers before plotting.
+        Dictionary mapping variable names to OutlierResult objects.
     outlier_strategy : str, optional
         Strategy for handling outliers: 'remove', 'interpolate', 'highlight', 'none'
-        Default: 'interpolate'
-    **plot_kwargs : dict
-        Additional arguments passed to plt.plot()
+    downsample : int, optional
+        Target number of points for plotting (default: None).
+    downsample_method : str, optional
+        Downsampling method: 'auto', 'minmax_lttb', 'stride', 'minmax'
+    backend : str or PlottingBackend, optional
+        Plotting backend (default: 'matplotlib').
 
     Returns
     -------
     tuple
-        (fig, axes) matplotlib figure and axes
+        (fig, axes)
     """
-    import matplotlib.pyplot as plt
-
     n_vars = len(variables)
     if n_vars == 0:
         raise ValueError("At least one variable must be specified")
 
-    # Single variable - delegate to single variable function
     if n_vars == 1:
         var_outlier = outlier_results.get(variables[0]) if outlier_results else None
         return plot_rms_variable(
-            hybrid_data,
-            system,
-            variables[0],
-            file_idx=file_idx,
-            hours=hours,
-            show=show,
-            save=save,
-            outlier_result=var_outlier,
-            outlier_strategy=outlier_strategy,
-            **plot_kwargs,
+            hybrid_data, system, variables[0],
+            file_idx=file_idx, hours=hours,
+            show=show, save=save,
+            outlier_result=var_outlier, outlier_strategy=outlier_strategy,
+            downsample=downsample, downsample_method=downsample_method,
+            backend=backend,
         )
 
-    logger.debug(f"plot_rms_variables: system={system}, variables={variables}")
+    logger.debug("plot_rms_variables: system=%s, variables=%s", system, variables)
 
-    # Create figure based on layout
-    if layout == "overlay":
-        fig, ax = plt.subplots(figsize=(14, 8))
-        axes = [ax]
-        colors = plt.cm.tab10.colors
-    else:  # subplots
-        fig, axes = plt.subplots(n_vars, 1, figsize=(14, 4 * n_vars), sharex=share_x)
-        if n_vars == 1:
-            axes = [axes]
-        colors = None
+    info_idx = file_idx if file_idx is not None else 0
 
-    # Plot each variable
-    for i, variable in enumerate(variables):
-        try:
-            data, time = hybrid_data.read_rms_variable(
-                system, variable, file_idx=file_idx, hours=hours
-            )
-
-            # Get outlier result for this variable if provided
-            var_outlier = outlier_results.get(variable) if outlier_results else None
-            highlight_outliers = False
-
-            # Apply outlier handling if result provided
-            if var_outlier is not None and outlier_strategy != "none":
-                if outlier_strategy == "highlight":
-                    highlight_outliers = True
-                else:
-                    # Apply strategy to data
-                    data = var_outlier.apply_to_data(data, strategy=outlier_strategy)
-                    # Remove NaN values if strategy was 'remove' or 'nan'
-                    if outlier_strategy in ("remove", "nan"):
-                        valid_mask = ~np.isnan(data)
-                        data = data[valid_mask]
-                        time = time[valid_mask]
-                    logger.info(
-                        f"Applied {outlier_strategy} to {var_outlier.n_outliers} "
-                        f"outliers in {variable}"
-                    )
-
-            info_idx = file_idx if file_idx is not None else 0
-            unit = _get_rms_unit(hybrid_data, system, variable, info_idx)
-            ylabel = f"{variable}" + (f" [{unit}]" if unit else "")
-
-            if layout == "overlay":
-                ax = axes[0]
-                color = colors[i % len(colors)]
-                ax.plot(time, data, label=variable, color=color, **plot_kwargs)
-                # Highlight outliers if requested
-                if highlight_outliers and var_outlier is not None:
-                    outlier_data = data[var_outlier.mask[: len(data)]]
-                    outlier_time = time[var_outlier.mask[: len(time)]]
-                    if len(outlier_data) > 0:
-                        ax.scatter(
-                            outlier_time,
-                            outlier_data,
-                            c="red",
-                            s=10,
-                            alpha=0.7,
-                            label=f"{variable} outliers",
-                            zorder=5,
-                        )
-            else:
-                ax = axes[i]
-                ax.plot(time, data, label=variable, **plot_kwargs)
-                # Highlight outliers if requested
-                if highlight_outliers and var_outlier is not None:
-                    outlier_data = data[var_outlier.mask[: len(data)]]
-                    outlier_time = time[var_outlier.mask[: len(time)]]
-                    if len(outlier_data) > 0:
-                        ax.scatter(
-                            outlier_time,
-                            outlier_data,
-                            c="red",
-                            s=10,
-                            alpha=0.7,
-                            label="Outliers",
-                            zorder=5,
-                        )
-                ax.set_ylabel(ylabel)
-                ax.set_title(f"{variable}")
-                ax.grid(True, alpha=0.3)
-                ax.legend(loc="upper right")
-
-        except Exception as e:
-            logger.error(f"Error plotting {variable}: {e}")
-            if layout != "overlay":
-                axes[i].text(
-                    0.5,
-                    0.5,
-                    f"Error: {e}",
-                    ha="center",
-                    va="center",
-                    transform=axes[i].transAxes,
-                )
-                axes[i].set_title(f"{variable} (ERROR)")
-
-    # Finalize plot
-    if layout == "overlay":
-        axes[0].set_xlabel("Time (s)")
-        axes[0].set_ylabel("Value")
-        axes[0].set_title(f"{system} - RMS Data ({hybrid_data.date_str})")
-        axes[0].grid(True, alpha=0.3)
-        axes[0].legend()
-    else:
-        axes[-1].set_xlabel("Time (s)")
-        fig.suptitle(
-            f"{system} - RMS Data ({hybrid_data.date_str})",
-            fontsize=14,
-            fontweight="bold",
+    def _read(variable: str) -> tuple[np.ndarray, np.ndarray]:
+        return hybrid_data.read_rms_variable(
+            system, variable, file_idx=file_idx, hours=hours
         )
 
-    plt.tight_layout()
-
-    if save:
-        fig.savefig(save, dpi=150, bbox_inches="tight")
-        logger.info(f"Saved plot to {save}")
-
-    if show:
-        plt.show()
-
-    return fig, axes if layout != "overlay" else axes[0]
+    title = f"{system} - RMS Data ({hybrid_data.date_str})"
+    return _plot_variables_impl(
+        hybrid_data, system, variables,
+        _read,
+        lambda v: _get_rms_unit(hybrid_data, system, v, info_idx),
+        title, layout, show, save,
+        outlier_results, outlier_strategy,
+        downsample, downsample_method, backend,
+    )
 
 
 def plot_khz_variable(
     hybrid_data: "HybridData",
     system: str,
     variable: str,
-    hours: Optional[List[int]] = None,
+    hours: list[int] | None = None,
     apply_calib: bool = True,
-    cnv_dir: Optional[str] = None,
+    cnv_dir: str | None = None,
     ax=None,
     show: bool = True,
-    save: Optional[str] = None,
+    save: str | None = None,
     outlier_result: Optional["OutlierResult"] = None,
     outlier_strategy: str = "interpolate",
-    downsample: Optional[int] = 50000,
+    downsample: int | None = 50000,
     downsample_method: str = "auto",
+    backend: str | PlottingBackend = "matplotlib",
     **plot_kwargs,
-) -> Tuple:
+) -> tuple:
     """
     Plot kHz data for a specific variable
 
@@ -658,173 +617,64 @@ def plot_khz_variable(
     cnv_dir : str, optional
         Directory for CNV calibration files
     ax : matplotlib.axes.Axes, optional
-        Axes to plot on (creates new figure if None)
+        Existing axes to plot on (matplotlib only; ignored for other backends)
     show : bool, optional
         Show plot (default: True)
     save : str, optional
         Save plot to file
     outlier_result : OutlierResult, optional
-        Pre-computed outlier detection result from python_magnetrun.hybrid.outliers module.
-        If provided, outliers will be handled according to outlier_strategy.
-        Use `from python_magnetrun.hybrid.outliers import OutlierDetector` to detect outliers separately.
+        Pre-computed outlier detection result.
     outlier_strategy : str, optional
-        How to handle outliers when outlier_result is provided:
-        - 'remove': Remove outlier points
-        - 'interpolate': Replace with interpolated values (default)
-        - 'highlight': Plot outliers in different color
-        - 'none': Ignore outlier_result
+        How to handle outliers: 'remove', 'interpolate', 'highlight', 'none'
     downsample : int, optional
         Target number of points for plotting (default: 50000).
-        Set to None to disable downsampling.
     downsample_method : str, optional
         Downsampling method: 'auto', 'minmax_lttb', 'stride', 'minmax'
-    **plot_kwargs : dict
-        Additional arguments passed to plt.plot()
+    backend : str or PlottingBackend, optional
+        Plotting backend (default: 'matplotlib').
 
     Returns
     -------
     tuple
-        (fig, ax) matplotlib figure and axes
-
-    Examples
-    --------
-    >>> # Simple plot (no outlier handling)
-    >>> fig, ax = plot_khz_variable(data, "FEPC-LNCMI", "I_H1")
-
-    >>> # With pre-computed outlier detection
-    >>> from python_magnetrun.hybrid.outliers import OutlierDetector
-    >>> detector = OutlierDetector(method='iqr', threshold=1.5)
-    >>> result = detector.detect(raw_data)
-    >>> fig, ax = plot_khz_variable(data, "FEPC-LNCMI", "I_H1",
-    ...                              outlier_result=result, outlier_strategy='highlight')
+        (fig, ax) — ax is None for non-matplotlib backends.
     """
-    import matplotlib.pyplot as plt
+    logger.debug("plot_khz_variable: system=%s, variable=%s", system, variable)
 
-    logger.debug(f"plot_khz_variable: system={system}, variable={variable}")
-
-    # Read data
     data, time = hybrid_data.read_khz_variable(
         system, variable, hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir
     )
 
-    # Get unit if available
     config = hybrid_data.load_khz_config(system)
     if config is None:
         raise ValueError(f"No configuration found for {system}")
 
-    unit = ""
-    if config:
-        for card in config.cards:
-            if variable in card.variable_names:
-                idx = card.variable_names.index(variable)
-                if (
-                    card.calibrations
-                    and idx < len(card.calibrations)
-                    and card.calibrations[idx]
-                ):
-                    unit = card.calibrations[idx].unit or ""
-                break
+    unit = _get_khz_unit(hybrid_data, system, variable)
+    ylabel = f"{variable} [{unit}]" if unit else variable
+    title = f"{system} - {variable} ({hybrid_data.date_str})"
 
-    ylabel = f"{variable}"
-    if unit:
-        ylabel += f" [{unit}]"
-
-    # Handle outliers if result provided
-    plot_data, plot_time = data, time
-    outlier_info = ""
-
-    if outlier_result is not None and outlier_strategy != "none":
-        if outlier_strategy == "highlight":
-            # Will plot outliers separately in different color
-            pass  # Handle below
-        elif outlier_strategy in ["remove", "interpolate", "nan", "clip", "median"]:
-            plot_data, plot_time = outlier_result.apply_to_data(
-                data, time, strategy=outlier_strategy
-            )
-            outlier_info = (
-                f" ({outlier_result.n_outliers:,} outliers {outlier_strategy}d)"
-            )
-            logger.info(
-                f"Applied outlier handling: {outlier_result.n_outliers:,} outliers "
-                f"({outlier_result.outlier_percentage:.2f}%) using {outlier_strategy}"
-            )
-
-    # Apply downsampling for efficient plotting
-    if downsample is not None and len(plot_data) > downsample:
-        original_len = len(plot_data)
-        plot_data, plot_time = downsample_for_plot(
-            plot_data, plot_time, downsample, downsample_method
-        )
-        logger.info(
-            f"Downsampled {variable}: {original_len:,} -> {len(plot_data):,} points"
-        )
-
-    # Create figure if needed
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(12, 6))
-    else:
-        fig = ax.get_figure()
-
-    # Plot main data
-    label = plot_kwargs.pop("label", f"{variable}{outlier_info}")
-    ax.plot(plot_time, plot_data, label=label, **plot_kwargs)
-
-    # Highlight outliers if requested
-    if outlier_result is not None and outlier_strategy == "highlight":
-        outlier_mask = outlier_result.mask
-        if downsample is not None and len(data) > downsample:
-            # Need to downsample outlier data too
-            outlier_data = data[outlier_mask]
-            outlier_time = time[outlier_mask]
-            if len(outlier_data) > downsample // 10:  # Use fewer points for outliers
-                outlier_data, outlier_time = downsample_for_plot(
-                    outlier_data, outlier_time, downsample // 10, "stride"
-                )
-        else:
-            outlier_data = data[outlier_mask]
-            outlier_time = time[outlier_mask]
-
-        ax.scatter(
-            outlier_time,
-            outlier_data,
-            c="red",
-            s=10,
-            alpha=0.5,
-            label=f"Outliers ({outlier_result.n_outliers:,})",
-            zorder=5,
-        )
-
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel(ylabel)
-    ax.set_title(f"{system} - {variable} ({hybrid_data.date_str})")
-    ax.grid(True, alpha=0.3)
-    ax.legend()
-
-    if save:
-        fig.savefig(save, dpi=150, bbox_inches="tight")
-        logger.info(f"Saved plot to {save}")
-
-    if show:
-        plt.show()
-
-    return fig, ax
+    return _plot_variable_impl(
+        data, time, system, variable, ylabel, title, variable,
+        ax, show, save, outlier_result, outlier_strategy,
+        downsample, downsample_method, backend,
+    )
 
 
 def plot_rms_variable(
     hybrid_data: "HybridData",
     system: str,
     variable: str,
-    file_idx: Optional[int] = None,
-    hours: Optional[List[int]] = None,
+    file_idx: int | None = None,
+    hours: list[int] | None = None,
     ax=None,
     show: bool = True,
-    save: Optional[str] = None,
+    save: str | None = None,
     outlier_result: Optional["OutlierResult"] = None,
     outlier_strategy: str = "interpolate",
-    downsample: Optional[int] = None,
+    downsample: int | None = None,
     downsample_method: str = "auto",
+    backend: str | PlottingBackend = "matplotlib",
     **plot_kwargs,
-) -> Tuple:
+) -> tuple:
     """
     Plot RMS data for a specific variable
 
@@ -837,167 +687,267 @@ def plot_rms_variable(
     variable : str
         Variable name
     file_idx : int, optional
-        Index of RMS file to load (used if hours is None, default: 0)
+        Index of RMS file to load
     hours : list of int, optional
-        List of hours to load (0-23). If provided, file_idx is ignored.
+        List of hours to load (0-23)
     ax : matplotlib.axes.Axes, optional
-        Axes to plot on (creates new figure if None)
+        Existing axes to plot on (matplotlib only)
     show : bool, optional
         Show plot (default: True)
     save : str, optional
         Save plot to file
     outlier_result : OutlierResult, optional
-        Pre-computed outlier detection result from python_magnetrun.hybrid.outliers module.
-        If provided, outliers will be handled according to outlier_strategy.
-        Use `from python_magnetrun.hybrid.outliers import OutlierDetector` to detect outliers separately.
+        Pre-computed outlier detection result.
     outlier_strategy : str, optional
-        How to handle outliers when outlier_result is provided:
-        - 'remove': Remove outlier points
-        - 'interpolate': Replace outliers with interpolated values
-        - 'highlight': Plot outliers in red on top of data
-        - 'none': Ignore outlier_result and plot raw data
-        Default: 'interpolate'
+        How to handle outliers: 'remove', 'interpolate', 'highlight', 'none'
     downsample : int, optional
         Target number of points for plotting.
-        Set to None to disable downsampling (RMS data is usually smaller).
     downsample_method : str, optional
         Downsampling method: 'auto', 'minmax_lttb', 'stride', 'minmax'
-    **plot_kwargs : dict
-        Additional arguments passed to plt.plot()
+    backend : str or PlottingBackend, optional
+        Plotting backend (default: 'matplotlib').
 
     Returns
     -------
     tuple
-        (fig, ax) matplotlib figure and axes
-
-    Example
-    -------
-    >>> from python_magnetrun.hybrid.outliers import detect_outliers
-    >>> # Read data and detect outliers separately
-    >>> data, time = hybrid_data.read_rms_variable(system, 'U1')
-    >>> outlier_result = detect_outliers(data, method='iqr', threshold=1.5)
-    >>> # Plot with pre-computed outliers
-    >>> fig, ax = plot_rms_variable(
-    ...     hybrid_data, system, 'U1',
-    ...     outlier_result=outlier_result,
-    ...     outlier_strategy='highlight'
-    ... )
+        (fig, ax)
     """
-    import matplotlib.pyplot as plt
-
     logger.debug(
-        f"plot_rms_variable: system={system}, variable={variable}, hours={hours}"
+        "plot_rms_variable: system=%s, variable=%s, hours=%s", system, variable, hours
     )
 
-    # Read data using read_rms_variable (same pattern as kHz)
     data, time = hybrid_data.read_rms_variable(
         system, variable, file_idx=file_idx, hours=hours
     )
 
-    # Get unit if available from variable info
-    unit = ""
-    try:
-        # Use file_idx=0 for variable info if hours specified
-        info_idx = file_idx if file_idx is not None else 0
-        var_info = hybrid_data.get_rms_variable_info(system, file_idx=info_idx)
-        var_row = var_info[var_info["name"] == variable]
-        if not var_row.empty and var_row.iloc[0]["unit"]:
-            unit = var_row.iloc[0]["unit"]
-    except Exception:
-        pass  # No unit available
-
-    ylabel = f"{variable}"
-    if unit:
-        ylabel += f" [{unit}]"
-
-    # Handle outliers if result provided
-    highlight_outliers = False
-    if outlier_result is not None and outlier_strategy != "none":
-        if outlier_strategy == "highlight":
-            highlight_outliers = True
-        else:
-            # Apply strategy to data
-            data = outlier_result.apply_to_data(data, strategy=outlier_strategy)
-            # Remove NaN values if strategy was 'remove' or 'nan'
-            if outlier_strategy in ("remove", "nan"):
-                valid_mask = ~np.isnan(data)
-                data = data[valid_mask]
-                time = time[valid_mask]
-            logger.info(
-                f"Applied {outlier_strategy} to {outlier_result.n_outliers} "
-                f"outliers in {variable}"
-            )
-
-    # Apply downsampling if requested
-    if downsample is not None and len(data) > downsample:
-        original_len = len(data)
-        data, time = downsample_for_plot(data, time, downsample, downsample_method)
-        logger.info(f"Downsampled {variable}: {original_len:,} -> {len(data):,} points")
-
-    # Create figure if needed
-    if ax is None:
-        fig, ax = plt.subplots(figsize=(12, 6))
-    else:
-        fig = ax.get_figure()
-
-    # Plot main data
-    label = plot_kwargs.pop("label", f"{variable} (RMS)")
-    ax.plot(time, data, label=label, **plot_kwargs)
-
-    # Highlight outliers if requested
-    if highlight_outliers and outlier_result is not None:
-        # Need to re-read original data for highlighting
-        orig_data, orig_time = hybrid_data.read_rms_variable(
-            system, variable, file_idx=file_idx, hours=hours
-        )
-        outlier_mask = outlier_result.mask[: len(orig_data)]
-        outlier_data = orig_data[outlier_mask]
-        outlier_time = orig_time[outlier_mask]
-        if len(outlier_data) > 0:
-            ax.scatter(
-                outlier_time,
-                outlier_data,
-                c="red",
-                s=20,
-                alpha=0.7,
-                label=f"Outliers ({outlier_result.n_outliers})",
-                zorder=5,
-            )
-            logger.info(
-                f"Highlighting {outlier_result.n_outliers} outliers in {variable}"
-            )
-
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel(ylabel)
+    info_idx = file_idx if file_idx is not None else 0
+    unit = _get_rms_unit(hybrid_data, system, variable, info_idx)
+    ylabel = f"{variable} [{unit}]" if unit else f"{variable} (RMS)"
     title = f"{system} RMS - {variable} ({hybrid_data.date_str})"
     if outlier_result is not None and outlier_strategy != "none":
         title += f"\n[{outlier_strategy}: {outlier_result.n_outliers} outliers]"
-    ax.set_title(title)
-    ax.grid(True, alpha=0.3)
-    ax.legend()
 
-    if save:
-        fig.savefig(save, dpi=150, bbox_inches="tight")
-        logger.info(f"Saved plot to {save}")
+    return _plot_variable_impl(
+        data, time, system, variable, ylabel, title, f"{variable} (RMS)",
+        ax, show, save, outlier_result, outlier_strategy,
+        downsample, downsample_method, backend,
+    )
 
-    if show:
-        plt.show()
 
-    return fig, ax
+def plot_vprocess_variable(
+    hybrid_data: "HybridData",
+    variable: str,
+    hours: range | list[int] | None = None,
+    ax=None,
+    show: bool = True,
+    save: str | None = None,
+    outlier_result: Optional["OutlierResult"] = None,
+    outlier_strategy: str = "interpolate",
+    downsample: int | None = None,
+    downsample_method: str = "auto",
+    backend: str | PlottingBackend = "matplotlib",
+    **plot_kwargs,
+) -> tuple:
+    """Plot VProcess data for a specific variable.
+
+    Parameters
+    ----------
+    hybrid_data : HybridData
+        HybridData instance.
+    variable : str
+        Variable name.
+    hours : range or list of int, optional
+        Hours to read (default: all available).
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to plot on (matplotlib only).
+    show : bool, optional
+        Show plot (default: True).
+    save : str, optional
+        Save plot to file.
+    outlier_result : OutlierResult, optional
+        Pre-computed outlier detection result.
+    outlier_strategy : str, optional
+        How to handle outliers: ``'remove'``, ``'interpolate'``, ``'highlight'``, ``'none'``.
+    downsample : int, optional
+        Target number of points for plotting.
+    downsample_method : str, optional
+        Downsampling method: ``'auto'``, ``'minmax_lttb'``, ``'stride'``, ``'minmax'``.
+    backend : str or PlottingBackend, optional
+        Plotting backend (default: ``'matplotlib'``).
+
+    Returns
+    -------
+    tuple
+        ``(fig, ax)`` — ``ax`` is ``None`` for non-matplotlib backends.
+    """
+    logger.debug("plot_vprocess_variable: variable=%s", variable)
+    data, time = hybrid_data.read_vprocess_variable(variable, hours=hours)
+    unit = _get_vprocess_unit(hybrid_data, variable)
+    ylabel = f"{variable} [{unit}]" if unit else variable
+    title = f"VProcess - {variable} ({hybrid_data.date_str})"
+    return _plot_variable_impl(
+        data, time, "vprocess", variable, ylabel, title, variable,
+        ax, show, save, outlier_result, outlier_strategy,
+        downsample, downsample_method, backend,
+    )
+
+
+def plot_vprocess_variables(
+    hybrid_data: "HybridData",
+    variables: list[str],
+    hours: range | list[int] | None = None,
+    layout: str = "subplots",
+    show: bool = True,
+    save: str | None = None,
+    outlier_results: dict[str, "OutlierResult"] | None = None,
+    outlier_strategy: str = "interpolate",
+    downsample: int | None = None,
+    downsample_method: str = "auto",
+    backend: str | PlottingBackend = "matplotlib",
+    **plot_kwargs,
+) -> tuple:
+    """Plot multiple VProcess variables.
+
+    Parameters
+    ----------
+    hybrid_data : HybridData
+        HybridData instance.
+    variables : list of str
+        Variable names to plot.
+    hours : range or list of int, optional
+        Hours to read (default: all available).
+    layout : str, optional
+        Plot layout: ``'subplots'`` (default) or ``'overlay'``.
+    show : bool, optional
+        Show plot (default: True).
+    save : str, optional
+        Save plot to file.
+    outlier_results : dict, optional
+        Maps variable names to :class:`~python_magnetrun.outliers.OutlierResult`.
+    outlier_strategy : str, optional
+        How to handle outliers: ``'remove'``, ``'interpolate'``, ``'highlight'``, ``'none'``.
+    downsample : int, optional
+        Target number of points; ``None`` disables downsampling.
+    downsample_method : str, optional
+        Downsampling method name.
+    backend : str or PlottingBackend, optional
+        Plotting backend (default: ``'matplotlib'``).
+
+    Returns
+    -------
+    tuple
+        ``(fig, axes)``.
+    """
+    n_vars = len(variables)
+    if n_vars == 0:
+        raise ValueError("At least one variable must be specified")
+
+    if n_vars == 1:
+        var_outlier = outlier_results.get(variables[0]) if outlier_results else None
+        return plot_vprocess_variable(
+            hybrid_data, variables[0],
+            hours=hours,
+            show=show, save=save,
+            outlier_result=var_outlier, outlier_strategy=outlier_strategy,
+            downsample=downsample, downsample_method=downsample_method,
+            backend=backend,
+        )
+
+    logger.debug("plot_vprocess_variables: variables=%s", variables)
+
+    def _read(v: str) -> tuple[np.ndarray, np.ndarray]:
+        return hybrid_data.read_vprocess_variable(v, hours=hours)
+
+    title = f"VProcess ({hybrid_data.date_str})"
+    return _plot_variables_impl(
+        hybrid_data, "vprocess", variables,
+        _read,
+        lambda v: _get_vprocess_unit(hybrid_data, v),
+        title, layout, show, save,
+        outlier_results, outlier_strategy,
+        downsample, downsample_method, backend,
+    )
+
+
+def plot_trigger_variable(
+    hybrid_data: "HybridData",
+    system: str,
+    variable: str,
+    apply_calib: bool = True,
+    cnv_dir: str | None = None,
+    ax=None,
+    show: bool = True,
+    save: str | None = None,
+    outlier_result: Optional["OutlierResult"] = None,
+    outlier_strategy: str = "interpolate",
+    downsample: int | None = 50000,
+    downsample_method: str = "auto",
+    backend: str | PlottingBackend = "matplotlib",
+    **plot_kwargs,
+) -> tuple:
+    """Plot trigger data for a specific variable.
+
+    Parameters
+    ----------
+    hybrid_data : HybridData
+        HybridData instance.
+    system : str
+        FEPC system name.
+    variable : str
+        Variable name.
+    apply_calib : bool, optional
+        Apply calibration (default: True).
+    cnv_dir : str, optional
+        Directory for CNV calibration files.
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to plot on (matplotlib only).
+    show : bool, optional
+        Show plot (default: True).
+    save : str, optional
+        Save plot to file.
+    outlier_result : OutlierResult, optional
+        Pre-computed outlier detection result.
+    outlier_strategy : str, optional
+        How to handle outliers: ``'remove'``, ``'interpolate'``, ``'highlight'``, ``'none'``.
+    downsample : int, optional
+        Target number of points for plotting (default: 50000).
+    downsample_method : str, optional
+        Downsampling method: ``'auto'``, ``'minmax_lttb'``, ``'stride'``, ``'minmax'``.
+    backend : str or PlottingBackend, optional
+        Plotting backend (default: ``'matplotlib'``).
+
+    Returns
+    -------
+    tuple
+        ``(fig, ax)`` — ``ax`` is ``None`` for non-matplotlib backends.
+    """
+    logger.debug("plot_trigger_variable: system=%s, variable=%s", system, variable)
+    data, time = hybrid_data.read_trigger_variable(
+        system, variable, apply_calib=apply_calib, cnv_dir=cnv_dir
+    )
+    unit = _get_trigger_unit(hybrid_data, system, variable)
+    ylabel = f"{variable} [{unit}]" if unit else variable
+    title = f"{system} Trigger - {variable} ({hybrid_data.date_str})"
+    return _plot_variable_impl(
+        data, time, system, variable, ylabel, title, f"{variable} (Trigger)",
+        ax, show, save, outlier_result, outlier_strategy,
+        downsample, downsample_method, backend,
+    )
 
 
 def plot_khz_with_rms(
     hybrid_data: "HybridData",
     system: str,
     khz_variable: str,
-    rms_variable: Optional[str] = None,
-    hours: Optional[List[int]] = None,
+    rms_variable: str | None = None,
+    hours: list[int] | None = None,
     apply_calib: bool = True,
-    rms_file_idx: Optional[int] = None,
-    rms_hours: Optional[List[int]] = None,
+    rms_file_idx: int | None = None,
+    rms_hours: list[int] | None = None,
     show: bool = True,
-    save: Optional[str] = None,
-) -> Tuple:
+    save: str | None = None,
+    backend: str | PlottingBackend = "matplotlib",
+) -> tuple:
     """
     Plot kHz and RMS data together for comparison
 
@@ -1023,114 +973,72 @@ def plot_khz_with_rms(
         Show plot (default: True)
     save : str, optional
         Save plot to file
+    backend : str or PlottingBackend, optional
+        Plotting backend (default: 'matplotlib').
 
     Returns
     -------
     tuple
-        (fig, axes) matplotlib figure and axes array
+        (fig, axes) — axes is a list of 2 for matplotlib, None otherwise.
     """
-    import matplotlib.pyplot as plt
-
     logger.debug(
-        f"plot_khz_with_rms: system={system}, khz={khz_variable}, rms={rms_variable}"
+        "plot_khz_with_rms: system=%s, khz=%s, rms=%s",
+        system, khz_variable, rms_variable,
     )
 
     if rms_variable is None:
         rms_variable = khz_variable
-
-    # Use same hours for RMS if rms_hours not specified
     if rms_hours is None and hours is not None:
         rms_hours = hours
 
-    fig, axes = plt.subplots(2, 1, figsize=(14, 10), sharex=True)
+    b = get_backend(backend)
+    dfs: list[pd.DataFrame] = []
+    fields: list[str] = []
+    colors: list[str] = []
+    field_styles: list[tuple] = []
 
-    # Plot kHz data
+    # kHz series (blue, thin solid line).
     try:
         khz_data, khz_time = hybrid_data.read_khz_variable(
             system, khz_variable, hours=hours, apply_calib=apply_calib
         )
-        axes[0].plot(
-            khz_time, khz_data, "b-", linewidth=0.5, label=f"{khz_variable} (kHz)"
-        )
-        axes[0].set_xlabel("Time (s)")
-        axes[0].set_ylabel(khz_variable)
-        axes[0].set_title(f"kHz Data: {khz_variable}")
-        axes[0].grid(True, alpha=0.3)
-        axes[0].legend()
-    except ValueError as e:
-        logger.error(f"Value error plotting kHz variable: {e}")
-        axes[0].text(
-            0.5,
-            0.5,
-            f"Error loading kHz data:\n{e}",
-            ha="center",
-            va="center",
-            transform=axes[0].transAxes,
-        )
-        axes[0].set_title(f"kHz Data: {khz_variable} (ERROR)")
-    except struct.error as e:
-        logger.critical(f"Struct error plotting kHz variable: {e}")
-    except Exception as e:
-        logger.error(f"Error plotting kHz variable: {e}")
-        axes[0].text(
-            0.5,
-            0.5,
-            f"Error loading kHz data:\n{e}",
-            ha="center",
-            va="center",
-            transform=axes[0].transAxes,
-        )
-        axes[0].set_title(f"kHz Data: {khz_variable} (ERROR)")
+        dfs.append(pd.DataFrame({"t": khz_time, khz_variable: khz_data}))
+        fields.append(khz_variable)
+        colors.append("blue")
+        field_styles.append(("-", None, None, None))
+    except (OSError, ValueError, RuntimeError, KeyError, struct.error) as e:
+        logger.error("Error loading kHz variable %s: %s", khz_variable, e)
 
-    # Plot RMS data (using read_rms_variable for consistency)
+    # RMS series (red, dots).
+    rms_col = f"{rms_variable} (RMS)"
     try:
         rms_data, rms_time = hybrid_data.read_rms_variable(
             system, rms_variable, file_idx=rms_file_idx, hours=rms_hours
         )
-        axes[1].plot(
-            rms_time,
-            rms_data,
-            "r-",
-            marker=".",
-            markersize=2,
-            label=f"{rms_variable} (RMS)",
-        )
-        axes[1].set_xlabel("Time (s)")
-        axes[1].set_ylabel(rms_variable)
-        axes[1].set_title(f"RMS Data: {rms_variable}")
-        axes[1].grid(True, alpha=0.3)
-        axes[1].legend()
-    except ValueError as e:
-        logger.error(f"Value error plotting RMS variable: {e}")
-        axes[1].text(
-            0.5,
-            0.5,
-            f"Error loading RMS data:\n{e}",
-            ha="center",
-            va="center",
-            transform=axes[1].transAxes,
-        )
-        axes[1].set_title(f"RMS Data: {rms_variable} (ERROR)")
-    except Exception as e:
-        logger.error(f"Error plotting RMS variable: {e}")
-        axes[1].text(
-            0.5,
-            0.5,
-            f"Error loading RMS data:\n{e}",
-            ha="center",
-            va="center",
-            transform=axes[1].transAxes,
-        )
-        axes[1].set_title(f"RMS Data: {rms_variable} (ERROR)")
+        dfs.append(pd.DataFrame({"t": rms_time, rms_col: rms_data}))
+        fields.append(rms_col)
+        colors.append("red")
+        field_styles.append(("-", ".", None, None))
+    except (OSError, ValueError, RuntimeError, KeyError) as e:
+        logger.error("Error loading RMS variable %s: %s", rms_variable, e)
 
-    fig.suptitle(f"{system} - {hybrid_data.date_str}", fontsize=14, fontweight="bold")
-    plt.tight_layout()
+    if not dfs:
+        raise RuntimeError(f"No data loaded for {system}")
 
-    if save:
-        fig.savefig(save, dpi=150, bbox_inches="tight")
-        logger.info(f"Saved plot to {save}")
+    merged = (
+        pd.concat(dfs, ignore_index=True)
+        .sort_values("t", kind="stable")
+        .reset_index(drop=True)
+    )
 
-    if show:
-        plt.show()
+    title = f"{system} - {hybrid_data.date_str}"
+    fig = plot_subplots(
+        merged, fields, t_col="t",
+        backend=b, title=title,
+        colors=colors, field_styles=field_styles,
+    )
 
+    _handle_output(b, fig, show, save)
+
+    axes = getattr(fig, "_magnetrun_axes", None)
     return fig, axes

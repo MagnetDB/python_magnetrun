@@ -3,16 +3,17 @@ Find Changing Points in an magnet record (tdms format)
 
 Use kernelCPD algo for performance
 
-ex: python ./test-ruptures.py M9_Overview_240509-1634.tdms --group Tensions_Aimant --channel Interne6 --detect --algo kernelCPD --model rbf --pen 512 --min_size=200
+ex: python ./test-ruptures.py M9_Overview_240509-1634.tdms --group Tensions_Aimant
+    --channel Interne6 --detect --algo kernelCPD --model rbf --pen 512 --min_size=200
 """
 
 import logging
+
+import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd
 import ruptures as rpt
 
 logger = logging.getLogger(__name__)
-
-import matplotlib.pyplot as plt
 
 # from: https://github.com/sztistvan/change_detection/blob/main/change_point_detection_chatgpt.ipynb
 # https://stackoverflow.com/questions/47519626/using-numpy-scipy-to-identify-slope-changes-in-digital-signals
@@ -70,9 +71,7 @@ def detect_changes(
     # algo = rpt.Pelt(model="rbf", min_size=1, jump=10).fit(signal)
     # is gamma usefull - see https://centre-borelli.github.io/ruptures-docs/code-reference/detection/kernelcpd-reference/
     if algoname == "kernelCDP":
-        rpt_algo = rpt.kernelCDP(
-            kernel=model, min_size=min_size
-        )  # , params={'gamma': 0.001})
+        rpt_algo = rpt.kernelCDP(kernel=model, min_size=min_size)  # , params={'gamma': 0.001})
     elif algoname == "Window":
         rpt_algo = rpt.Window(model, width=min_size, jump=jump)
     else:
@@ -105,13 +104,13 @@ def plot_changes(
     method: str,
     name: str,
     show: bool = False,
-    ax=None,
-):
+    ax: "plt.Axes | None" = None,
+) -> None:
     """
     display changes
     """
 
-    print(f"plot_changes: method={method}, name={name}, show={show}", flush=True)
+    logger.info(f"plot_changes: method={method}, name={name}, show={show}")
 
     # Plot the time series
 
@@ -141,7 +140,7 @@ def plot_changes(
     if show:
         plt.show()
     else:
-        print(f"plot_changes: savefig to {name}-changes-matplotlib.png")
+        logger.info(f"plot_changes: savefig to {name}-changes-matplotlib.png")
         plt.savefig(f"{name}-changes-matplotlib.png", dpi=300)
     plt.close()
 
@@ -155,21 +154,18 @@ def breakingpoints(
     jump: int = 10,
     pen: float = 2,
     n_bkps: int = 5,
-    ax=None,
+    ax: "plt.Axes | None" = None,
     save: bool = False,
-):
+) -> None:
     # display algo
-    print(f"algo: {algo}")
-    print(f"model: {model}")
-    print(f"min_size: {min_size}")
-    print(f"jump: {jump}")
-    print(f"pen: {pen}", flush=True)
+    logger.info(f"algo: {algo}")
+    logger.info(f"model: {model}")
+    logger.info(f"min_size: {min_size}")
+    logger.info(f"jump: {jump}")
+    logger.info(f"pen: {pen}")
 
     # Detect abrupt changes
-    print(
-        f"Detect Changing point for {channel}: show={not save}",
-        flush=True,
-    )
+    logger.info(f"Detect Changing point for {channel}: show={not save}")
     changes = detect_changes(
         ts,
         algo,
@@ -179,10 +175,10 @@ def breakingpoints(
         pen,
         n_bkps,
     )
-    print(f"Changes detected: {len(changes)}", flush=True)
+    logger.info(f"Changes detected: {len(changes)}")
 
     method = f"{algo}-{model}-pen{pen}"
-    print(f"plot: Changing points: method={method}")
+    logger.info(f"plot: Changing points: method={method}")
     plot_changes(
         ts,
         changes,

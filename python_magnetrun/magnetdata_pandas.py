@@ -1,0 +1,1687 @@
+"""PandasMagnetData and thin pandas-backed subclasses."""
+
+from __future__ import annotations
+
+import contextlib
+import logging
+import os
+import sys
+from datetime import datetime
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .utils.downsampling import DownsampleConfig
+
+import numpy as np
+import pandas as pd
+from natsort import natsorted
+
+from .magnetdata_base import DataType, MagnetDataBase
+from .utils.files import _open_text_with_fallback
+from .utils.timestamps import parse_filename_timestamp
+from .utils.timezone import (
+    local_to_utc_naive,
+    series_local_to_utc_naive,
+    series_utc_to_local_naive,
+    timerange_to_utc,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _dataframe_keys(df: pd.DataFrame) -> list[str]:
+    """Return DataFrame column names normalized to ``list[str]``."""
+    return [str(column) for column in df.columns.tolist()]
+
+
+def _get_duplicate_columns(df: pd.DataFrame) -> list[str]:
+    """Return column names that are exact duplicates of an earlier column."""
+    duplicates: set[str] = set()
+    for x in range(df.shape[1]):
+        col = df.iloc[:, x]
+        for y in range(x + 1, df.shape[1]):
+            if col.equals(df.iloc[:, y]):
+                duplicates.add(df.columns.values[y])
+    return list(duplicates)
+
+
+class PandasMagnetData(MagnetDataBase):
+    """Pandas-backed magnet data (pupitre .txt, .csv, StringIO).
+
+    ``self.Data`` is always a :class:`pandas.DataFrame`.
+    ``self.Type`` is ``0`` unless overridden by a subclass.
+    """
+
+    _TYPE: DataType = DataType.PUPITRE  # overridden by EnsightMagnetData → ENSIGHT
+
+    def __init__(
+        self,
+        filename: str,
+        Groups: dict,
+        Keys: list[str],
+        Data: pd.DataFrame | None = None,
+        defs_file: str | None = None,
+        time_zone: str = "Europe/Paris",
+        _read_kwargs: dict | None = None,
+    ) -> None:
+        """Initialise a :class:`PandasMagnetData` instance.
+
+        Parameters
+        ----------
+        filename : str
+            Path to the source file (or ``"stringIO"`` for in-memory data).
+        Groups : dict
+            Group metadata dict (always ``{}`` for pandas data).
+        Keys : list[str]
+            List of column names.
+        Data : pandas.DataFrame, optional
+            Pre-loaded DataFrame; when ``None`` the DataFrame is loaded lazily
+            from disk on first access.
+        defs_file : str, optional
+            Path to a JSON field-definition file; passed to
+            :meth:`~.MagnetDataBase.Units`.
+        time_zone : str
+            IANA local timezone of the source date/time columns (default
+            ``"Europe/Paris"``); used to convert ``start_timestamp`` to naive
+            UTC.
+        _read_kwargs : dict, optional
+            Keyword arguments forwarded to :func:`pandas.read_csv` during lazy
+            loading.
+        """
+        # Initialise backing store before super().__init__ so that the Data
+        # property is usable from _validate_start_timestamp (called below).
+        self._data: pd.DataFrame = (
+            Data if isinstance(Data, pd.DataFrame) else pd.DataFrame()
+        )
+        self._data_loaded: bool = len(self._data) > 1
+        self._read_kwargs: dict = _read_kwargs or {}
+        super().__init__(filename, Groups, Keys, defs_file=defs_file)
+        dt = parse_filename_timestamp(filename)  # in local time
+        self.start_timestamp = pd.Timestamp(dt) if dt is not None else None
+        self._validate_start_timestamp()
+        # Convert to UTC — use self.start_timestamp (may have been overridden by
+        # _validate_start_timestamp with a value from the Date/Time data columns).
+        if self.start_timestamp is not None:
+            self.start_timestamp = local_to_utc_naive(self.start_timestamp, time_zone)
+
+    # --- Data property (implements lazy loading) ---------------------
+
+    @property
+    def Data(self) -> pd.DataFrame:
+        self._ensure_data_loaded()
+        return self._data
+
+    @Data.setter
+    def Data(self, value: pd.DataFrame | dict) -> None:
+        if isinstance(value, dict):
+            raise ValueError(
+                "Data setter: dict value not supported for PandasMagnetData; expected a pandas DataFrame"
+            )
+        self._data = value
+
+    # --- lazy loading ------------------------------------------------
+
+    def _ensure_data_loaded(self) -> None:
+        """Load the full file from disk on first data access.
+
+        Uses ``_read_kwargs`` stored at construction time to reproduce the
+        original ``pd.read_csv`` call.  Subsequent calls are no-ops.
+        """
+        if self._data_loaded:
+            return
+        if not self._read_kwargs:
+            return
+        with _open_text_with_fallback(self.FileName) as f:
+            df = pd.read_csv(f, **self._read_kwargs)
+        from .utils.validation import FileFormatError
+
+        if df.empty:
+            raise FileFormatError(
+                f"{self.FileName}: no data rows found (header-only file)"
+            )
+        self._data_loaded = True  # set before assigning self.Data to avoid recursion
+        self.Data = df
+        self.Keys = _dataframe_keys(df)
+        logger.debug(f"_ensure_data_loaded: loaded {self.FileName} ({len(df)} rows)")
+
+    # --- abstract property -------------------------------------------
+
+    @property
+    def Type(self) -> DataType:
+        return self._TYPE
+
+    # --- core data access --------------------------------------------
+
+    def getPandasData(self, key: list[str] | str | None) -> pd.DataFrame:
+        """Return the full DataFrame or a column selection.
+
+        Parameters
+        ----------
+        key : str or list[str] or None
+            Column name, list of column names, or ``None`` to return the full
+            DataFrame.
+
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame for the requested key(s).
+
+        Raises
+        ------
+        KeyError
+            If any requested key is not in :attr:`Keys`.
+        RuntimeError
+            If the underlying data is not a DataFrame.
+        """
+        self._ensure_data_loaded()
+        if key is None:
+            if not isinstance(self.Data, pd.DataFrame):
+                raise RuntimeError(
+                    f"MagnetData/Data: {self.FileName} - expect Data to be a pandas dataframe"
+                )
+            return self.Data  # type: ignore[return-value]
+        selected_keys: list[str] = []
+        if isinstance(key, list):
+            selected_keys = key
+        elif isinstance(key, str):
+            selected_keys = [key]
+        for item in selected_keys:
+            if item not in self.Keys:
+                raise KeyError(
+                    f"MagnetData/Data({key}): {self.FileName}: cannot get data for key={item}: no such key"
+                )
+        return self.Data[selected_keys]  # type: ignore[index]
+
+    def getData(
+        self,
+        key: list[str] | str | None = None,
+        downsample: DownsampleConfig | None = None,
+    ) -> pd.DataFrame:
+        """Return data for the given key(s), optionally downsampled.
+
+        Unit metadata is attached to ``df.attrs["units"]`` so plotting
+        helpers can label axes without a separate lookup.
+
+        Parameters
+        ----------
+        key : str or list[str] or None
+            Column name, list of column names, or ``None`` for all columns.
+        downsample : DownsampleConfig, optional
+            Downsampling configuration; ``None`` returns unmodified data.
+
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame with unit metadata in ``df.attrs["units"]``.
+        """
+        from .utils.downsampling import downsample_dataframe
+
+        df = self.getPandasData(key)
+        if downsample is not None and len(df) > downsample.n_out:
+            time_col = "t" if "t" in df.columns else df.columns[0]
+            value_cols = [c for c in df.columns if c != time_col]
+            df = downsample_dataframe(
+                df, time_col=time_col, value_cols=value_cols, config=downsample
+            )
+
+        # Attach unit metadata so plotting functions can label axes correctly.
+        # Uses a per-key try/except because Units() may not have been called yet.
+        units_attrs: dict = {}
+        for col in df.columns:
+            with contextlib.suppress(KeyError, RuntimeError):
+                units_attrs[col] = self.getUnitKey(col)
+        df.attrs["units"] = units_attrs
+
+        return df
+
+    def getKeys(self) -> list[str]:
+        """Return the list of available column names.
+
+        Returns
+        -------
+        list[str]
+            List of column name strings.
+        """
+        return self.Keys
+
+    # --- units -------------------------------------------------------
+
+    def Units(
+        self, debug: bool = False, json_file: str | None = None
+    ) -> None:  # noqa: N802
+        """Populate ``self.units`` from column names.
+
+        Resolution order:
+        1. *json_file* argument (explicit override)
+        2. ``self.defs_file`` set at construction time
+        3. Built-in pattern matching (fallback, kept for backward compatibility)
+
+        When a JSON file is resolved the pattern block is still applied for any
+        key not present in the file, so partial JSON files work correctly.
+        """
+        from .magnetdata_base import _make_ureg
+
+        resolved = json_file or self.defs_file
+        if resolved is not None:
+            self.load_units_from_json(resolved, debug=debug)
+            self._build_groups(resolved)
+
+        ureg = _make_ureg()
+
+        # For keys not populated from JSON fall back to legacy pattern matching.
+        # Keys that match no pattern (e.g. 'Date', 'Time') are silently skipped.
+        for key in self.Keys:
+            if key in self.units:
+                continue  # already populated from JSON
+            else:
+                logger.warning(
+                    f"Units: no JSON definition for key '{key}', applying legacy pattern matching"
+                )
+
+                # Legacy pattern matching fallback (kept for backward compatibility)
+                # TO be switched off
+                if key in ("Date", "Time"):
+                    pass  # non-physical metadata columns — no unit needed
+                elif key == "timestamp":
+                    self.units[key] = ("time", None)
+                elif key == "t":
+                    self.units[key] = ("t", ureg.second)
+                elif key == "Field":
+                    self.units[key] = ("B", ureg.tesla)
+                elif key.startswith("I"):
+                    self.units[key] = ("I", ureg.ampere)
+                elif key.startswith("U"):
+                    self.units[key] = ("U", ureg.volt)
+                elif key.startswith("T") or key == "teb" or key == "tsb":
+                    self.units[key] = ("T", ureg.degC)
+                elif key.startswith("Rpm"):
+                    self.units[key] = ("Rpm", ureg.rpm)
+                elif key.startswith("DR"):
+                    self.units[key] = ("%", ureg.percent)
+                elif key.startswith("Flo"):
+                    self.units[key] = ("Q", ureg.liter / ureg.second)
+                elif key == "debitbrut":
+                    self.units[key] = ("Q", ureg.meter**3 / ureg.hour)
+                elif key.startswith("HP") or key.startswith("BP"):
+                    self.units[key] = ("P", ureg.bar)
+                elif key == "Pmagnet" or key == "Ptot" or key.startswith("Power"):
+                    self.units[key] = ("Power", ureg.megawatt)
+                elif key == "Q":
+                    self.units[key] = ("Preac", ureg.megavar)
+                else:
+                    logger.warning(f"Units: no unit defined for key '{key}' — skipping")
+
+        if debug:
+            logger.debug(f"Units: {self.Keys}")
+            for key, values in self.units.items():
+                symbol = values[0]
+                unit = values[1]
+                logger.debug(f"{key}: symbol={symbol}, unit={unit:~P}")
+
+    def getUnitKey(self, key: str) -> tuple:
+        """Return the ``(symbol, unit)`` pair for *key*.
+
+        Falls back to hard-coded defaults for ``"t"`` and ``"timestamp"``
+        even when those columns are not in :attr:`Keys`.
+
+        Parameters
+        ----------
+        key : str
+            Column name.
+
+        Returns
+        -------
+        tuple
+            ``(symbol, pint_unit)`` tuple.
+
+        Raises
+        ------
+        RuntimeError
+            If *key* is not in :attr:`Keys` and has no hard-coded default.
+        """
+        if key not in self.Keys:
+            from .magnetdata_base import _make_ureg
+
+            ureg = _make_ureg()
+            if key == "t":
+                return ("t", ureg.second)
+            elif key == "timestamp":
+                return ("time", None)
+            else:
+                raise RuntimeError(
+                    f"{key} not defined in data - available keys are {self.Keys}"
+                )
+        return self.units[key]
+
+    # --- group support -----------------------------------------------
+
+    def _build_groups(self, json_file: str) -> None:
+        """Populate :attr:`Groups` from the ``"group"`` key in the defs file.
+
+        Called automatically by :meth:`Units` after loading the JSON
+        definitions.  Only columns present in :attr:`Keys` are included.
+
+        Parameters
+        ----------
+        json_file : str
+            Path to the field-definition JSON file (same file used by
+            :meth:`~.MagnetDataBase.load_units_from_json`).
+        """
+        from .field_defs import load_defs
+
+        groups: dict[str, list[str]] = {}
+        for key, defn in load_defs(json_file).items():
+            if key.startswith("_") or key not in self.Keys:
+                continue
+            grp = defn.get("group")
+            if grp:
+                groups.setdefault(grp, []).append(key)
+        self.Groups = groups
+
+    def get_group_data(self, group: str) -> pd.DataFrame:
+        """Return a DataFrame with the time column and all channels in *group*.
+
+        Parameters
+        ----------
+        group : str
+            Group name as returned by :meth:`list_groups`.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Slice of :attr:`Data` containing ``"t"`` plus all columns in
+            *group* that are present in the loaded DataFrame.
+
+        Raises
+        ------
+        KeyError
+            If *group* is not in :attr:`Groups`.
+        """
+        if group not in self.Groups:
+            raise KeyError(
+                f"Group {group!r} not found. Available groups: {self.list_groups()}"
+            )
+        cols = ["t", "timestamp"] + self.Groups[group]
+        return self.Data[[c for c in cols if c in self.Data.columns]]
+
+    # --- timestamp validation ----------------------------------------
+
+    def _validate_start_timestamp(self) -> None:
+        """Cross-check ``start_timestamp`` against the first ``Date``/``Time`` data row.
+
+        Called automatically at the end of ``__init__``, before any cleanup.
+
+        * If ``Date`` and ``Time`` columns are present, parse the first row into a
+          :class:`~pandas.Timestamp`.
+        * When ``start_timestamp`` was not derived from the filename (``None``), set it
+          from the data.
+        * When the filename-derived value disagrees with the data, emit a warning and
+          overwrite with the authoritative data value.
+        """
+        if "Date" not in self.Keys or "Time" not in self.Keys:
+            return
+        df = self._data  # bypass property — stub already has row 0, no full load needed
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return
+        try:
+            date_str = str(df["Date"].iloc[0])
+            time_str = str(df["Time"].iloc[0])
+            data_ts = pd.Timestamp(
+                datetime.strptime(f"{date_str} {time_str}", "%Y.%m.%d %H:%M:%S")
+            )
+        except (ValueError, TypeError):
+            logger.warning(
+                f"_validate_start_timestamp: cannot parse Date/Time from first row of {self.FileName!r}"
+            )
+            return
+
+        if self.start_timestamp is None:
+            logger.debug(
+                f"_validate_start_timestamp: {self.FileName!r} — start_timestamp set from data: {data_ts}"
+            )
+            self.start_timestamp = data_ts
+        elif self.start_timestamp != data_ts:
+            logger.info(
+                f"_validate_start_timestamp: {self.FileName!r} — filename timestamp {self.start_timestamp} "
+                f"differs from data timestamp {data_ts}; using data value -- aka {data_ts}"
+            )
+            self.start_timestamp = data_ts
+
+    # --- cleanup / reshape -------------------------------------------
+
+    def cleanupData(  # noqa: N802
+        self,
+        keys_to_remove: list[str] | None = None,
+        keys_to_rename: dict[str, str] | None = None,
+        keys_to_add: dict[str, dict[str, Any]] | None = None,
+        debug: bool = False,
+    ) -> int:
+        """Apply ETL transformations (add, rename, remove columns) and normalise the DataFrame.
+
+        After the explicit operations the method also drops all-zero columns
+        (except those in a protected set such as flow/rpm/pressure channels)
+        and exact-duplicate columns.
+
+        Parameters
+        ----------
+        keys_to_remove : list[str], optional
+            Column names to drop.
+        keys_to_rename : dict[str, str], optional
+            ``{old: new}`` mapping for column renames.
+        keys_to_add : dict[str, dict[str, Any]], optional
+            ``{key: field_def}`` mapping of derived columns to compute via
+            :meth:`addData`.
+        debug : bool
+            Emit extra debug log messages when ``True``.
+
+        Returns
+        -------
+        int
+            ``0`` on success.
+        """
+        self._ensure_data_loaded()
+        logger.debug(f"Clean up Data: filename={self.FileName}, keys={self.Keys}")
+        assert isinstance(self.Data, pd.DataFrame)
+
+        if keys_to_add:
+            logger.debug(f"cleanupData: adding keys {list(keys_to_add.keys())}")
+            existing_keys = [key for key in keys_to_add if key in self.Keys]
+            if existing_keys:
+                logger.warning(
+                    f"cleanupData: keys {existing_keys} already exist in DataFrame, skipping addition"
+                )
+            for key, field_def in keys_to_add.items():
+                status = self.addData(
+                    key,
+                    field_def["formula"],
+                    symbol=field_def["symbol"],
+                    unit=field_def["unit"],
+                    label=field_def["label"],
+                    description=field_def["description"],
+                    debug=debug,
+                )
+                if status != 0:
+                    logger.warning(
+                        f"cleanupData: failed to add {key!r} (status={status})"
+                    )
+
+        if keys_to_rename:
+            logger.debug(f"cleanupData: renaming keys {keys_to_rename}")
+            missing_keys = [key for key in keys_to_rename if key not in self.Keys]
+            if missing_keys:
+                logger.warning(
+                    f"cleanupData: keys {missing_keys} not found in DataFrame, cannot rename"
+                )
+            target_exists = [
+                new_key for new_key in keys_to_rename.values() if new_key in self.Keys
+            ]
+            if target_exists:
+                logger.warning(
+                    f"cleanupData: target keys {target_exists} already exist in DataFrame, will be overwritten"
+                )
+            self.renameData(keys_to_rename)
+
+        if keys_to_remove:
+            logger.debug(f"cleanupData: removing keys {keys_to_remove}")
+            missing_keys = [key for key in keys_to_remove if key not in self.Keys]
+            if missing_keys:
+                logger.warning(
+                    f"cleanupData: keys {missing_keys} not found in DataFrame, cannot remove"
+                )
+            self.removeData(keys_to_remove)
+
+        self.Keys = _dataframe_keys(self.Data)
+
+        if "t" in self.Keys:
+            from .utils.duplicates import find_duplicates
+
+            self.Data = find_duplicates(self.Data, self.FileName, "t")
+            self.Keys = _dataframe_keys(self.Data)
+
+        import re
+
+        Fkeys = set(
+            [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]
+            + [_key for _key in self.Keys if re.match(r"Rpm\w+", _key)]
+            + [_key for _key in self.Keys if re.match(r"HP\w+", _key)]
+            + [_key for _key in self.Keys if re.match(r"\w+_ref", _key)]
+            + [_key for _key in self.Keys if re.match(r"Pmagnet", _key)]
+            + [_key for _key in self.Keys if re.match(r"Ptot", _key)]
+            + [_key for _key in self.Keys if re.match(r"Idcct\d", _key)]
+            + [_key for _key in self.Keys if re.match(r"IH$|IB$", _key)]
+            + [
+                _key
+                for _key in self.Keys
+                if re.match(r"(Supra)?Field|TotalField", _key)
+            ]
+            + [_key for _key in self.Keys if re.match(r"TAlimout", _key)]
+        )
+
+        logger.debug(
+            f"zero columns: {natsorted(self.Data.columns[(self.Data == 0).all()].values.tolist())}",
+        )
+
+        empty_cols: list = [
+            col
+            for col in self.Data.columns[(self.Data == 0).all()].values.tolist()
+            if col not in Fkeys
+        ]
+        logger.info(f"empty cols (to drop): {natsorted(empty_cols)}")
+        if empty_cols:
+            self.Data = self.Data.drop(empty_cols, axis=1)
+            self.Keys = _dataframe_keys(self.Data)
+
+        dropped_columns = _get_duplicate_columns(self.Data)
+        really_dropped_columns = natsorted(
+            [
+                col
+                for col in dropped_columns
+                if not col.startswith("Ucoil") and col not in Fkeys
+            ]
+        )
+        logger.info(
+            f"duplicate columns (others than Ucoil* and Fkeys): {natsorted(really_dropped_columns)}"
+        )
+        if really_dropped_columns:
+            self.Data = self.Data.drop(really_dropped_columns, axis=1)
+            self.Keys = _dataframe_keys(self.Data)
+
+        return 0
+
+    def removeData(self, keys: list) -> int:  # noqa: N802
+        """Drop columns from the DataFrame.
+
+        Parameters
+        ----------
+        keys : list
+            Column names to remove; missing keys are logged as warnings and
+            silently skipped.
+
+        Returns
+        -------
+        int
+            ``0`` on success.
+        """
+        assert isinstance(self.Data, pd.DataFrame)
+        for key in keys:
+            if key in self.Keys:
+                del self.Data[key]
+            else:
+                logger.warning(
+                    f"removeData: cannot remove '{key}', key not found - skipping"
+                )
+        self.Keys = _dataframe_keys(self.Data)
+        return 0
+
+    def renameData(self, columns: dict) -> None:  # noqa: N802
+        """Rename DataFrame columns in-place.
+
+        Parameters
+        ----------
+        columns : dict
+            ``{old_name: new_name}`` mapping.  Keys not present in the
+            DataFrame are logged as warnings and skipped.
+
+        Raises
+        ------
+        ValueError
+            If any target name already exists in the DataFrame (unless the
+            source key is itself being renamed away in the same call).
+        """
+        assert isinstance(self.Data, pd.DataFrame)
+        missing = [old for old in columns if old not in self.Keys]
+        if missing:
+            logger.warning(
+                f"renameData: keys {missing} not found in DataFrame, skipping"
+            )
+            columns = {old: new for old, new in columns.items() if old not in missing}
+        if not columns:
+            return
+        # A target name that already exists (and is not itself being renamed away)
+        # would silently overwrite that column — raise instead.
+        source_keys = set(columns.keys())
+        conflicts = {
+            old: new
+            for old, new in columns.items()
+            if new in self.Keys and new not in source_keys
+        }
+        if conflicts:
+            raise ValueError(
+                f"renameData: target name(s) already exist in DataFrame and would "
+                f"be silently overwritten: {conflicts}"
+            )
+        self.Data.rename(columns=columns, inplace=True)
+        self.Keys = _dataframe_keys(self.Data)
+
+    # --- compute / add -----------------------------------------------
+
+    def _validate_formula_keys(self, formula: str) -> tuple[int, str]:
+        """Validate that all variables referenced in a formula exist in the DataFrame.
+
+        Issues are logged as warnings rather than raising exceptions.
+
+        Parameters
+        ----------
+        formula : str
+            Formula to validate.
+
+        Returns
+        -------
+        tuple[int, str]
+            ``(status_code, formula)`` where *status_code* is ``0`` for
+            success, non-zero if validation issues were found.
+        """
+        import re
+
+        assert isinstance(self.Data, pd.DataFrame)
+        status = 0
+
+        # Validate only expression variables, not the assignment target.
+        rhs = formula.split("=", 1)[1] if "=" in formula else formula
+
+        # Extract all variable names from the right-hand side expression.
+        remaining_vars = set(re.findall(r"\b([a-zA-Z_]\w*)\b", rhs))
+        # Remove Python/pandas built-in functions and constants
+        pandas_builtins = {
+            "abs",
+            "round",
+            "sum",
+            "mean",
+            "min",
+            "max",
+            "std",
+            "var",
+            "sqrt",
+            "exp",
+            "log",
+            "log10",
+            "sin",
+            "cos",
+            "tan",
+            "pi",
+            "e",
+            "True",
+            "False",
+            "None",
+            "nan",
+            "inf",
+        }
+        remaining_vars = remaining_vars - pandas_builtins
+
+        undefined_vars = [v for v in remaining_vars if v not in self.Data.columns]
+        if undefined_vars:
+            logger.warning(
+                f"_validate_formula_keys: {rhs}: undefined variables:\n"
+                f"  - Variables not found: {undefined_vars}\n"
+                f"  - Available columns: {_dataframe_keys(self.Data)}"
+            )
+            status = 1
+
+        if status == 0:
+            logger.debug(
+                f"_validate_formula_keys: formula '{rhs}' validated successfully"
+            )
+
+        return status, formula
+
+    def _validate_kparams(self, kparams: list) -> tuple[int, list]:
+        """Validate that all parameter keys exist in the DataFrame.
+
+        Issues are logged as warnings rather than raising exceptions.
+
+        Parameters
+        ----------
+        kparams : list
+            Column names to validate.
+
+        Returns
+        -------
+        tuple[int, list]
+            ``(status_code, kparams)`` where *status_code* is ``0`` for
+            success, non-zero if any keys are missing.
+        """
+        assert isinstance(self.Data, pd.DataFrame)
+        status = 0
+
+        missing_params = [p for p in kparams if p not in self.Data.columns]
+        if missing_params:
+            logger.warning(
+                "_validate_kparams: missing parameters:\n"
+                f"  - Missing: {missing_params}\n"
+                f"  - Available columns: {_dataframe_keys(self.Data)}"
+            )
+            status = 1
+
+        if status == 0:
+            logger.debug(
+                f"_validate_kparams: all parameters {kparams} validated successfully"
+            )
+
+        return status, kparams
+
+    def addData(  # noqa: N802
+        self,
+        key: str,
+        formula: str,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
+        debug: bool = False,
+    ) -> int:
+        """Evaluate *formula* via :meth:`~pandas.DataFrame.eval` and add the result as column *key*.
+
+        Parameters
+        ----------
+        key : str
+            New column name (must not already exist in the DataFrame).
+        formula : str
+            Pandas ``eval``-compatible expression string, e.g.
+            ``"Power = Icoil1 * Ucoil1"``.
+        symbol : str
+            Short physical symbol for axis labels.
+        unit : pint.Unit or str or None
+            Pint ``Unit`` object, unit string, or ``None``.
+        label : str
+            Human-readable axis label.
+        description : str
+            Longer free-text description.
+        debug : bool
+            Emit extra debug log messages when ``True``.
+
+        Returns
+        -------
+        int
+            ``0`` on success, ``1`` if *key* already exists or formula
+            validation fails.
+        """
+        from pint.errors import UndefinedUnitError
+
+        from .magnetdata_base import FieldMeta, _make_ureg
+
+        assert isinstance(self.Data, pd.DataFrame)
+        if key in self.Keys:
+            logger.warning(
+                f"addData: key '{key}' already exists in DataFrame, skipping addition"
+            )
+            return 1
+
+        # Validate all variables referenced in formula exist in DataFrame
+        status, formula = self._validate_formula_keys(formula)
+        if status != 0:
+            logger.warning(
+                f"addData: {key}: formula validation returned status {status}; "
+                f"skipping evaluation"
+            )
+            return status
+
+        self.Data.eval(formula, inplace=True)
+        self.Keys = _dataframe_keys(self.Data)
+        if isinstance(unit, str) and unit:
+            try:
+                ureg = _make_ureg()
+                parsed = ureg.parse_expression(unit)
+                pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+            except (ValueError, UndefinedUnitError):
+                pint_unit = None
+        else:
+            pint_unit = unit if unit else None  # empty string -> None
+
+        self.units[key] = (symbol, pint_unit)
+        self.field_meta[key] = FieldMeta(
+            symbol=symbol, unit=pint_unit, label=label, description=description
+        )
+        return 0
+
+    def computeData(  # noqa: N802
+        self,
+        method: Any,
+        key: str,
+        kparams: list,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
+        debug: bool = False,
+    ) -> int:
+        """Apply *method* row-wise over *kparams* columns and store the result as *key*.
+
+        Parameters
+        ----------
+        method : callable
+            Callable invoked as ``method(*values)`` for each row.
+        key : str
+            New column name (must not already exist).
+        kparams : list
+            Existing column names passed as positional arguments to *method*.
+        symbol : str
+            Short physical symbol.
+        unit : pint.Unit or str or None
+            Pint ``Unit``, unit string, or ``None``.
+        label : str
+            Human-readable axis label.
+        description : str
+            Longer free-text description.
+        debug : bool
+            Emit extra debug log messages when ``True``.
+
+        Returns
+        -------
+        int
+            ``0`` on success, ``1`` if *key* exists or *kparams* validation
+            fails.
+        """
+        from pint.errors import UndefinedUnitError
+
+        from .magnetdata_base import FieldMeta, _make_ureg
+
+        logger.debug(f"computeData: Key={key}")
+        if key in self.Keys:
+            logger.warning(f"Key {key} already exists in DataFrame")
+            return 1
+
+        # Validate that all parameter keys exist in DataFrame
+        status, kparams = self._validate_kparams(kparams)
+        if status != 0:
+            logger.warning(
+                f"computeData: {key}: kparams validation returned status {status}; "
+                f"skipping computation"
+            )
+            return status
+
+        assert isinstance(self.Data, pd.DataFrame)
+        data = []
+        for values in self.Data[kparams].values.tolist():
+            data.append(method(*values))
+        self.Data[key] = data
+        self.Keys = _dataframe_keys(self.Data)
+        if isinstance(unit, str) and unit:
+            try:
+                ureg = _make_ureg()
+                parsed = ureg.parse_expression(unit)
+                pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+            except (ValueError, UndefinedUnitError):
+                pint_unit = None
+        else:
+            pint_unit = unit if unit else None  # empty string → None
+        self.units[key] = (symbol, pint_unit)
+        self.field_meta[key] = FieldMeta(
+            symbol=symbol, unit=pint_unit, label=label, description=description
+        )
+        logger.debug("done")
+        return 0
+
+    def add_field(
+        self,
+        key: str,
+        values: list[float] | np.ndarray,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
+        group: str | None = None,
+        debug: bool = False,
+    ) -> int:
+        """Store a pre-computed 1D array/list as a new column *key*.
+
+        Parameters
+        ----------
+        key : str
+            New column name (must not already exist).
+        values : list[float] or numpy.ndarray
+            1D sequence of values; length must match the number of rows in
+            :attr:`Data`.
+        symbol : str
+            Short physical symbol.
+        unit : pint.Unit or str or None
+            Pint ``Unit``, unit string, or ``None``.
+        label : str
+            Human-readable axis label.
+        description : str
+            Longer free-text description.
+        group : str, optional
+            When given, the field is added to this group (created if absent)
+            via :meth:`~.MagnetDataBase.add_to_group`.
+        debug : bool
+            Emit extra debug log messages when ``True``.
+
+        Returns
+        -------
+        int
+            ``0`` on success, ``1`` if *key* already exists or *values*
+            length does not match the number of rows.
+        """
+        from pint.errors import UndefinedUnitError
+
+        from .magnetdata_base import FieldMeta, _make_ureg
+
+        assert isinstance(self.Data, pd.DataFrame)
+        if key in self.Keys:
+            logger.warning(
+                f"add_field: key '{key}' already exists in DataFrame, skipping addition"
+            )
+            return 1
+
+        n_rows = len(self.Data)
+        if len(values) != n_rows:
+            logger.warning(
+                f"add_field: '{key}': values length {len(values)} does not match "
+                f"DataFrame row count {n_rows}, skipping addition"
+            )
+            return 1
+
+        self.Data[key] = values
+        self.Keys = _dataframe_keys(self.Data)
+        if isinstance(unit, str) and unit:
+            try:
+                ureg = _make_ureg()
+                parsed = ureg.parse_expression(unit)
+                pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+            except (ValueError, UndefinedUnitError):
+                pint_unit = None
+        else:
+            pint_unit = unit if unit else None  # empty string → None
+        self.units[key] = (symbol, pint_unit)
+        self.field_meta[key] = FieldMeta(
+            symbol=symbol, unit=pint_unit, label=label, description=description
+        )
+
+        if group is not None:
+            self.add_to_group(group, key)
+
+        logger.debug(f"add_field: {key} added (group={group!r})")
+        return 0
+
+    # --- time utilities ----------------------------------------------
+
+    def getStartDate(self, group: str | None = None) -> tuple:  # noqa: N802
+        """Return start/end date and time strings from the ``Date``/``Time`` columns.
+
+        Parameters
+        ----------
+        group : str, optional
+            Unused for pandas data; accepted for interface compatibility.
+
+        Returns
+        -------
+        tuple
+            ``(start_date, start_time, end_date, end_time)`` strings from the
+            first and last data rows, or empty tuple when ``Date``/``Time``
+            columns are absent.
+        """
+        res: tuple = ()
+        if "Date" in self.Keys and "Time" in self.Keys:
+            start_date = self.Data["Date"].iloc[0]  # type: ignore[index]
+            start_time = self.Data["Time"].iloc[0]  # type: ignore[index]
+            end_date = self.Data["Date"].iloc[-1]  # type: ignore[index]
+            end_time = self.Data["Time"].iloc[-1]  # type: ignore[index]
+            res = (start_date, start_time, end_date, end_time)
+        return res
+
+    def getDuration(self, group: str | None = None) -> float:  # noqa: N802
+        """Return the duration of the dataset in seconds.
+
+        Parameters
+        ----------
+        group : str, optional
+            Unused for pandas data; accepted for interface compatibility.
+
+        Returns
+        -------
+        float
+            ``t[-1] - t[0]`` [s] when the ``t`` column is present, otherwise
+            ``0.0``.
+        """
+        if "t" in self.Keys:
+            assert isinstance(self.Data, pd.DataFrame)
+            return float(self.Data["t"].iloc[-1] - self.Data["t"].iloc[0])  # type: ignore[index]
+        logger.warning("magnetdata.getDuration: no t key")
+        logger.warning(f"available keys are: {self.Keys}")
+        return 0.0
+
+    def addTime(self, time_zone: str = "Europe/Paris") -> int:  # noqa: N802
+        """Compute ``t`` (elapsed seconds) and ``timestamp`` (naive UTC) columns.
+
+        Drops ``Date`` and ``Time`` after conversion.  The ``timestamp`` column
+        stores naive UTC regardless of the local timezone of the source data.
+        Call this before :meth:`extractTimeData` or any ``timestamp``-based plot.
+
+        Parameters
+        ----------
+        time_zone : str
+            IANA timezone of the source ``Date``/``Time`` columns (default
+            ``"Europe/Paris"``).
+
+        Returns
+        -------
+        int
+            ``0`` on success.
+        """
+        self._ensure_data_loaded()
+        assert isinstance(self.Data, pd.DataFrame)
+        if "Date" not in self.Keys or "Time" not in self.Keys:
+            raise RuntimeError(
+                f"MagnetData/AddTime {self.FileName}: cannot add t[s] columnn: no Date or Time columns"
+            )
+
+        try:
+            self.Data["Date"] = pd.to_datetime(
+                self.Data.Date, cache=True, format="%Y.%m.%d"
+            )
+        except (ValueError, TypeError):
+            raise RuntimeError(
+                f"MagnetData/AddTime {self.FileName}: failed to convert Date"
+            ) from None
+
+        try:
+            self.Data["Time"] = pd.to_timedelta(self.Data.Time)
+        except (ValueError, TypeError):
+            raise RuntimeError(
+                f"MagnetData/AddTime {self.FileName}: failed to convert Time"
+            ) from None
+
+        try:
+            _local_ts = self.Data.Date + self.Data.Time
+        except (ValueError, TypeError):
+            raise RuntimeError(
+                f"MagnetData/AddTime {self.FileName}: failed to create timestamp column"
+            ) from None
+
+        self.Data["_timestamp"] = _local_ts
+        from .utils.duplicates import find_duplicates
+
+        self.Data = find_duplicates(self.Data, self.FileName, "_timestamp")
+
+        t0 = self.Data["_timestamp"].iloc[0]
+        self.Data["t"] = (self.Data["_timestamp"] - t0).dt.total_seconds()
+
+        # Convert local → naive UTC
+        self.Data["timestamp"] = series_local_to_utc_naive(
+            self.Data["_timestamp"], time_zone
+        )
+
+        self.Data.drop(["Date", "Time", "_timestamp"], axis=1, inplace=True)
+        self.Keys = _dataframe_keys(self.Data)
+        return 0
+
+    def shiftTime(self, dt: float) -> int:  # noqa: N802
+        """Shift the ``t`` column by *dt* seconds.
+
+        Parameters
+        ----------
+        dt : float
+            Time offset [s] to add to every ``t`` value.
+
+        Returns
+        -------
+        int
+            ``0`` on success.
+
+        Raises
+        ------
+        RuntimeError
+            If no ``t`` column is present in the DataFrame.
+        """
+        if "t" in self.Keys:
+            self.Data["t"] = self.Data["t"] + dt  # type: ignore[index]
+        else:
+            raise RuntimeError(
+                f"MagnetData/shiftTime {self.FileName}: cannot shift t[s] columnn: no t column"
+            )
+        return 0
+
+    def get_time_range(self) -> tuple:
+        """Return ``(start_timestamp, end_timestamp)`` for the dataset.
+
+        ``start_timestamp`` comes from the filename (set at construction time).
+        ``end_timestamp`` is derived as ``start_timestamp + getDuration()``.
+
+        Falls back to parsing the first/last Date+Time data rows when
+        ``start_timestamp`` could not be extracted from the filename.
+        """
+        if self.start_timestamp is not None:
+            duration = self.getDuration()
+            self.end_timestamp = self.start_timestamp + pd.Timedelta(seconds=duration)
+            return (self.start_timestamp, self.end_timestamp)
+
+        # Fallback: derive both timestamps from the Date/Time data columns
+        if "Date" not in self.Keys or "Time" not in self.Keys:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.get_time_range: no Date/Time columns in {self.FileName}"
+            )
+        assert isinstance(self.Data, pd.DataFrame)
+        tformat = "%Y.%m.%d %H:%M:%S"
+        start_str = f"{self.Data['Date'].iloc[0]} {self.Data['Time'].iloc[0]}"
+        end_str = f"{self.Data['Date'].iloc[-1]} {self.Data['Time'].iloc[-1]}"
+        self.start_timestamp = pd.Timestamp(datetime.strptime(start_str, tformat))
+        self.end_timestamp = pd.Timestamp(datetime.strptime(end_str, tformat))
+        return (self.start_timestamp, self.end_timestamp)
+
+    # --- extract -----------------------------------------------------
+
+    def extractData(self, keys: list[str]) -> pd.DataFrame:  # noqa: N802
+        """Return a DataFrame containing only the requested columns.
+
+        Parameters
+        ----------
+        keys : list[str]
+            Column names to extract.
+
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame with columns in *keys* order.
+
+        Raises
+        ------
+        RuntimeError
+            If any key in *keys* is not present in :attr:`Keys`.
+        """
+        logger.debug(f"extractData: filename={self.FileName}, keys={keys}")
+        for key in keys:
+            if key not in self.Keys:
+                raise RuntimeError(
+                    f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {key} key"
+                )
+        logger.debug("extractData: Done")
+        return pd.concat([self.Data[key] for key in keys], axis=1)  # type: ignore[index]
+
+    def extractDataThreshold(
+        self, key: str, threshold: float
+    ) -> pd.DataFrame:  # noqa: N802
+        """Return rows where *key* ≥ *threshold*.
+
+        Parameters
+        ----------
+        key : str
+            Column name to filter on.
+        threshold : float
+            Minimum value (inclusive).
+
+        Returns
+        -------
+        pandas.DataFrame
+            Filtered DataFrame.
+
+        Raises
+        ------
+        RuntimeError
+            If *key* is not present in :attr:`Keys`.
+        """
+        assert isinstance(self.Data, pd.DataFrame)
+        if key not in self.Keys:
+            raise RuntimeError(
+                f"extractData: key={key} - no such keys in dataframe (valid keys are: {self.Keys}"
+            )
+        return self.Data.loc[self.Data[key] >= threshold]
+
+    def extractTimeData(  # noqa: N802
+        self, timerange: str, group: str | None = None, time_zone: str = "Europe/Paris"
+    ) -> pd.DataFrame:
+        """Return rows whose ``timestamp`` falls within *timerange*.
+
+        Parameters
+        ----------
+        timerange : str
+            ``"YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS"`` in local time (the
+            ``time_zone`` timezone).  Both boundaries are inclusive.
+        group : str, optional
+            Unused for pandas data; accepted for interface compatibility.
+        time_zone : str
+            IANA timezone of the datetime strings in *timerange* (default
+            ``"Europe/Paris"``).
+
+        Returns
+        -------
+        pandas.DataFrame
+            Filtered DataFrame.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`addTime` has not been called yet.
+        """
+        assert isinstance(self.Data, pd.DataFrame)
+        if "timestamp" not in self.Keys:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.extractTimeData: call addTime() before extractTimeData()"
+            )
+        logger.debug(f"Select data from {timerange}")
+        t_start, t_end = timerange_to_utc(timerange, time_zone)
+        return self.Data[
+            self.Data["timestamp"].between(t_start, t_end, inclusive="both")
+        ]
+
+    # --- persist / display -------------------------------------------
+
+    def saveData(self, keys: list[str], filename: str) -> int:  # noqa: N802
+        """Save selected columns to *filename* as a tab-separated file.
+
+        Parameters
+        ----------
+        keys : list[str]
+            Column names to export.
+        filename : str
+            Destination file path.
+
+        Returns
+        -------
+        int
+            ``0`` on success.
+        """
+        assert isinstance(self.Data, pd.DataFrame)
+        self.Data[keys].to_csv(filename, sep="\t", index=False, header=True)
+        return 0
+
+    def plotData(  # noqa: N802
+        self,
+        x: str,
+        y: str,
+        ax: Any,
+        alpha: float = 1,
+        label: str | None = None,
+        normalize: bool = False,
+        offset: float = 0,
+        time_zone: str = "Europe/Paris",
+        color: str | None = None,
+        marker: str | None = None,
+        linestyle: str | None = None,
+        markevery: int | None = None,
+    ) -> None:
+        """Plot *y* versus *x* on a matplotlib *ax*.
+
+        Parameters
+        ----------
+        x : str
+            X-axis column name; ``"t"`` and ``"timestamp"`` are also accepted.
+        y : str
+            Y-axis column name.
+        ax : matplotlib.axes.Axes
+            Axes object to draw on.
+        alpha : float
+            Line opacity, 0–1 (default ``1``).
+        label : str, optional
+            Legend label; ``None`` uses the column name.
+        normalize : bool
+            Divide *y* by its absolute maximum when ``True``.
+        offset : float
+            Unused (kept for interface compatibility).
+        time_zone : str
+            IANA timezone for local-time display of ``"timestamp"`` x-axis
+            (default ``"Europe/Paris"``).
+        color : str, optional
+            Matplotlib colour string; ``None`` uses the default cycle.
+        marker : str, optional
+            Matplotlib marker string; ``None`` uses no markers.
+        linestyle : str, optional
+            Matplotlib linestyle string; ``None`` uses the default.
+        markevery : int, optional
+            Draw a marker every *n* data points; ``None`` for every point.
+
+        Raises
+        ------
+        RuntimeError
+            If *x* or *y* is not a valid column name.
+        """
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        logger.info(f"plotData: plotting {y} vs {x} from {self.FileName!r}")
+        matplotlib.rcParams["text.usetex"] = True
+
+        if x not in self.Keys + ["t", "timestamp"]:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no x={x} key (valid keys= {self.Keys})"
+            )
+
+        if y not in self.Keys:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {y} key (valid keys: {self.Keys})"
+            )
+
+        ysymbol, yunit = self.getUnitKey(y)
+
+        assert isinstance(self.Data, pd.DataFrame)
+        df: pd.DataFrame = self.Data.copy()
+
+        # Convert UTC timestamp → naive local time for display
+        if x == "timestamp":
+            df["timestamp"] = series_utc_to_local_naive(df["timestamp"], time_zone)
+
+        kwargs: dict = {"x": x, "y": y, "ax": ax, "alpha": alpha, "grid": False}
+        if color is not None:
+            kwargs["color"] = color
+        if marker is not None:
+            kwargs["marker"] = marker
+        if linestyle is not None:
+            kwargs["linestyle"] = linestyle
+        if markevery is not None:
+            kwargs["markevery"] = markevery
+
+        if normalize:
+            ymax = abs(df[y].max())
+            df[y] /= ymax
+            kwargs["label"] = f"{label or y} (norm with {ymax:.3e} {yunit:~P})"
+        elif label is not None:
+            kwargs["label"] = label
+
+        df.plot(**kwargs)
+
+        if yunit is not None:
+            logger.info(
+                f"ysymbol={ysymbol}, yunit={yunit:~P}, labeling y-axis accordingly"
+            )
+            plt.ylabel(f"{ysymbol} [{yunit:~P}]")
+
+        xsymbol, xunit = self.getUnitKey(x)
+        if xunit is not None:
+            logger.info(
+                f"plotData: xsymbol={xsymbol}, xunit={xunit:~P}, labeling x-axis accordingly"
+            )
+            plt.xlabel(f"{xsymbol} [{xunit:~P}]")
+
+    def stats(self, key: str | None = None) -> pd.DataFrame | None:
+        """Print descriptive statistics for the dataset.
+
+        Parameters
+        ----------
+        key : str, optional
+            Restrict output to this column; ``None`` describes all columns
+            (result is printed, not returned).
+
+        Returns
+        -------
+        None
+            Statistics are printed to stdout.
+
+        Raises
+        ------
+        RuntimeError
+            If *key* is given but not present in :attr:`Keys`.
+        """
+        from tabulate import tabulate
+
+        logger.info("magnetdata.stats")
+        assert isinstance(self.Data, pd.DataFrame)
+        if key is not None:
+            if key in self.Keys:
+                logger.info(
+                    tabulate(self.Data[key].describe(), headers="keys", tablefmt="psql")
+                )
+            else:
+                raise RuntimeError(
+                    f"{self.__class__.__name__}.{sys._getframe().f_code.co_name}: no {key} key"
+                )
+        else:
+            df = self.Data.describe(include="all")
+            print(
+                tabulate(df.values.tolist(), headers=list(df.columns), tablefmt="psql")
+            )
+        return None
+
+    def info(self) -> None:
+        """Print a formatted summary table of keys, descriptions, symbols, and units.
+
+        Loads field descriptions from :attr:`defs_file` when set.  Output is
+        written to stdout via :func:`print`.
+        """
+        from tabulate import tabulate
+
+        print(f"magnetdata: {self.FileName}, Type={self.Type.name}")
+
+        # Optionally load descriptions from the defs file
+        field_defs: dict = {}
+        if self.defs_file is not None:
+            try:
+                from .field_defs import load_defs
+
+                field_defs = load_defs(self.defs_file)
+            except (FileNotFoundError, ValueError) as exc:
+                logger.warning(
+                    f"info: cannot load field definitions from {self.defs_file!r}: {exc}"
+                )
+
+        from natsort import natsorted
+
+        rows = []
+        for key in natsorted(self.Keys):
+            description = field_defs.get(key, {}).get("description", "")
+            if key in self.units:
+                symbol, unit = self.units[key]
+                unit_str = f"{unit:~P}" if unit is not None else ""
+            else:
+                symbol = ""
+                unit_str = ""
+            rows.append([key, description, symbol, unit_str])
+
+        print(
+            tabulate(
+                rows, headers=["Key", "Description", "Symbol", "Unit"], tablefmt="psql"
+            )
+        )
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(Type={self.Type!r}, Groups={self.Groups!r}, Keys={self.Keys!r}, Data={self.Data!r})"
+
+    # ------------------------------------------------------------------
+    # Factory classmethods
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def fromtxt(
+        cls, name: str, defs_file: str | None = "pupitre-defs.json"
+    ) -> PandasMagnetData:
+        """Create from a pupitre .txt file.
+
+        Only the first data row is read at construction time so that
+        ``_validate_start_timestamp`` can cross-check the filename timestamp.
+        The full file is loaded lazily on the first call to
+        :meth:`_ensure_data_loaded` (triggered by :meth:`addTime`,
+        :meth:`cleanupData`, or :meth:`getPandasData`).
+
+        Parameters
+        ----------
+        name : str
+            Path to the ``.txt`` file.
+        defs_file : str, optional
+            Path to a JSON field-definition file; defaults to
+            ``"pupitre-defs.json"``.
+
+        Returns
+        -------
+        PandasMagnetData
+            Fully initialised instance with lazy-loaded data.
+        """
+        from .readers.csv_readers import PupitreReader
+        from .utils.validation import FileFormatError, check_pupitre_truncation
+
+        if os.path.splitext(name)[-1] != ".txt":
+            raise FileFormatError(f"{name}: expected .txt extension")
+        reader = PupitreReader()
+        reader.validate(name)
+        stub = reader.read_stub(name)
+        if stub.empty:
+            raise FileFormatError(f"{name}: no data rows found (header-only file)")
+        Keys = _dataframe_keys(stub)
+        check_pupitre_truncation(name, Keys)
+        return cls(name, {}, Keys, stub, defs_file=defs_file, _read_kwargs=reader.read_kwargs())
+
+    @classmethod
+    def fromcsv(cls, name: str, defs_file: str | None = None) -> PandasMagnetData:
+        """Create a :class:`PandasMagnetData` from a CSV file.
+
+        Parameters
+        ----------
+        name : str
+            Path to the ``.csv`` file.
+        defs_file : str, optional
+            Path to a JSON field-definition file for units; ``None`` disables
+            JSON unit loading.
+
+        Returns
+        -------
+        PandasMagnetData
+            Fully initialised instance.
+        """
+        from .readers.csv_readers import CsvReader
+
+        reader = CsvReader()
+        reader.validate(name)
+        Data = reader.read(name)
+        Keys = _dataframe_keys(Data)
+        return cls(name, {}, Keys, Data, defs_file=defs_file)
+
+    @classmethod
+    def fromStringIO(  # noqa: N802
+        cls,
+        name: str,
+        sep: str = r"\s+",
+        skiprows: int = 1,
+        defs_file: str | None = None,
+    ) -> PandasMagnetData:
+        """Create a :class:`PandasMagnetData` from a StringIO / in-memory string.
+
+        Parameters
+        ----------
+        name : str
+            Raw text content in pupitre ``.txt`` format.
+        sep : str
+            Column separator regex passed to :func:`pandas.read_csv` (default
+            ``r"\\s+"``).
+        skiprows : int
+            Number of header rows to skip (default ``1``).
+        defs_file : str, optional
+            Path to a JSON field-definition file for units; ``None`` disables
+            JSON unit loading.
+
+        Returns
+        -------
+        PandasMagnetData
+            Instance backed by in-memory data; returns an instance with an
+            empty DataFrame on parse error.
+        """
+        from io import StringIO
+
+        Data = pd.DataFrame()
+        Keys: list[str] = []
+        try:
+            Data = pd.read_csv(
+                StringIO(name), sep=sep, engine="python", skiprows=skiprows
+            )
+            Keys = _dataframe_keys(Data)
+        except (pd.errors.ParserError, ValueError, OSError):
+            logger.error("fromStringIO: trouble loading data")
+            with open("wrongdata.txt", "w", newline="\n") as fo:
+                fo.write(name)
+        return cls("stringIO", {}, Keys, Data, defs_file=defs_file)
+
+
+# ---------------------------------------------------------------------------
+# Thin subclasses — differ only in Type and/or loading logic
+# ---------------------------------------------------------------------------
+
+
+class EnsightMagnetData(PandasMagnetData):
+    """Ensight CSV-backed data (Type=2).
+
+    Identical to :class:`PandasMagnetData` except ``Type == 2``.
+    The existing bug where ``getData`` raised ``RuntimeError`` for Type=2
+    is fixed here by simply inheriting the working pandas implementation.
+    """
+
+    _TYPE: DataType = DataType.ENSIGHT
+
+    @classmethod
+    def fromensight(cls, name: str, defs_file: str | None = None) -> EnsightMagnetData:
+        """Create an :class:`EnsightMagnetData` from an Ensight CSV file.
+
+        Parameters
+        ----------
+        name : str
+            Path to the Ensight ``.csv`` file (first two rows are skipped as
+            Ensight header).
+        defs_file : str, optional
+            Path to a JSON field-definition file for units; ``None`` disables
+            JSON unit loading.
+
+        Returns
+        -------
+        EnsightMagnetData
+            Fully initialised instance.
+        """
+        from .readers.csv_readers import EnsightReader
+
+        reader = EnsightReader()
+        reader.validate(name)
+        Data = reader.read(name)
+        Keys = _dataframe_keys(Data)
+        return cls(name, {}, Keys, Data, defs_file=defs_file)
+
+
+class BProfileMagnetData(PandasMagnetData):
+    """B-profile CSV data (Index, Position, Profile columns, Type=0)."""
+
+    _TYPE: DataType = DataType.PUPITRE
+
+    @classmethod
+    def frombprofile(
+        cls, name: str, defs_file: str | None = None
+    ) -> BProfileMagnetData:
+        """Create a :class:`BProfileMagnetData` from a B-profile CSV file.
+
+        Parameters
+        ----------
+        name : str
+            Path to a whitespace-separated file with ``Index``, ``Position``,
+            and ``Profile`` columns.
+        defs_file : str, optional
+            Path to a JSON field-definition file for units; ``None`` disables
+            JSON unit loading.
+
+        Returns
+        -------
+        BProfileMagnetData
+            Fully initialised instance.
+        """
+        from .readers.csv_readers import BProfileReader
+
+        reader = BProfileReader()
+        reader.validate(name)
+        Data = reader.read(name)
+        Keys = _dataframe_keys(Data)
+        return cls(name, {}, Keys, Data, defs_file=defs_file)
+
+
+class FeelppMagnetData(PandasMagnetData):
+    """feelpp simulation CSV data (Type=0)."""
+
+    _TYPE: DataType = DataType.PUPITRE
+
+    @classmethod
+    def fromfeelpp(
+        cls, name: str, skiprows: int = 0, defs_file: str | None = None
+    ) -> FeelppMagnetData:
+        """Create a :class:`FeelppMagnetData` from a Feel++ simulation CSV file.
+
+        Parameters
+        ----------
+        name : str
+            Path to the Feel++ ``.csv`` file.
+        skiprows : int
+            Number of header rows to skip (default ``0``).
+        defs_file : str, optional
+            Path to a JSON field-definition file for units; ``None`` disables
+            JSON unit loading.
+
+        Returns
+        -------
+        FeelppMagnetData
+            Fully initialised instance.
+        """
+        from .readers.csv_readers import FeelppReader
+
+        reader = FeelppReader(skip_rows=skiprows)
+        reader.validate(name)
+        Data = reader.read(name)
+        Keys = _dataframe_keys(Data)
+        return cls(name, {}, Keys, Data, defs_file=defs_file)

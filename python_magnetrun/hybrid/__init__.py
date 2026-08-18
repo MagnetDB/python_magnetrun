@@ -31,7 +31,7 @@ Example usage:
     values, time = hrun.getData("kHz/FEPC-LNCMI/I_H1", downsample=10000)
 
     # Outlier detection (separate from plotting)
-    from python_magnetrun.hybrid.outliers import detect_outliers, OutlierDetector
+    from python_magnetrun.outliers import detect_outliers, OutlierDetector
     result = detect_outliers(values, method='iqr', threshold=1.5)
     clean_values = result.apply_to_data(values, strategy='interpolate')
 
@@ -54,26 +54,27 @@ CLI usage:
 """
 
 # Direct imports for commonly used items
-from .hybrid_data import HybridData, HybridDataInfo
-from .hybrid_run import HybridRun, LoadOptions, load_hybrid, downsample_data
-from .utils import list_available_dates
-from .data_protocol import (
-    DataLoader,
-    DownsamplingLoader,
-    DataSourceType,
-    DataInfo,
-    load_comparable_data,
-    compare_loaders,
-)
-from .outliers import (
+from ..outliers import (
+    OUTLIER_DEFAULTS,
+    OutlierConfig,
     OutlierDetector,
     OutlierResult,
-    OutlierMethod,
-    detect_outliers,
     analyze_outliers,
-    get_outlier_summary,
+    detect_outliers,
     find_outlier_segments,
+    get_outlier_summary,
 )
+from .data_protocol import (
+    DataInfo,
+    DataLoader,
+    DataSourceType,
+    DownsamplingLoader,
+    compare_loaders,
+    load_comparable_data,
+)
+from .hybrid_data import HybridData, HybridDataInfo
+from .hybrid_run import HybridRun, LoadOptions, load_hybrid
+from .utils import list_available_dates
 
 # Sub-modules available via attribute access
 # e.g., from python_magnetrun.hybrid import plotting
@@ -93,23 +94,23 @@ __all__ = [
     "DataSourceType",
     "DataInfo",
     # Outlier detection
+    "OUTLIER_DEFAULTS",
+    "OutlierConfig",
     "OutlierDetector",
     "OutlierResult",
-    "OutlierMethod",
     "detect_outliers",
     "analyze_outliers",
     "get_outlier_summary",
     "find_outlier_segments",
     # Utility functions
     "list_available_dates",
-    "downsample_data",
     "load_comparable_data",
     "compare_loaders",
 ]
 
 # Get version from parent package
 try:
-    from importlib.metadata import version, PackageNotFoundError
+    from importlib.metadata import PackageNotFoundError, version
 
     __version__ = version("python_magnetrun")
 except PackageNotFoundError:

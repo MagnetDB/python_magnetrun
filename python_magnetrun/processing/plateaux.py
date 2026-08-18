@@ -1,16 +1,16 @@
 #! /usr/bin/python3
-
 import logging
-import pandas as pd
-import numpy as np
+import os
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 
-logger = logging.getLogger(__name__)
-
-from ..magnetdata import MagnetData
+from ..magnetdata import load_magnetdata
+from ..magnetdata_base import DataType, MagnetDataBase
 from ..utils.sequence import list_duplicates_of, list_sequence
 
-from datetime import timedelta
+logger = logging.getLogger(__name__)
 
 
 def tuple_type(strings: str) -> tuple:
@@ -20,7 +20,7 @@ def tuple_type(strings: str) -> tuple:
 
 
 def nplateaus(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     xField: tuple,
     yField: tuple,
     threshold: float = 2.0e-2,
@@ -33,16 +33,15 @@ def nplateaus(
     detect plateau vs index aka time
     """
 
-    print(
-        f"nplateaus: xField={xField}, yField={yField}, threshold={threshold}, num_points_threshold={num_points_threshold}",
-        flush=True,
+    logger.info(
+        f"nplateaus: xField={xField}, yField={yField}, threshold={threshold}, num_points_threshold={num_points_threshold}"
     )
 
-    ykey = str()
+    ykey = ""
     df = pd.DataFrame()
-    if not isinstance(Data.Data, pd.DataFrame):
+    if Data.Type == DataType.TDMS:
         if xField[0] == "t":
-            (group, channel) = yField[0].split("/")
+            group, channel = yField[0].split("/")
 
             dt = Data.Groups[group][channel]["wf_increment"]
             df = Data.getData(yField[0])
@@ -57,9 +56,8 @@ def nplateaus(
     yunit = yField[2]
     xunit = xField[2]
 
-    if verbose:
-        print(f"nplateau for {ykey}: type=={type(df[ykey].describe())}", flush=True)
-        print(df[ykey].describe(), flush=True)
+    logger.debug(f"nplateau for {ykey}: type=={type(df[ykey].describe())}")
+    logger.debug(df[ykey].describe())
 
     # filter and group plateaus
     max_difference = threshold
@@ -91,7 +89,7 @@ def nplateaus(
     )
 
     plateau_data = []
-    for group_idx, group_data in df.groupby(group_ids):
+    for _group_idx, group_data in df.groupby(group_ids):
         # filter non-plateaus by min number of points
         if len(group_data) < min_number_points:
             # print(f"ignore group_data: {len(group_data)}")
@@ -106,11 +104,9 @@ def nplateaus(
 
         plateau_idx += 1
         plateau_data.append(pdata)
-        if verbose:
-            print(
-                f"plateau[{plateau_idx}]: {plateau_data[-1]}, duration={abs(_start - _end)} {xField[1]}",
-                flush=True,
-            )
+        logger.debug(
+            f"plateau[{plateau_idx}]: {plateau_data[-1]}, duration={abs(_start - _end)} {xField[1]}"
+        )
 
         plt.plot(
             group_data[xField[0]],
@@ -141,19 +137,20 @@ def nplateaus(
     if show:
         plt.show()
     if save:
+        print(
+            f"save figure: {os.path.join(os.getcwd(), f'{ykey}-{xField[0]}.png')}, threshold={threshold}, min_num_points={min_number_points})"
+        )
         plt.savefig(f"{ykey}-{xField[0]}.png")
 
     plt.close()
 
-    if verbose:
-        print(f"detected plateaux: {plateau_idx}", flush=True)
+    logger.debug(f"detected plateaux: {plateau_idx}")
 
     drop_plateau = []
     for i in range(1, len(plateau_data)):
         _start = plateau_data[i - 1]["start"]
         _end = plateau_data[i - 1]["end"]
         _value = plateau_data[i - 1]["value"]
-        # print(f'plateau[{i-1}]: _start={_start}, _end={plateau_data[i-1]["end"]}, _value={_value}')
 
         if (plateau_data[i]["start"] - _end) == 1:
             _value_diff = abs(_value / plateau_data[i]["value"] - 1)
@@ -181,16 +178,15 @@ def nplateaus(
                 drop_plateau.append(i)
 
     if drop_plateau:
-        print(f"{len(drop_plateau)} plateau marked has to be concatened")
+        logger.info(f"{len(drop_plateau)} plateau marked has to be concatened")
 
         for i in reversed(drop_plateau):
             del plateau_data[i]
-
     return plateau_data
 
 
 def plateaus(
-    Data: MagnetData,
+    Data: MagnetDataBase,
     yField: tuple = ("Field", "B", "T"),
     twindows=6,
     threshold=1.0e-4,
@@ -205,8 +201,8 @@ def plateaus(
 
     group = None
     df = pd.DataFrame()
-    if not isinstance(Data.Data, pd.DataFrame):
-        (group, channel) = yField[0].split("/")
+    if Data.Type == DataType.TDMS:
+        group, channel = yField[0].split("/")
         df = Data.getData([f"{group}/t", yField[0]])
         ykey = channel
     else:
@@ -279,7 +275,7 @@ def plateaus(
     if save:
         # imagefile = self.Site + "_" + self.Insert
         imagefile = "plateaux"
-        (start_date, start_time, end_date, end_time) = Data.getStartDate(group)
+        start_date, start_time, end_date, end_time = Data.getStartDate(group)
 
         plt.savefig(
             f"{imagefile}_{str(start_date)}---{str(start_time)}.png",
@@ -304,12 +300,17 @@ def plateaus(
     # time_d_min = time_d / datetime.timedelta(minutes=1)
     # time_d_ms  = time_d / datetime.timedelta(milliseconds=1)
     plateaux = regimes_in_source(0)
-    print(f"Field plateaus(thresold={threshold}: {len(plateaux)})")
+    logger.info(f"Field plateaus(thresold={threshold}: {len(plateaux)})")
     actual_plateaux = []
     for p in plateaux:
-        if Data.Type == 0:
-            t0 = Data.Data["timestamp"].iloc[p[0]]
-            t1 = Data.Data["timestamp"].iloc[p[1]]
+        if Data.Type == DataType.PUPITRE:
+            from datetime import timedelta
+
+            _t = Data.getData(["t"])["t"]
+            t0_s = float(_t.iloc[p[0]])
+            t1_s = float(_t.iloc[p[1]])
+            t0 = Data.start_timestamp + timedelta(seconds=t0_s)
+            t1 = Data.start_timestamp + timedelta(seconds=t1_s)
         else:
             t0 = df.index[0]
             t1 = df.index[-1]
@@ -328,22 +329,15 @@ def plateaus(
 
         # if (b1-b0)/b1 > b_thresold: reject plateau
         # if abs(b1) < b_thresold and abs(b0) < b_thresold: reject plateau
-        if (dt / timedelta(seconds=1)) >= duration:
-            if abs(b1) >= b_threshold and abs(b0) >= b_threshold:
-                actual_plateaux.append(
-                    [start_time, end_time, dt.total_seconds(), b0, b1]
-                )
+        if (
+            (dt / timedelta(seconds=1)) >= duration
+            and abs(b1) >= b_threshold
+            and abs(b0) >= b_threshold
+        ):
+            actual_plateaux.append([start_time, end_time, dt.total_seconds(), b0, b1])
 
-    print(
-        "%s plateaus(threshold=%g, b_threshold=%g, duration>=%g s): %d over %d"
-        % (
-            "Field",
-            threshold,
-            b_threshold,
-            duration,
-            len(actual_plateaux),
-            len(plateaux),
-        )
+    logger.info(
+        f"Field plateaus(threshold={threshold:g}, b_threshold={b_threshold:g}, duration>={duration:g} s): {len(actual_plateaux)} over {len(plateaux)}"
     )
     tables = []
     for p in actual_plateaux:
@@ -351,20 +345,18 @@ def plateaus(
         tables.append([p[0], p[1], p[2], p[3], p[4], b_diff * 100.0])
 
     pics = list_sequence(B_list, [1.0, -1.0])
-    print(f" \nField pics (aka sequence[1,-1]): {len(pics)}")
+    logger.info(f"Field pics (aka sequence[1,-1]): {len(pics)}")
     pics = list_sequence(B_list, [1.0, 0, -1.0, 0, 1.0])
-    print(f" \nField pics (aka sequence[1,0,-1,0,1]): {len(pics)}")
+    logger.info(f"Field pics (aka sequence[1,0,-1,0,1]): {len(pics)}")
 
     # remove adjacent duplicate
     import itertools
 
     B_ = [x[0] for x in itertools.groupby(B_list)]
     logger.debug(f"B_={B_}, count(0)={B_.count(0)}")
-    print(
-        "Field commisionning ? (aka sequence [1.0,0,-1.0,0.0,-1.0]): %d"
-        % len(list_sequence(B_, [1.0, 0, -1.0, 0.0, -1.0]))
+    logger.info(
+        f"Field commisionning ? (aka sequence [1.0,0,-1.0,0.0,-1.0]): {len(list_sequence(B_, [1.0, 0, -1.0, 0.0, -1.0]))}"
     )
-    print("\n\n")
 
     from tabulate import tabulate
 
@@ -376,7 +368,7 @@ def plateaus(
         f"{ysymbol}1[{yunit}]",
         "\u0394[%]",
     ]
-    print(tabulate(tables, headers, tablefmt="simple"), "\n")
+    logger.info(tabulate(tables, headers, tablefmt="simple"))
 
     return 0
 
@@ -417,7 +409,7 @@ def main():
     )
     args = parser.parse_args()
 
-    print(f"input_files: {args.input_files}")
+    logger.info(f"input_files: {args.input_files}")
     xField = args.xField
     yField = args.yField
 
@@ -427,7 +419,7 @@ def main():
     num_points_threshold = args.min_num_points
 
     for name in args.input_files:
-        Data = MagnetData.fromtxt(name)
+        Data = load_magnetdata(name)
         nplateaus(Data, xField, yField, threshold, num_points_threshold, show, save)
 
 

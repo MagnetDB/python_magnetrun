@@ -1,43 +1,87 @@
 # Configuration file for the Sphinx documentation builder.
 #
-# For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
+import os
+import sys
+from importlib.metadata import PackageNotFoundError, version
+
+# Make the package importable for autodoc without installing it
+sys.path.insert(0, os.path.abspath("../.."))
+
 # -- Project information -----------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "python_magnetrun"
 copyright = "2024, C. Trophime"
 author = "C. Trophime"
-release = "0.1.0"
+
+try:
+    release = version("python_magnetrun")
+except PackageNotFoundError:
+    release = "0.1.0"
+version = ".".join(release.split(".")[:2])
 
 # -- General configuration ---------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    # other extensions ...
     "myst_parser",
-    "sphinx.ext.duration",
-    "sphinx.ext.doctest",
+    "sphinx_rtd_theme",
     "sphinx.ext.autodoc",
-    "sphinxcontrib.mermaid",
     "sphinx.ext.autosummary",
+    "sphinx.ext.napoleon",
+    "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
-    # ...
+    "sphinx.ext.duration",
+    "sphinxcontrib.mermaid",
 ]
 
+# Auto-generate stub pages for autosummary directives
+autosummary_generate = True
+
+# Autodoc defaults: document all members including those without docstrings
+autodoc_default_options = {
+    "members": True,
+    "undoc-members": True,
+    "show-inheritance": True,
+}
+
+# Mock heavy/optional imports so docs can build without them installed
+autodoc_mock_imports = [
+    "clawpack",
+    "ht",
+    "nlopt",
+    "pwlf",
+    "sklearn",
+    "stumpy",
+    "sympy",
+    "ruptures",
+    "piecewise_regression",
+    "pyts",
+    "dtaidistance",
+    "pyextremes",
+    "visidata",
+    "xmltodict",
+    "nptdms",
+    "iapws",
+]
+
+# Cross-reference external documentation
+intersphinx_mapping = {
+    "python": ("https://docs.python.org/3", None),
+    "numpy": ("https://numpy.org/doc/stable", None),
+    "pandas": ("https://pandas.pydata.org/docs", None),
+    "scipy": ("https://docs.scipy.org/doc/scipy", None),
+    "matplotlib": ("https://matplotlib.org/stable", None),
+}
+
 templates_path = ["_templates"]
-exclude_patterns = []
+exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
+# -- HTML output -------------------------------------------------------------
 
-# -- Options for HTML output -------------------------------------------------
-# https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
-
-# html_theme = "alabaster"
 html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]
-# -- Options for HTML output
 
+# -- EPUB output -------------------------------------------------------------
 
-# -- Options for EPUB output
 epub_show_urls = "footnote"

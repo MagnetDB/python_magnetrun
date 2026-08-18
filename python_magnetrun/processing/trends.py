@@ -1,16 +1,17 @@
 import logging
-import pandas as pd
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+
+from python_magnetrun.magnetdata_base import DataType, MagnetDataBase
 
 logger = logging.getLogger(__name__)
-
-from python_magnetrun.magnetdata import MagnetData
 
 
 def piecewise_linear_approximation(
     serie: pd.Series, threshold: float = 0.1
-) -> list[str]:
+) -> list[tuple[str | None, float]]:
     """
     Perform piecewise linear approximation on a time series and assign a signature.
 
@@ -23,12 +24,12 @@ def piecewise_linear_approximation(
     """
 
     # Initialize variables
-    signature = []
+    signature: list[tuple[str | None, float]] = []
     previous_value = serie.iloc[0]
     previous_trend = None
 
     # Iterate over the dataframe
-    current_init = serie.iloc[0]
+    _current_init = serie.iloc[0]
     for i in range(1, len(serie)):
         current_value = serie.iloc[i]
         difference = current_value - previous_value
@@ -71,10 +72,10 @@ def trends_df(
 
     NB: does not work properly if dt is not constant
     """
-    from tabulate import tabulate
     from statsmodels.tsa.seasonal import seasonal_decompose
+    from tabulate import tabulate  # noqa: F401
 
-    print(f"trends_df: key={key}, window={window}, threshold={threshold}", flush=True)
+    logger.info(f"trends_df: key={key}, window={window}, threshold={threshold}")
     logger.debug(f"{key}: data({df[tkey].shape})")
     logger.debug(df.head())
     logger.debug(df.tail())
@@ -105,9 +106,7 @@ def trends_df(
     valid_mask = ~np.isnan(result.trend)
 
     # Create TimeSeries with tkey values as index
-    trend_series = pd.Series(
-        result.trend[valid_mask].values, index=df.loc[valid_mask, tkey].values
-    )
+    trend_series = pd.Series(result.trend[valid_mask].values, index=df.loc[valid_mask, tkey].values)
 
     # Get signature in terms of Up, Plateau, Down
     signature = piecewise_linear_approximation(trend_series, threshold)
@@ -123,7 +122,7 @@ def trends_df(
                 if diff_slope >= 0.4:
                     # print(f"{i}: {diff_slope}, {df[tkey].iloc[i]} ****", flush=True)
                     changes.append(i)
-    print(f"trends_df[{key}]: changes={len(changes)}", flush=True)
+    logger.info(f"trends_df[{key}]: changes={len(changes)}")
 
     regimes = [signature[i][0] for i in changes]
     times = [float(df[tkey].iloc[i]) for i in changes]
@@ -137,7 +136,7 @@ def trends_df(
 
 
 def trends(
-    mdata: MagnetData,
+    mdata: MagnetDataBase,
     tkey: str,
     key: str,
     window: int = 1,
@@ -151,36 +150,36 @@ def trends(
 
     NB: does not work properly if dt is not constant
     """
-    import matplotlib.pyplot as plt
     import os
+
+    import matplotlib.pyplot as plt
 
     df = pd.DataFrame()
 
     (symbol, unit) = mdata.getUnitKey(key)
 
     dt = 1
-    match mdata.Data:
-        case pd.DataFrame():
-            df = mdata.getData([tkey, key])
-            # t0 = mdata.Data.iloc[0]["timestamp"]
-        case dict():
-            (group, channel) = key.split("/")
-            # t0 = mdata.Groups[group][channel]["wf_start_time"]
+    if mdata.Type == DataType.TDMS:
+        (group, channel) = key.split("/")
+        # t0 = mdata.Groups[group][channel]["wf_start_time"]
 
-            df = mdata.getData(key).copy()
-            dt = mdata.Groups[group][channel]["wf_increment"]
-            df[tkey] = df.index * dt
-            # print(f"trends {mdata.FileName}: t0={t0}, dt={dt}, type={type(dt)}")
-            # rename df key
-            if debug:
-                print("tdms data: ", df.head())
-                print(f"rename {channel} to {key}")
-            df.rename(columns={channel: key}, inplace=True)
+        df = mdata.getData(key).copy()
+        dt = mdata.Groups[group][channel]["wf_increment"]
+        df[tkey] = df.index * dt
+        # print(f"trends {mdata.FileName}: t0={t0}, dt={dt}, type={type(dt)}")
+        # rename df key
+        if debug:
+            logger.debug(f"tdms data: {df.head()}")
+            logger.debug(f"rename {channel} to {key}")
+        df.rename(columns={channel: key}, inplace=True)
+    else:
+        df = mdata.getData([tkey, key])
+        # t0 = mdata.Data.iloc[0]["timestamp"]
 
     if debug:
-        print(f"{key}: data({df[tkey].shape})")
-        print(df.head())
-        print(df.tail())
+        logger.debug(f"{key}: data({df[tkey].shape})")
+        logger.debug(f"{df.head()}")
+        logger.debug(f"{df.tail()}")
 
     filename = mdata.FileName
     f_extension = os.path.splitext(filename)[-1]
@@ -202,7 +201,7 @@ def trends(
     plt.title(f"{file}: Decompose {key}")
 
     if save:
-        imagefile = f"{filename.replace(f_extension,'')}-{key}"
+        imagefile = f"{filename.replace(f_extension, '')}-{key}"
         plt.savefig(f"{imagefile}_signature.png", dpi=300)
     if show:
         plt.show()

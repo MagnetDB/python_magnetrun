@@ -35,6 +35,7 @@ python_magnetrun/analysis/
 ├── metrics.py           # Distance metrics, DTW, correlation
 ├── plotting.py          # Visualization with downsampling
 ├── processing.py        # Main orchestration & workflow
+├── field_comparison.py  # Alias-driven pupitre <-> pigbrother field comparison
 ├── cli.py               # Logging infrastructure & CLI
 └── py.typed             # PEP 561 type checking marker
 ```
@@ -119,7 +120,9 @@ The CLI performs the following operations based on flags:
 
 ### config.py - Configuration
 
-Site-specific configurations and analysis parameters.
+Analysis parameters and site configuration.  Housing-specific role
+assignments (`SiteConfig`) live in `python_magnetrun/site_config.py` and
+are re-exported from `config.py` for backward compatibility.
 
 ```python
 from python_magnetrun.analysis import (
@@ -129,18 +132,25 @@ from python_magnetrun.analysis import (
     get_site_config,
 )
 
-# Get configuration for a site
+# Get built-in default for a housing
 config = get_site_config("M9")
 print(f"GR1 current channel: {config.reference_gr1_current}")  # "IH"
 print(f"GR2 current channel: {config.reference_gr2_current}")  # "IB"
+print(f"Supports hybrid: {config.supports_format('hybrid')}")  # False
 
-# Create analysis configuration
-analysis = AnalysisConfig.for_site("M9")
+# Load from a custom per-housing JSON file
+config = get_housing_config("M9", json_file="M9-housing-config.json")
+
+# Runtime override (e.g. GR1/GR2 swapped for an atypical run)
+config = get_housing_config("M9", overrides={"gr1_current": "IB", "gr2_current": "IH"})
+
+# Create full analysis configuration
+analysis = AnalysisConfig.for_housing("M9")
 ```
 
 **Key Classes:**
-- `SiteConfig` - Site-specific channel mappings (M8, M9, M10)
-- `AnalysisConfig` - Analysis parameters (thresholds, windows, etc.)
+- `HousingConfig` - Housing-dependent sensor role assignments (defined in `housing_config.py`)
+- `AnalysisConfig` - Full analysis configuration (housing + thresholds + channels + colours)
 - `ColorConfig` - Plot color configuration
 - `ThresholdConfig` - Regime detection thresholds
 
@@ -376,6 +386,59 @@ overview_dict = create_overview_dict(result)
 - `OverviewRecord` - Complete record for one overview file
 - `ProcessingResult` - Results for multiple files
 
+### field_comparison.py - Alias-Driven Field Comparison
+
+Compares pupitre and pigbrother (Overview/Archive only — incidents and
+hybrid data are out of scope) timeseries for every field with a
+cross-format alias in `pupitre-defs.json` (see `field_defs.py`), instead of
+the housing-config-based GR1/GR2 current mapping used elsewhere in this
+module.
+
+The lag between pupitre and pigbrother is a clock-synchronization property
+of the whole acquisition, not of an individual channel, so it is computed
+**once per `(record, source)`** from the strongest signal available
+(`Idcct1`/`Courant_A1`, falling back to `Idcct3`/`Courant_A3`) and then
+reused for every field. If neither reference pair is present, that
+indicates a problem in the data files, so `compute_reference_lag` raises
+rather than silently skipping.
+
+```python
+from python_magnetrun.analysis.processing import process_overview_file, ProcessingConfig
+from python_magnetrun.analysis.field_comparison import (
+    discover_pupitre_pigbrother_fields,
+    compare_all_fields,
+    print_comparison_summary,
+)
+
+record = process_overview_file("M9_Overview_241106-091500.tdms", ProcessingConfig())
+
+# See which fields have a pupitre <-> pigbrother alias
+fields = discover_pupitre_pigbrother_fields()
+
+# Compare all of them against both Overview and Archive
+results = compare_all_fields(record, lag_method="resample_1s")
+print_comparison_summary(results)
+
+# results["Idcct1"]["overview"].metrics["distances"].correlation
+```
+
+**Key Classes:**
+- `AliasedField` - A pupitre field with its pigbrother group/channel counterpart
+- `FieldComparisonResult` - Per-field, per-source comparison outcome
+
+**Key Functions:**
+- `discover_pupitre_pigbrother_fields()` - Discover every aliased field
+- `compute_reference_lag()` - Compute the single reference lag for a source
+- `compare_field()` / `compare_all_fields()` - Compare one/all fields
+- `print_comparison_summary()` - Log a per-field/source summary
+
+`lag_method` selects the lag algorithm from `synchronization.py`:
+- `"resample_1s"` (default) - the original `compute_lag`; correct when the
+  pigbrother source is ~1 Hz (Overview), imprecise/wrong-scale otherwise.
+- `"interpolated"` - `compute_lag_interpolated`, which interpolates both
+  series onto a common fine grid before cross-correlating, giving correct
+  sub-second lag precision against 120 Hz Archive data too.
+
 ### cli.py - Logging & CLI
 
 Comprehensive logging infrastructure and command-line interface.
@@ -484,32 +547,42 @@ Logging options:
 
 ## Site Configurations
 
-### M9 (Default)
+Housing configurations define which pupitre field plays each GR role.
+The canonical source is `python_magnetrun/<Housing>-site-config.json`;
+see `python_magnetrun/site_config.py` and the main README for management tools.
+
+### M9 (default: H supply = GR1, B supply = GR2)
 | Parameter | GR1 | GR2 |
 |-----------|-----|-----|
 | Current | IH | IB |
 | Flow | FlowH | FlowB |
 | RPM | RpmH | RpmB |
 | Pressure In | HPH | HPB |
-| Voltage | UH | UB, Ucoil15, Ucoil16 |
+| Voltages | UH, Ucoil1–14 | UB, Ucoil15, Ucoil16 |
+| Formats | pupitre, pigbrother | |
 
-### M8
+### M8 (default: B supply = GR1, H supply = GR2; also runs hybrid)
 | Parameter | GR1 | GR2 |
 |-----------|-----|-----|
-| Current | IH | IB |
-| Flow | FlowH | FlowB |
-| RPM | RpmH | RpmB |
-| Pressure In | HPH | HPB |
-| Voltage | UH | UB |
+| Current | IB | IH |
+| Flow | FlowB | FlowH |
+| RPM | RpmB | RpmH |
+| Pressure In | HPB | HPH |
+| Voltages | UB, Ucoil15, Ucoil16 | UH, Ucoil1–14 |
+| Formats | pupitre, pigbrother, hybrid | |
 
-### M10
+### M10 (same convention as M8)
 | Parameter | GR1 | GR2 |
 |-----------|-----|-----|
-| Current | Icoil1 | Icoil2 |
-| Flow | Flow1 | Flow2 |
-| RPM | Rpm1 | Rpm2 |
-| Pressure In | HP1 | HP2 |
-| Voltage | Ucoil1 | Ucoil2 |
+| Current | IB | IH |
+| Flow | FlowB | FlowH |
+| RPM | RpmB | RpmH |
+| Pressure In | HPB | HPH |
+| Voltages | UB, Ucoil15, Ucoil16 | UH, Ucoil1–14 |
+| Formats | pupitre, pigbrother | |
+
+> **Note:** The default GR1/GR2 assignment can be overridden at runtime for
+> atypical runs via `get_site_config("M9", overrides={"gr1_current": "IB", ...})`.
 
 ## Data Flow
 

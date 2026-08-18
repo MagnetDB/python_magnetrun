@@ -1,0 +1,63 @@
+package: python_magnetrun
+description: >
+  Utilities to view and analyse magnet runs from LNCMI control/monitoring
+  systems (Pupitre, PigBrother, and hybrid FEPC acquisition systems).
+
+tests:
+  present: true
+  kind: pytest+coverage
+  coverage_estimate: medium   # line-rate=0.30 from coverage.xml (just above 30%)
+
+documentation:
+  readme: comprehensive       # 1207-line README with ToC, install, usage, analysis, ETL sections
+  api_docs: sphinx/mkdocs     # Sphinx source in docs/source, deployed to GitHub Pages
+  usage_examples: notebooks   # notebooks/01_getting_started.ipynb + inline README examples
+
+ci:
+  present: true
+  runs_tests: true            # test.yml: pytest on Python 3.11–3.14, Ubuntu & Debian Trixie, Codecov upload
+  builds_package: false       # docs.yml builds Sphinx docs; no wheel/sdist build step
+  platform: GitHub Actions
+
+installability:
+  pip_install: requires manual steps   # python_magnetcooling must be pip-installed from the local subdir first
+  extra_dependencies: system packages  # nlopt C library; optional extras pull in clawpack, scikit-learn, etc.
+  packaging: pyproject.toml            # not published to PyPI
+
+api_stability:
+  status: unstable            # Pre-Alpha classifier; active rework_analysis branch; BREAKING_CHANGES.md present
+  breaking_changes_risk: high
+
+maintenance:
+  active: true
+  last_commit_approx: "3 days ago"
+  bus_factor: solo
+
+readability:
+  score: 3   # decent overall, uneven across modules
+  linting: near-clean         # ruff configured with E/F/W/I/UP/B/SIM/BLE; only 1 fixable import-sort violation
+  type_annotations: partial   # ~60% of methods annotated in newer modules (magnetdata_pandas, MagnetRun,
+                               # waterflow_pipeline); older modules (BandH.py) have none
+  docstrings: inconsistent    # newer modules have module + method docstrings with param/return docs;
+                               # several older files have no docstrings at all
+  module_structure: good      # 14 subpackages with clear responsibility boundaries; logging via getLogger throughout
+  todo_debt: low              # 14 TODO/FIXME markers across the whole codebase
+  notes: >
+    Clear quality gap between recently written modules and older ones. The active refactor
+    is gradually lifting the floor, but callers of lower-level modules still encounter
+    inconsistent naming conventions and missing type hints.
+
+maintenance_practice:
+  score: 3   # good habits, one-person risk
+  changelog: good             # CHANGELOG.md documents breaking changes per version with before/after tables
+  breaking_changes_doc: good  # dedicated BREAKING_CHANGES.md (superseded by CHANGELOG from v0.3.0 onward)
+  contributing_guide: present # CONTRIBUTING.rst (128 lines), but still references old GitHub URL (Trophime/ not MagnetDB/)
+  dependency_pinning: good    # ranges specified in pyproject.toml; local dep (python_magnetcooling) unversioned
+  tooling: good               # ruff + mypy + pre-commit configured; tox.ini present; Codecov integrated
+  bus_factor_risk: high       # single maintainer; no evidence of a second reviewer on any PR
+
+overall_readiness:
+  score: 3   # installable, functional, CI green, decent docs — manual install step, ~30% coverage, API in active rework
+  blocker: >
+    python_magnetcooling is a local (non-PyPI) dependency that must be manually
+    installed before the main package, blocking a one-step pip install.

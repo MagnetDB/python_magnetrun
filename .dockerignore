@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+env/
+ENV/
+magnetrun-env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+docs/_build/
+*.md
+!README.md
+
+# Tests
+.tox/
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Logs
+*.log
+log/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debian packaging
+debian/
+
+# Archives
+*.tar
+*.tar.gz
+*.zip
+
+# data files (will be mounted as volume)
+*.csv
+*.csv.*
+*.json
+*.json.*
+*.tdms
+*srvdata
+pigbrotherdata
+pigbrothercolddata
+python_magnetrun/data/
+python_magnetrun/txt/
+python_magnetrun/png/
+python_magnetrun/json/
+
+# Notebooks (will be mounted as volume)
+notebooks/
+*.ipynb_checkpoints/

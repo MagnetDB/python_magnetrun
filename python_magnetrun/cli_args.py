@@ -2,9 +2,18 @@
 
 import argparse
 import os
+from collections.abc import Callable
+from pathlib import Path
+
+from .data_dirs import (
+    HYBRID_DATA_DIR,
+    PIGBROTHER_DATA_DIR,
+    PIGBROTHER_RUNLOG_DIR,
+    PUPITRE_DATA_DIR,
+)
 
 
-def validate_file_extension(allowed_extensions):
+def validate_file_extension(allowed_extensions: list[str]) -> Callable[[str], str]:
     """Create a validator function for file extensions.
 
     :param allowed_extensions: List of allowed extensions (e.g., ['.tdms', '.txt'])
@@ -13,18 +22,18 @@ def validate_file_extension(allowed_extensions):
     :rtype: function
     """
 
-    def validator(filepath):
+    def validator(filepath: str) -> str:
         ext = os.path.splitext(filepath)[-1]
         if ext not in allowed_extensions:
             raise argparse.ArgumentTypeError(
-                f"Invalid file extension '{ext}'. Allowed: {', '.join(allowed_extensions)}"
+                f"Invalid file extension '{ext}'. Allowed: {', '.join(allowed_extensions)}"  # noqa: E501
             )
         return filepath
 
     return validator
 
 
-def get_datadir_mapping(args):
+def get_datadir_mapping(args: argparse.Namespace) -> dict[str, str]:
     """Get the directory mapping for different file extensions.
 
     :param args: Parsed command line arguments
@@ -38,7 +47,7 @@ def get_datadir_mapping(args):
     }
 
 
-def create_common_plot_parser():
+def create_common_plot_parser() -> argparse.ArgumentParser:
     """Create parser with common plotting arguments.
 
     :return: ArgumentParser with plotting arguments
@@ -52,6 +61,11 @@ def create_common_plot_parser():
         action="append",
     )
     parser.add_argument(
+        "--vs_time_hybrid",
+        help='select hybrid key(s) to plot (ex. "kHz/FEPC-LNCMI/I_H1")',
+        nargs="+",
+    )
+    parser.add_argument(
         "--key_vs_key",
         help='select pair(s) of keys to plot (ex. "Field-Icoil1")',
         nargs="+",
@@ -60,10 +74,259 @@ def create_common_plot_parser():
     parser.add_argument(
         "--normalize", help="normalize data before plot", action="store_true"
     )
+    parser.add_argument(
+        "--backend",
+        choices=["matplotlib", "plotly", "plotly-resampler", "plotly-widget"],
+        default="matplotlib",
+        help=(
+            "plotting backend. 'plotly' enables interactive HTML output and JSON export. "
+            "'plotly-resampler'/'plotly-widget' require a live Python kernel."
+        ),
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print Plotly JSON spec to stdout instead of displaying/saving (requires --backend plotly)",
+    )
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "--subplots",
+        action="store_true",
+        default=False,
+        help="display each field in a separate subplot sharing the time axis (default: overlay on one axes)",
+    )
+    mode_group.add_argument(
+        "--overlay",
+        action="store_true",
+        default=False,
+        help="overlay all fields on one axes (default mode; explicit flag for clarity)",
+    )
+    parser.add_argument(
+        "--display-unit",
+        dest="display_unit",
+        metavar="FIELD=UNIT",
+        action="append",
+        default=None,
+        help=(
+            "override display unit for a field (pint-parseable); repeatable. "
+            "Example: --display-unit Field_B=tesla --display-unit Courant_GR1=ampere"
+        ),
+    )
+    parser.add_argument(
+        "--same-color-per-type",
+        action="store_true",
+        default=False,
+        help=(
+            "use one fixed color per file type (.txt → pupitre, .tdms → archive) "
+            "instead of a distinct palette color per file"
+        ),
+    )
+    parser.add_argument(
+        "--plot-config",
+        metavar="FILE",
+        type=Path,
+        default=None,
+        help="path to a plot config JSON file (colors + style); overrides built-in defaults",
+    )
+    parser.add_argument(
+        "--marker",
+        metavar="MARKER",
+        default=None,
+        help=(
+            "matplotlib marker style for key_vs_key plots (e.g. 'o', '+', 'x', 's'). "
+            "Default: no marker."
+        ),
+    )
+    parser.add_argument(
+        "--no-lines",
+        action="store_true",
+        default=False,
+        help="for key_vs_key: draw only markers, suppress connecting lines (implies --marker o if no --marker given)",
+    )
+    parser.add_argument(
+        "--field_style",
+        metavar="FIELD=STYLESPEC",
+        action="append",
+        default=None,
+        help=(
+            "per-field plot style for --vs_time; repeatable. "
+            "STYLESPEC syntax: [LINESTYLE][MARKER][:N][@ALPHA] where LINESTYLE is '-', '--' or '-.', "
+            "MARKER is any matplotlib marker (e.g. 'o', '+', 's'), N is markevery, and ALPHA is opacity in [0,1]. "
+            "Examples: --field_style Référence_A1=- "
+            "--field_style Référence_A2=o:10 "
+            "--field_style Référence_A2=-o:5 "
+            "--field_style Référence_A2=-@0.5"
+        ),
+    )
+    parser.add_argument(
+        "--label_style",
+        metavar="ELEMENT=KEY:VALUE[,KEY:VALUE,...]",
+        action="append",
+        default=None,
+        help=(
+            "font style for a text element; repeatable. "
+            "ELEMENT is one of: title, xlabel, ylabel, annotation. "
+            "Keys: size (int), family (str), style (normal|italic|oblique), "
+            "weight (normal|bold|light), color (CSS colour). "
+            "Note: style and weight are ignored by the Plotly backend. "
+            "Examples: --label_style title=size:16,family:serif,weight:bold "
+            "--label_style xlabel=size:12,color:navy "
+            "--label_style ylabel=style:italic "
+            "--label_style annotation=size:9,color:#666"
+        ),
+    )
     return parser
 
 
-def create_common_smoothing_parser():
+def create_datadir_parser() -> argparse.ArgumentParser:
+    """Create parser with data directory arguments (pupitre, pigbrother).
+
+    Env var resolution order:
+    - pupitre:    MAGNETRUN_PUPITRE_DATA_DIR > PUPITRE_DATADIR
+    - pigbrother: MAGNETRUN_PIGBROTHER_DATA_DIR > PIGBROTHER_DATADIR
+
+    :return: ArgumentParser with data directory arguments
+    :rtype: argparse.ArgumentParser
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--pupitre_datadir",
+        help=(
+            "root directory for pupitre .txt files "
+            "(overrides MAGNETRUN_PUPITRE_DATA_DIR / PUPITRE_DATADIR )"
+        ),
+        type=str,
+        default=PUPITRE_DATA_DIR,
+    )
+    parser.add_argument(
+        "--pigbrother_datadir",
+        help=("root directory for pigbrother .tdms files "),
+        type=str,
+        default=PIGBROTHER_DATA_DIR,
+    )
+    return parser
+
+
+def create_hybrid_parser() -> argparse.ArgumentParser:
+    """Create parser with hybrid data arguments.
+
+    :return: ArgumentParser with hybrid data arguments
+    :rtype: argparse.ArgumentParser
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--hybrid_datadir",
+        help=(
+            "base directory for hybrid (kHz/rms/trigger) data "
+            "(overrides MAGNETRUN_HYBRID_DATA_DIR / HYBRID_DATADIR)"
+        ),
+        type=str,
+        default=HYBRID_DATA_DIR or None,
+    )
+    parser.add_argument(
+        "--hybrid_date",
+        help="date for hybrid data in YYYY-MM-DD format",
+        type=str,
+        default=None,
+    )
+    parser.add_argument(
+        "--fepc_system",
+        help="FEPC system name",
+        type=str,
+        choices=["FEPC-LNCMI", "FEPC-AUX-LNCMI"],
+        default="FEPC-LNCMI",
+    )
+    parser.add_argument(
+        "--hybrid_downsample",
+        help="downsample kHz data to N points for plotting",
+        type=int,
+        default=50000,
+    )
+    return parser
+
+
+DOWNSAMPLE_METHODS = ("none", "stride", "minmax", "minmax_lttb", "lttb", "m4", "nan_m4", "rdp", "vw")
+"""Valid downsampling method names for ``--downsample-method``."""
+
+
+def create_downsampling_parser() -> argparse.ArgumentParser:
+    """Create parser with downsampling arguments.
+
+    ``--downsample-method`` selects the algorithm (``none`` disables all
+    downsampling, which is the default).  ``--downsample-params`` accepts a
+    JSON object whose keys are forwarded as keyword arguments to
+    :class:`~python_magnetrun.utils.downsampling.DownsampleConfig`.
+
+    Supported ``--downsample-params`` keys:
+
+    * ``n_out`` *(int)*: target number of output points (default: 10 000).
+    * ``bucket_size`` *(int)*: only used by the ``minmax`` method.
+    * ``epsilon`` *(float)*: geometry tolerance for ``rdp`` and ``vw`` methods.
+
+    Examples::
+
+        --downsample-method stride --downsample-params '{"n_out": 5000}'
+        --downsample-method minmax_lttb
+        --downsample-method minmax --downsample-params '{"n_out": 8000, "bucket_size": 50}'
+        --downsample-method m4 --downsample-params '{"n_out": 4000}'
+        --downsample-method nan_m4
+        --downsample-method rdp --downsample-params '{"n_out": 5000, "epsilon": 0.01}'
+        --downsample-method vw --downsample-params '{"n_out": 5000, "epsilon": 0.001}'
+
+    :return: ArgumentParser with downsampling arguments
+    :rtype: argparse.ArgumentParser
+    """
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--downsample-method",
+        choices=DOWNSAMPLE_METHODS,
+        default="none",
+        metavar="METHOD",
+        help=(
+            "downsampling algorithm applied before plotting: "
+            "none (disabled, default), stride, minmax, minmax_lttb, lttb, m4, nan_m4, rdp, vw. "
+            "m4/nan_m4/lttb/minmax_lttb require tsdownsample; rdp/vw require simplification."
+        ),
+    )
+    parser.add_argument(
+        "--downsample-params",
+        type=str,
+        default=None,
+        metavar="JSON",
+        help=(
+            "JSON object of method-specific parameters. "
+            "Supported keys: n_out (int, default 10000), "
+            "bucket_size (int, minmax only), epsilon (float, rdp/vw only). "
+            "Example: '{\"n_out\": 5000}'"
+        ),
+    )
+    parser.add_argument(
+        "--benchmark-downsample",
+        action="store_true",
+        default=False,
+        help=(
+            "Run all available downsampling methods on the first loaded channel "
+            "and print a quality comparison table. "
+            "n_out is taken from --downsample-params (default: 10000)."
+        ),
+    )
+    parser.add_argument(
+        "--memory-tier",
+        type=int,
+        choices=[1, 2, 3],
+        default=1,
+        metavar="TIER",
+        help=(
+            "Memory measurement strategy used by --benchmark-downsample: "
+            "1=tracemalloc (default, zero deps), "
+            "2=subprocess RSS isolation (~100ms overhead, captures native heap), "
+            "3=memray native tracing (optional dep, Linux/macOS only)."
+        ),
+    )
+    return parser
+
+
+def create_common_smoothing_parser() -> argparse.ArgumentParser:
     """Create parser with common smoothing arguments.
 
     :return: ArgumentParser with smoothing arguments
@@ -72,7 +335,7 @@ def create_common_smoothing_parser():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument(
         "--smoother",
-        help="smooth selected data with selected methods: [ag, bell_kernel, statsmodel_sm, savgol]",
+        help="smooth selected data with selected methods: [ag, bell_kernel, statsmodel_sm, savgol]",  # noqa: E501
         type=str,
         choices=["ag", "bell_kernel", "statsmodel_sm", "savgol"],
     )
@@ -89,40 +352,53 @@ def create_common_smoothing_parser():
     return parser
 
 
-def create_base_parser(allowed_extensions=None):
+def create_base_parser(
+    allowed_extensions: list[str] | None = None,
+    add_input_file: bool = True,
+) -> argparse.ArgumentParser:
     """Create base parser with common arguments.
 
-    :param allowed_extensions: Optional list of allowed file extensions (e.g., ['.tdms', '.txt'])
+    Includes data directory arguments via :func:`create_datadir_parser`.
+
+    :param allowed_extensions: Optional list of allowed file extensions (e.g., ['.tdms', '.txt'])  # noqa: E501
     :type allowed_extensions: list or None
+    :param add_input_file: Whether to add the positional ``input_file`` argument (default: True).
+        Pass ``False`` when the script does not take input files.
+    :type add_input_file: bool
     :return: ArgumentParser with base arguments
     :rtype: argparse.ArgumentParser
     """
-    parser = argparse.ArgumentParser(add_help=False)
+    datadir_parser = create_datadir_parser()
+    parser = argparse.ArgumentParser(add_help=False, parents=[datadir_parser])
 
     # Add input_file with optional extension validation
-    if allowed_extensions:
-        parser.add_argument(
-            "input_file",
-            nargs="+",
-            type=validate_file_extension(allowed_extensions),
-            help=f"enter input file (allowed: {', '.join(allowed_extensions)})",
-        )
-    else:
-        parser.add_argument("input_file", nargs="+", help="enter input file")
+    if add_input_file:
+        if allowed_extensions:
+            parser.add_argument(
+                "input_file",
+                nargs="+",
+                type=validate_file_extension(allowed_extensions),
+                help=f"enter input file (allowed: {', '.join(allowed_extensions)})",
+            )
+        else:
+            parser.add_argument("input_file", nargs="+", help="enter input file")
 
-    parser.add_argument("--site", help="specify a site (ex. M8, M9,...)", default="M9")
-    parser.add_argument("--insert", help="specify an insert", default="notdefined")
     parser.add_argument(
-        "--pupitre_datadir",
-        help="enter pupitre datadir (default srvdata)",
-        type=str,
-        default="/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install",
+        "--assembly",
+        dest="assembly",
+        help="specify an assembly (ex. M9_M25032101_0)",
+        default="notdefined",
     )
     parser.add_argument(
-        "--pigbrother_datadir",
-        help="enter pigbrother datadir (default pigbrotherdata)",
-        type=str,
-        default="/home/LNCMI-G/christophe.trophime/github/python_magnetrun/pigbrotherdata/Fichiers_Data",
+        "--site",
+        dest="assembly",
+        help=argparse.SUPPRESS,  # deprecated alias for --assembly, kept for one release cycle
+    )
+    parser.add_argument(
+        "--insert", help="specify an insert (ex: M25032101)", default="notdefined"
+    )
+    parser.add_argument(
+        "--housing", help="specify a housing (ex. M8, M9,...)", default="notdefined"
     )
     parser.add_argument(
         "--log-level",
@@ -134,132 +410,106 @@ def create_base_parser(allowed_extensions=None):
     parser.add_argument(
         "--log-file",
         help="path to log file (if not specified, logs to console)",
-        type=str,
+        type=Path,
         default=None,
     )
     return parser
 
 
-def create_managed_plots_parser():
-    """Create parser with managed plot options (save and show).
+def create_managed_plots_parser() -> argparse.ArgumentParser:
+    """Create parser with managed plot options (save, show, title).
 
-    :return: ArgumentParser with save and show arguments
+    :return: ArgumentParser with save, show, and title arguments
     :rtype: argparse.ArgumentParser
     """
     parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument("--save", help="save graphs (png format)", action="store_true")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--save",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="FILE",
+        help=(
+            "save figure to FILE (.png/.html chosen by backend); "
+            "omit FILE for an auto-generated name in the current directory"
+        ),
+    )
+    group.add_argument(
+        "--show",
+        action="store_true",
+        default=False,
+        help="display figure interactively (default when neither flag is given)",
+    )
     parser.add_argument(
-        "--show", help="display graphs (require X11)", action="store_true"
+        "--title",
+        type=str,
+        default=None,
+        metavar="TEXT",
+        help="override the auto-generated plot title",
     )
     return parser
 
 
-def create_main_parser():
-    """Create the main argument parser for python_magnetrun.
+def create_outlier_parser() -> argparse.ArgumentParser:
+    """Create parser with outlier removal arguments.
 
-    :return: Configured ArgumentParser with all subcommands
+    :return: ArgumentParser with outlier arguments
     :rtype: argparse.ArgumentParser
     """
-    base_parser = create_base_parser()
-    plot_parser = create_common_plot_parser()
-    smoothing_parser = create_common_smoothing_parser()
-    managed_plots_parser = create_managed_plots_parser()
-
-    parser = argparse.ArgumentParser(parents=[base_parser])
-
-    subparsers = parser.add_subparsers(
-        title="commands", dest="command", help="sub-command help"
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--remove-outliers",
+        type=str,
+        metavar="METHOD",
+        choices=["iqr", "zscore", "mad", "percentile"],
+        help="Remove outliers using specified method (iqr, zscore, mad, percentile)",
     )
-
-    # Info subcommand
-    parser_info = subparsers.add_parser("info", help="info help")
-    parser_info.add_argument("--list", help="list key in csv", action="store_true")
-    parser_info.add_argument("--convert", help="save to csv", action="store_true")
-
-    # Add subcommand (with plot capabilities)
-    parser_add = subparsers.add_parser(
-        "add", help="add help", parents=[plot_parser, managed_plots_parser]
-    )
-    parser_add.add_argument(
-        "--formula", help="add new column with associated formula", type=str, default=""
-    )
-    parser_add.add_argument("--compute", help="compute", action="store_true")
-    parser_add.add_argument("--plot", help="plot", action="store_true")
-
-    # Plot subcommand
-    parser_plot = subparsers.add_parser(
-        "plot", help="plot help", parents=[plot_parser, managed_plots_parser]
-    )
-
-    # Select subcommand
-    parser_select = subparsers.add_parser(
-        "select", help="select help", parents=[smoothing_parser]
-    )
-    parser_select.add_argument(
-        "--output_time", nargs="+", help="output key(s) for time"
-    )
-    parser_select.add_argument(
-        "--output_timerange",
-        help="set time range to extract (start;end)",
-        action="append",
-    )
-    parser_select.add_argument(
-        "--output_key",
-        nargs="+",
-        help="output key(s) for time",
-        action="append",
-    )
-    parser_select.add_argument(
-        "--extract_pairkeys",
-        nargs="+",
-        help="dump key(s) to file",
-        action="append",
-    )
-    parser_select.add_argument(
-        "--convert", help="convert file to csv", action="store_true"
-    )
-
-    # Stats subcommand
-    parser_stats = subparsers.add_parser(
-        "stats", help="stats help", parents=[managed_plots_parser]
-    )
-    parser_stats.add_argument(
-        "--detect_bkpts", help="find breaking points", action="store_true"
-    )
-    parser_stats.add_argument("--localmax", help="find local max", action="store_true")
-    parser_stats.add_argument("--plateau", help="find plateau", action="store_true")
-    parser_stats.add_argument(
-        "--keys",
-        help="select key(s) to perform selected stats",
-        nargs="+",
-    )
-    parser_stats.add_argument(
-        "--threshold",
-        help="specify threshold for regime detection",
+    parser.add_argument(
+        "--outlier-threshold",
         type=float,
-        default=1.0e-3,
+        default=None,
+        metavar="THRESHOLD",
+        help="Threshold for outlier detection (default: per-method from OUTLIER_DEFAULTS)",
     )
-    parser_stats.add_argument(
-        "--bthreshold",
-        help="specify b threshold for regime detection",
-        type=float,
-        default=1.0e-3,
+    parser.add_argument(
+        "--outlier-window",
+        type=int,
+        metavar="SIZE",
+        help="Rolling window size for local outlier detection (optional)",
     )
-    parser_stats.add_argument(
-        "--dthreshold",
-        help="specify duration threshold for regime detection",
-        type=float,
-        default=10,
-    )
-    parser_stats.add_argument(
-        "--window", help="size of rolling window", type=int, default=10
-    )
-    parser_stats.add_argument("--level", help="select level", type=int, default=90)
-
     return parser
 
 
-def create_analysis_parser():
+def args_to_outlier_config(args: argparse.Namespace):
+    """
+    Build an ``OutlierConfig`` from parsed CLI arguments.
+
+    Returns ``None`` when ``--remove-outliers`` was not supplied, signalling
+    that outlier detection should be skipped entirely.
+
+    Parameters
+    ----------
+    args : argparse.Namespace
+        Parsed arguments containing ``remove_outliers``, ``outlier_threshold``,
+        and ``outlier_window`` attributes.
+
+    Returns
+    -------
+    OutlierConfig or None
+    """
+    from .outliers import OutlierConfig
+
+    if not getattr(args, "remove_outliers", None):
+        return None
+    return OutlierConfig(
+        method=args.remove_outliers,
+        threshold=getattr(args, "outlier_threshold", None),
+        window_size=getattr(args, "outlier_window", None),
+    )
+
+
+def create_analysis_parser() -> argparse.ArgumentParser:
     """Create the argument parser for analysis-refactor.
 
     :return: Configured ArgumentParser for analysis
@@ -269,12 +519,17 @@ def create_analysis_parser():
     managed_plots_parser = create_managed_plots_parser()
 
     parser = argparse.ArgumentParser(parents=[base_parser, managed_plots_parser])
-    parser.add_argument("--logs", nargs="+", help="enter log files from ACQ_ENET")
     parser.add_argument(
-        "--log_datadir",
-        help="enter log datadir (default srvdata)",
+        "--runlogs", nargs="+", help="enter run-log files from ACQ_ENET"
+    )
+    parser.add_argument(
+        "--runlog_datadir",
+        help=(
+            "root directory for ACQ_ENET run-log files "
+            "(overrides MAGNETRUN_PIGBROTHER_RUNLOG_DIR)"
+        ),
         type=str,
-        default="/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install",
+        default=PIGBROTHER_RUNLOG_DIR or None,
     )
     parser.add_argument(
         "--tkey",

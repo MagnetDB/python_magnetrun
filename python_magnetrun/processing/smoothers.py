@@ -11,22 +11,20 @@ https://xavierbourretsicotte.github.io/loess.html
 
 import logging
 import os
-
-logger = logging.getLogger(__name__)
-
 from math import ceil
-import numpy as np
-from scipy import linalg
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
-
 import statsmodels.api as sm
+from scipy import linalg
 
 from ..MagnetRun import MagnetRun
 
+logger = logging.getLogger(__name__)
 
-def savgol(y: np.array, window: int, polyorder: int = 3, deriv=0) -> np.array:
+
+def savgol(y: np.array, window: int, polyorder: int = 3, deriv: int = 0) -> np.array:
     """smooth signal using Savitzky-Golay algorithm for derivative of given order
 
     :param y: signal to be smoothed
@@ -46,7 +44,7 @@ def savgol(y: np.array, window: int, polyorder: int = 3, deriv=0) -> np.array:
 
 
 # Defining the bell shaped kernel function - used for plotting later on
-def kernel_function(xi, x0, tau: float = 0.005) -> np.array:
+def kernel_function(xi: np.ndarray, x0: np.ndarray, tau: float = 0.005) -> np.array:
     """compute bell kernel
 
     :param xi: _description_
@@ -61,17 +59,17 @@ def kernel_function(xi, x0, tau: float = 0.005) -> np.array:
     return np.exp(-((xi - x0) ** 2) / (2 * tau))
 
 
-def lowess_bell_shape_kern(x, y, tau: float = 0.005) -> np.array:
+def lowess_bell_shape_kern(x: np.ndarray, y: np.ndarray, tau: float = 0.005) -> np.array:
     """lowess_bell_shape_kern(x, y, tau = .005) -> yest
 
     Locally weighted regression: fits a nonparametric regression curve to a scatterplot.
     The arrays x and y contain an equal number of elements; each pair
     (x[i], y[i]) defines a data point in the scatterplot. The function returns
     the estimated (smooth) values of y.
-    The kernel function is the bell shaped function with parameter tau. Larger tau will result in a
-    smoother curve.
+    The kernel function is the bell shaped function with parameter tau.
+    Larger tau will result in a smoother curve.
 
-        :param x: _description_
+    :param x: _description_
     :type x: _type_
     :param y: _description_
     :type y: _type_
@@ -102,7 +100,7 @@ def lowess_bell_shape_kern(x, y, tau: float = 0.005) -> np.array:
     return yest
 
 
-def lowess_ag(x, y, f: float = 2.0 / 3.0, iter: int = 3) -> np.array:
+def lowess_ag(x: np.ndarray, y: np.ndarray, f: float = 2.0 / 3.0, iter: int = 3) -> np.array:
     """lowess(x, y, f=2./3., iter=3) -> yest
 
     Lowess smoother: Robust locally weighted regression.
@@ -133,7 +131,7 @@ def lowess_ag(x, y, f: float = 2.0 / 3.0, iter: int = 3) -> np.array:
     yest = np.zeros(n)
     delta = np.ones(n)
 
-    for iteration in range(iter):
+    for _iteration in range(iter):
         for i in range(n):
             weights = delta * w[:, i]
             b = np.array([np.sum(weights * y), np.sum(weights * y * x)])
@@ -154,7 +152,7 @@ def lowess_ag(x, y, f: float = 2.0 / 3.0, iter: int = 3) -> np.array:
     return yest
 
 
-def lowess_sm(x, y, f: float = 1.0 / 3.0, iter: int = 3) -> np.array:
+def lowess_sm(x: np.ndarray, y: np.ndarray, f: float = 1.0 / 3.0, iter: int = 3) -> np.array:
     """_summary_
 
     :param x: _description_
@@ -183,7 +181,7 @@ def smooth(
     debug: bool,
     show: bool,
     input_file: str,
-):
+) -> MagnetRun:
     """Smooth key column data from mrun dataset
 
     :param mrun: _description_
@@ -205,7 +203,7 @@ def smooth(
     """
 
     filteredkey = f"filtered{key}"
-    print(f"smooth: key={key}, filteredkey={filteredkey}", flush=True)
+    logger.info(f"smooth: key={key}, filteredkey={filteredkey}")
     df = mrun.getMData().getPandasData(key=None)
     Meanval = df[key].mean()
 
@@ -233,7 +231,7 @@ def smooth(
         else:
             f_extension = os.path.splitext(input_file)[-1]
             imagefile = input_file.replace(f_extension, f"-smoothed{key}.png")
-            print(f"save to {imagefile}")
+            logger.info(f"save to {imagefile}")
             plt.savefig(imagefile, dpi=300)
         plt.close()
 

@@ -23,18 +23,21 @@ Directory structure:
                 FEPC-LNCMI/
 """
 
-from pathlib import Path
-from datetime import datetime, date
-from typing import Optional, List, Dict, Any, Tuple, Union
-from dataclasses import dataclass, field
+import contextlib
 import logging
-import struct
+from dataclasses import dataclass, field
+from datetime import date, datetime
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
+from natsort import natsorted
+
+from ..magnetdata_base import DataType, MagnetDataBase
+from ..outliers import OutlierConfig
 
 # Local imports
-from .utils import list_available_dates, remove_outliers
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -43,22 +46,36 @@ logger = logging.getLogger(__name__)
 try:
     from .kHz.fepc_reader import (
         FEPCConfig,
+        calibrate_channel,
+        compute_hour_t0,
         parse_cfg_file,
         read_hour_file,
-        calibrate_channel,
     )
 except ImportError as e:
     logger.warning(f"Could not import fepc_reader: {e}")
-    FEPCConfig = None
-    parse_cfg_file = None
-    read_hour_file = None
-    calibrate_channel = None
+    FEPCConfig = None  # type: ignore[assignment, misc]
+    parse_cfg_file = None  # type: ignore[assignment]
+    read_hour_file = None  # type: ignore[assignment]
+    calibrate_channel = None  # type: ignore[assignment]
+    compute_hour_t0 = None  # type: ignore[assignment]
 
 try:
     from .rms.rms_reader import RMSFileReader
 except ImportError as e:
     logger.warning(f"Could not import rms_reader: {e}")
-    RMSFileReader = None
+    RMSFileReader = None  # type: ignore[assignment, misc]
+
+try:
+    from .vprocess.vprocess_reader import VProcessFileReader
+except ImportError as e:
+    logger.warning(f"Could not import vprocess_reader: {e}")
+    VProcessFileReader = None  # type: ignore[assignment, misc]
+
+try:
+    from .trigger.trigger_reader import TriggerFileReader
+except ImportError as e:
+    logger.warning(f"Could not import trigger_reader: {e}")
+    TriggerFileReader = None  # type: ignore[assignment, misc]
 
 
 # FEPC system names
@@ -74,77 +91,106 @@ class HybridDataInfo:
     khz_available: bool = False
     rms_available: bool = False
     trigger_available: bool = False
-    fepc_systems: List[str] = field(default_factory=list)
-    khz_files: Dict[str, List[Path]] = field(default_factory=dict)
-    rms_files: Dict[str, List[Path]] = field(default_factory=dict)
-    trigger_dirs: Dict[str, List[Path]] = field(
+    vprocess_available: bool = False
+    fepc_systems: list[str] = field(default_factory=list)
+    khz_files: dict[str, list[Path]] = field(default_factory=dict)
+    rms_files: dict[str, list[Path]] = field(default_factory=dict)
+    trigger_dirs: dict[str, list[Path]] = field(
         default_factory=dict
     )  # TRIGGER__YYYY-MM-DD__HH-MM dirs
-    trigger_files: Dict[str, List[Path]] = field(default_factory=dict)
+    trigger_files: dict[str, list[Path]] = field(default_factory=dict)
+    vprocess_files: list[Path] = field(default_factory=list)
 
 
-class HybridData:
-    """
-    Unified interface for hybrid magnet data (kHz, RMS, Trigger)
+class HybridData(MagnetDataBase):
+    """Unified interface for hybrid magnet data (kHz, RMS, Trigger).
 
-    Similar interface to MagnetData class for consistency.
+    Inherits from :class:`~python_magnetrun.magnetdata_base.MagnetDataBase`
+    so that it participates in the common ``DataLoader`` protocol alongside
+    :class:`~python_magnetrun.magnetdata_pandas.PandasMagnetData` and
+    :class:`~python_magnetrun.magnetdata_tdms.TdmsMagnetData`.
 
     Parameters
     ----------
     base_dir : str or Path
-        Base directory containing kHz, rms, trigger subdirectories
+        Base directory containing kHz, rms, trigger subdirectories.
     date_str : str
-        Date string in YYYY-MM-DD format
+        Date string in YYYY-MM-DD format.
     fepc_system : str, optional
-        FEPC system name: 'FEPC-LNCMI' or 'FEPC-AUX-LNCMI' (default: both)
+        FEPC system name: ``'FEPC-LNCMI'`` or ``'FEPC-AUX-LNCMI'``
+        (default: both).
     endian : str, optional
-        Endianness for binary data: 'big' or 'little' (default: 'big')
+        Endianness for binary data: ``'big'`` or ``'little'`` (default:
+        ``'big'``).
+    defs_file : str, optional
+        Path to a JSON field-definition file for units.
 
     Attributes
     ----------
     FileName : str
-        Identifier string for this data (similar to MagnetData)
+        Identifier string derived from *date_str*.
     Groups : dict
-        Groups of data channels organized by type
-    Keys : list
-        List of available data keys
-    Type : int
-        Data type identifier (3 for HybridData)
+        Groups of data channels organised by type.
+    Keys : list[str]
+        List of available data keys.
     Data : dict
-        Dictionary containing loaded data
+        Cache dict — starts empty; populated by individual ``read_*`` calls.
     """
+
+    _TYPE: DataType = DataType.HYBRID
 
     def __init__(
         self,
-        base_dir: Union[str, Path],
+        base_dir: str | Path,
         date_str: str,
-        fepc_system: Optional[str] = None,
+        fepc_system: str | None = None,
         endian: str = "big",
+        defs_file: str | None = None,
     ):
+        # Hybrid-specific attributes (needed by _discover_data called below)
         self.base_dir = Path(base_dir)
         self.date_str = date_str
         self.date = datetime.strptime(date_str, "%Y-%m-%d").date()
         self.fepc_system = fepc_system
         self.endian = endian
 
-        # MagnetData-like attributes
-        self.FileName = f"HybridData_{date_str}"
-        self.Groups: Dict[str, Dict] = {}
-        self.Keys: List[str] = []
-        self.Type = 3  # New type for hybrid data
-        self.Data: Dict[str, Any] = {}
-        self.units: Dict[str, Tuple] = {}
+        # Backing store for the Data property
+        self._data: dict[str, Any] = {}
 
         # Internal storage (use Any for type hints since modules might not be available)
-        self._khz_configs: Dict[str, Any] = {}  # FEPCConfig instances
-        self._rms_readers: Dict[str, Any] = {}  # RMSFileReader instances
+        self._khz_configs: dict[str, Any] = {}  # FEPCConfig instances
+        self._rms_readers: dict[str, Any] = {}  # RMSFileReader instances
         self._info: HybridDataInfo = HybridDataInfo(
             date=self.date,
             base_dir=self.base_dir,
         )
 
-        # Discover available data
+        # Initialise base-class attributes: FileName, Groups, Keys, units,
+        # field_meta, defs_file, start_timestamp, end_timestamp.
+        # Groups and Keys start empty; _discover_data() populates them.
+        super().__init__(f"HybridData_{date_str}", {}, [], defs_file=defs_file)
+
+        # Discover available data — overwrites self.Groups and self.Keys
         self._discover_data()
+        self._infer_timestamps()
+
+    # ------------------------------------------------------------------
+    # Abstract property implementations (MagnetDataBase requirements)
+    # ------------------------------------------------------------------
+
+    @property
+    def Data(self) -> dict[str, Any]:  # type: ignore[override]
+        """Cache dict for loaded data (starts empty; populated on demand)."""
+        return self._data
+
+    @Data.setter
+    def Data(self, value: dict[str, Any] | pd.DataFrame) -> None:  # type: ignore[override]
+        self._data = value  # type: ignore[assignment]
+
+    @property
+    def Type(self) -> DataType:
+        """Data-type discriminator (always ``DataType.HYBRID``)."""
+        return self._TYPE
 
     def _discover_data(self) -> None:
         """Discover available data files for the given date"""
@@ -198,11 +244,32 @@ class HybridData:
                             list(system_dir.glob("*"))
                         )
 
+        # Check vprocess data (no FEPC system subdirectory)
+        vprocess_dir = self.base_dir / "vprocess" / self.date_str
+        if vprocess_dir.exists():
+            self._info.vprocess_available = True
+            self._info.vprocess_files = sorted(vprocess_dir.glob("*.vprocess"))
+
         # Build groups and keys
         self._build_groups()
 
+    def _build_group_keys(self, group: str, system: str | None) -> dict:
+        """Build data keys for a specific group"""
+
+        if group == "kHz":
+            return self.get_khz_variables(system)  # type: ignore[arg-type]
+        elif group == "rms":
+            return self.get_rms_variables(system)  # type: ignore[arg-type]
+        elif group == "vprocess":
+            return self.get_vprocess_variables()
+        elif group == "trigger":
+            return self.get_trigger_variables(system)  # type: ignore[arg-type]
+        else:
+            raise ValueError(f"Unknown group: {group}")
+
     def _build_groups(self) -> None:
         """Build Groups and Keys from discovered data"""
+        logger.debug(f"Building groups and keys for HybridData on {self.date_str}")
         self.Groups = {}
         self.Keys = []
 
@@ -215,7 +282,13 @@ class HybridData:
                     "system": system,
                     "files": self._info.khz_files[system],
                 }
-                self.Keys.append(group_name)
+                try:
+                    keys = self._build_group_keys("kHz", system)["analog"]
+                except (ImportError, FileNotFoundError, ValueError) as e:
+                    logger.warning(f"Could not get kHz keys for {system}: {e}")
+                    keys = []
+                logger.debug(f"getKeys: kHz keys for system={system}: {keys}")
+                self.Keys += [f"kHz/{system}/{key}" for key in keys]
 
             # RMS group
             if system in self._info.rms_files:
@@ -225,7 +298,13 @@ class HybridData:
                     "system": system,
                     "files": self._info.rms_files[system],
                 }
-                self.Keys.append(group_name)
+                try:
+                    keys = self._build_group_keys("rms", system)["analog"]
+                except (ImportError, FileNotFoundError, ValueError) as e:
+                    logger.warning(f"Could not get rms keys for {system}: {e}")
+                    keys = []
+                logger.debug(f"getKeys: RMS keys for system={system}: {keys}")
+                self.Keys += [f"rms/{system}/{key}" for key in keys]
 
             # Trigger group
             if system in self._info.trigger_files:
@@ -234,8 +313,29 @@ class HybridData:
                     "type": "trigger",
                     "system": system,
                     "files": self._info.trigger_files[system],
+                    "dirs": self._info.trigger_dirs.get(system, []),
                 }
-                self.Keys.append(group_name)
+                try:
+                    keys = self._build_group_keys("trigger", system)["analog"]
+                except (ImportError, FileNotFoundError, ValueError) as e:
+                    logger.warning(f"Could not get trigger keys for {system}: {e}")
+                    keys = []
+                logger.debug(f"getKeys: trigger keys for system={system}: {keys}")
+                self.Keys += [f"trigger/{system}/{key}" for key in keys]
+
+        # vprocess group (no FEPC system subdirectory)
+        if self._info.vprocess_available and self._info.vprocess_files:
+            self.Groups["vprocess"] = {
+                "type": "vprocess",
+                "files": self._info.vprocess_files,
+            }
+            try:
+                keys = self._build_group_keys("vprocess", None)["analog"]
+            except (ImportError, FileNotFoundError, ValueError) as e:
+                logger.warning(f"Could not get vprocess keys: {e}")
+                keys = []
+            logger.debug(f"getKeys: vprocess keys: {keys}")
+            self.Keys += [f"vprocess/{key}" for key in keys]
 
     @classmethod
     def fromdir(cls, base_dir: str, date_str: str, **kwargs):
@@ -267,12 +367,167 @@ class HybridData:
             f"trigger={self._info.trigger_available})"
         )
 
-    def getType(self) -> int:
-        """Return data type identifier"""
-        return self.Type
+    # ------------------------------------------------------------------
+    # Timestamp support (MagnetDataBase interface)
+    # ------------------------------------------------------------------
 
-    def getKeys(self) -> List[str]:
-        """Return list of available data keys"""
+    def _infer_timestamps(self, time_zone: str = "Europe/Paris") -> None:
+        """Infer start_timestamp / end_timestamp from discovered files (naive UTC).
+
+        Parameters
+        ----------
+        time_zone : str
+            IANA timezone name for local-time sources (RMS filenames,
+            trigger directory names).
+        """
+        import re
+
+        import pytz
+
+        tz = pytz.timezone(time_zone)
+
+        def _local_to_utc(local_ts: pd.Timestamp) -> datetime:
+            return (
+                local_ts.tz_localize(tz, ambiguous=False, nonexistent="shift_forward")
+                .tz_convert(pytz.utc)
+                .to_pydatetime()
+                .replace(tzinfo=None)
+            )
+
+        utc_starts: list[datetime] = []
+        utc_ends: list[datetime] = []
+
+        # --- 1. RMS filenames (local time, both start and end encoded) ---
+        # Format: {system}_YYYY-MM-DD_HHMM—YYYY-MM-DD_HHMM.rms
+        # Separator may be em-dash (—, U+2014) or hyphen-minus (-).
+        pattern = r"(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})[—\-](\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})"
+        for files in self._info.rms_files.values():
+            for f in files:
+                m = re.search(pattern, f.stem)
+                if m:
+                    d1, h1, mn1, d2, h2, mn2 = m.groups()
+                    utc_starts.append(_local_to_utc(pd.Timestamp(f"{d1} {h1}:{mn1}")))
+                    utc_ends.append(_local_to_utc(pd.Timestamp(f"{d2} {h2}:{mn2}")))
+
+        # --- 2. kHz bin filenames (filename encodes UTC hour: XXHOST_*_LIST_N.bin) ---
+        # Parse UTC hour from first two characters of each filename — no file content
+        # needed, consistent with _khz_first_last_utc.  Do NOT apply _local_to_utc.
+        if not utc_starts:
+            import datetime as _dt
+            from zoneinfo import ZoneInfo
+
+            utc_zone = ZoneInfo("UTC")
+            all_hours: list[int] = []
+            for system, files in self._info.khz_files.items():
+                if system.endswith("_cfg") or not files:
+                    continue
+                for f in files:
+                    if f.suffix != ".bin":
+                        continue
+                    with contextlib.suppress(ValueError):
+                        all_hours.append(int(f.name[:2]))
+            if all_hours:
+                d = self.date
+                t_start = _dt.datetime(d.year, d.month, d.day, min(all_hours), 0, 0,
+                                       tzinfo=utc_zone).replace(tzinfo=None)
+                t_end = (
+                    _dt.datetime(d.year, d.month, d.day, max(all_hours), 0, 0,
+                                 tzinfo=utc_zone)
+                    + _dt.timedelta(hours=1)
+                ).replace(tzinfo=None)
+                utc_starts.append(t_start)
+                utc_ends.append(t_end)
+
+        # --- 3. Trigger directories (last resort: start only, local time) ---
+        if not utc_starts:
+            for dirs in self._info.trigger_dirs.values():
+                for d in dirs:
+                    parts = d.name.split("__")  # TRIGGER__YYYY-MM-DD__HH-MM
+                    if len(parts) >= 3:
+                        with contextlib.suppress(ValueError):
+                            utc_starts.append(
+                                _local_to_utc(
+                                    pd.Timestamp(f"{parts[1]} {parts[2].replace('-', ':')}")
+                                )
+                            )
+
+        if not utc_starts:
+            logger.debug(f"_infer_timestamps: no timestamps found for {self.date_str}")
+            return
+
+        self.start_timestamp = min(utc_starts)
+        self.end_timestamp = max(utc_ends) if utc_ends else None
+
+    def addTime(self, time_zone: str = "Europe/Paris") -> int:  # noqa: N802
+        """Compute and store start_timestamp / end_timestamp (naive UTC).
+
+        Unlike :class:`~python_magnetrun.magnetdata_pandas.PandasMagnetData`,
+        ``HybridData`` does not hold pre-loaded DataFrames, so ``addTime()``
+        only sets the metadata timestamps. Time arrays from
+        :meth:`read_khz_variable` / :meth:`read_rms_variable` remain
+        relative (elapsed seconds from first sample).
+
+        Parameters
+        ----------
+        time_zone : str
+            IANA timezone of the source date/time data.
+
+        Returns
+        -------
+        int
+            ``0`` on success.
+        """
+        self._infer_timestamps(time_zone=time_zone)
+        return 0
+
+    def getStartDate(self, group: str | None = None) -> tuple:  # noqa: N802
+        """Return start/end date and time strings derived from file metadata.
+
+        Parameters
+        ----------
+        group : str, optional
+            Unused; accepted for interface compatibility.
+
+        Returns
+        -------
+        tuple
+            ``(start_date, start_time, end_date, end_time)`` strings in
+            ``"%Y.%m.%d"`` / ``"%H:%M:%S"`` format, or empty tuple when
+            timestamps are unavailable.
+        """
+        if self.start_timestamp is None:
+            self._infer_timestamps()
+        if self.start_timestamp is None:
+            return ()
+        fmt_date = "%Y.%m.%d"
+        fmt_time = "%H:%M:%S"
+        return (
+            self.start_timestamp.strftime(fmt_date),
+            self.start_timestamp.strftime(fmt_time),
+            self.end_timestamp.strftime(fmt_date) if self.end_timestamp else "",
+            self.end_timestamp.strftime(fmt_time) if self.end_timestamp else "",
+        )
+
+    def getDuration(self, group: str | None = None) -> float:  # noqa: N802
+        """Return the duration of the dataset in seconds.
+
+        Parameters
+        ----------
+        group : str, optional
+            Unused; accepted for interface compatibility.
+
+        Returns
+        -------
+        float
+            ``(end_timestamp - start_timestamp).total_seconds()`` [s], or
+            ``0.0`` when either timestamp is unavailable.
+        """
+        if self.start_timestamp is None or self.end_timestamp is None:
+            return 0.0
+        return (self.end_timestamp - self.start_timestamp).total_seconds()
+
+    def getKeys(self) -> list[str]:
+        logger.debug(f"HybridData/getKeys: keys={self.Keys}")
         return self.Keys
 
     def getInfo(self) -> HybridDataInfo:
@@ -285,13 +540,12 @@ class HybridData:
         print("=" * 60)
         print(f"Base directory: {self.base_dir}")
         print(f"FEPC Systems: {', '.join(self._info.fepc_systems)}")
-        print()
 
         print("Data availability:")
-        print(f"  kHz data:     {'✓' if self._info.khz_available else '✗'}")
-        print(f"  RMS data:     {'✓' if self._info.rms_available else '✗'}")
-        print(f"  Trigger data: {'✓' if self._info.trigger_available else '✗'}")
-        print()
+        print(f"  kHz data:      {'yes' if self._info.khz_available else 'no'}")
+        print(f"  RMS data:      {'yes' if self._info.rms_available else 'no'}")
+        print(f"  Trigger data:  {'yes' if self._info.trigger_available else 'no'}")
+        print(f"  VProcess data: {'yes' if self._info.vprocess_available else 'no'}")
 
         if self._info.khz_available:
             print("kHz files:")
@@ -316,11 +570,16 @@ class HybridData:
             for system, files in self._info.trigger_files.items():
                 print(f"  {system}: {len(files)} files")
 
+        if self._info.vprocess_available:
+            print(f"VProcess files: {len(self._info.vprocess_files)} files")
+
+        print(flush=True)
+
     # -------------------------------------------------------------------------
     # kHz Data Methods
     # -------------------------------------------------------------------------
 
-    def load_khz_config(self, system: str) -> Optional[Any]:
+    def load_khz_config(self, system: str) -> Any:
         """
         Load kHz configuration for a FEPC system
 
@@ -331,8 +590,15 @@ class HybridData:
 
         Returns
         -------
-        FEPCConfig or None
-            Configuration object or None if not available
+        FEPCConfig
+            Configuration object
+
+        Raises
+        ------
+        ImportError
+            If the fepc_reader module is not available
+        FileNotFoundError
+            If no CFG file is found for the given system
         """
         logger.debug(f"load_khz_config: system={system}")
         if FEPCConfig is None or parse_cfg_file is None:
@@ -342,20 +608,14 @@ class HybridData:
             return self._khz_configs[system]
 
         cfg_key = f"{system}_cfg"
-        if cfg_key not in self._info.khz_files:
-            logger.warning(f"No CFG file found for {system}")
-            return None
+        if cfg_key not in self._info.khz_files or not self._info.khz_files[cfg_key]:
+            raise FileNotFoundError(f"No CFG file found for {system}")
 
-        cfg_files = self._info.khz_files[cfg_key]
-        if not cfg_files:
-            logger.warning(f"No CFG file found for cfg_key={cfg_key}")
-            return None
-
-        config = parse_cfg_file(str(cfg_files[0]))
+        config = parse_cfg_file(str(self._info.khz_files[cfg_key][0]))
         self._khz_configs[system] = config
         return config
 
-    def get_khz_variables(self, system: str) -> Dict[str, List[str]]:
+    def get_khz_variables(self, system: str) -> dict[str, list[str]]:
         """
         Get available kHz variables for a FEPC system
 
@@ -371,9 +631,6 @@ class HybridData:
         """
         logger.debug(f"get_khz_variables: system={system}")
         config = self.load_khz_config(system)
-        if config is None:
-            raise ValueError(f"No configuration found for {system}")
-            # return {"analog": [], "digital": []}
 
         analog_vars = []
         digital_vars = []
@@ -381,22 +638,24 @@ class HybridData:
         for card in config.cards:
             if card.card_type == "ANA":
                 for var in card.variable_names:
-                    analog_vars.append(f"slot{card.slot}/{var}")
+                    # analog_vars.append(f"slot{card.slot}/{var}")
+                    analog_vars.append(var)
             else:
                 for var in card.variable_names:
-                    digital_vars.append(f"slot{card.slot}/{var}")
+                    # digital_vars.append(f"slot{card.slot}/{var}")
+                    digital_vars.append(var)
 
-        return {"analog": analog_vars, "digital": digital_vars}
+        return {"analog": natsorted(analog_vars), "digital": natsorted(digital_vars)}
 
     def read_khz_variable(
         self,
         system: str,
         variable: str,
-        slot: Optional[int] = None,
-        hours: Optional[List[int]] = None,
+        slot: int | None = None,
+        hours: range | list[int] | None = None,
         apply_calib: bool = True,
-        cnv_dir: Optional[str] = None,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        cnv_dir: str | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Read kHz data for a specific variable
 
@@ -408,7 +667,7 @@ class HybridData:
             Variable name
         slot : int, optional
             Card slot number (auto-detected if not provided)
-        hours : list of int, optional
+        hours : range or list of int, optional
             Hours to read (default: all available)
         apply_calib : bool, optional
             Apply calibration (default: True)
@@ -420,21 +679,27 @@ class HybridData:
         tuple
             (data_array, time_array)
         """
-        logger.debug(f"read_khz_variable: system={system}, variable={variable}")
-
-        if read_hour_file is None or calibrate_channel is None:
+        logger.debug(
+            f"read_kHz_variable: system={system}, variable={variable}, slot={slot}, hours={hours}, apply_calib={apply_calib}, cnv_dir={cnv_dir}"
+        )
+        if (
+            read_hour_file is None
+            or calibrate_channel is None
+            or compute_hour_t0 is None
+        ):
             raise ImportError("fepc_reader module not available")
 
         config = self.load_khz_config(system)
-        if config is None:
-            raise ValueError(f"No configuration found for {system}")
 
         # Find variable slot and channel
         var_slot = slot
         var_channel = None
         var_card = None
 
-        for card in config.cards:
+        for _i, card in enumerate(config.cards):
+            logger.debug(
+                f"Checking card slot {card.slot} with variables: {card.variable_names}"
+            )
             if variable in card.variable_names:
                 var_slot = card.slot
                 var_channel = card.variable_names.index(variable)
@@ -450,16 +715,15 @@ class HybridData:
         bin_files = sorted(khz_dir.glob(bin_pattern))
 
         if hours is not None:
-            # Filter by hour
+            # Filename hours are UTC; hours parameter is UTC.
             filtered_files = []
             for f in bin_files:
-                # Extract hour from filename (XXHOST_...)
                 try:
-                    hour = int(f.name[:2])
-                    if hour in hours:
+                    if int(f.name[:2]) in hours:
                         filtered_files.append(f)
                 except ValueError:
                     pass
+            logger.debug(f"filtered_files: {filtered_files}")
             bin_files = filtered_files
 
         if not bin_files:
@@ -468,17 +732,36 @@ class HybridData:
         # Get card type (var_card is guaranteed to be non-None here)
         card_type = var_card.card_type
 
-        # Read data from all files
+        # Global t0 = HH:00:00 local time of the first file.
+        # Each file is read with its own file-local t0 (returning timestamps in 0..3600s),
+        # then shifted by (file_t0 - global_t0) so all timestamps share the same origin.
+        global_t0 = compute_hour_t0(str(bin_files[0]), self.date_str)
+
         all_data = []
+        all_timestamps = []
         debug = logger.isEnabledFor(logging.DEBUG)
         for bin_file in bin_files:
             logger.debug(f"Reading {bin_file.name}...")
-            hour_data = read_hour_file(
-                str(bin_file), card_type, endian=self.endian, debug=debug
+            file_t0 = compute_hour_t0(str(bin_file), self.date_str)
+            logger.debug(
+                "file_t0: %s, global_t0: %s, offset: %s seconds",
+                file_t0,
+                global_t0,
+                file_t0 - global_t0,
+            )
+            hour_data, hour_timestamps = read_hour_file(
+                str(bin_file), card_type, endian=self.endian, t0=file_t0, debug=debug
+            )
+            # Shift file-local timestamps to be relative to global_t0
+            offset = file_t0 - global_t0
+            hour_timestamps = np.where(
+                np.isnan(hour_timestamps), np.nan, hour_timestamps + offset
             )
             all_data.append(hour_data[:, var_channel])
+            all_timestamps.append(hour_timestamps)
 
         data = np.concatenate(all_data)
+        time = np.concatenate(all_timestamps)  # elapsed seconds from global_t0
 
         # Apply calibration
         if apply_calib and card_type == "ANA":
@@ -486,9 +769,11 @@ class HybridData:
                 cnv_dir = str(khz_dir)
             data = calibrate_channel(data, var_card, var_channel, cnv_dir)
 
-        # Create time array (1 kHz sampling)
-        sampling_freq = 1000  # 1 kHz
-        time = np.arange(len(data)) / sampling_freq
+        if np.all(np.isnan(data)):
+            logger.warning(
+                f"read_khz_variable: all-NaN result for {system}/{variable} — "
+                f"check calibration files in {cnv_dir or khz_dir}"
+            )
 
         return data, time
 
@@ -521,14 +806,14 @@ class HybridData:
         rms_files = self._info.rms_files[system]
         if file_idx >= len(rms_files):
             raise ValueError(
-                f"File index {file_idx} out of range (max: {len(rms_files)-1})"
+                f"File index {file_idx} out of range (max: {len(rms_files) - 1})"
             )
 
         rms_file = rms_files[file_idx]
         reader = RMSFileReader(str(rms_file), endian=self.endian)
         return reader.read()
 
-    def get_rms_variables(self, system: str, file_idx: int = 0) -> Dict[str, List[str]]:
+    def get_rms_variables(self, system: str, file_idx: int = 0) -> dict[str, list[str]]:
         """
         Get available RMS variables for a FEPC system
 
@@ -567,7 +852,7 @@ class HybridData:
             else:
                 digital_vars.append(row["name"])
 
-        return {"analog": analog_vars, "digital": digital_vars}
+        return {"analog": natsorted(analog_vars), "digital": natsorted(digital_vars)}
 
     def get_rms_variable_info(self, system: str, file_idx: int = 0) -> pd.DataFrame:
         """
@@ -598,9 +883,9 @@ class HybridData:
         reader = RMSFileReader(str(rms_files[file_idx]), endian=self.endian)
         return reader.get_variable_info()
 
-    def _parse_rms_filename_hour(self, filepath: Path) -> Optional[int]:
+    def _parse_rms_filename_hour(self, filepath: Path) -> int | None:
         """
-        Parse the start hour from an RMS filename
+        Parse the start hour from an RMS filename.
 
         Filename format: {system}_YYYY-MM-DD_HHMM—YYYY-MM-DD_HHMM.rms
         Example: FEPC-LNCMI_2025-01-06_0000—2025-01-06_0100.rms -> returns 0
@@ -613,7 +898,7 @@ class HybridData:
         Returns
         -------
         int or None
-            Start hour (0-23) or None if parsing fails
+            Start hour (0-23) in **UTC**, or None if parsing fails.
         """
         import re
 
@@ -629,9 +914,9 @@ class HybridData:
         self,
         system: str,
         variable: str,
-        file_idx: Optional[int] = None,
-        hours: Optional[List[int]] = None,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        file_idx: int | None = None,
+        hours: range | list[int] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Read RMS data for a specific variable
 
@@ -643,7 +928,7 @@ class HybridData:
             Variable name
         file_idx : int, optional
             Index of a specific RMS file to load. If provided, only this file is loaded.
-        hours : list of int, optional
+        hours : range or list of int, optional
             List of hours to load (0-23). Files are selected based on their filename start hour.
 
         If both file_idx and hours are None, all available RMS files are loaded.
@@ -671,16 +956,15 @@ class HybridData:
             # Load specific file by index
             if file_idx >= len(rms_files):
                 raise ValueError(
-                    f"File index {file_idx} out of range (max: {len(rms_files)-1})"
+                    f"File index {file_idx} out of range (max: {len(rms_files) - 1})"
                 )
             files_to_load = [rms_files[file_idx]]
         elif hours is not None:
-            # Filter files by hour
-            files_to_load = []
-            for f in rms_files:
-                hour = self._parse_rms_filename_hour(f)
-                if hour is not None and hour in hours:
-                    files_to_load.append(f)
+            # Filename hours are UTC; hours parameter is UTC.
+            files_to_load = [
+                f for f in rms_files
+                if self._parse_rms_filename_hour(f) in hours
+            ]
             if not files_to_load:
                 raise ValueError(f"No RMS files found for hours {hours}")
             logger.debug(f"Loading {len(files_to_load)} RMS files for hours {hours}")
@@ -694,6 +978,11 @@ class HybridData:
         all_timestamps = []
 
         for rms_file in files_to_load:
+            if not rms_file.exists():
+                logger.warning(
+                    f"read_rms_variable: file no longer exists, skipping: {rms_file}"
+                )
+                continue
             reader = RMSFileReader(str(rms_file), endian=self.endian)
             rms_df = reader.read()
 
@@ -706,6 +995,11 @@ class HybridData:
 
             all_data.append(rms_df[variable].values)
             all_timestamps.append(rms_df.index)
+
+        if not all_data:
+            raise FileNotFoundError(
+                f"read_rms_variable: no readable RMS files remain for {system}"
+            )
 
         # Concatenate arrays
         data = np.concatenate(all_data)
@@ -725,7 +1019,7 @@ class HybridData:
 
         return data, time
 
-    def list_rms_files(self, system: str) -> List[Path]:
+    def list_rms_files(self, system: str) -> list[Path]:
         """
         List available RMS files for a FEPC system
 
@@ -747,10 +1041,158 @@ class HybridData:
         return self._info.rms_files[system]
 
     # -------------------------------------------------------------------------
+    # VProcess Data Methods
+    # -------------------------------------------------------------------------
+
+    def get_vprocess_variables(self) -> dict[str, list[str]]:
+        """Get available variables from the first vprocess file.
+
+        Returns
+        -------
+        dict
+            Dictionary with ``'analog'`` and ``'digital'`` variable lists.
+
+        Raises
+        ------
+        ImportError
+            If vprocess_reader is not available.
+        ValueError
+            If no vprocess files are found.
+        """
+        if VProcessFileReader is None:
+            raise ImportError("vprocess_reader module not available")
+        if not self._info.vprocess_files:
+            raise ValueError("No vprocess files found")
+
+        reader = VProcessFileReader(str(self._info.vprocess_files[0]), endian=self.endian)
+        reader.parse_header()
+
+        analog_vars = natsorted(v.name for v in reader.variables if v.is_analog)
+        digital_vars = natsorted(v.name for v in reader.variables if not v.is_analog)
+
+        return {"analog": analog_vars, "digital": digital_vars}
+
+    def _parse_vprocess_filename_hour(self, filepath: Path) -> int | None:
+        """Return the UTC start hour from a vprocess filename, or None on failure.
+
+        Filename format: ``YYYYMMDD_HHMMSS__YYYYMMDD_HHMMSS.vprocess``
+        """
+        from .vprocess.vprocess_reader import parse_vprocess_filename
+
+        time_range = parse_vprocess_filename(filepath.name)
+        if time_range:
+            return time_range[0].hour
+        return None
+
+    def read_vprocess_variable(
+        self,
+        variable: str,
+        hours: range | list[int] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Read vprocess data for a specific variable.
+
+        Parameters
+        ----------
+        variable : str
+            Variable name (e.g., ``'TT115A'``).
+        hours : range or list of int, optional
+            Local hours to load (0-23).  Files are selected by their UTC
+            start hour converted to French local time.  Loads all files
+            when ``None``.
+
+        Returns
+        -------
+        tuple
+            ``(data_array, time_array)`` where *time* is seconds elapsed
+            from the start of the first sample.
+
+        Raises
+        ------
+        ImportError
+            If vprocess_reader is not available.
+        ValueError
+            If no vprocess files are found or *variable* is not present.
+        FileNotFoundError
+            If no readable files remain after filtering.
+        """
+        if VProcessFileReader is None:
+            raise ImportError("vprocess_reader module not available")
+        if not self._info.vprocess_files:
+            raise ValueError("No vprocess files found")
+
+        if hours is not None:
+            import datetime as _dt
+            from zoneinfo import ZoneInfo
+
+            _tz_paris = ZoneInfo("Europe/Paris")
+            _tz_utc = ZoneInfo("UTC")
+            _date = _dt.date.fromisoformat(self.date_str)
+            files_to_load = []
+            for f in self._info.vprocess_files:
+                utc_hour = self._parse_vprocess_filename_hour(f)
+                if utc_hour is None:
+                    continue
+                _dt_utc = _dt.datetime(
+                    _date.year, _date.month, _date.day,
+                    utc_hour, 0, 0, tzinfo=_tz_utc,
+                )
+                local_hour = _dt_utc.astimezone(_tz_paris).hour
+                if local_hour in hours:
+                    files_to_load.append(f)
+            if not files_to_load:
+                raise ValueError(f"No vprocess files found for hours {hours}")
+            logger.debug(f"Loading {len(files_to_load)} vprocess files for hours {hours}")
+        else:
+            files_to_load = self._info.vprocess_files
+            logger.debug(f"Loading all {len(files_to_load)} vprocess files")
+
+        all_data = []
+        all_timestamps = []
+
+        for vp_file in files_to_load:
+            if not vp_file.exists():
+                logger.warning(f"read_vprocess_variable: file missing, skipping: {vp_file}")
+                continue
+            reader = VProcessFileReader(str(vp_file), endian=self.endian)
+            df = reader.read()
+
+            if variable not in df.columns:
+                available = ", ".join(list(df.columns)[:10])
+                raise ValueError(
+                    f"Variable '{variable}' not found in {vp_file.name}. "
+                    f"Available: {available}..."
+                )
+
+            all_data.append(df[variable].values)
+            all_timestamps.append(df.index)
+
+        if not all_data:
+            raise FileNotFoundError(
+                f"read_vprocess_variable: no readable vprocess files remain for {variable!r}"
+            )
+
+        data = np.concatenate(all_data)
+        timestamps = pd.Index(np.concatenate([t.to_numpy() for t in all_timestamps]))
+        time_ns = timestamps.to_numpy().astype("datetime64[ns]").astype(np.int64)
+        time = (time_ns - time_ns[0]) / 1e9
+
+        return data, time
+
+    def list_vprocess_files(self) -> list[Path]:
+        """List available vprocess files for this day.
+
+        Returns
+        -------
+        list of Path
+            Sorted list of vprocess file paths.
+        """
+        return self._info.vprocess_files
+
+    # -------------------------------------------------------------------------
     # Trigger Data Methods
     # -------------------------------------------------------------------------
 
-    def list_trigger_events(self, system: str) -> List[Dict[str, Any]]:
+    def list_trigger_events(self, system: str) -> list[dict[str, Any]]:
         """
         List trigger events (directories) for a FEPC system
 
@@ -787,7 +1229,7 @@ class HybridData:
 
         return events
 
-    def list_trigger_files(self, system: str) -> List[Path]:
+    def list_trigger_files(self, system: str) -> list[Path]:
         """
         List available trigger files for a FEPC system
 
@@ -805,27 +1247,175 @@ class HybridData:
             return []
         return self._info.trigger_files[system]
 
+    def get_trigger_variables(self, system: str) -> dict[str, list[str]]:
+        """Get available trigger variables for a FEPC system.
+
+        Reads the FEPC configuration from the first available trigger event
+        directory for *system*.
+
+        Parameters
+        ----------
+        system : str
+            FEPC system name.
+
+        Returns
+        -------
+        dict
+            Dictionary with ``'analog'`` and ``'digital'`` variable lists.
+
+        Raises
+        ------
+        ImportError
+            If trigger_reader is not available.
+        ValueError
+            If no trigger directories are found for *system*.
+        FileNotFoundError
+            If no CFG file is found in the trigger event directory.
+        """
+        if TriggerFileReader is None:
+            raise ImportError("trigger_reader module not available")
+        if system not in self._info.trigger_dirs or not self._info.trigger_dirs[system]:
+            raise ValueError(f"No trigger directories found for {system!r}")
+
+        reader = TriggerFileReader(
+            self._info.trigger_dirs[system][0], system, endian=self.endian
+        )
+        var_info = reader.get_variable_info()
+
+        analog_vars = natsorted(
+            var_info.loc[var_info["type"] == "float32", "name"].tolist()
+        )
+        digital_vars = natsorted(
+            var_info.loc[var_info["type"] == "bool", "name"].tolist()
+        )
+        return {"analog": analog_vars, "digital": digital_vars}
+
+    def read_trigger_variable(
+        self,
+        system: str,
+        variable: str,
+        apply_calib: bool = True,
+        cnv_dir: str | None = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Read a variable across all trigger events for a FEPC system.
+
+        Trigger events are concatenated in chronological order.  Time is
+        expressed as seconds elapsed since midnight of :attr:`date_str`, the
+        same origin used by :meth:`read_khz_variable` and
+        :meth:`read_rms_variable`.
+
+        Parameters
+        ----------
+        system : str
+            FEPC system name.
+        variable : str
+            Variable name (e.g. ``'I_H1'``).
+        apply_calib : bool, optional
+            Apply calibration for analog channels (default: ``True``).
+        cnv_dir : str, optional
+            Directory containing CNV calibration files.  Defaults to the
+            trigger event's system subdirectory.
+
+        Returns
+        -------
+        data : np.ndarray
+            Concatenated 1-D array across all trigger events.
+        time : np.ndarray
+            Seconds from midnight of :attr:`date_str`, concatenated across
+            all trigger events.
+
+        Raises
+        ------
+        ImportError
+            If trigger_reader is not available.
+        ValueError
+            If no trigger directories are found for *system*.
+        FileNotFoundError
+            If no readable trigger events remain.
+        """
+        import datetime as _dt
+
+        if TriggerFileReader is None:
+            raise ImportError("trigger_reader module not available")
+        if system not in self._info.trigger_dirs or not self._info.trigger_dirs[system]:
+            raise ValueError(f"No trigger directories found for {system!r}")
+
+        day_start = _dt.datetime.combine(self.date, _dt.time.min)
+
+        all_data: list[np.ndarray] = []
+        all_times: list[np.ndarray] = []
+
+        for trigger_dir in self._info.trigger_dirs[system]:
+            reader = TriggerFileReader(trigger_dir, system, endian=self.endian)
+            try:
+                channel_data, time_from_file_start, file_timestamp = reader.read_variable(
+                    variable, apply_calib=apply_calib, cnv_dir=cnv_dir
+                )
+            except (FileNotFoundError, ValueError) as exc:
+                logger.warning(
+                    f"read_trigger_variable: skipping {trigger_dir.name}: {exc}"
+                )
+                continue
+
+            t0 = (file_timestamp - day_start).total_seconds()
+            all_data.append(channel_data)
+            all_times.append(t0 + time_from_file_start)
+
+        if not all_data:
+            raise FileNotFoundError(
+                f"read_trigger_variable: no readable trigger data for "
+                f"{system!r}/{variable!r}"
+            )
+
+        return np.concatenate(all_data), np.concatenate(all_times)
+
     # -------------------------------------------------------------------------
     # MagnetData-like Interface Methods
     # -------------------------------------------------------------------------
 
-    def getData(self, key: Optional[str] = None) -> Any:
+    def get_group_data(self, group: str) -> "pd.DataFrame":
+        """Not supported for HybridData.
+
+        Raises
+        ------
+        NotImplementedError
+            Always — HybridData organises data by type/system/variable,
+            not by column group.
         """
-        Get data for a specific key (MagnetData-compatible interface)
+        raise NotImplementedError(
+            "get_group_data() is not supported for HybridData. "
+            "Use getData(key) with a 'type/system' or 'type/system/variable' key."
+        )
+
+    def getData(  # type: ignore[override]
+        self,
+        key: str | None = None,
+        downsample=None,
+        *,
+        hours: range | list[int] | None = None,
+    ) -> Any:
+        """Return data for a specific key.
 
         Parameters
         ----------
         key : str, optional
-            Data key in format 'type/system' or 'type/system/variable'
+            Data key in format ``'type/system'`` or ``'type/system/variable'``.
+        downsample : DownsampleConfig, optional
+            Ignored for HybridData — downsampling is handled inside each
+            sub-reader (e.g. :meth:`read_khz_variable`).
+        hours : range or list of int, optional
+            Hours to read (default: all available); keyword-only.
 
         Returns
         -------
-        Data (type depends on the requested data)
+        Any
+            Data type depends on the requested key.
         """
         if key is None:
             return self.Data
 
         parts = key.split("/")
+        logger.debug(f"hybrid_data.getData: key={key}, parts={parts}, hours={hours}")
         if len(parts) < 2:
             raise ValueError(f"Invalid key format: {key}")
 
@@ -835,7 +1425,7 @@ class HybridData:
         if data_type == "kHz":
             if len(parts) >= 3:
                 variable = parts[2]
-                return self.read_khz_variable(system, variable)
+                return self.read_khz_variable(system, variable, hours=hours)
             else:
                 return self.get_khz_variables(system)
 
@@ -846,19 +1436,179 @@ class HybridData:
             return self.load_rms_data(system)
 
         elif data_type == "trigger":
-            return self.list_trigger_files(system)
+            if len(parts) >= 3:
+                variable = parts[2]
+                return self.read_trigger_variable(system, variable)
+            return self.list_trigger_events(system)
 
+        elif data_type == "vprocess":
+            # system holds the variable name (vprocess has no FEPC system layer)
+            return self.read_vprocess_variable(system, hours=hours)
         else:
             raise ValueError(f"Unknown data type: {data_type}")
 
-    def Units(self, debug: bool = False) -> None:
-        """Set units for data (placeholder for MagnetData compatibility)"""
-        # TODO: Implement unit handling
-        pass
+    def load_units_from_json(self, json_file: str, debug: bool = False) -> None:
+        """Populate ``self.units`` from a JSON field-definition file.
 
-    def getUnitKey(self, key: str) -> Tuple:
-        """Get unit for a specific key"""
+        Overrides the base-class implementation to handle the ``kHz/``,
+        ``rms/``, and ``trigger/`` key prefixes used in :attr:`Keys`.
+        JSON entries use the short form ``"SYSTEM/VARIABLE"``; this method
+        matches them against all prefixed variants present in ``self.Keys``.
+        """
+        from ..field_defs import load_defs
+        from ..magnetdata_base import FieldMeta, _make_ureg
+
+        ureg = _make_ureg()
+        field_defs: dict = load_defs(json_file)
+
+        # Build short_key → [full_key, ...] map.
+        # Full keys: "kHz/FEPC-AUX-LNCMI/ALIM1_J1"  →  short: "FEPC-AUX-LNCMI/ALIM1_J1"
+        short_to_fulls: dict[str, list[str]] = {}
+        _prefixes = {"kHz", "rms", "trigger", "vprocess"}
+        for full_key in self.Keys:
+            parts = full_key.split("/", 1)
+            short_key = (
+                parts[1] if len(parts) == 2 and parts[0] in _prefixes else full_key
+            )
+            short_to_fulls.setdefault(short_key, []).append(full_key)
+
+        for json_key, defn in field_defs.items():
+            if json_key.startswith("_"):
+                continue
+            # Accept a direct match (json_key already has a prefix) or a short match.
+            full_keys = (
+                [json_key]
+                if json_key in self.Keys
+                else short_to_fulls.get(json_key, [])
+            )
+            if not full_keys:
+                logger.debug(
+                    f"load_units_from_json: {json_key!r} not in Keys, skipping"
+                )
+                continue
+
+            symbol: str = defn.get("symbol", "")
+            unit_str: str | None = defn.get("unit")
+            label: str = defn.get("label", "")
+            description: str = defn.get("description", "")
+
+            if unit_str is None:
+                pint_unit = None
+            else:
+                try:
+                    parsed = ureg.parse_expression(unit_str)
+                    pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+                except (ValueError, AttributeError) as exc:
+                    raise ValueError(
+                        f"load_units_from_json: cannot parse unit {unit_str!r} for field {json_key!r}"
+                    ) from exc
+
+            meta = FieldMeta(
+                symbol=symbol, unit=pint_unit, label=label, description=description
+            )
+            for full_key in full_keys:
+                self.units[full_key] = (symbol, pint_unit)
+                self.field_meta[full_key] = meta
+                if debug:
+                    logger.debug(
+                        f"load_units_from_json: {json_key!r} → {full_key!r}  symbol={symbol}, unit={pint_unit}"
+                    )
+
+    def Units(self, debug: bool = False, json_file: str | None = None) -> None:
+        """Populate ``self.units`` from a field-definition JSON file.
+
+        Resolution order:
+        1. *json_file* argument (explicit override)
+        2. ``self.defs_file`` set at construction time
+
+        If neither is set, ``self.units`` remains empty (units are unknown).
+        """
+        resolved = json_file or self.defs_file
+        if resolved is not None:
+            self.load_units_from_json(resolved, debug=debug)
+
+    def getUnitKey(self, key: str) -> tuple:
+        """Return ``(symbol, unit)`` for *key*, or ``()`` when not available."""
         return self.units.get(key, ())
+
+    def getFieldMeta(self, key: str):  # type: ignore[override]
+        """Return :class:`FieldMeta` for *key*, or ``None`` when not available."""
+        return self.field_meta.get(key)
+
+    def addData(  # noqa: N802
+        self,
+        key: str,
+        formula: str,
+        symbol: str,
+        unit: Any,  # pint.Unit | str | None
+        label: str,
+        description: str,
+        debug: bool = False,
+    ) -> int:
+        """Register a derived field lazily (stored for future use).
+
+        HybridData does not hold a single in-memory DataFrame, so derived
+        fields cannot be computed eagerly.  This method records the intent so
+        that callers that inspect ``self.field_meta`` can still discover the
+        field's metadata.
+        """
+        from pint.errors import UndefinedUnitError
+
+        from ..magnetdata_base import FieldMeta, _make_ureg
+
+        if isinstance(unit, str) and unit:
+            try:
+                ureg = _make_ureg()
+                parsed = ureg.parse_expression(unit)
+                pint_unit = parsed.units if hasattr(parsed, "units") else parsed
+            except (ValueError, UndefinedUnitError):
+                pint_unit = None
+        else:
+            pint_unit = unit if unit else None
+
+        if key not in self.Keys:
+            self.Keys.append(key)
+        self.units[key] = (symbol, pint_unit)
+        self.field_meta[key] = FieldMeta(
+            symbol=symbol, unit=pint_unit, label=label, description=description
+        )
+        logger.debug(f"HybridData.addData: registered derived key {key!r} (lazy)")
+        return 0
+
+    def extractData(self, keys: list[str]) -> pd.DataFrame:
+        """Not supported for HybridData — use :meth:`getData` per key instead.
+
+        Parameters
+        ----------
+        keys : list[str]
+            Requested keys (unused).
+
+        Raises
+        ------
+        NotImplementedError
+            Always, because HybridData has no single backing DataFrame.
+        """
+        raise NotImplementedError(
+            "HybridData.extractData: not applicable to multi-source data; "
+            "call getData(key) for each key individually"
+        )
+
+    def renameData(self, columns: dict) -> None:
+        """Not supported for HybridData.
+
+        Parameters
+        ----------
+        columns : dict
+            Rename mapping (unused).
+
+        Raises
+        ------
+        NotImplementedError
+            Always, because HybridData has no single backing DataFrame.
+        """
+        raise NotImplementedError(
+            "HybridData.renameData: not applicable to multi-source data"
+        )
 
     # -------------------------------------------------------------------------
     # Plotting Methods (delegating to plotting module)
@@ -868,15 +1618,13 @@ class HybridData:
         self,
         system: str,
         variable: str,
-        hours: Optional[List[int]] = None,
+        hours: range | list[int] | None = None,
         apply_calib: bool = True,
-        cnv_dir: Optional[str] = None,
+        cnv_dir: str | None = None,
         ax=None,
         show: bool = True,
-        save: Optional[str] = None,
-        remove_outliers_method: Optional[str] = None,
-        outlier_threshold: float = 1.5,
-        outlier_window: Optional[int] = None,
+        save: str | None = None,
+        outlier_config: OutlierConfig | None = None,
         **plot_kwargs,
     ):
         """
@@ -890,7 +1638,7 @@ class HybridData:
             FEPC system name
         variable : str
             Variable name
-        hours : list of int, optional
+        hours : range or list of int, optional
             Hours to read (default: all available)
         apply_calib : bool, optional
             Apply calibration (default: True)
@@ -902,12 +1650,8 @@ class HybridData:
             Show plot (default: True)
         save : str, optional
             Save plot to file
-        remove_outliers_method : str, optional
-            Outlier detection method: 'iqr', 'zscore', 'mad', 'percentile'
-        outlier_threshold : float, optional
-            Threshold for outlier detection (default: 1.5)
-        outlier_window : int, optional
-            Rolling window size for local outlier detection
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
         **plot_kwargs : dict
             Additional arguments passed to plt.plot()
 
@@ -916,22 +1660,16 @@ class HybridData:
         tuple
             (fig, ax) matplotlib figure and axes
         """
+        from ..outliers import OutlierDetector
         from . import plotting
-        from .outliers import detect_outliers
 
-        # Perform outlier detection if method specified
+        # Perform outlier detection if config provided
         outlier_result = None
-        if remove_outliers_method:
-            # Read data for outlier detection
+        if outlier_config is not None:
             data, _ = self.read_khz_variable(
                 system, variable, hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir
             )
-            outlier_result = detect_outliers(
-                data,
-                method=remove_outliers_method,
-                threshold=outlier_threshold,
-                window_size=outlier_window,
-            )
+            outlier_result = OutlierDetector(config=outlier_config).detect(data)
 
         return plotting.plot_khz_variable(
             self,
@@ -950,17 +1688,15 @@ class HybridData:
     def plot_khz_variables(
         self,
         system: str,
-        variables: List[str],
-        hours: Optional[List[int]] = None,
+        variables: list[str],
+        hours: range | list[int] | None = None,
         apply_calib: bool = True,
-        cnv_dir: Optional[str] = None,
+        cnv_dir: str | None = None,
         layout: str = "subplots",
         share_x: bool = True,
         show: bool = True,
-        save: Optional[str] = None,
-        remove_outliers_method: Optional[str] = None,
-        outlier_threshold: float = 1.5,
-        outlier_window: Optional[int] = None,
+        save: str | None = None,
+        outlier_config: OutlierConfig | None = None,
         **plot_kwargs,
     ):
         """
@@ -974,7 +1710,7 @@ class HybridData:
             FEPC system name
         variables : list of str
             List of variable names to plot
-        hours : list of int, optional
+        hours : range or list of int, optional
             Hours to read (default: all available)
         apply_calib : bool, optional
             Apply calibration (default: True)
@@ -988,12 +1724,8 @@ class HybridData:
             Show plot (default: True)
         save : str, optional
             Save plot to file
-        remove_outliers_method : str, optional
-            Outlier detection method
-        outlier_threshold : float, optional
-            Threshold for outlier detection (default: 1.5)
-        outlier_window : int, optional
-            Rolling window size for local outlier detection
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
         **plot_kwargs : dict
             Additional arguments passed to plt.plot()
 
@@ -1002,23 +1734,19 @@ class HybridData:
         tuple
             (fig, axes) matplotlib figure and axes
         """
+        from ..outliers import OutlierDetector
         from . import plotting
-        from .outliers import detect_outliers
 
-        # Perform outlier detection for each variable if method specified
+        # Perform outlier detection for each variable if config provided
         outlier_results = None
-        if remove_outliers_method:
+        if outlier_config is not None:
+            detector = OutlierDetector(config=outlier_config)
             outlier_results = {}
             for var in variables:
                 data, _ = self.read_khz_variable(
                     system, var, hours=hours, apply_calib=apply_calib, cnv_dir=cnv_dir
                 )
-                outlier_results[var] = detect_outliers(
-                    data,
-                    method=remove_outliers_method,
-                    threshold=outlier_threshold,
-                    window_size=outlier_window,
-                )
+                outlier_results[var] = detector.detect(data)
 
         return plotting.plot_khz_variables(
             self,
@@ -1039,14 +1767,12 @@ class HybridData:
         self,
         system: str,
         variable: str,
-        file_idx: Optional[int] = None,
-        hours: Optional[List[int]] = None,
+        file_idx: int | None = None,
+        hours: range | list[int] | None = None,
         ax=None,
         show: bool = True,
-        save: Optional[str] = None,
-        remove_outliers_method: Optional[str] = None,
-        outlier_threshold: float = 1.5,
-        outlier_window: Optional[int] = None,
+        save: str | None = None,
+        outlier_config: OutlierConfig | None = None,
         **plot_kwargs,
     ):
         """
@@ -1062,7 +1788,7 @@ class HybridData:
             Variable name
         file_idx : int, optional
             Index of RMS file to load (used if hours is None, default: 0)
-        hours : list of int, optional
+        hours : range or list of int, optional
             List of hours to load (0-23). If provided, file_idx is ignored.
         ax : matplotlib.axes.Axes, optional
             Axes to plot on (creates new figure if None)
@@ -1070,12 +1796,8 @@ class HybridData:
             Show plot (default: True)
         save : str, optional
             Save plot to file
-        remove_outliers_method : str, optional
-            Outlier detection method: 'iqr', 'zscore', 'mad', 'percentile'
-        outlier_threshold : float, optional
-            Threshold for outlier detection (default: 1.5)
-        outlier_window : int, optional
-            Rolling window size for local outlier detection
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
         **plot_kwargs : dict
             Additional arguments passed to plt.plot()
 
@@ -1084,22 +1806,16 @@ class HybridData:
         tuple
             (fig, ax) matplotlib figure and axes
         """
+        from ..outliers import OutlierDetector
         from . import plotting
-        from .outliers import detect_outliers
 
-        # Perform outlier detection if method specified
+        # Perform outlier detection if config provided
         outlier_result = None
-        if remove_outliers_method:
-            # Read data for outlier detection
+        if outlier_config is not None:
             data, _ = self.read_rms_variable(
                 system, variable, file_idx=file_idx, hours=hours
             )
-            outlier_result = detect_outliers(
-                data,
-                method=remove_outliers_method,
-                threshold=outlier_threshold,
-                window_size=outlier_window,
-            )
+            outlier_result = OutlierDetector(config=outlier_config).detect(data)
 
         return plotting.plot_rms_variable(
             self,
@@ -1117,16 +1833,14 @@ class HybridData:
     def plot_rms_variables(
         self,
         system: str,
-        variables: List[str],
-        file_idx: Optional[int] = None,
-        hours: Optional[List[int]] = None,
+        variables: list[str],
+        file_idx: int | None = None,
+        hours: range | list[int] | None = None,
         layout: str = "subplots",
         share_x: bool = True,
         show: bool = True,
-        save: Optional[str] = None,
-        remove_outliers_method: Optional[str] = None,
-        outlier_threshold: float = 1.5,
-        outlier_window: Optional[int] = None,
+        save: str | None = None,
+        outlier_config: OutlierConfig | None = None,
         **plot_kwargs,
     ):
         """
@@ -1142,7 +1856,7 @@ class HybridData:
             List of variable names to plot
         file_idx : int, optional
             Index of RMS file to load
-        hours : list of int, optional
+        hours : range or list of int, optional
             List of hours to load (0-23)
         layout : str, optional
             Plot layout: 'subplots' (default) or 'overlay'
@@ -1152,12 +1866,8 @@ class HybridData:
             Show plot (default: True)
         save : str, optional
             Save plot to file
-        remove_outliers_method : str, optional
-            Outlier detection method
-        outlier_threshold : float, optional
-            Threshold for outlier detection (default: 1.5)
-        outlier_window : int, optional
-            Rolling window size for local outlier detection
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
         **plot_kwargs : dict
             Additional arguments passed to plt.plot()
 
@@ -1166,23 +1876,19 @@ class HybridData:
         tuple
             (fig, axes) matplotlib figure and axes
         """
+        from ..outliers import OutlierDetector
         from . import plotting
-        from .outliers import detect_outliers
 
-        # Perform outlier detection for each variable if method specified
+        # Perform outlier detection for each variable if config provided
         outlier_results = None
-        if remove_outliers_method:
+        if outlier_config is not None:
+            detector = OutlierDetector(config=outlier_config)
             outlier_results = {}
             for var in variables:
                 data, _ = self.read_rms_variable(
                     system, var, file_idx=file_idx, hours=hours
                 )
-                outlier_results[var] = detect_outliers(
-                    data,
-                    method=remove_outliers_method,
-                    threshold=outlier_threshold,
-                    window_size=outlier_window,
-                )
+                outlier_results[var] = detector.detect(data)
 
         return plotting.plot_rms_variables(
             self,
@@ -1198,17 +1904,179 @@ class HybridData:
             **plot_kwargs,
         )
 
+    def plot_vprocess_variable(
+        self,
+        variable: str,
+        hours: range | list[int] | None = None,
+        ax=None,
+        show: bool = True,
+        save: str | None = None,
+        outlier_config: OutlierConfig | None = None,
+        **plot_kwargs,
+    ):
+        """Plot VProcess data for a specific variable.
+
+        This method delegates to :func:`hybrid.plotting.plot_vprocess_variable`.
+
+        Parameters
+        ----------
+        variable : str
+            Variable name.
+        hours : range or list of int, optional
+            Hours to read (default: all available).
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot on (creates new figure if ``None``).
+        show : bool, optional
+            Show plot (default: True).
+        save : str, optional
+            Save plot to file.
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
+        **plot_kwargs : dict
+            Additional arguments passed to the backend.
+
+        Returns
+        -------
+        tuple
+            ``(fig, ax)`` matplotlib figure and axes.
+        """
+        from ..outliers import OutlierDetector
+        from . import plotting
+
+        outlier_result = None
+        if outlier_config is not None:
+            data, _ = self.read_vprocess_variable(variable, hours=hours)
+            outlier_result = OutlierDetector(config=outlier_config).detect(data)
+
+        return plotting.plot_vprocess_variable(
+            self, variable, hours=hours,
+            ax=ax, show=show, save=save,
+            outlier_result=outlier_result, **plot_kwargs,
+        )
+
+    def plot_vprocess_variables(
+        self,
+        variables: list[str],
+        hours: range | list[int] | None = None,
+        layout: str = "subplots",
+        show: bool = True,
+        save: str | None = None,
+        outlier_config: OutlierConfig | None = None,
+        **plot_kwargs,
+    ):
+        """Plot multiple VProcess variables.
+
+        This method delegates to :func:`hybrid.plotting.plot_vprocess_variables`.
+
+        Parameters
+        ----------
+        variables : list of str
+            Variable names to plot.
+        hours : range or list of int, optional
+            Hours to read (default: all available).
+        layout : str, optional
+            Plot layout: ``'subplots'`` (default) or ``'overlay'``.
+        show : bool, optional
+            Show plot (default: True).
+        save : str, optional
+            Save plot to file.
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
+        **plot_kwargs : dict
+            Additional arguments passed to the backend.
+
+        Returns
+        -------
+        tuple
+            ``(fig, axes)`` matplotlib figure and axes.
+        """
+        from ..outliers import OutlierDetector
+        from . import plotting
+
+        outlier_results = None
+        if outlier_config is not None:
+            detector = OutlierDetector(config=outlier_config)
+            outlier_results = {}
+            for var in variables:
+                data, _ = self.read_vprocess_variable(var, hours=hours)
+                outlier_results[var] = detector.detect(data)
+
+        return plotting.plot_vprocess_variables(
+            self, variables, hours=hours,
+            layout=layout, show=show, save=save,
+            outlier_results=outlier_results, **plot_kwargs,
+        )
+
+    def plot_trigger_variable(
+        self,
+        system: str,
+        variable: str,
+        apply_calib: bool = True,
+        cnv_dir: str | None = None,
+        ax=None,
+        show: bool = True,
+        save: str | None = None,
+        outlier_config: OutlierConfig | None = None,
+        **plot_kwargs,
+    ):
+        """Plot trigger data for a specific variable.
+
+        This method delegates to :func:`hybrid.plotting.plot_trigger_variable`.
+
+        Parameters
+        ----------
+        system : str
+            FEPC system name.
+        variable : str
+            Variable name.
+        apply_calib : bool, optional
+            Apply calibration (default: True).
+        cnv_dir : str, optional
+            Directory for CNV calibration files.
+        ax : matplotlib.axes.Axes, optional
+            Axes to plot on (creates new figure if ``None``).
+        show : bool, optional
+            Show plot (default: True).
+        save : str, optional
+            Save plot to file.
+        outlier_config : OutlierConfig, optional
+            Outlier detection/handling configuration. ``None`` skips detection.
+        **plot_kwargs : dict
+            Additional arguments passed to the backend.
+
+        Returns
+        -------
+        tuple
+            ``(fig, ax)`` matplotlib figure and axes.
+        """
+        from ..outliers import OutlierDetector
+        from . import plotting
+
+        outlier_result = None
+        if outlier_config is not None:
+            data, _ = self.read_trigger_variable(
+                system, variable, apply_calib=apply_calib, cnv_dir=cnv_dir
+            )
+            outlier_result = OutlierDetector(config=outlier_config).detect(data)
+
+        return plotting.plot_trigger_variable(
+            self, system, variable,
+            apply_calib=apply_calib, cnv_dir=cnv_dir,
+            ax=ax, show=show, save=save,
+            outlier_result=outlier_result, **plot_kwargs,
+        )
+
     def plot_khz_with_rms(
         self,
         system: str,
         khz_variable: str,
-        rms_variable: Optional[str] = None,
-        hours: Optional[List[int]] = None,
+        rms_variable: str | None = None,
+        hours: range | list[int] | None = None,
         apply_calib: bool = True,
-        rms_file_idx: Optional[int] = None,
-        rms_hours: Optional[List[int]] = None,
+        rms_file_idx: int | None = None,
+        rms_hours: range | list[int] | None = None,
         show: bool = True,
-        save: Optional[str] = None,
+        save: str | None = None,
     ):
         """
         Plot kHz and RMS data together for comparison.
@@ -1223,13 +2091,13 @@ class HybridData:
             kHz variable name
         rms_variable : str, optional
             RMS variable name (defaults to khz_variable if None)
-        hours : list of int, optional
+        hours : range or list of int, optional
             Hours to read for kHz data (also used for RMS if rms_hours is None)
         apply_calib : bool, optional
             Apply calibration to kHz data (default: True)
         rms_file_idx : int, optional
             Index of RMS file to load (ignored if rms_hours is provided)
-        rms_hours : list of int, optional
+        rms_hours : range or list of int, optional
             Hours to read for RMS data (defaults to hours if None)
         show : bool, optional
             Show plot (default: True)
@@ -1255,3 +2123,48 @@ class HybridData:
             show=show,
             save=save,
         )
+
+
+def _khz_first_last_utc(hdata: "HybridData") -> tuple[datetime, datetime]:
+    """Return (t_start, t_end) as naive UTC datetimes spanning the kHz bin files.
+
+    Parameters
+    ----------
+    hdata : HybridData
+        A fully initialised :class:`HybridData` instance whose
+        ``_info.khz_files`` has been populated by ``_discover_data``.
+
+    Returns
+    -------
+    tuple[datetime, datetime]
+        ``(t_start, t_end)`` — naive UTC datetimes.
+        *t_start* is ``HH:00:00 UTC`` for the earliest bin-file hour;
+        *t_end* is ``(HH+1):00:00 UTC`` for the latest bin-file hour.
+
+    Raises
+    ------
+    RuntimeError
+        If no kHz bin files are found.
+    """
+    import datetime as _dt
+    from zoneinfo import ZoneInfo
+
+    all_utc_hours: list[int] = []
+    for key, files in hdata._info.khz_files.items():
+        if key.endswith("_cfg"):
+            continue
+        for f in files:
+            with contextlib.suppress(ValueError):
+                all_utc_hours.append(int(Path(f).name[:2]))
+    if not all_utc_hours:
+        raise RuntimeError("No kHz bin files found — cannot determine time range")
+
+    d = _dt.date.fromisoformat(hdata.date_str)
+    utc = ZoneInfo("UTC")
+    t_start = _dt.datetime(d.year, d.month, d.day, min(all_utc_hours), 0, 0,
+                           tzinfo=utc).replace(tzinfo=None)
+    t_end = (
+        _dt.datetime(d.year, d.month, d.day, max(all_utc_hours), 0, 0, tzinfo=utc)
+        + _dt.timedelta(hours=1)
+    ).replace(tzinfo=None)
+    return t_start, t_end

@@ -1,20 +1,55 @@
-import logging
+"""
+Legacy distance helpers for processing pipelines.
+
+The authoritative implementations live in
+:mod:`python_magnetrun.utils.scalar_metrics`.  This module re-exports them
+and keeps the old names for backward compatibility.
+
+.. deprecated::
+    ``calc_mape`` here was misnamed — it computed MAE, not MAPE.
+    Use :func:`~python_magnetrun.utils.scalar_metrics.calc_mae` (for MAE)
+    or :func:`~python_magnetrun.utils.scalar_metrics.calc_mape` (for true
+    MAPE) from :mod:`python_magnetrun.utils.scalar_metrics` instead.
+"""
+
+from __future__ import annotations
+
+import warnings
+
 import numpy as np
 
-logger = logging.getLogger(__name__)
+from ..utils.scalar_metrics import calc_correlation, calc_euclidean, calc_mae
 
 
-def calc_euclidean(actual, predic):
-    return np.sqrt(np.sum((actual - predic) ** 2))
+def calc_mape(actual: np.ndarray, predic: np.ndarray) -> float:
+    """Mean absolute error (misnamed legacy function).
+
+    .. deprecated::
+        This function computes **MAE**, not MAPE, despite its name.
+        Use :func:`~python_magnetrun.utils.scalar_metrics.calc_mae` for
+        MAE or :func:`~python_magnetrun.utils.scalar_metrics.calc_mape`
+        for true MAPE.
+
+    Parameters
+    ----------
+    actual : numpy.ndarray
+        Reference values.
+    predic : numpy.ndarray
+        Comparison values.
+
+    Returns
+    -------
+    float
+        ``mean(|actual - predic|)`` (MAE, not MAPE).
+    """
+    warnings.warn(
+        "processing.distance.calc_mape computes MAE, not MAPE, and is deprecated. "
+        "Use utils.scalar_metrics.calc_mae for MAE "
+        "or utils.scalar_metrics.calc_mape for true MAPE.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return calc_mae(actual, predic)
 
 
-def calc_mape(actual, predic):
-    return np.mean(np.abs(actual - predic))
-
-
-def calc_correlation(actual, predic):
-    a_diff = actual - np.mean(actual)
-    p_diff = predic - np.mean(predic)
-    numerator = np.sum(a_diff * p_diff)
-    denominator = np.sqrt(np.sum(a_diff**2)) * np.sqrt(np.sum(p_diff**2))
-    return numerator / denominator
+__all__ = ["calc_euclidean", "calc_mae", "calc_mape", "calc_correlation"]

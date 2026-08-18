@@ -7,27 +7,32 @@ For each MagnetID list of attached record
 Check record consistency
 """
 
-import sys
-import re
-import datetime
-import lxml.html as lh
 import logging
+import re
+import sys
+from typing import Any
+
+import lxml.html as lh
+
+from ..utils.timestamps import parse_filename_timestamp
+
+# import jsonpickle
+from .connect import download
+from .GObject import GObject
+from .MRecord import MRecord
 
 logger = logging.getLogger(__name__)
 
-# import jsonpickle
-from .. import MRecord
-from .. import GObject
-
-from .connect import download
-
-# for M1:
-# table fileTreeDemo_1, ul, <li  class="file ext_txt">, <a href=.., rel="filename" /a> </li>
-
 
 def getTable(
-    session, url_data, index, indices, delimiter="//tbody", param=None, debug=False
-):
+    session: Any,
+    url_data: str,
+    index: int,
+    indices: list,
+    delimiter: str = "//tbody",
+    param: Any = None,
+    debug: bool = False,
+) -> tuple:
     """
     get table data from url_data
 
@@ -45,12 +50,11 @@ def getTable(
         logger.error(f"cannot logging to {url_data}")
         sys.exit(1)
     page.raise_for_status()
-    if debug:
-        logger.debug(f"connect: {page.url}, {page.status_code}, {page.text}")
-        logger.debug(f"index: {index}")
-        logger.debug(f"indices: {indices}")
-        logger.debug(f"params: {param}")
-        # logger.debug(f"page.text={page.text} **")
+    logger.debug(f"connect: {page.url}, {page.status_code}, {page.text}")
+    logger.debug(f"index: {index}")
+    logger.debug(f"indices: {indices}")
+    logger.debug(f"params: {param}")
+    # logger.debug(f"page.text={page.text} **")
 
     # Store the contents of the website under doc
     doc = lh.fromstring(page.content)
@@ -63,24 +67,21 @@ def getTable(
     # Create empty list ## Better to have a dict??
     jid = None
     Mid = None
-    Mjid = dict()
-    Mdata = dict()
-    Found = dict()
+    Mjid: dict[str, Any] = dict()
+    Mdata: dict[str, Any] = dict()
+    Found: dict[str, Any] = dict()
 
     if not tr_elements:
         return (Mdata, Mjid)
 
-    if debug:
-        logger.debug(f"detected tables[delimiter={delimiter}]: {tr_elements}")
-        for i, t in enumerate(tr_elements[0]):
-            logger.debug(
-                f"{i}: content={t.text_content()}, type={type(t.text_content())}"
-            )
-            for j, d in enumerate(t):
-                logger.debug(f"\t{j}:{d.text_content()}")
+    logger.debug(f"detected tables[delimiter={delimiter}]: {tr_elements}")
+    for i, t in enumerate(tr_elements[0]):
+        logger.debug(f"{i}: content={t.text_content()}, type={type(t.text_content())}")
+        for j, d in enumerate(t):
+            logger.debug(f"\t{j}:{d.text_content()}")
 
     # For each row, store each first element (header) and an empty list
-    for i, t in enumerate(tr_elements[0]):
+    for _i, t in enumerate(tr_elements[0]):
         name = t.text_content()
         # print(f"name[{i}]={name}")
         # get date ID status comment from sub element
@@ -98,7 +99,7 @@ def getTable(
         # shall check wether key is already defined for sanity
         if Mid == "-":
             logger.warning(f"{name} index: no entry")
-        else:
+        elif Mid is not None:
             if Mid in Mdata:
                 Found[Mid] = Found[Mid] + 1
                 Mid = f"{Mid}_{Found[Mid]}"
@@ -114,15 +115,17 @@ def getTable(
 
 
 def getMaterial(
-    session, materialID: int | None, url_materials, Mats: dict, debug=False
-):
+    session: Any,
+    materialID: int | None,
+    url_materials: str,
+    Mats: dict,
+    debug: bool = False,
+) -> None:
     """get material"""
     # logger.info(f'getMaterial({materialID})')
 
     if materialID is None:
-        r = session.post(
-            url_materials, data={"compact:": "on", "formsubmit": "OK"}, verify=True
-        )
+        r = session.post(url_materials, data={"compact:": "on", "formsubmit": "OK"}, verify=True)
         r.raise_for_status()
         # print("post Material: ", r.url, r.status_code)
         html = lh.fromstring(r.text.encode(r.encoding))
@@ -130,17 +133,16 @@ def getMaterial(
         elasticlimits = html.xpath('//input[@name="LE"]/@value')
         refs = html.xpath('//input[@name="REF"]/@value')
         nuances = html.xpath('//input[@name="NUANCE"]/@value')
-        if debug:
-            if len(Mats.keys()) != len(refs) - 1:
-                logger.debug("Materials in main list:", len(refs) - 1)
+        if len(Mats.keys()) != len(refs) - 1:
+            logger.debug(f"Materials in main list: {len(refs) - 1}")
 
         for i, ref in enumerate(refs):
             # ref is lxml.etree._ElementUnicodeResult
             if ref not in Mats and "finir" not in ref:
                 logger.debug(
-                    f"ref: {ref}, type: {type(ref)}, sigma: {sigmas[i]}, elasticlimit: {elasticlimits[i]}"
+                    f"ref: {ref}, type: {type(ref)}, sigma: {sigmas[i]}, elasticlimit: {elasticlimits[i]}"  # noqa: E501
                 )
-                Mats[ref] = GObject.GObject(
+                Mats[ref] = GObject(
                     str(ref),
                     "",
                     "",
@@ -165,7 +167,7 @@ def getMaterial(
         nuance = html.xpath('//input[@name="NUANCE"]/@value')[-1]
         # print(materialID, nuance)
         if materialID not in Mats:
-            Mats[materialID] = GObject.GObject(
+            Mats[materialID] = GObject(
                 str(materialID),
                 "",
                 "",
@@ -180,13 +182,13 @@ def getMaterial(
 
 
 def getPartCADref(
-    session,
-    url_data,
-    Parts,
+    session: Any,
+    url_data: str,
+    Parts: dict,
     params: dict | None = None,
     part_type: str = "helix",
     debug: bool = False,
-):
+) -> bool:
     """get cadref and material for parts
 
     Args:
@@ -214,8 +216,8 @@ def getPartCADref(
 
     delimiter = "//tbody"
     tr_elements = doc.xpath(delimiter)
-    print(f"getPartCADref: detected tables[delimiter={delimiter}]: {tr_elements}")
-    for i, t in enumerate(tr_elements[0]):
+    logger.debug(f"getPartCADref: detected tables[delimiter={delimiter}]: {tr_elements}")
+    for _i, t in enumerate(tr_elements[0]):
         name = []
         for j, d in enumerate(t):
             name.append(d.text_content())
@@ -229,7 +231,7 @@ def getPartCADref(
     return True
 
 
-def getRingCADref(session, url_data, Parts, debug: bool = False):
+def getRingCADref(session: Any, url_data: str, Parts: dict, debug: bool = False) -> bool:
     """get CAD ref and material for rings from Bague.php
 
     Rings table columns: ID, Référence, Référence BE, Matériaux, Fichiers
@@ -262,10 +264,9 @@ def getRingCADref(session, url_data, Parts, debug: bool = False):
 
     for script in scripts:
         if "datatable" in script.lower():
-            if debug:
-                logger.debug(
-                    f"getRingCADref: DataTables script content (first 2000 chars): {script[:2000]}"
-                )
+            logger.debug(
+                f"getRingCADref: DataTables script content (first 2000 chars): {script[:2000]}"  # noqa: E501
+            )
 
             if "ajax" in script.lower() or "data" in script.lower():
                 # Look for ajax URL pattern
@@ -273,11 +274,11 @@ def getRingCADref(session, url_data, Parts, debug: bool = False):
 
                 # Common patterns in DataTables configuration
                 patterns = [
-                    r'sAjaxSource\s*:\s*["\']([^"\']+)["\']',  # sAjaxSource: '?get' or sAjaxSource: 'file.php'
-                    r'ajax\s*:\s*{\s*["\']?url["\']?\s*:\s*["\']([^"\']+)["\']',  # ajax: { url: "file.php" }
+                    r'sAjaxSource\s*:\s*["\']([^"\']+)["\']',  # sAjaxSource: '?get' or sAjaxSource: 'file.php'  # noqa: E501
+                    r'ajax\s*:\s*{\s*["\']?url["\']?\s*:\s*["\']([^"\']+)["\']',  # ajax: { url: "file.php" }  # noqa: E501
                     r'ajax\s*:\s*["\']([^"\']+\.php[^"\']*)["\']',  # ajax: "file.php"
                     r'data\s*:\s*["\']([^"\']+\.php[^"\']*)["\']',  # data: "file.php"
-                    r'["\']url["\']\s*:\s*["\']([^"\']+\.php[^"\']*)["\']',  # "url": "file.php"
+                    r'["\']url["\']\s*:\s*["\']([^"\']+\.php[^"\']*)["\']',  # "url": "file.php"  # noqa: E501
                     r'src\s*:\s*["\']([^"\']+\.php[^"\']*)["\']',  # src: "file.php"
                 ]
 
@@ -286,7 +287,7 @@ def getRingCADref(session, url_data, Parts, debug: bool = False):
                     if match:
                         ajax_url = match.group(1)
                         logger.debug(
-                            f"getRingCADref: Found AJAX URL with pattern '{pattern[:50]}...': {ajax_url}"
+                            f"getRingCADref: Found AJAX URL with pattern '{pattern[:50]}...': {ajax_url}"  # noqa: E501
                         )
                         break
                 if ajax_url:
@@ -294,9 +295,7 @@ def getRingCADref(session, url_data, Parts, debug: bool = False):
 
     # If no AJAX URL found, try common DataTables endpoints
     if not ajax_url:
-        logger.debug(
-            "getRingCADref: No AJAX URL found in scripts, trying common endpoints"
-        )
+        logger.debug("getRingCADref: No AJAX URL found in scripts, trying common endpoints")
         # Common DataTables data endpoints
         common_endpoints = ["data.php", "getData.php", "getBague.php", "bague_data.php"]
 
@@ -316,13 +315,11 @@ def getRingCADref(session, url_data, Parts, debug: bool = False):
                         test_data = json.loads(test_res.text)
                         if "data" in test_data:
                             ajax_url = endpoint
-                            logger.debug(
-                                f"getRingCADref: Found working endpoint: {endpoint}"
-                            )
+                            logger.debug(f"getRingCADref: Found working endpoint: {endpoint}")
                             break
                     except json.JSONDecodeError:
                         continue
-            except Exception as e:
+            except (OSError, ValueError, RuntimeError) as e:
                 logger.debug(f"getRingCADref: Endpoint {endpoint} failed: {e}")
                 continue
 
@@ -343,39 +340,32 @@ def getRingCADref(session, url_data, Parts, debug: bool = False):
                 data = json.loads(ajax_res.text)
 
                 # DataTables can use 'data' or 'aaData' key
-                data_key = (
-                    "data" if "data" in data else "aaData" if "aaData" in data else None
-                )
+                data_key = "data" if "data" in data else "aaData" if "aaData" in data else None
 
                 if data_key and isinstance(data[data_key], list):
                     logger.debug(
-                        f"getRingCADref: Processing {len(data[data_key])} rows from JSON (key: {data_key})"
+                        f"getRingCADref: Processing {len(data[data_key])} rows from JSON (key: {data_key})"  # noqa: E501
                     )
 
                     for idx, row in enumerate(data[data_key]):
-                        if debug:
-                            logger.debug(f"getRingCADref: row {idx}: {row}")
+                        logger.debug(f"getRingCADref: row {idx}: {row}")
 
                         # Row can be dict or list - handle both formats
                         if isinstance(row, dict):
-                            # Use named keys (REF, REFBE) or string numeric keys ('2', '3', '4', '5')
-                            name = str(
-                                row.get("REF", row.get("2", ""))
-                            ).strip()  # Référence
+                            # Use named keys (REF, REFBE) or string numeric keys ('2', '3', '4', '5')  # noqa: E501
+                            name = str(row.get("REF", row.get("2", ""))).strip()  # Référence
                             cad_ref = str(
                                 row.get("REFBE", row.get("3", ""))
                             ).strip()  # Référence BE
-                            material_raw = str(
-                                row.get("4", "")
-                            ).strip()  # Matériaux (HTML)
+                            material_raw = str(row.get("4", "")).strip()  # Matériaux (HTML)
                         elif isinstance(row, list) and len(row) >= 6:
-                            # Array format: [ID, Date, Référence, Référence BE, Matériaux, Fichiers]
+                            # Array format: [ID, Date, Référence, Référence BE, Matériaux, Fichiers]  # noqa: E501
                             name = str(row[2]).strip()  # Référence
                             cad_ref = str(row[3]).strip()  # Référence BE
                             material_raw = str(row[4]).strip()  # Matériaux
                         else:
                             logger.warning(
-                                f"getRingCADref: Unexpected row format at index {idx}: {type(row)}"
+                                f"getRingCADref: Unexpected row format at index {idx}: {type(row)}"  # noqa: E501
                             )
                             continue
 
@@ -389,8 +379,8 @@ def getRingCADref(session, url_data, Parts, debug: bool = False):
                             material = material_raw
 
                         # Geometry is derived from CAD Ref by removing suffix letter
-                        # Remove 2 chars if ends with "-X" (e.g., "HL-27-031-C" → "HL-27-031")
-                        # Remove 1 char if ends with "X" only (e.g., "HL-27-034C" → "HL-27-034")
+                        # Remove 2 chars if ends with "-X" (e.g., "HL-27-031-C" → "HL-27-031")  # noqa: E501
+                        # Remove 1 char if ends with "X" only (e.g., "HL-27-034C" → "HL-27-034")  # noqa: E501
                         if re.search(r"-[A-Za-z]$", cad_ref):
                             geometry = cad_ref[:-2]  # Remove "-X"
                         elif re.search(r"[A-Za-z]$", cad_ref):
@@ -400,75 +390,59 @@ def getRingCADref(session, url_data, Parts, debug: bool = False):
 
                         if name:
                             Parts[name] = [cad_ref, material, geometry, "ring"]
-                            if debug:
-                                logger.debug(
-                                    f"getRingCADref: stored ring '{name}': {Parts[name]}"
-                                )
+                            logger.debug(
+                                f"getRingCADref: stored ring '{name}': {Parts[name]}"  # noqa: E501
+                            )
 
-                    ring_count = sum(
-                        1 for v in Parts.values() if len(v) > 3 and v[3] == "ring"
-                    )
+                    ring_count = sum(1 for v in Parts.values() if len(v) > 3 and v[3] == "ring")
                     logger.debug(
-                        f"getRingCADref: total rings stored from AJAX JSON: {ring_count}"
+                        f"getRingCADref: total rings stored from AJAX JSON: {ring_count}"  # noqa: E501
                     )
                     return True
                 else:
-                    logger.debug(
-                        f"getRingCADref: JSON response keys: {list(data.keys())}"
-                    )
+                    logger.debug(f"getRingCADref: JSON response keys: {list(data.keys())}")
                     raise json.JSONDecodeError("No 'data' or 'aaData' key found", "", 0)
 
-            except (json.JSONDecodeError, KeyError) as e:
+            except (json.JSONDecodeError, KeyError):
                 # Not JSON, try parsing as HTML
-                logger.debug(
-                    f"getRingCADref: AJAX response is not JSON, trying HTML parsing"
-                )
+                logger.debug("getRingCADref: AJAX response is not JSON, trying HTML parsing")
 
                 ajax_doc = lh.fromstring(ajax_res.content)
                 tbody = ajax_doc.xpath('//*[@id="datatable"]/tbody')
 
                 if tbody:
                     rows = tbody[0].xpath(".//tr")
-                    logger.debug(
-                        f"getRingCADref: found {len(rows)} rows in AJAX HTML response"
-                    )
+                    logger.debug(f"getRingCADref: found {len(rows)} rows in AJAX HTML response")
 
                     for i, row in enumerate(rows):
                         cells = row.xpath(".//td")
                         if not cells or len(cells) < 5:
-                            if debug:
-                                logger.debug(
-                                    f"getRingCADref: row {i} has {len(cells)} cells, need >= 5"
-                                )
+                            logger.debug(
+                                f"getRingCADref: row {i} has {len(cells)} cells, need >= 5"  # noqa: E501
+                            )
                             continue
 
-                        # Extract cell data: ID, Date, Référence, Référence BE, Matériaux, Fichiers
+                        # Extract cell data: ID, Date, Référence, Référence BE, Matériaux, Fichiers  # noqa: E501
                         # Column 4 (Matériaux) may have <a> tag, so get text_content
                         cell_data = [cell.text_content().strip() for cell in cells]
 
-                        if debug:
-                            logger.debug(f"getRingCADref: row {i} data: {cell_data}")
+                        logger.debug(f"getRingCADref: row {i} data: {cell_data}")
 
-                        # cell_data[0]=ID, [1]=Date, [2]=Référence, [3]=Référence BE, [4]=Matériaux, [5]=Fichiers
+                        # cell_data[0]=ID, [1]=Date, [2]=Référence, [3]=Référence BE, [4]=Matériaux, [5]=Fichiers  # noqa: E501
                         if len(cell_data) >= 5 and cell_data[2]:
                             name = cell_data[2]  # Référence
                             cad_ref = cell_data[3]  # Référence BE
                             material = cell_data[4]  # Matériaux (text from <a> tag)
-                            geometry = (
-                                cell_data[5] if len(cell_data) > 5 else ""
-                            )  # Fichiers
+                            geometry = cell_data[5] if len(cell_data) > 5 else ""  # Fichiers
 
                             Parts[name] = [cad_ref, material, geometry, "ring"]
-                            if debug:
-                                logger.debug(
-                                    f"getRingCADref: stored ring '{name}': {Parts[name]}"
-                                )
+                            logger.debug(
+                                f"getRingCADref: stored ring '{name}': {Parts[name]}"  # noqa: E501
+                            )
 
-                    ring_count = sum(
-                        1 for v in Parts.values() if len(v) > 3 and v[3] == "ring"
-                    )
+                    ring_count = sum(1 for v in Parts.values() if len(v) > 3 and v[3] == "ring")
                     logger.debug(
-                        f"getRingCADref: total rings stored from AJAX HTML: {ring_count}"
+                        f"getRingCADref: total rings stored from AJAX HTML: {ring_count}"  # noqa: E501
                     )
                     return True
 
@@ -483,19 +457,15 @@ def getRingCADref(session, url_data, Parts, debug: bool = False):
         for i, row in enumerate(rows):
             cells = row.xpath(".//td")
             if not cells or len(cells) < 4:
-                if debug:
-                    logger.debug(
-                        f"getRingCADref: row {i} has {len(cells)} cells, need >= 4"
-                    )
+                logger.debug(f"getRingCADref: row {i} has {len(cells)} cells, need >= 4")
                 continue
 
             # Extract cell text: ID, Référence, Référence BE, Matériaux, Fichiers
             cell_data = [cell.text_content().strip() for cell in cells]
 
-            if debug:
-                logger.debug(f"getRingCADref: row {i} data: {cell_data}")
+            logger.debug(f"getRingCADref: row {i} data: {cell_data}")
 
-            # cell_data[0] = ID, [1] = Référence, [2] = Référence BE, [3] = Matériaux, [4] = Fichiers
+            # cell_data[0] = ID, [1] = Référence, [2] = Référence BE, [3] = Matériaux, [4] = Fichiers  # noqa: E501
             if len(cell_data) >= 4 and cell_data[1]:
                 name = cell_data[1]  # Référence
                 cad_ref = cell_data[2]  # Référence BE
@@ -503,44 +473,39 @@ def getRingCADref(session, url_data, Parts, debug: bool = False):
                 geometry = cell_data[4] if len(cell_data) > 4 else ""  # Fichiers
 
                 Parts[name] = [cad_ref, material, geometry, "ring"]
-                if debug:
-                    logger.debug(f"getRingCADref: stored ring '{name}': {Parts[name]}")
+                logger.debug(f"getRingCADref: stored ring '{name}': {Parts[name]}")
 
         ring_count = sum(1 for v in Parts.values() if len(v) > 3 and v[3] == "ring")
         logger.debug(f"getRingCADref: total rings stored from tbody: {ring_count}")
         return True
 
-    logger.warning(
-        "getRingCADref: Could not find ring data in //*[@id='datatable']/tbody"
-    )
+    logger.warning("getRingCADref: Could not find ring data in //*[@id='datatable']/tbody")
     return False
 
 
 def getMagnetPart(
-    session,
-    magnet,
-    url_helices,
-    Magnets,
-    url_materials,
-    Parts,
-    Mats,
-    url_confs,
-    Confs: dict = {},
+    session: Any,
+    magnet: str,
+    url_helices: str,
+    Magnets: dict,
+    url_materials: str,
+    Parts: dict,
+    Mats: dict,
+    url_confs: str,
+    Confs: dict = None,
     datadir: str = ".",
     save: bool = False,
     debug: bool = False,
-):
+) -> None:
     """get parts for a given magnet"""
     logger.info(f"getMagnetPart({magnet})")
     params_helix = (("ref", magnet),)
 
     hindices = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-    logger.debug(
-        f"getTable for : magnet={magnet}, hindices={hindices}, params={params_helix}"
-    )
+    logger.debug(f"getTable for : magnet={magnet}, hindices={hindices}, params={params_helix}")
     res = getTable(session, url_helices, 1, hindices, param=params_helix, debug=False)
     logger.debug(f"getMagnetPart: res={res}")
-    helices = ()
+    helices: Any = ()
     jid = None
     if res:
         helices = res[0]
@@ -566,7 +531,7 @@ def getMagnetPart(
     # get MagConfFile
     hindices = [19]
     logger.debug(
-        f"getTable for conf files: magnet={magnet}, hindices={hindices}, params={params_helix}"
+        f"getTable for conf files: magnet={magnet}, hindices={hindices}, params={params_helix}"  # noqa: E501
     )
     res = getTable(session, url_helices, 1, hindices, param=params_helix, debug=False)
     logger.debug(f"res={res}")
@@ -580,7 +545,7 @@ def getMagnetPart(
     Confs[magnet] = files
     if save:
         for file in files:
-            print(f"file={file}")
+            logger.info(f"file={file}")
             r = download(
                 session,
                 url_data=url_confs,
@@ -598,7 +563,14 @@ def getMagnetPart(
     pass
 
 
-def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
+def getSiteRecord(
+    session: Any,
+    url_data: str,
+    ID: str,
+    Sites: dict,
+    url_downloads: str,
+    debug: bool = False,
+) -> None:
     """get records for a given ID"""
     # looger.info(f'getSiteRecord({ID})')
 
@@ -607,7 +579,7 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
 
     r = session.get(url=url_data, params=params_links, verify=True)
     logger.debug(
-        f"data: url={r.url}, status={r.status_code}, encoding={r.encoding}, text={r.text}"
+        f"data: url={r.url}, status={r.status_code}, encoding={r.encoding}, text={r.text}"  # noqa: E501
     )
     if r.status_code != 200:
         logger.error(f"error {r.status_code} loading {url_data}")
@@ -619,12 +591,7 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
         if f and "~" not in f:
             replace_str = "<a href=" + "'" + url_downloads + "?file="
 
-            data = (
-                f.replace(replace_str, "")
-                .replace("</a>", "")
-                .replace("'>", ": ")
-                .split(": ")
-            )
+            data = f.replace(replace_str, "").replace("</a>", "").replace("'>", ": ").split(": ")
             link = data[0].replace(" ", "%20")
             link = re.sub("<a?(.*?)file=", "", link, flags=re.DOTALL)
             site = link.replace("../../../", "")
@@ -634,8 +601,7 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
             # print(f"link={link}, site={site}, housing={housing}")
             logger.debug(f"data={data}, link={link}, site={site}, housing={housing}")
 
-            tformat = "%Y.%m.%d - %H:%M:%S"
-            timestamp = datetime.datetime.strptime(data[1].replace(".txt", ""), tformat)
+            timestamp = parse_filename_timestamp(data[1])
             # print(f'timestamp: {timestamp}, {type(timestamp)}')
 
             # # Download a specific file
@@ -648,13 +614,13 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
             # actual_id = None
             # if len(lines_items) >= 2:
             #     actual_id = lines_items[1]
-            # logger.debug(f'{magnetID}: actual_id={actual_id}, site={site} link={link}, param={params_downloads}')
+            # logger.debug(f'{magnetID}: actual_id={actual_id}, site={site} link={link}, param={params_downloads}')  # noqa: E501
 
             # if not actual_id:
             #     logger.debug("%s: no name defined for Magnet" % link)
 
             # else:
-            record = MRecord.MRecord(timestamp, housing, ID, link)
+            record = MRecord(timestamp, housing, ID, link)
             created_at = Sites[ID]["commissioned_at"]
             stopped_at = Sites[ID]["decommissioned_at"]
             if record.timestamp < created_at or record.timestamp > stopped_at:
@@ -665,7 +631,7 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
             # data = record.getData(session, url_downloads, save)
 
             # if actual_id != magnetID:
-            #     print(f"record: incoherent data magnetID {magnetID} actual_id: {actual_id} - {timestamp}, {site} {link}" )
+            #     print(f"record: incoherent data magnetID {magnetID} actual_id: {actual_id} - {timestamp}, {site} {link}" )  # noqa: E501
             #     # TO change magnetID in txt once downloaded
             #     data = data.replace(actual_id,magnetID)
             #     # overwrite data
@@ -682,8 +648,13 @@ def getSiteRecord(session, url_data, ID, Sites, url_downloads, debug=False):
 
 
 def getCirrusFiles(
-    session, url_cirrus, feed="A1", datadir=".", save=False, debug=False
-):
+    session: Any,
+    url_cirrus: str,
+    feed: str = "A1",
+    datadir: str = ".",
+    save: bool = False,
+    debug: bool = False,
+) -> dict:
     """
     Get logs and XML configuration files from cirrus.php page
 
@@ -711,7 +682,7 @@ def getCirrusFiles(
         r = session.get(url=url_cirrus, verify=True)
         r.raise_for_status()
         logger.debug(f"cirrus: url={r.url}, status={r.status_code}")
-    except Exception as e:
+    except (OSError, RuntimeError) as e:
         logger.error(f"Error loading cirrus page: {e}")
         return {"logs": [], "xmls": []}
 
@@ -722,7 +693,7 @@ def getCirrusFiles(
     # Parse the HTML response
     doc = lh.fromstring(r.content)
 
-    cirrus_files = {"logs": [], "xmls": []}
+    cirrus_files: dict[str, list] = {"logs": [], "xmls": []}
 
     # Look for links in the card-body div structure
     # Structure: div.card-body > div.col-lg-12 > div.list-group > a
@@ -787,9 +758,7 @@ def getCirrusFiles(
                     if save:
                         # Download the log file
                         try:
-                            log_file_response = session.get(
-                                log_info["url"], verify=True
-                            )
+                            log_file_response = session.get(log_info["url"], verify=True)
                             log_file_response.raise_for_status()
 
                             filename = f"{feed}_{log_info['name']}"
@@ -799,12 +768,10 @@ def getCirrusFiles(
                             with open(filename, "w") as f:
                                 f.write(log_file_response.text)
                             logger.info(f"Saved log file: {filename}")
-                        except Exception as e:
-                            logger.error(
-                                f"Error downloading log {log_info['url']}: {e}"
-                            )
+                        except (OSError, RuntimeError) as e:
+                            logger.error(f"Error downloading log {log_info['url']}: {e}")
 
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.error(f"Error fetching logs from {logs_url}: {e}")
     else:
         logger.warning(f"No logs link found for feed {feed}")
@@ -844,9 +811,7 @@ def getCirrusFiles(
                     if save:
                         # Download the XML file
                         try:
-                            xml_file_response = session.get(
-                                xml_info["url"], verify=True
-                            )
+                            xml_file_response = session.get(xml_info["url"], verify=True)
                             xml_file_response.raise_for_status()
 
                             filename = f"{feed}_{xml_info['name']}"
@@ -856,18 +821,16 @@ def getCirrusFiles(
                             with open(filename, "w") as f:
                                 f.write(xml_file_response.text)
                             logger.info(f"Saved XML file: {filename}")
-                        except Exception as e:
-                            logger.error(
-                                f"Error downloading XML {xml_info['url']}: {e}"
-                            )
+                        except (OSError, RuntimeError) as e:
+                            logger.error(f"Error downloading XML {xml_info['url']}: {e}")
 
-        except Exception as e:
+        except (OSError, RuntimeError) as e:
             logger.error(f"Error fetching XMLs from {xml_url}: {e}")
     else:
         logger.warning(f"No XML link found for feed {feed}")
 
     logger.info(
-        f"Found {len(cirrus_files['logs'])} log files and {len(cirrus_files['xmls'])} XML files for feed {feed}"
+        f"Found {len(cirrus_files['logs'])} log files and {len(cirrus_files['xmls'])} XML files for feed {feed}"  # noqa: E501
     )
 
     return cirrus_files

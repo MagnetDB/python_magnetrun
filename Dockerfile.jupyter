@@ -1,0 +1,44 @@
+FROM python:3.13-slim
+
+LABEL maintainer="christophe.trophime@lncmi.cnrs.fr"
+LABEL description="JupyterLab environment for python_magnetrun"
+
+# Set working directory
+WORKDIR /workspace
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install JupyterLab and common scientific packages
+RUN pip install --no-cache-dir \
+    jupyterlab \
+    ipywidgets \
+    jupyter-archive
+
+# Copy project files
+COPY pyproject.toml ./
+COPY python_magnetrun/ ./python_magnetrun/
+COPY python_magnetcooling/ ./python_magnetcooling/
+
+# Install python_magnetcooling first (as it's a dependency)
+RUN cd python_magnetcooling && \
+    pip install --no-cache-dir -e ".[all]" && \
+    cd ..
+
+# Install python_magnetrun with all dependencies
+RUN pip install --no-cache-dir -e ".[all]"
+
+# Create notebooks directory
+RUN mkdir -p /workspace/notebooks
+
+# Expose JupyterLab port
+EXPOSE 8888
+
+# Set environment variables
+ENV JUPYTER_ENABLE_LAB=yes
+
+# Start JupyterLab
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=''", "--NotebookApp.password=''"]

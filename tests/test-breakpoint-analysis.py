@@ -1,18 +1,23 @@
-import os
 import argparse
+import os
 
-import numpy as np
-from scipy import stats
-import pandas as pd
-from typing import List, Tuple
+import pytest
 
-from python_magnetrun.MagnetRun import MagnetRun
-import matplotlib.pyplot as plt
+pytest.importorskip("matplotlib")
+import matplotlib  # noqa: E402
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+from scipy import stats  # noqa: E402
+
+from python_magnetrun.MagnetRun import MagnetRun  # noqa: E402
 
 
 def detect_breakpoints(
     data: np.ndarray, min_size: int = 30, significance: float = 0.05
-) -> List[Tuple[int, float]]:
+) -> list[tuple[int, float]]:
     """
     Detect breakpoints in time series data using statistical tests.
 
@@ -64,7 +69,7 @@ def detect_breakpoints(
     return sorted(breakpoints, key=lambda x: x[1])  # Sort by significance
 
 
-def analyze_segments(data: np.ndarray, breakpoints: List[int]) -> pd.DataFrame:
+def analyze_segments(data: np.ndarray, breakpoints: list[int]) -> pd.DataFrame:
     """
     Analyze statistics for segments between breakpoints.
 
@@ -127,23 +132,32 @@ data = np.concatenate([
 ])
 """
 
+_default_input = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "data",
+    "M9_2019.02.14---23_00_38.txt",
+)
+
 parser = argparse.ArgumentParser()
-parser.add_argument("input_file", help="enter input file")
+parser.add_argument("input_file", nargs="?", default=_default_input, help="enter input file")
 parser.add_argument(
-    "--site", help="specify a site (ex. M8, M9,...)", default="M9"
+    "--assembly", help="specify an assembly (ex. M8, M9,...)", default="M9"
 )  # use housing instead
-args = parser.parse_args()
+args, _unknown = parser.parse_known_args()
+if _unknown:
+    parser.error(f"unrecognized arguments: {' '.join(_unknown)}")
 print(f"args: {args}", flush=True)
 
 file = args.input_file
 filename = os.path.basename(file)
 index = filename.index("_")
-site = filename[0:index]
-print(f"site detected: {site}")
+assembly = filename[0:index]
+print(f"assembly detected: {assembly}")
 
 insert = "tututu"
 
-mrun = MagnetRun.fromtxt(site, insert, file)
+mrun = MagnetRun.fromtxt(assembly, insert, file)
 
 data = mrun.getData("Field").to_numpy().reshape(-1)
 
@@ -157,7 +171,7 @@ print("\nSegment analysis:")
 print(segment_analysis)
 
 plt.plot(data, label="data")
-for x, y in breakpoints:
+for x, _y in breakpoints:
     plt.axvline(x=x, color="green")
 
 plt.grid()

@@ -8,7 +8,7 @@ This module provides utilities for:
 - Merging multiple data sources
 
 The file discovery process works as follows:
-1. Parse the overview filename to extract site, mode, date, time
+1. Parse the overview filename to extract housing, mode, date, time
 2. Build glob patterns for related files (archive, pupitre, incidents)
 3. Filter files by timestamp range to match the overview period
 4. Return a FileSet containing all related files
@@ -22,7 +22,7 @@ Example usage::
     file_set = discovery.discover("M9_Overview_241106-1643.tdms")
 
     # Load and merge data
-    dfs = load_data(file_set.archive, site="M9", insert="", group="Courants_Alimentations", keys=["Courant_GR1"])
+    dfs = load_data(file_set.archive, housing="M9", assembly="", group="Courants_Alimentations", keys=["Courant_GR1"])
     df = merge_data(dfs)
 """
 
@@ -31,33 +31,30 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import cast
 
-import numpy as np
 import pandas as pd
 from natsort import natsorted
 
+from ..magnetdata_base import DataType
+from ..runlogs.pigbrother import PIGBROTHER_LOG_FILENAME
+from ..utils.files import (
+    TIMESTAMP_FORMAT,
+    extract_data,
+    find_files,
+    select_files,
+)
 from .config import (
     DEFAULT_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
-    DEFAULT_GROUP,
-    TIME_OFFSET_ARCHIVE,
-    TIME_OFFSET_INCIDENTS,
-    TIME_OFFSET_OVERVIEW,
 )
 
 # Module logger
-logger = logging.getLogger("magnetrun.analysis.loaders")
-
-
-# =============================================================================
-# Timestamp format constants
-# =============================================================================
-TIMESTAMP_FORMAT: str = "%Y-%m-%d %H:%M:%S"
-"""Standard timestamp format used for file selection."""
+logger = logging.getLogger("python_magnetrun.analysis.loaders")
 
 
 # =============================================================================
@@ -68,7 +65,7 @@ def convert_to_timestamp(
     time_str: str,
     date_format: str = "%y%m%d",
     time_format: str = "%H%M",
-) -> Tuple[float, str]:
+) -> tuple[float, str]:
     """
     Convert date and time strings to timestamp and formatted string.
 
@@ -122,8 +119,8 @@ class FileMetadata:
     ----------
     filepath : str
         Full path to the file
-    site : str
-        Site identifier (M8, M9, M10)
+    housing : str
+        Housing identifier (M8, M9, M10)
     mode : str
         File mode/type (Overview, Archive, Default, etc.)
     start_time : str
@@ -139,7 +136,7 @@ class FileMetadata:
     """
 
     filepath: str
-    site: str = ""
+    housing: str = ""
     mode: str = ""
     start_time: str = ""
     end_time: str = ""
@@ -193,7 +190,9 @@ class FileSet:
     Container for a set of related files.
 
     Groups all files associated with a single overview file:
-    overview, archive, pupitre, and incident files (default, trigger, spike).
+    overview, archive, pupitre, incident files (default, trigger, spike),
+    hybrid files (kHz, rms, trigger, vprocess),
+    and run-log files (pigbrother ACQ_ENET, pupitre Cirrus).
 
     Attributes
     ----------
@@ -209,16 +208,34 @@ class FileSet:
         Manual trigger incident files
     spike : List[str]
         Spike incident files
+    hybrid_kHz : List[str]
+        Hybrid kHz acquisition files
+    hybrid_rms : List[str]
+        Hybrid RMS files
+    hybrid_trigger : List[str]
+        Hybrid trigger files
+    hybrid_vprocess : List[str]
+        Hybrid voltage-process files
+    pigbrother_runlog : List[str]
+        Pigbrother run-log files (``LOG_ACQ_ENET.txt``)
+    pupitre_runlog : List[str]
+        Pupitre Cirrus run-log files (``cirrus/A[1-4]/YYYY-MM-DD_cirrus_out.log``)
     """
 
-    overview: List[str] = field(default_factory=list)
-    archive: List[str] = field(default_factory=list)
-    pupitre: List[str] = field(default_factory=list)
-    default: List[str] = field(default_factory=list)
-    trigger: List[str] = field(default_factory=list)
-    spike: List[str] = field(default_factory=list)
+    overview: list[str] = field(default_factory=list)
+    archive: list[str] = field(default_factory=list)
+    pupitre: list[str] = field(default_factory=list)
+    default: list[str] = field(default_factory=list)
+    trigger: list[str] = field(default_factory=list)
+    spike: list[str] = field(default_factory=list)
+    hybrid_kHz: list[str] = field(default_factory=list)
+    hybrid_rms: list[str] = field(default_factory=list)
+    hybrid_trigger: list[str] = field(default_factory=list)
+    hybrid_vprocess: list[str] = field(default_factory=list)
+    pigbrother_runlog: list[str] = field(default_factory=list)
+    pupitre_runlog: list[str] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, List[str]]:
+    def to_dict(self) -> dict[str, list[str]]:
         """Convert to dictionary format (backward compatibility)."""
         return {
             "overview": self.overview,
@@ -227,10 +244,16 @@ class FileSet:
             "default": self.default,
             "trigger": self.trigger,
             "spike": self.spike,
+            "hybrid_kHz": self.hybrid_kHz,
+            "hybrid_rms": self.hybrid_rms,
+            "hybrid_trigger": self.hybrid_trigger,
+            "hybrid_vprocess": self.hybrid_vprocess,
+            "pigbrother_runlog": self.pigbrother_runlog,
+            "pupitre_runlog": self.pupitre_runlog,
         }
 
     @classmethod
-    def from_dict(cls, d: Dict[str, List[str]]) -> "FileSet":
+    def from_dict(cls, d: dict[str, list[str]]) -> FileSet:
         """Create from dictionary."""
         return cls(
             overview=d.get("overview", []),
@@ -239,6 +262,12 @@ class FileSet:
             default=d.get("default", []),
             trigger=d.get("trigger", []),
             spike=d.get("spike", []),
+            hybrid_kHz=d.get("hybrid_kHz", []),
+            hybrid_rms=d.get("hybrid_rms", []),
+            hybrid_trigger=d.get("hybrid_trigger", []),
+            hybrid_vprocess=d.get("hybrid_vprocess", []),
+            pigbrother_runlog=d.get("pigbrother_runlog", []),
+            pupitre_runlog=d.get("pupitre_runlog", []),
         )
 
     def __len__(self) -> int:
@@ -250,6 +279,12 @@ class FileSet:
             + len(self.default)
             + len(self.trigger)
             + len(self.spike)
+            + len(self.hybrid_kHz)
+            + len(self.hybrid_rms)
+            + len(self.hybrid_trigger)
+            + len(self.hybrid_vprocess)
+            + len(self.pigbrother_runlog)
+            + len(self.pupitre_runlog)
         )
 
     @property
@@ -267,443 +302,141 @@ class FileSet:
         """Check if any incident files are available."""
         return len(self.default) > 0 or len(self.trigger) > 0 or len(self.spike) > 0
 
+    @property
+    def has_hybrid_kHz(self) -> bool:
+        """Check if hybrid kHz files are available."""
+        return len(self.hybrid_kHz) > 0
 
-# =============================================================================
-# Extract data function
-# =============================================================================
-def extract_data(
-    file: str,
-    site: str,
-    insert: str,
-    key: Optional[str] = None,
-    dry_run: bool = False,
-) -> Tuple[str, str, bool]:
-    """
-    Extract timestamp range and metadata from a data file.
+    @property
+    def has_hybrid_rms(self) -> bool:
+        """Check if hybrid RMS files are available."""
+        return len(self.hybrid_rms) > 0
 
-    Parses the filename to determine timestamps, and optionally loads
-    the file to verify keys and get exact duration.
+    @property
+    def has_hybrid_vprocess(self) -> bool:
+        """Check if hybrid voltage-process files are available."""
+        return len(self.hybrid_vprocess) > 0
 
-    Parameters
-    ----------
-    file : str
-        Path to the data file (.txt or .tdms)
-    site : str
-        Site identifier (used for loading)
-    insert : str
-        Insert identifier (used for loading)
-    key : str, optional
-        Key to verify exists in the file
-    dry_run : bool, optional
-        If True, only parse filename without loading data
-
-    Returns
-    -------
-    tuple[str, str, bool]
-        (start_timestamp, end_timestamp, skip_flag)
-        Timestamps are formatted as TIMESTAMP_FORMAT strings.
-        skip_flag is True if the file should be skipped.
-
-    Raises
-    ------
-    RuntimeError
-        If file extension is not supported
-
-    Examples
-    --------
-    >>> start, end, skip = extract_data("M9_Overview_241106-1643.tdms", "M9", "")
-    >>> print(start)
-    2024-11-06 16:43:00
-    """
-    # Lazy import to avoid circular dependencies
-    from python_magnetrun.MagnetRun import MagnetRun
-
-    extension = os.path.splitext(file)[-1]
-    filename = os.path.basename(file).replace(extension, "")
-
-    start_timestamp: float = 0.0
-    start_ftimestamp: str = ""
-    mrun = None
-
-    if extension == ".txt":
-        # Pupitre file format: "2024.11.06 - 16:43:00.txt"
-        date, time = filename.replace(".txt", "").split(" - ")
-        start_timestamp, start_ftimestamp = convert_to_timestamp(
-            date, time, date_format="%Y.%m.%d", time_format="%H:%M:%S"
-        )
-        if not dry_run:
-            mrun = MagnetRun.fromtxt(site, insert, file)
-
-    elif extension == ".tdms":
-        res = filename.split("_")
-
-        # Regular case: M9_Overview_241106-1643
-        if len(res) == 3:
-            site_from_file, mode, timestamp = res
-            date, time = timestamp.split("-")
-            # Time may have seconds (6 chars) or just HHMM (4 chars)
-            start_timestamp, start_ftimestamp = convert_to_timestamp(
-                date,
-                time[:4],  # Use first 4 chars for HHMM
-                date_format="%y%m%d",
-                time_format="%H%M",
-            )
-        # Special case for default files: M9_Default_241106-164300_HT
-        elif len(res) == 4:
-            site_from_file, mode, timestamp, dmode = res
-            date, time = timestamp.split("-")
-            start_timestamp, start_ftimestamp = convert_to_timestamp(
-                date, time, date_format="%y%m%d", time_format="%H%M%S"
-            )
-        else:
-            logger.warning("Unexpected filename format: %s", filename)
-            # Try to parse anyway
-            start_ftimestamp = ""
-
-        if not dry_run:
-            mrun = MagnetRun.fromtdms(site, insert, file)
-    else:
-        raise RuntimeError(f"{file}: unsupported extension {extension}")
-
-    skip = False
-    end_ftimestamp = ""
-
-    if not dry_run and mrun is not None:
-        mdata = mrun.getMData()
-
-        # Check if required key exists
-        if key is not None:
-            if key not in mdata.getKeys():
-                logger.debug("%s: key %s not found", file, key)
-                skip = True
-
-        # Calculate end timestamp from duration
-        duration = mdata.getDuration()
-        end_dt = datetime.fromtimestamp(start_timestamp) + timedelta(seconds=duration)
-        end_ftimestamp = end_dt.strftime(TIMESTAMP_FORMAT)
-
-    return (start_ftimestamp, end_ftimestamp, skip)
+    @property
+    def has_hybrid_incidents(self) -> int:
+        """Return number of hybrid trigger files."""
+        return len(self.hybrid_trigger)
 
 
-# =============================================================================
-# Find files function
-# =============================================================================
-def find_files(
-    overview_file: str,
-    site: str,
-    date: str,
-    time: str,
-    pupitre_datadir: Union[str, Path] = DEFAULT_DATA_DIR,
-) -> Tuple[str, str, str, str, str]:
-    """
-    Build glob patterns to find files related to an overview file.
-
-    Parameters
-    ----------
-    overview_file : str
-        Path to the overview TDMS file
-    site : str
-        Site identifier (M8, M9, M10)
-    date : str
-        Date string from filename (e.g., "241106")
-    time : str
-        Time string from filename (e.g., "1643")
-    pupitre_datadir : str or Path, optional
-        Base directory for pupitre files
-
-    Returns
-    -------
-    tuple[str, str, str, str, str]
-        (pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter)
-        Each is a glob pattern for finding related files.
-
-    Examples
-    --------
-    >>> filters = find_files("data/M9_Overview_241106-1643.tdms", "M9", "241106", "1643")
-    >>> pupitre, archive, default, trigger, spike = filters
-    """
-    pupitre_datadir = Path(pupitre_datadir)
-
-    # Pupitre pattern: /datadir/M9/2024.11.06*.txt
-    pupitre_site_dir = pupitre_datadir / site
-    pupitre_filter = str(
-        pupitre_site_dir / f"20{date[0:2]}.{date[2:4]}.{date[4:]}*.txt"
-    )
-
-    # Get base paths from overview file
-    extension = os.path.splitext(overview_file)[-1]
-    filename = os.path.basename(overview_file).replace(extension, "")
-    overview_dir = os.path.dirname(overview_file)
-
-    # Archive pattern
-    pigbrother = filename.replace("Overview", "Archive")
-    archive_datadir = overview_dir.replace("Overview", "Fichiers_Archive")
-    archive_filter = f"{archive_datadir}/{pigbrother.replace(time, '*.tdms')}"
-
-    # Incident patterns
-    default_datadir = overview_dir.replace("Overview", "Fichiers_Default")
-    trigger_datadir = overview_dir.replace("Overview", "Fichiers_Manuel_Trig")
-    spike_datadir = overview_dir.replace("Overview", "Fichiers_Spike")
-
-    default_name = filename.replace("Overview", "Default")
-    default_filter = f"{default_datadir}/{default_name.replace(time, '*.tdms')}"
-
-    trigger_name = filename.replace("Overview", "ManuelTrig")
-    trigger_filter = f"{trigger_datadir}/{trigger_name.replace(time, '*.tdms')}"
-
-    spike_name = filename.replace("Overview", "Spikes")
-    spike_filter = f"{spike_datadir}/{spike_name.replace(time, '*.tdms')}"
-
-    return (
-        pupitre_filter,
-        archive_filter,
-        default_filter,
-        trigger_filter,
-        spike_filter,
-    )
-
-
-# =============================================================================
-# Select files function
-# =============================================================================
-def select_files(
-    files: List[str],
-    site: str,
-    start: str,
-    end: str,
-) -> List[str]:
-    """
-    Filter files by timestamp range.
-
-    Selects files whose time range falls within the specified range.
-
-    Parameters
-    ----------
-    files : List[str]
-        List of file paths to filter
-    site : str
-        Site identifier
-    start : str
-        Start timestamp (TIMESTAMP_FORMAT)
-    end : str
-        End timestamp (TIMESTAMP_FORMAT)
-
-    Returns
-    -------
-    List[str]
-        Filtered and naturally sorted list of files
-
-    Examples
-    --------
-    >>> files = glob.glob("data/M9_Archive_241106-*.tdms")
-    >>> selected = select_files(files, "M9", "2024-11-06 16:00:00", "2024-11-06 18:00:00")
-    """
-    if not files:
-        return []
-
-    start_time = datetime.strptime(start, TIMESTAMP_FORMAT)
-    end_time = datetime.strptime(end, TIMESTAMP_FORMAT)
-
-    selected = []
-    for file in files:
-        try:
-            file_start, file_end, skip = extract_data(
-                file, site=site, insert="", key=None, dry_run=False
-            )
-
-            if not file_start or not file_end:
-                continue
-
-            file_start_time = datetime.strptime(file_start, TIMESTAMP_FORMAT)
-            file_end_time = datetime.strptime(file_end, TIMESTAMP_FORMAT)
-
-            # Check if file time range is within selection range
-            if file_start_time >= start_time and file_end_time <= end_time:
-                selected.append(file)
-
-        except Exception as e:
-            logger.warning("Error processing %s: %s", file, e)
-            continue
-
-    return natsorted(selected) if selected else []
-
-
-# =============================================================================
-# Load DataFrame functions
-# =============================================================================
-def load_df(
-    file: str,
-    site: str,
-    insert: str,
+def load_files_data(
+    files: list[str],
+    housing: str,
     group: str,
-    keys: Optional[List[str]],
-) -> Tuple[pd.DataFrame, Optional[datetime]]:
+    keys: list[str] | None,
+) -> pd.DataFrame:
     """
-    Load a single file into a pandas DataFrame.
+    Load and merge a list of data files into a single DataFrame with a
+    continuous ``t`` column.
 
-    Handles both .txt (pupitre) and .tdms (pigbrother) files.
-    Adds timestamp column for time alignment.
+    Each file is loaded via :func:`~python_magnetrun.MagnetRun.load_mrun`.
+    The ``t`` column of every file is shifted so it is relative to the first
+    file's ``start_timestamp``, giving a monotonically increasing time axis
+    across file boundaries after concatenation.
+
+    For TDMS files the key list is qualified with the group name
+    (``"group/key"``) so that :meth:`~TdmsMagnetData.getData` can resolve the
+    correct channels.  For text-backed files plain key names are used.
 
     Parameters
     ----------
-    file : str
-        Path to the data file
-    site : str
-        Site identifier
-    insert : str
-        Insert identifier
+    files : list of str
+        Paths to the data files (mixed extensions are supported).
+    housing : str
+        Housing identifier forwarded to :func:`load_mrun`.
     group : str
-        TDMS group name (for .tdms files)
-    keys : List[str]
-        Column/channel names to load
-
-    Returns
-    -------
-    tuple[pd.DataFrame, datetime | None]
-        (dataframe, start_time)
-        DataFrame contains requested columns plus 'timestamp'.
-        Returns (empty DataFrame, None) if loading fails.
-
-    Examples
-    --------
-    >>> df, t0 = load_df("M9_Archive_241106-1643.tdms", "M9", "",
-    ...                   "Courants_Alimentations", ["Courant_GR1", "Courant_GR2"])
-    """
-    # Lazy import
-    from python_magnetrun.MagnetRun import MagnetRun
-
-    logger.info(f"load_df: file={file}, group={group}, keys={keys}")
-
-    extension = os.path.splitext(file)[-1]
-    df = pd.DataFrame()
-    t0: Optional[datetime] = None
-
-    try:
-        if extension == ".txt":
-            mrun = MagnetRun.fromtxt(site, insert, file)
-            mdata = mrun.getMData()
-            t0 = mdata.Data["timestamp"].iloc[0]
-            selected_keys = ["t", "timestamp"]
-            if keys is not None:
-                selected_keys += keys
-            df = pd.DataFrame(mdata.getData(selected_keys))
-
-        elif extension == ".tdms":
-            mrun = MagnetRun.fromtdms(site, insert, file)
-            mdata = mrun.getMData()
-
-            # Load data
-            channels = list(mdata.Data[group].keys())
-            print(f"load_df: channels={channels}", flush=True)
-            df = pd.DataFrame(mdata.getTdmsData(group, keys))
-
-            # Check if first key exists
-            first_key = channels[0] if keys is None or not keys else keys[0]
-            print(f"first_key: {first_key}", flush=True)
-            if keys is not None:
-                if keys[0] not in mdata.Groups.get(group, {}):
-                    logger.debug(
-                        "load_df: %s/%s not found in %s", group, keys[0], mdata.FileName
-                    )
-                    return df, t0
-
-            # Get timing information
-            t0 = mdata.Groups[group][first_key]["wf_start_time"]
-            dt = mdata.Groups[group][first_key]["wf_increment"]
-            t_offset = mdata.Groups[group][first_key]["wf_start_offset"]
-
-            logger.debug("%s: t0=%s, dt=%s, t_offset=%s", file, t0, dt, t_offset)
-
-            # Add timestamp column
-            df["timestamp"] = [
-                np.datetime64(t0).astype(datetime)
-                + timedelta(seconds=i * dt + t_offset)
-                for i in df.index.to_list()
-            ]
-        else:
-            logger.warning("Unsupported file extension: %s", extension)
-
-    except Exception as e:
-        logger.error("Failed to load %s: %s", file, e)
-
-    return df, t0
-
-
-def load_data(
-    files: List[str],
-    site: str,
-    insert: str,
-    group: str,
-    keys: Optional[List[str]],
-) -> List[pd.DataFrame]:
-    """
-    Load multiple files and return list of DataFrames.
-
-    Parameters
-    ----------
-    files : List[str]
-        List of file paths to load
-    site : str
-        Site identifier
-    insert : str
-        Insert identifier
-    group : str
-        TDMS group name
-    keys : List[str]
-        Column/channel names to load
-
-    Returns
-    -------
-    List[pd.DataFrame]
-        List of loaded DataFrames (empty DataFrames are excluded)
-
-    Examples
-    --------
-    >>> files = ["archive1.tdms", "archive2.tdms"]
-    >>> dfs = load_data(files, "M9", "", "Courants_Alimentations", ["Courant_GR1"])
-    """
-    logger.info(f"load_data: files={files}, group={group}, keys={keys}")
-
-    df_list = []
-    for file in files:
-        df, t0 = load_df(file, site, insert, group, keys)
-        if not df.empty:
-            df_list.append(df)
-    return df_list
-
-
-def merge_data(df_list: List[pd.DataFrame]) -> pd.DataFrame:
-    """
-    Merge multiple DataFrames into one.
-
-    Concatenates DataFrames vertically, preserving column structure.
-
-    Parameters
-    ----------
-    df_list : List[pd.DataFrame]
-        List of DataFrames to merge
+        TDMS group name used to qualify channel keys for ``.tdms`` files.
+    keys : list of str, optional
+        Channel names to extract.  ``t`` and ``timestamp`` are always
+        included automatically.
 
     Returns
     -------
     pd.DataFrame
-        Merged DataFrame
+        Concatenated DataFrame with columns ``t``, ``timestamp``, and all
+        requested channels.  Returns an empty DataFrame when no file could
+        be loaded.
+    """
+    from python_magnetrun.MagnetRun import load_mrun
+
+    if not files:
+        return pd.DataFrame()
+
+    first_t0: pd.Timestamp | None = None
+    df_list: list[pd.DataFrame] = []
+
+    for file in files:
+        try:
+            mrun = load_mrun(file, housing=housing)
+            mdata = mrun.getMData()
+            t0_file = mdata.start_timestamp
+
+            if first_t0 is None:
+                first_t0 = pd.Timestamp(t0_file) if t0_file is not None else None
+
+            shift = (
+                (pd.Timestamp(t0_file) - first_t0).total_seconds()
+                if first_t0 is not None and t0_file is not None
+                else 0.0
+            )
+
+            # Dispatch on data type rather than file extension.
+            if mdata.Type == DataType.TDMS:
+                from python_magnetrun.magnetdata_tdms import TdmsMagnetData
+
+                df = pd.DataFrame(
+                    cast(TdmsMagnetData, mdata).getTdmsData(group=group, channel=None)
+                )
+            else:
+                available = set(mdata.Keys)
+                desired = [k for k in (keys or []) + ["t", "timestamp"] if k in available]
+                missing = [k for k in (keys or []) if k not in available]
+                if missing:
+                    logger.warning(f"load_files_data: {file}: requested keys not available: {missing}")
+                df = pd.DataFrame(mdata.getData(desired))
+
+            df["t"] = df["t"] + shift
+
+            df_list.append(df)
+            logger.debug(f"{file} t0={t0_file}, shift={shift:.3f}s, rows={len(df)}")
+
+        except (OSError, ValueError, RuntimeError, KeyError, UnicodeDecodeError) as e:
+            logger.error(f"load_files_data: failed to load {file}: {e}")
+
+    if not df_list:
+        return pd.DataFrame()
+
+    return pd.concat(df_list, ignore_index=True)
+
+
+def merge_data(dfs: list[pd.DataFrame]) -> pd.DataFrame:
+    """
+    Merge a list of DataFrames into one.
+
+    Parameters
+    ----------
+    dfs : list of pd.DataFrame
+        DataFrames to merge. Must be non-empty.
+
+    Returns
+    -------
+    pd.DataFrame
+        The single DataFrame unchanged, or a concatenation of all inputs.
 
     Raises
     ------
     ValueError
-        If df_list is empty
-
-    Examples
-    --------
-    >>> merged = merge_data([df1, df2, df3])
+        When *dfs* is empty.
     """
-    if not df_list:
-        raise ValueError("Cannot merge empty list of DataFrames")
-
-    if len(df_list) == 1:
-        return df_list[0]
-
-    return pd.concat(df_list, ignore_index=True)
+    if not dfs:
+        raise ValueError("merge_data: list is empty")
+    if len(dfs) == 1:
+        return dfs[0]
+    return pd.concat(dfs, ignore_index=True)
 
 
 # =============================================================================
@@ -720,162 +453,380 @@ class FileDiscovery:
     ----------
     pupitre_datadir : str or Path
         Directory containing pupitre data files
-    log_datadir : str or Path, optional
-        Directory containing log files (defaults to pupitre_datadir)
+    pigbrother_datadir : str or Path
+        Root directory for pigbrother ``.tdms`` files
+    pigbrother_runlog_dir : str or Path, optional
+        Directory that contains ``LOG_ACQ_ENET.txt``.
+        Defaults to ``pigbrother_datadir`` when not set.
+    pupitre_runlog_dir : str or Path, optional
+        Root directory for pupitre Cirrus run-log files
+        (``cirrus/A[1-4]/YYYY-MM-DD_cirrus_out.log``).
+        No default — leave ``None`` to skip pupitre run-log discovery.
 
     Attributes
     ----------
     pupitre_datadir : Path
         Pupitre data directory
-    log_datadir : Path
-        Log data directory
+    pigbrother_datadir : Path
+        Pigbrother data directory
+    pigbrother_runlog_dir : Path
+        Directory searched for ``LOG_ACQ_ENET.txt``
+    pupitre_runlog_dir : Path or None
+        Root for Cirrus run-log discovery, or ``None`` if not configured
 
     Examples
     --------
     >>> discovery = FileDiscovery(pupitre_datadir="/data/pupitre")
     >>> file_set = discovery.discover("M9_Overview_241106-1643.tdms")
     >>> print(f"Found {len(file_set.archive)} archive files")
+    >>> print(f"Pigbrother runlog: {file_set.pigbrother_runlog}")
     """
 
     def __init__(
         self,
-        pupitre_datadir: Union[str, Path] = DEFAULT_DATA_DIR,
-        pigbrother_datadir: Union[str, Path] = DEFAULT_PIGBROTHER_DATA_DIR,
-        log_datadir: Optional[Union[str, Path]] = None,
+        pupitre_datadir: str | Path = DEFAULT_DATA_DIR,
+        pigbrother_datadir: str | Path = DEFAULT_PIGBROTHER_DATA_DIR,
+        pigbrother_runlog_dir: str | Path | None = None,
+        pupitre_runlog_dir: str | Path | None = None,
+        hybrid_datadir: str | Path | None = None,
     ):
         self.pupitre_datadir = Path(pupitre_datadir)
         self.pigbrother_datadir = Path(pigbrother_datadir)
-        self.log_datadir = Path(log_datadir) if log_datadir else self.pupitre_datadir
+        self.pigbrother_runlog_dir = (
+            Path(pigbrother_runlog_dir)
+            if pigbrother_runlog_dir
+            else self.pigbrother_datadir
+        )
+        self.pupitre_runlog_dir = (
+            Path(pupitre_runlog_dir) if pupitre_runlog_dir else None
+        )
+        self.hybrid_datadir = Path(hybrid_datadir) if hybrid_datadir else None
 
-    def discover(
+    # ------------------------------------------------------------------
+    # Private helpers for discover()
+    # ------------------------------------------------------------------
+
+    def _resolve_overview_path(
         self,
         overview_file: str,
-        site: Optional[str] = None,
-    ) -> FileSet:
+        housing: str | None,
+        filename: str,
+        basename: str,
+    ) -> tuple[str, str]:
+        """Resolve a bare filename to a full path under pigbrother_datadir.
+
+        Returns (resolved_overview, overview_dir).  When *overview_file*
+        already contains a directory component both values are returned
+        unchanged.
         """
-        Discover all files related to an overview file.
-
-        Parameters
-        ----------
-        overview_file : str
-            Path to the overview TDMS file
-        site : str, optional
-            Site identifier (extracted from filename if not provided)
-
-        Returns
-        -------
-        FileSet
-            Container with all discovered related files
-        """
-        # Resolve overview path: if dirname is empty, look under pigbrother_datadir/<site>/Overview
-        extension = os.path.splitext(overview_file)[-1]
-        basename = os.path.basename(overview_file)
-        filename = basename.replace(extension, "")
-        logger.info(
-            f"discover overview file: {overview_file} (filename={filename}, extension={extension})"
-        )
-
-        # If an explicit dirname wasn't provided, try to locate the overview
-        # file under the pigbrother data directory structure.
         overview_dir = os.path.dirname(overview_file)
         resolved_overview = overview_file
         if not overview_dir:
-            # Try pigbrother_datadir/<site>/Overview (site parsed below)
             logger.debug("No directory in overview_file, attempting to resolve...")
             parts_tmp = filename.split("_")
             if parts_tmp:
-                file_site_tmp = site if site else parts_tmp[0]
-                candidate_dir = self.pigbrother_datadir / file_site_tmp / "Overview"
+                file_housing_tmp = housing if housing else parts_tmp[0]
+                candidate_dir = self.pigbrother_datadir / file_housing_tmp / "Overview"
                 candidate_path = candidate_dir / basename
                 logger.debug(f"candidate_path={candidate_path}")
                 if candidate_path.exists():
                     resolved_overview = str(candidate_path)
                     overview_dir = str(candidate_dir)
                     logger.debug(
-                        "Resolved overview %s -> %s", overview_file, resolved_overview
+                        f"Resolved overview {overview_file} -> {resolved_overview}"
                     )
                 else:
-                    # Keep original (may be relative to cwd)
                     overview_dir = ""
-        logger.info(
-            f"discover overview_dir={overview_dir}, resolved_overview={resolved_overview}"
-        )
+        return resolved_overview, overview_dir
 
-        # Extract site, mode, timestamp from filename
+    def _parse_overview_filename(
+        self,
+        filename: str,
+        housing: str | None,
+    ) -> tuple[str, str, str] | None:
+        """Extract (housing, date, time) from an overview filename stem.
+
+        Returns ``None`` and logs an error when the stem cannot be parsed.
+        """
         parts = filename.split("_")
+        logger.info(f"Filename parts: {parts}")
         if len(parts) < 3:
-            logger.error("Cannot parse filename: %s", filename)
-            return FileSet(overview=[f"{overview_dir}/{overview_file}"])
-
-        file_site = parts[0]
+            logger.error(f"Cannot parse filename: {filename}")
+            return None
+        file_housing = parts[0]
         timestamp = parts[2]
+        resolved_housing = housing if housing is not None else file_housing
+        if housing is None:
+            logger.info(f"Extracted housing from filename: {resolved_housing}")
+        try:
+            date, time = timestamp.split("-")
+        except ValueError:
+            logger.error(f"Cannot split timestamp {timestamp!r} in {filename}")
+            return None
+        return resolved_housing, date, time
 
-        if site is None:
-            site = file_site
+    def _select_related_files(
+        self,
+        overview_path: str,
+        housing: str,
+        date: str,
+        time: str,
+        start: str,
+        end: str,
+    ) -> FileSet:
+        """Glob and time-filter all file types related to *overview_path*.
 
-        # Parse date and time
-        date, time = timestamp.split("-")
-
-        # Use resolved overview path (may be under pigbrother_datadir)
-        overview_path_for_extract = resolved_overview
-
-        # Get time range from overview file
-        start, end, skip = extract_data(
-            overview_path_for_extract, site, insert="", key=None, dry_run=False
-        )
-
-        if skip or not start or not end:
-            logger.warning("Could not extract time range from %s", overview_file)
-            return FileSet(overview=[f"{overview_dir}/{overview_file}"])
-
-        # Get file patterns (pass a path that includes the directory)
-        overview_for_patterns = overview_path_for_extract
+        Returns a :class:`FileSet` with ``overview`` left empty (the caller
+        fills it after resolving the path).
+        """
         filters = find_files(
-            overview_for_patterns,
-            site,
+            overview_path,
+            housing,
             date,
             time,
             pupitre_datadir=self.pupitre_datadir,
         )
-        pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter = (
-            filters
+        pupitre_f, archive_f, default_f, trigger_f, spike_f = filters
+        logger.info(
+            f"File patterns: pupitre={pupitre_f} archive={archive_f} "
+            f"default={default_f} trigger={trigger_f} spike={spike_f}"
         )
 
-        logger.debug("File patterns:")
-        logger.debug("  pupitre: %s", pupitre_filter)
-        logger.debug("  archive: %s", archive_filter)
-        logger.debug("  default: %s", default_filter)
-        logger.debug("  trigger: %s", trigger_filter)
-        logger.debug("  spike: %s", spike_filter)
+        file_set = FileSet()
+        file_set.pupitre = select_files(glob.glob(pupitre_f), housing, start, end)
+        file_set.archive = select_files(glob.glob(archive_f), housing, start, end)
+        # Incident files are intentionally short; disable the min-duration guard.
+        file_set.default = select_files(
+            glob.glob(default_f), housing, start, end, min_duration_seconds=0.0
+        )
+        file_set.trigger = select_files(
+            glob.glob(trigger_f), housing, start, end, min_duration_seconds=0.0
+        )
+        file_set.spike = select_files(
+            glob.glob(spike_f), housing, start, end, min_duration_seconds=0.0
+        )
+        logger.info(
+            f"Selected: pupitre={file_set.pupitre} archive={file_set.archive} "
+            f"default={file_set.default} trigger={file_set.trigger} spike={file_set.spike}"
+        )
+        return file_set
 
-        # Find and filter files
-        file_set = FileSet(overview=[f"{overview_dir}/{overview_file}"])
+    def _discover_runlogs(
+        self,
+        file_set: FileSet,
+        start: str,
+        end: str,
+    ) -> None:
+        """Populate *file_set* pigbrother and pupitre run-log fields in place."""
+        pb_log = self.pigbrother_runlog_dir / PIGBROTHER_LOG_FILENAME
+        if pb_log.exists():
+            file_set.pigbrother_runlog = [str(pb_log)]
+            logger.info(f"file_set.pigbrother_runlog: {file_set.pigbrother_runlog}")
+        else:
+            logger.debug(f"Pigbrother runlog not found at {pb_log}")
 
-        file_set.pupitre = select_files(glob.glob(pupitre_filter), site, start, end)
-        file_set.archive = select_files(glob.glob(archive_filter), site, start, end)
-        file_set.default = select_files(glob.glob(default_filter), site, start, end)
-        file_set.trigger = select_files(glob.glob(trigger_filter), site, start, end)
-        file_set.spike = select_files(glob.glob(spike_filter), site, start, end)
-        logger.info("file_set.pupitre: %s", file_set.pupitre)
-        logger.info("file_set.archive: %s", file_set.archive)
-        logger.info("file_set.default: %s", file_set.default)
-        logger.info("file_set.spike: %s", file_set.spike)
-        logger.info("file_set.trigger: %s", file_set.trigger)
+        if self.pupitre_runlog_dir is not None and start and end:
+            from ..runlogs.pupitre import discover_pupitre_runlogs
+
+            file_set.pupitre_runlog = discover_pupitre_runlogs(
+                self.pupitre_runlog_dir,
+                start_date=start[:10],
+                end_date=end[:10],
+            )
+            logger.info(f"file_set.pupitre_runlog: {file_set.pupitre_runlog}")
+
+    def _discover_hybrid_data(
+        self,
+        file_set: FileSet,
+        housing: str,
+        filename: str,
+        resolved_overview: str,
+        start: str,
+        end: str,
+    ) -> None:
+        """Populate *file_set* hybrid kHz/RMS/trigger fields for M8. No-op for other housings."""
+        if housing != "M8" or self.hybrid_datadir is None or not start or not end:
+            return
+
+        _ts_part = filename.split("_")[2]
+        _date_part, _time_part = _ts_part.split("-")
+        _local_dt = datetime.strptime(_date_part + _time_part, "%y%m%d%H%M")
+        date_str = _local_dt.strftime("%Y-%m-%d")
+        time_str = _local_dt.strftime("%H:%M")
+
+        from python_magnetrun.MagnetRun import MagnetRun as _MR
+
+        _mrun = _MR.fromtdms(housing, "", resolved_overview)
+        _duration = _mrun.getMData().getDuration()
+        _local_end_dt = _local_dt + timedelta(seconds=_duration)
+        end_time_str = _local_end_dt.strftime("%H:%M")
+        hours = range(_local_dt.hour, _local_end_dt.hour + 1)
+
+        # kHz/RMS/trigger filenames encode UTC hours; convert French local hours
+        # to UTC so the file-name filter matches correctly (handles CET/CEST).
+        from zoneinfo import ZoneInfo
+
+        _tz_paris = ZoneInfo("Europe/Paris")
+        _tz_utc = ZoneInfo("UTC")
+        _local_date = _local_dt.date()
+        utc_hours = {
+            datetime(_local_date.year, _local_date.month, _local_date.day,
+                     h, 0, 0, tzinfo=_tz_paris).astimezone(_tz_utc).hour
+            for h in hours
+        }
+
+        try:
+            from ..hybrid.hybrid_data import HybridData
+
+            hdata = HybridData(str(self.hybrid_datadir), date_str)
+
+            def _khz_hour(p: Path) -> int | None:
+                try:
+                    return int(p.name[:2])
+                except ValueError:
+                    return None
+
+            def _rms_hour(p: Path) -> int | None:
+                m = re.search(r"\d{4}-\d{2}-\d{2}_(\d{2})\d{2}[—-]", p.stem)
+                return int(m.group(1)) if m else None
+
+            def _trigger_dir_hour(p: Path) -> int | None:
+                m = re.search(r"__(\d{2})-\d{2}$", p.name)
+                return int(m.group(1)) if m else None
+
+            def _vprocess_hour(p: Path) -> int | None:
+                m = re.match(r"^\d{8}_(\d{2})", p.name)
+                return int(m.group(1)) if m else None
+
+            file_set.hybrid_kHz = cast(
+                list[str],
+                natsorted(
+                    str(f)
+                    for key, files in hdata._info.khz_files.items()
+                    if not key.endswith("_cfg")
+                    for f in files
+                    if _khz_hour(f) in utc_hours
+                ),
+            )
+            file_set.hybrid_rms = cast(
+                list[str],
+                natsorted(
+                    str(f)
+                    for files in hdata._info.rms_files.values()
+                    for f in files
+                    if _rms_hour(f) in utc_hours
+                ),
+            )
+            file_set.hybrid_trigger = cast(
+                list[str],
+                natsorted(
+                    str(d)
+                    for dirs in hdata._info.trigger_dirs.values()
+                    for d in dirs
+                    if _trigger_dir_hour(d) in utc_hours
+                ),
+            )
+            file_set.hybrid_vprocess = cast(
+                list[str],
+                natsorted(
+                    str(f)
+                    for f in hdata._info.vprocess_files
+                    if _vprocess_hour(f) in utc_hours
+                ),
+            )
+            logger.info(
+                f"Hybrid data for {date_str} {time_str}–{end_time_str} (local)"
+                f" hours={list(hours)}: "
+                f"{len(file_set.hybrid_kHz)} kHz, "
+                f"{len(file_set.hybrid_rms)} rms, "
+                f"{len(file_set.hybrid_trigger)} trigger dirs, "
+                f"{len(file_set.hybrid_vprocess)} vprocess"
+            )
+        except (OSError, ValueError, ImportError) as e:
+            logger.warning(f"Could not discover hybrid data for {date_str}: {e}")
+
+    # ------------------------------------------------------------------
+    # Public discovery methods
+    # ------------------------------------------------------------------
+
+    def discover(
+        self,
+        overview_file: str,
+        housing: str | None = None,
+        dry_run: bool = False,
+    ) -> FileSet:
+        """Discover all files related to an overview file.
+
+        Parameters
+        ----------
+        overview_file : str
+            Path to the overview TDMS file
+        housing : str, optional
+            Housing identifier (extracted from filename if not provided)
+        dry_run : bool, optional
+            When True skip full file loads (timestamps from filename only)
+
+        Returns
+        -------
+        FileSet
+            Container with all discovered related files
+        """
+        logger.info(f"Discovering files for overview: {overview_file}, housing={housing}")
+
+        extension = os.path.splitext(overview_file)[-1]
+        basename = os.path.basename(overview_file)
+        filename = basename.replace(extension, "")
+        logger.info(f"discover overview file: {overview_file} (filename={filename})")
+
+        resolved_overview, overview_dir = self._resolve_overview_path(
+            overview_file, housing, filename, basename
+        )
+        logger.info(f"discover overview_dir={overview_dir}, resolved_overview={resolved_overview}")
+
+        parsed = self._parse_overview_filename(filename, housing)
+        if parsed is None:
+            return FileSet(overview=[f"{overview_dir}/{overview_file}"])
+        housing, date, time = parsed
+        logger.info(f"Extracted date={date}, time={time} from filename")
+
+        if housing == "M8":
+            logger.info(f"Overview file {overview_file} has housing M8, hybrid data will be discovered")
+
+        start, end, skip = extract_data(
+            resolved_overview, housing, assembly="", key=None, dry_run=dry_run
+        )
+        logger.info(f"Overview file time range: start={start}, end={end}, skip={skip}")
+
+        if skip or not start or not end:
+            logger.warning(f"Could not extract time range from {overview_file}")
+            return FileSet(overview=[resolved_overview])
+
+        file_set = self._select_related_files(
+            resolved_overview, housing, date, time, start, end
+        )
+        file_set.overview = [resolved_overview]
+
+        self._discover_runlogs(file_set, start, end)
+        self._discover_hybrid_data(file_set, housing, filename, resolved_overview, start, end)
 
         logger.info(
-            "Discovered files for %s: %d archives, %d pupitres, %d incidents",
-            filename,
-            len(file_set.archive),
-            len(file_set.pupitre),
-            len(file_set.default) + len(file_set.trigger) + len(file_set.spike),
+            f"Discovered files for {filename}: {len(file_set.archive)} archives, "
+            f"{len(file_set.pupitre)} pupitres, "
+            f"{len(file_set.default) + len(file_set.trigger) + len(file_set.spike)} incidents, "
+            f"{len(file_set.pigbrother_runlog)} pigbrother runlog, "
+            f"{len(file_set.pupitre_runlog)} pupitre runlog, "
+            f"{len(file_set.hybrid_kHz)} kHz, "
+            f"{len(file_set.hybrid_rms)} rms, "
+            f"{len(file_set.hybrid_trigger)} trigger dirs, "
+            f"{len(file_set.hybrid_vprocess)} vprocess"
         )
-
         return file_set
 
     def discover_batch(
         self,
-        overview_files: List[str],
-    ) -> Dict[str, FileSet]:
+        overview_files: list[str],
+        dry_run: bool = False,
+    ) -> dict[str, FileSet]:
         """
         Discover files for multiple overview files.
 
@@ -892,7 +843,7 @@ class FileDiscovery:
         results = {}
         for overview_file in overview_files:
             filename = Path(overview_file).stem
-            results[filename] = self.discover(overview_file)
+            results[filename] = self.discover(overview_file, dry_run=dry_run)
         return results
 
 
@@ -901,10 +852,11 @@ class FileDiscovery:
 # =============================================================================
 def discover_files(
     overview_file: str,
-    pupitre_datadir: Union[str, Path] = DEFAULT_DATA_DIR,
-    pigbrother_datadir: Union[str, Path] = DEFAULT_PIGBROTHER_DATA_DIR,
-    site: Optional[str] = None,
-) -> Dict[str, List[str]]:
+    pupitre_datadir: str | Path = DEFAULT_DATA_DIR,
+    pigbrother_datadir: str | Path = DEFAULT_PIGBROTHER_DATA_DIR,
+    housing: str | None = None,
+    dry_run: bool = False,
+) -> dict[str, list[str]]:
     """
     Discover files related to an overview file (backward compatible).
 
@@ -917,8 +869,10 @@ def discover_files(
         Path to overview TDMS file
     pupitre_datadir : str or Path
         Pupitre data directory
-    site : str, optional
-        Site identifier
+    housing : str, optional
+        Housing identifier
+    dry_run : bool, optional
+        If True, perform a dry run without loading data
 
     Returns
     -------
@@ -926,5 +880,5 @@ def discover_files(
         Dictionary with keys: overview, archive, pupitre, default, trigger, spike
     """
     discovery = FileDiscovery(pupitre_datadir=pupitre_datadir)
-    file_set = discovery.discover(overview_file, site=site)
+    file_set = discovery.discover(overview_file, housing=housing, dry_run=dry_run)
     return file_set.to_dict()

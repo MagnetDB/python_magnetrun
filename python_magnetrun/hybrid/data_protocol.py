@@ -8,11 +8,12 @@ This module defines a common interface (Protocol) that can be implemented by:
 This allows writing code that works with any data source without coupling
 to a specific implementation.
 
-Example:
+Example::
+
     from python_magnetrun.hybrid.data_protocol import DataLoader, load_and_compare
 
     # Both MagnetRun and HybridRun implement DataLoader protocol
-    mrun: DataLoader = MagnetRun.fromtdms(site, insert, file)
+    mrun: DataLoader = MagnetRun.fromtdms(housing, assembly, file)
     hrun: DataLoader = HybridRun.fromdir(base_dir, date_str)
 
     # Generic function that works with any DataLoader
@@ -21,21 +22,20 @@ Example:
         return {"mean": data.mean(), "max": data.max()}
 """
 
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum, auto
 from typing import (
-    Protocol,
-    Optional,
-    List,
-    Dict,
     Any,
-    Tuple,
+    Protocol,
     runtime_checkable,
 )
-from datetime import datetime
-from dataclasses import dataclass, field
-from enum import Enum, auto
 
 import numpy as np
 import pandas as pd
+
+from ..magnetdata_base import DataType
+from ..utils.downsampling import DownsampleConfig
 
 
 class DataSourceType(Enum):
@@ -60,16 +60,16 @@ class DataInfo:
 
     source_type: DataSourceType
     filename: str
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    duration_seconds: Optional[float] = None
-    sample_rate_hz: Optional[float] = None
-    num_samples: Optional[int] = None
-    num_channels: Optional[int] = None
-    keys: List[str] = field(default_factory=list)
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    duration_seconds: float | None = None
+    sample_rate_hz: float | None = None
+    num_samples: int | None = None
+    num_channels: int | None = None
+    keys: list[str] = field(default_factory=list)
 
     @property
-    def estimated_size_mb(self) -> Optional[float]:
+    def estimated_size_mb(self) -> float | None:
         """Estimate data size in MB"""
         if self.num_samples and self.num_channels:
             # Assume float32 (4 bytes per value)
@@ -90,7 +90,7 @@ class DataLoader(Protocol):
     - HybridRun (hybrid.hybrid_run.HybridRun)
     """
 
-    def getData(self, key: Optional[str] = None) -> Any:
+    def getData(self, key: str | None = None) -> Any:
         """
         Get data for a specific key.
 
@@ -105,7 +105,7 @@ class DataLoader(Protocol):
         """
         ...
 
-    def getKeys(self) -> List[str]:
+    def getKeys(self) -> list[str]:
         """
         Get list of available data keys.
 
@@ -127,12 +127,20 @@ class DataLoader(Protocol):
         """
         ...
 
-    def getSite(self) -> str:
-        """Get site identifier"""
+    def getAssembly(self) -> str:
+        """Get assembly identifier"""
         ...
 
     def getHousing(self) -> str:
         """Get housing identifier"""
+        ...
+
+    def getDomain(self) -> str:
+        """Return 'operational', 'simulation', or 'bfield'."""
+        ...
+
+    def get_time_range(self) -> tuple[datetime, datetime]:
+        """Return (start, end) of the dataset as UTC datetimes."""
         ...
 
 
@@ -147,8 +155,8 @@ class DownsamplingLoader(Protocol):
 
     def getData(
         self,
-        key: Optional[str] = None,
-        downsample: Optional[int] = None,
+        key: str | None = None,
+        downsample: DownsampleConfig | None = None,
     ) -> Any:
         """
         Get data with optional downsampling.
@@ -157,8 +165,8 @@ class DownsamplingLoader(Protocol):
         ----------
         key : str, optional
             Data key
-        downsample : int, optional
-            Target number of points (None = no downsampling)
+        downsample : DownsampleConfig, optional
+            Downsampling configuration (None = no downsampling)
 
         Returns
         -------
@@ -175,7 +183,7 @@ class TimeSeriesLoader(Protocol):
     Provides additional methods for time-based queries.
     """
 
-    def get_time_range(self) -> Tuple[datetime, datetime]:
+    def get_time_range(self) -> tuple[datetime, datetime]:
         """Get start and end time of data"""
         ...
 
@@ -184,7 +192,7 @@ class TimeSeriesLoader(Protocol):
         key: str,
         target_time: datetime,
         window_seconds: float = 1.0,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Get data around a specific time"""
         ...
 
@@ -213,7 +221,9 @@ def get_data_info(loader: DataLoader) -> DataInfo:
         mdata = loader.getMData() if hasattr(loader, "getMData") else None
         if mdata:
             source_type = (
-                DataSourceType.TDMS if mdata.Type == 1 else DataSourceType.PUPITRE
+                DataSourceType.TDMS
+                if mdata.Type == DataType.TDMS
+                else DataSourceType.PUPITRE
             )
             filename = mdata.FileName
         else:
@@ -237,8 +247,8 @@ def get_data_info(loader: DataLoader) -> DataInfo:
 def load_comparable_data(
     loader: DataLoader,
     key: str,
-    target_points: int = 10000,
-) -> Tuple[np.ndarray, np.ndarray]:
+    downsample: DownsampleConfig | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """
     Load data from any loader in a comparable format.
 
@@ -248,31 +258,35 @@ def load_comparable_data(
     Parameters
     ----------
     loader : DataLoader
-        Any DataLoader implementation
+        Any DataLoader implementation.
     key : str
-        Data key
-    target_points : int
-        Target number of points (for large datasets)
+        Data key.
+    downsample : DownsampleConfig, optional
+        Downsampling configuration.  Pass ``None`` to return the full
+        dataset (e.g. for low-frequency pupitre data that needs no
+        reduction).  Each loader in a comparison can receive a different
+        config via :func:`compare_loaders`.
 
     Returns
     -------
     tuple
         (data_array, time_array)
     """
-    # Check if loader supports downsampling
-    if isinstance(loader, DownsamplingLoader):
-        result = loader.getData(key, downsample=target_points)
+    from ..utils.downsampling import downsample_arrays
+
+    # Prefer the loader's own downsampling path when available.
+    if downsample is not None and isinstance(loader, DownsamplingLoader):
+        result = loader.getData(key, downsample=downsample)
         if isinstance(result, tuple):
             return result
 
-    # Standard getData
+    # Fall back to plain getData (no downsampling argument).
     result = loader.getData(key)
 
-    # Handle different return types
+    # Normalise return type to (data_array, time_array).
     if isinstance(result, tuple) and len(result) == 2:
         data, time = result
     elif isinstance(result, pd.DataFrame):
-        # Assume first column is time or index is time
         if "t" in result.columns:
             time = result["t"].values
             data = result.drop(columns=["t"]).values.flatten()
@@ -291,25 +305,21 @@ def load_comparable_data(
     else:
         raise TypeError(f"Unexpected data type: {type(result)}")
 
-    # Ensure numpy arrays
     data = np.asarray(data)
     time = np.asarray(time)
 
-    # Apply simple downsampling if needed and loader doesn't support it
-    if len(data) > target_points:
-        stride = len(data) // target_points
-        indices = np.arange(0, len(data), stride)[:target_points]
-        data = data[indices]
-        time = time[indices]
+    # Apply downsampling manually for loaders that don't support DownsamplingLoader.
+    if downsample is not None and len(data) > downsample.n_out:
+        data, time = downsample_arrays(data, time, downsample)
 
     return data, time
 
 
 def align_time_series(
-    data1: Tuple[np.ndarray, np.ndarray],
-    data2: Tuple[np.ndarray, np.ndarray],
+    data1: tuple[np.ndarray, np.ndarray],
+    data2: tuple[np.ndarray, np.ndarray],
     method: str = "interpolate",
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Align two time series for comparison.
 
@@ -380,28 +390,41 @@ def compare_loaders(
     loader2: DataLoader,
     key1: str,
     key2: str,
-    target_points: int = 10000,
-) -> Dict[str, Any]:
+    downsample1: DownsampleConfig | None = None,
+    downsample2: DownsampleConfig | None = None,
+) -> dict[str, Any]:
     """
     Compare data from two loaders.
 
     Parameters
     ----------
     loader1, loader2 : DataLoader
-        Data loaders to compare
+        Data loaders to compare (e.g. MagnetRun and HybridRun).
     key1, key2 : str
-        Keys for each loader
-    target_points : int
-        Number of points for comparison
+        Keys for each loader.
+    downsample1 : DownsampleConfig, optional
+        Downsampling config for *loader1*.  Pass ``None`` to use full
+        resolution (e.g. low-frequency pupitre data needs no reduction).
+    downsample2 : DownsampleConfig, optional
+        Downsampling config for *loader2*.  Typically set for high-frequency
+        sources such as HybridRun kHz data.
 
     Returns
     -------
     dict
         Comparison results including correlation, RMSE, etc.
+
+    Examples
+    --------
+    >>> compare_loaders(
+    ...     mrun, hrun, "IH", "kHz/FEPC-LNCMI/I_H1",
+    ...     downsample1=None,
+    ...     downsample2=DownsampleConfig(n_out=10000, method="minmax_lttb"),
+    ... )
     """
-    # Load data
-    d1, t1 = load_comparable_data(loader1, key1, target_points)
-    d2, t2 = load_comparable_data(loader2, key2, target_points)
+    # Load data — each side uses its own downsampling config.
+    d1, t1 = load_comparable_data(loader1, key1, downsample1)
+    d2, t2 = load_comparable_data(loader2, key2, downsample2)
 
     # Align time series
     aligned_d1, aligned_d2, common_time = align_time_series((d1, t1), (d2, t2))

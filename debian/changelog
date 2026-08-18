@@ -1,3 +1,21 @@
+python-magnetrun (0.3.0-1) UNRELEASED; urgency=medium
+
+  * Unify timestamp convention: all timestamp columns now store naive UTC
+  * PandasMagnetData.addTime: store naive UTC (was naive local time)
+  * TdmsMagnetData.addTime: now eager — computes t and timestamp for all groups
+  * extractTimeData: timerange format changed to full datetime strings (local time)
+  * plotData: add time_zone param; UTC→local conversion for timestamp x-axis
+  * BREAKING: see BREAKING_CHANGES.md for migration guide
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Wed, 16 Apr 2026 00:00:00 +0200
+
+python-magnetrun (0.2.0-1) UNRELEASED; urgency=medium
+
+  * New upstream
+  * d/control: add python_magnetcooling as dependencies
+
+ -- Christophe Trophime <christophe.trophime@lncmi.cnrs.fr>  Tue, 03 Mar 2026 17:15:04 +0100
+
 python-magnetrun (0.1.0-1) unstable; urgency=medium
 
   * New upstream release

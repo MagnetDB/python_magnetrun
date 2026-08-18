@@ -28,50 +28,47 @@ Example usage::
     )
 
     # Access results
-    print(f"Site: {record.site}, Duration: {record.duration}")
+    print(f"Housing: {record.housing}, Duration: {record.duration}")
     print(f"Signatures: {list(record.signatures.keys())}")
 """
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple, Union
+from pathlib import Path
+from typing import Any, cast
 
-import numpy as np
 import pandas as pd
 
+from ..utils.downsampling import DownsampleConfig  # noqa: F401 — available for callers
+from ..utils.timestamps import add_time_columns, parse_tdms_filename
+from ..utils.timezone import utc_naive_to_local
 from .config import (
     DEFAULT_DATA_DIR,
+    DEFAULT_HYBRID_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
-    SAMPLING_RATE_OVERVIEW,
-    SAMPLING_RATE_ARCHIVE,
+    HOUSING_CONFIGS,
     SAMPLING_RATE_INCIDENTS,
-    SITE_CONFIGS,
-    SiteConfig,
-    AnalysisConfig,
-    get_site_config,
+    HousingConfig,
 )
+from .field_comparison import discover_pupitre_pigbrother_fields
 from .loaders import (
     FileDiscovery,
     FileSet,
-    load_data,
-    merge_data,
+    load_files_data,
 )
 from .synchronization import (
-    synchronize_data,
-    apply_lag_correction,
     compute_lag,
-    compute_regime_score,
-    find_best_matching_regime,
-    check_lag_reliability,
     get_timestamp_info,
+    synchronize_data,
 )
 
 # Module logger
-logger = logging.getLogger("magnetrun.analysis.processing")
+logger = logging.getLogger("python_magnetrun.analysis.processing")
 
 
 # =============================================================================
@@ -88,6 +85,8 @@ class ProcessingConfig:
         Directory containing pupitre data files
     pigbrother_datadir : str
         Directory containing pigbrother data files
+    hybrid_datadir : str
+        Base directory for hybrid data (kHz/rms/trigger/vprocess); used for M8 only
     group : str
         TDMS group name for current channels
     tkey : str
@@ -110,12 +109,16 @@ class ProcessingConfig:
         Show plots interactively
     save : bool
         Save plots to files
+    backend : str
+        Plotting backend name ('matplotlib', 'plotly', 'plotly-resampler', 'plotly-widget')
     downsample_percent : float
-        Downsampling percentage for plots
+        Percentage of data points to keep when plotting (0–100). 100 disables
+        downsampling (default).
     """
 
     pupitre_datadir: str = DEFAULT_DATA_DIR
     pigbrother_datadir: str = DEFAULT_PIGBROTHER_DATA_DIR
+    hybrid_datadir: str = DEFAULT_HYBRID_DATA_DIR
     group: str = "Courants_Alimentations"
     tkey: str = "t"
     synchronize: bool = True
@@ -127,6 +130,7 @@ class ProcessingConfig:
     debug: bool = False
     show: bool = False
     save: bool = False
+    backend: str = "matplotlib"
     downsample_percent: float = 100.0
 
 
@@ -142,8 +146,8 @@ class OverviewRecord:
     ----------
     filename : str
         Base filename (without extension)
-    site : str
-        Site identifier (M8, M9, M10)
+    housing : str
+        Housing identifier (M8, M9, M10)
     mode : str
         Measurement mode
     t0 : datetime
@@ -163,16 +167,16 @@ class OverviewRecord:
     """
 
     filename: str
-    site: str
+    housing: str
     mode: str = ""
-    t0: Optional[datetime] = None
+    t0: datetime | None = None
     duration: float = 0.0
 
     # Source files
-    sources: Optional[FileSet] = None
+    sources: FileSet | None = None
 
     # Loaded data
-    data: Dict[str, Any] = field(
+    data: dict[str, Any] = field(
         default_factory=lambda: {
             "overview": pd.DataFrame(),
             "archive": pd.DataFrame(),
@@ -180,19 +184,23 @@ class OverviewRecord:
             "default": [],
             "trigger": [],
             "spike": [],
+            "hybrid_kHz": pd.DataFrame(),
+            "hybrid_rms": pd.DataFrame(),
+            "hybrid_vprocess": pd.DataFrame(),
+            "hybrid_trigger": [],
         }
     )
 
     # Analysis results
-    signatures: Dict[str, Any] = field(default_factory=dict)
-    sync_info: Dict[str, Any] = field(default_factory=dict)
-    flow_params: Dict[str, Any] = field(default_factory=dict)
-    metrics: Dict[str, Any] = field(default_factory=dict)
+    signatures: dict[str, Any] = field(default_factory=dict)
+    sync_info: dict[str, Any] = field(default_factory=dict)
+    flow_params: dict[str, Any] = field(default_factory=dict)
+    metrics: dict[str, Any] = field(default_factory=dict)
 
     # Extra parameters from pupitre
     teb: float = 0.0
     BP: float = 0.0
-    debitbrut: Dict[str, Any] = field(default_factory=dict)
+    debitbrut: dict[str, Any] = field(default_factory=dict)
 
     def get_overview(self) -> pd.DataFrame:
         """Get overview DataFrame."""
@@ -206,7 +214,19 @@ class OverviewRecord:
         """Get pupitre DataFrame."""
         return self.data.get("pupitre", pd.DataFrame())
 
-    def get_incidents(self) -> Dict[str, List[pd.DataFrame]]:
+    def get_hybrid_kHz(self) -> pd.DataFrame:
+        """Get hybrid kHz DataFrame."""
+        return self.data.get("hybrid_kHz", pd.DataFrame())
+
+    def get_hybrid_rms(self) -> pd.DataFrame:
+        """Get hybrid RMS DataFrame."""
+        return self.data.get("hybrid_rms", pd.DataFrame())
+
+    def get_hybrid_vprocess(self) -> pd.DataFrame:
+        """Get hybrid voltage-process DataFrame."""
+        return self.data.get("hybrid_vprocess", pd.DataFrame())
+
+    def get_incidents(self) -> dict[str, list[pd.DataFrame]]:
         """Get incidents as dict of DataFrames."""
         return {
             "default": self.data.get("default", []),
@@ -214,9 +234,16 @@ class OverviewRecord:
             "spike": self.data.get("spike", []),
         }
 
+    def get_hybrid_incidents(self) -> dict[str, list[pd.DataFrame]]:
+        """Get hybrid incidents as dict of DataFrames."""
+        return {
+            "hybrid_trigger": self.data.get("hybrid_trigger", []),
+        }
+
     def has_data(self, source: str) -> bool:
         """Check if data is loaded for a source."""
         data = self.data.get(source)
+        logger.debug(f'has_data check for source="{source}", data type={type(data)}')
         if isinstance(data, pd.DataFrame):
             return not data.empty
         if isinstance(data, list):
@@ -233,48 +260,25 @@ class ProcessingResult:
     ----------
     records : Dict[str, OverviewRecord]
         Processed records keyed by filename
-    site : str
-        Site identifier
+    housing : str
+        Housing identifier
     keys : List[str]
         Current keys processed (e.g., ['Courant_GR1', 'Courant_GR2'])
     errors : List[str]
         Any errors encountered during processing
     """
 
-    records: Dict[str, OverviewRecord] = field(default_factory=dict)
-    site: str = ""
-    keys: List[str] = field(default_factory=list)
-    errors: List[str] = field(default_factory=list)
+    records: dict[str, OverviewRecord] = field(default_factory=dict)
+    housing: str = ""
+    keys: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
     def __len__(self) -> int:
         return len(self.records)
 
-    def get_record(self, filename: str) -> Optional[OverviewRecord]:
+    def get_record(self, filename: str) -> OverviewRecord | None:
         """Get record by filename."""
         return self.records.get(filename)
-
-
-# =============================================================================
-# Time offset utilities
-# =============================================================================
-def compute_time_offset(sampling_rate: float) -> float:
-    """
-    Compute time offset for a given sampling rate.
-
-    The offset is half the sampling period, used to center
-    timestamps within their sampling window.
-
-    Parameters
-    ----------
-    sampling_rate : float
-        Sampling rate in Hz
-
-    Returns
-    -------
-    float
-        Time offset in seconds
-    """
-    return (1.0 / sampling_rate) / 2.0
 
 
 def add_time_column_with_offset(
@@ -305,15 +309,13 @@ def add_time_column_with_offset(
     pd.DataFrame
         DataFrame with time column added
     """
-    t_offset = compute_time_offset(sampling_rate)
-
-    df = df.copy()
-    df[time_col] = df.apply(
-        lambda row: (row[timestamp_col] - reference_t0).total_seconds() + t_offset,
-        axis=1,
+    return add_time_columns(
+        df,
+        reference_t0,
+        sampling_rate=sampling_rate,
+        timestamp_col=timestamp_col,
+        time_col=time_col,
     )
-
-    return df
 
 
 # =============================================================================
@@ -322,55 +324,40 @@ def add_time_column_with_offset(
 def load_overview_data(
     record: OverviewRecord,
     group: str,
-    keys: Optional[List[str]],
+    keys: list[str] | None,
 ) -> pd.DataFrame:
     """
     Load overview data for a record.
 
+    Delegates to :func:`load_files_data` which handles per-file ``t`` shifting
+    so the merged result has a continuous time axis.
+
     Parameters
     ----------
     record : OverviewRecord
-        Record to load data into
-    site_config : SiteConfig
-        Site configuration
+        Record whose ``sources.overview`` list is loaded
     group : str
         TDMS group name
-    keys : List[str]
-        Keys to load
+    keys : list of str, optional
+        Channel names to extract
 
     Returns
     -------
     pd.DataFrame
-        Loaded overview DataFrame
+        Merged DataFrame with ``t``, ``timestamp``, and requested channels.
     """
     if record.sources is None:
         raise ValueError("No sources defined for record")
 
-    logger.info("Loading overview data: %d files", len(record.sources.overview))
-
-    df_list = load_data(
-        record.sources.overview,
-        record.site,
-        "",  # insert placeholder
-        group,
-        keys,
-    )
-
-    if not df_list:
-        logger.warning("No overview data loaded")
-        return pd.DataFrame()
-
-    # Use first file (overview is typically single file)
-    df = df_list[0] if len(df_list) == 1 else merge_data(df_list)
-
-    return df
+    logger.info(f"Loading overview data: {len(record.sources.overview)} files")
+    return load_files_data(record.sources.overview, record.housing, group, keys)
 
 
 def load_archive_data(
     record: OverviewRecord,
-    site_config: SiteConfig,
+    housing_config: HousingConfig,
     group: str,
-    keys: List[str],
+    keys: list[str],
 ) -> pd.DataFrame:
     """
     Load archive data for a record.
@@ -379,8 +366,8 @@ def load_archive_data(
     ----------
     record : OverviewRecord
         Record to load data into
-    site_config : SiteConfig
-        Site configuration
+    housing_config : HousingConfig
+        Housing configuration
     group : str
         TDMS group name
     keys : List[str]
@@ -391,32 +378,22 @@ def load_archive_data(
     pd.DataFrame
         Loaded archive DataFrame
     """
-    if record.sources is None or not record.sources.archive:
+    if record.sources is None:
         raise ValueError("No archive sources defined for record")
-
-    logger.info("Loading archive data: %d files", len(record.sources.archive))
-
-    df_list = load_data(
-        record.sources.archive,
-        record.site,
-        "",
-        group,
-        keys,
-    )
-
-    if not df_list:
-        logger.warning("No archive data loaded")
+    if not record.sources.archive:
+        logger.warning("No archive sources defined for record")
         return pd.DataFrame()
 
-    return merge_data(df_list)
+    logger.info(f"Loading archive data: {len(record.sources.archive)} files")
+    return load_files_data(record.sources.archive, record.housing, group, keys)
 
 
 def load_pupitre_data(
     record: OverviewRecord,
-    site_config: SiteConfig,
+    housing_config: HousingConfig,
     group: str,
-    keys: List[str],
-    extra_keys: Optional[List[str]] = None,
+    keys: list[str],
+    extra_keys: list[str] | None = None,
 ) -> pd.DataFrame:
     """
     Load pupitre data for a record.
@@ -425,8 +402,8 @@ def load_pupitre_data(
     ----------
     record : OverviewRecord
         Record to load data into
-    site_config : SiteConfig
-        Site configuration
+    housing_config : HousingConfig
+        Housing configuration
     group : str
         TDMS group name
     keys : List[str]
@@ -439,63 +416,56 @@ def load_pupitre_data(
     pd.DataFrame
         Loaded pupitre DataFrame
     """
-    if record.sources is None or not record.sources.pupitre:
+    if record.sources is None:
+        raise ValueError("No sources defined for record")
+    if not record.sources.pupitre:
         logger.warning("No pupitre sources defined for record")
         return pd.DataFrame()
 
-    # Map keys to pupitre channel names using helper
-    pupitre_keys = []
+    # Map keys to pupitre channel names
+    pupitre_keys = housing_config.get_pupitre_group_keys(group)
+    logger.debug(f"pupitre_keys={pupitre_keys} from group={group}")
+
+    # Housing-independent pigbrother -> pupitre aliases (e.g. Courant_A1 -> Idcct1)
+    aliased = {
+        af.pigbrother_channel: af.pupitre_key
+        for af in discover_pupitre_pigbrother_fields()
+        if af.pigbrother_group == group
+    }
+
+    logger.debug(f"Mapping keys to pupitre channels for keys={keys}")
     for key in keys:
-        pupitre_channel = _get_pupitre_channel(site_config, key)
-        if pupitre_channel:
+        pupitre_channel = housing_config.get_pupitre_current_channel(key) or aliased.get(key)
+        logger.debug(f"pupitre_channel={pupitre_channel}, key={key}")
+        if pupitre_channel and pupitre_channel not in pupitre_keys:
             pupitre_keys.append(pupitre_channel)
 
     # Add flow parameter keys
-    if site_config.reference_gr1_flow:
-        pupitre_keys.append(site_config.reference_gr1_flow)
-    if site_config.reference_gr2_flow:
-        pupitre_keys.append(site_config.reference_gr2_flow)
-    if site_config.reference_gr1_rpm:
-        pupitre_keys.append(site_config.reference_gr1_rpm)
-    if site_config.reference_gr2_rpm:
-        pupitre_keys.append(site_config.reference_gr2_rpm)
-    if site_config.reference_gr1_pin:
-        pupitre_keys.append(site_config.reference_gr1_pin)
-    if site_config.reference_gr2_pin:
-        pupitre_keys.append(site_config.reference_gr2_pin)
+    pupitre_keys += [k for k in housing_config.get_pupitre_flow_keys() if k not in pupitre_keys]
+    logger.debug(f"Added flow keys, pupitre_keys={pupitre_keys}")
 
     # Add extra keys
     if extra_keys:
-        pupitre_keys.extend(extra_keys)
+        pupitre_keys.extend(k for k in extra_keys if k not in pupitre_keys)
 
     # Add standard pupitre fields
-    standard_keys = ["BP", "teb", "debitbrut", "Pmagnet"]
+    standard_keys = ["BP", "teb", "tsb", "debitbrut", "Pmagnet", "Ptot"]
     pupitre_keys.extend([k for k in standard_keys if k not in pupitre_keys])
 
-    logger.info("Loading pupitre data: %d files", len(record.sources.pupitre))
-
-    df_list = load_data(
-        record.sources.pupitre,
-        record.site,
-        "",
-        group,
-        pupitre_keys,
+    logger.info(
+        f"Loading pupitre data: {len(record.sources.pupitre)} files, "
+        f"group={group}, keys={keys}, extra_keys={extra_keys}"
     )
-
-    if not df_list:
-        logger.warning("No pupitre data loaded")
-        return pd.DataFrame()
-
-    return merge_data(df_list)
+    return load_files_data(record.sources.pupitre, record.housing, group, pupitre_keys)
 
 
 def load_incidents_data(
     record: OverviewRecord,
-    site_config: SiteConfig,
+    housing_config: HousingConfig,
     group: str,
-    keys: List[str],
+    keys: list[str],
     reference_t0: datetime,
-) -> Dict[str, List[pd.DataFrame]]:
+) -> dict[str, list[pd.DataFrame]]:
     """
     Load incidents data (default, trigger, spike).
 
@@ -503,8 +473,8 @@ def load_incidents_data(
     ----------
     record : OverviewRecord
         Record to load data into
-    site_config : SiteConfig
-        Site configuration
+    housing_config : HousingConfig
+        Housing configuration
     group : str
         TDMS group name
     keys : List[str]
@@ -521,7 +491,6 @@ def load_incidents_data(
         return {"default": [], "trigger": [], "spike": []}
 
     incidents = {}
-    t_offset = compute_time_offset(SAMPLING_RATE_INCIDENTS)
 
     for incident_type in ["default", "trigger", "spike"]:
         files = getattr(record.sources, incident_type, [])
@@ -530,17 +499,18 @@ def load_incidents_data(
             incidents[incident_type] = []
             continue
 
-        logger.info("Loading %s data: %d files", incident_type, len(files))
-
-        df_list = load_data(files, record.site, "", group, keys)
+        logger.info(f"Loading {incident_type} data: {len(files)} files")
+        df_list = [
+            df
+            for f in files
+            if not (df := load_files_data([f], record.housing, group, keys)).empty
+        ]
 
         # Add time column to each incident DataFrame
-        for df in df_list:
+        for i, df in enumerate(df_list):
             if not df.empty and "timestamp" in df.columns:
-                df["t"] = df.apply(
-                    lambda row: (row["timestamp"] - reference_t0).total_seconds()
-                    + t_offset,
-                    axis=1,
+                df_list[i] = add_time_columns(
+                    df, reference_t0, sampling_rate=SAMPLING_RATE_INCIDENTS
                 )
 
         incidents[incident_type] = df_list
@@ -548,16 +518,434 @@ def load_incidents_data(
     return incidents
 
 
+def load_hybrid_data(
+    record: OverviewRecord,
+    housing_config: HousingConfig,
+    group: str,
+    keys: list[str],
+    extra_keys: list[str] | None = None,
+    htype: str = "kHz",
+    reference_t0: datetime | None = None,
+) -> pd.DataFrame:
+    """
+    Load hybrid data for a record.
+
+    Parameters
+    ----------
+    record : OverviewRecord
+        Record to load data into
+    housing_config : HousingConfig
+        Housing configuration
+    group : str
+        TDMS group name
+    keys : List[str]
+        Current keys to load
+    extra_keys : List[str], optional
+        Additional keys (flow params, etc.)
+    reference_t0 : datetime, optional
+        Reference UTC timestamp for the shared time axis (t = 0).  When
+        provided and ``htype == "kHz"``, the kHz time array (elapsed seconds
+        from ``HH:00:00 UTC``) is shifted by
+        ``(hrun.get_time_range()[0] - reference_t0).total_seconds()`` so
+        that the hybrid ``t`` column is on the same axis as the overview
+        and archive data.  RMS and vprocess alignment is not yet supported.
+
+    Returns
+    -------
+    pd.DataFrame
+        Loaded hybrid DataFrame
+    """
+    if record.sources is None:
+        raise ValueError("No sources defined for record")
+    if htype == "kHz" and not record.sources.hybrid_kHz:
+        logger.warning("No hybrid kHz sources defined for record")
+        return pd.DataFrame()
+    if htype == "rms" and not record.sources.hybrid_rms:
+        logger.warning("No hybrid RMS sources defined for record")
+        return pd.DataFrame()
+    if htype == "vprocess" and not record.sources.hybrid_vprocess:
+        logger.warning("No hybrid vprocess sources defined for record")
+        return pd.DataFrame()
+
+    if htype == "kHz":
+        logger.info(
+            f"Loading hybrid kHz data: {len(record.sources.hybrid_kHz)} files, group={group}, keys={keys}, extra_keys={extra_keys}"
+        )
+    elif htype == "rms":
+        logger.info(
+            f"Loading hybrid RMS data: {len(record.sources.hybrid_rms)} files, group={group}, keys={keys}, extra_keys={extra_keys}"
+        )
+    elif htype == "vprocess":
+        logger.info(
+            f"Loading hybrid vprocess data: {len(record.sources.hybrid_vprocess)} files"
+        )
+
+    # Map keys to hybrid channel names (not used for vprocess)
+    hybrid_keys = (
+        housing_config.get_hybrid_group_keys(group) if htype != "vprocess" else []
+    )
+    logger.debug(f"hybrid_keys={hybrid_keys} from group={group}")
+
+    # Path structure:
+    #   kHz/rms: <base_dir>/kHz/<date_str>/<fepc_system>/<HH>HOST_*.bin  (parents[3], parents[1])
+    #   vprocess: <base_dir>/vprocess/<date_str>/<filename>.vprocess      (parents[2], parents[0])
+    if htype == "kHz":
+        first_file = Path(record.sources.hybrid_kHz[0])
+        base_dir = str(first_file.parents[3])
+        date_str = first_file.parents[1].name
+    elif htype == "rms":
+        first_file = Path(record.sources.hybrid_rms[0])
+        base_dir = str(first_file.parents[3])
+        date_str = first_file.parents[1].name
+    else:  # vprocess
+        first_file = Path(record.sources.hybrid_vprocess[0])
+        base_dir = str(first_file.parents[2])
+        date_str = first_file.parents[0].name
+
+    # Filenames encode UTC hours; hours parameter is UTC.
+    import re as _re
+
+    hours_set: set[int] = set()
+    if htype == "kHz":
+        for f in record.sources.hybrid_kHz:
+            with contextlib.suppress(ValueError):
+                hours_set.add(int(Path(f).name[:2]))
+    elif htype == "rms":
+        for f in record.sources.hybrid_rms:
+            with contextlib.suppress(ValueError):
+                m = _re.search(r"\d{4}-\d{2}-\d{2}_(\d{2})\d{2}[—-]", Path(f).stem)
+                if m:
+                    hours_set.add(int(m.group(1)))
+    elif htype == "vprocess":
+        for f in record.sources.hybrid_vprocess:
+            m = _re.match(r"^\d{8}_(\d{2})", Path(f).name)
+            if m:
+                hours_set.add(int(m.group(1)))
+    hours_list: list[int] | None = sorted(hours_set) or None
+
+    try:
+        from ..hybrid.hybrid_run import HybridRun
+
+        hrun = HybridRun.fromdir(
+            base_dir=base_dir, date_str=date_str, housing=record.housing
+        )
+
+        # Compute time offset so hybrid t aligns with the shared overview axis.
+        # Only kHz is supported: get_time_range() is kHz-based.
+        _t_offset = 0.0
+        if htype == "kHz" and reference_t0 is not None:
+            khz_origin = hrun.get_time_range()[0]
+            _t_offset = (khz_origin - reference_t0).total_seconds()
+            logger.debug(
+                f"load_hybrid_data: kHz origin={khz_origin}, "
+                f"reference_t0={reference_t0}, t_offset={_t_offset:.3f}s"
+            )
+
+        # For vprocess, derive keys from the file header (no housing-config mapping).
+        if htype == "vprocess":
+            try:
+                vprocess_vars = hrun.getMData().get_vprocess_variables()["analog"]
+                hybrid_keys = [f"vprocess/{v}" for v in vprocess_vars]
+            except (ImportError, ValueError) as e:
+                logger.warning(f"load_hybrid_data: cannot read vprocess variables: {e}")
+                return pd.DataFrame()
+
+        frames: list[pd.DataFrame] = []
+        for key in hybrid_keys:
+            result = hrun.getData(key, hours=hours_list)
+            if not (isinstance(result, tuple) and len(result) == 2):
+                logger.warning(
+                    f"load_hybrid_data: key={key} did not return (data, time) tuple"
+                )
+                continue
+            data, time = result
+            logger.debug(
+                f"Loaded hybrid data for key={key}, data type={type(data)}, time shape={time.shape}"
+            )
+            frames.append(pd.DataFrame({"t": time + _t_offset, key: data}))
+
+    except (OSError, ValueError, ImportError) as e:
+        logger.error(
+            f"load_hybrid_data: failed to create HybridRun for {date_str}: {e}"
+        )
+        return pd.DataFrame()
+
+    if not frames:
+        return pd.DataFrame()
+
+    df = frames[0]
+    for frame in frames[1:]:
+        df = pd.merge(df, frame, on="t", how="outer")
+    return df.sort_values("t").reset_index(drop=True)
+
+
+def load_hybrid_incidents_data(
+    record: OverviewRecord,
+    housing_config: HousingConfig,
+    group: str,
+    keys: list[str],
+    reference_t0: datetime,
+) -> dict[str, list[pd.DataFrame]]:
+    """Load hybrid trigger incidents for a record.
+
+    Each trigger directory in ``record.sources.hybrid_trigger`` is parsed via
+    :func:`~python_magnetrun.hybrid.trigger.trigger_reader.parse_trigger_directory`.
+    The precise UTC timestamp (``trigger_approx_timestamp`` from
+    ``EventInfo.properties``, ms precision) is preferred over the minute-
+    precision dirname timestamp.  The resulting ``t`` value is
+    ``(trigger_ts - reference_t0).total_seconds()``.
+
+    Parameters
+    ----------
+    record : OverviewRecord
+        Record whose ``sources.hybrid_trigger`` lists trigger directories.
+    housing_config : HousingConfig
+        Housing configuration (unused here, kept for API symmetry with
+        :func:`load_incidents_data`).
+    group : str
+        TDMS group name (unused here, kept for API symmetry).
+    keys : list[str]
+        Data keys (unused here, kept for API symmetry).
+    reference_t0 : datetime
+        Naive UTC reference; ``t = 0`` on the shared plot axis.
+
+    Returns
+    -------
+    dict[str, list[pd.DataFrame]]
+        ``{"hybrid_trigger": [df, ...]}`` — one DataFrame per trigger event.
+        Each DataFrame has a single ``"t"`` column (float seconds from
+        *reference_t0*) with one row.
+    """
+    if record.sources is None or not record.sources.hybrid_trigger:
+        return {"hybrid_trigger": []}
+
+    from ..hybrid.trigger.trigger_reader import parse_trigger_directory
+
+    incidents: list[pd.DataFrame] = []
+    for tdir in record.sources.hybrid_trigger:
+        try:
+            info = parse_trigger_directory(Path(tdir))
+        except (OSError, ValueError) as e:
+            logger.warning(f"load_hybrid_incidents_data: skipping {tdir!r}: {e}")
+            continue
+
+        ts = info.trigger_approx_timestamp or info.timestamp
+        t = (ts - reference_t0).total_seconds()
+        incidents.append(pd.DataFrame({"t": [t]}))
+        logger.debug(
+            f"load_hybrid_incidents_data: trigger {info.trigger_name!r} "
+            f"ts={ts}, t={t:.3f}s"
+        )
+
+    return {"hybrid_trigger": incidents}
+
+
 # =============================================================================
 # Main processing functions
 # =============================================================================
+def _check_overview_end_state(
+    df_overview: pd.DataFrame,
+    record: OverviewRecord,
+    time_zone: str,
+) -> None:
+    """Warn when the magnet appears still running at the end of the overview.
+
+    Logs a warning for each ``Courant*`` column whose last value exceeds 10 A
+    and logs a guess for the next overview filename.
+    """
+    if record.sources is None:
+        raise ValueError("No sources defined for record")
+
+    last_values = {
+        col: df_overview[col].iloc[-1]
+        for col in df_overview.columns
+        if col.startswith("Courant")
+    }
+    for key, value in last_values.items():
+        if abs(value) <= 10.0:
+            continue
+        last_overview = record.sources.overview[-1]
+        logger.warning(f"{last_overview}: {key} last value is above 10.0 A: {value}")
+        if "timestamp" in df_overview.columns:
+            last_ts = df_overview["timestamp"].iloc[-1]
+            last_ts_local = utc_naive_to_local(last_ts, time_zone)
+        elif "t" in df_overview.columns:
+            start_dt = parse_tdms_filename(last_overview)
+            if start_dt is None:
+                logger.warning(f"Cannot derive end time from {last_overview}, skipping")
+                continue
+            last_ts_local = start_dt + timedelta(
+                seconds=float(df_overview["t"].iloc[-1])
+            )
+        else:
+            logger.warning(
+                f"No timestamp or t column in df_overview for {last_overview}, skipping"
+            )
+            continue
+        _housing = os.path.basename(last_overview).split("_")[0]
+        _dirname = os.path.dirname(last_overview)
+        new_ts_str = last_ts_local.strftime("%y%m%d-%H%M")
+        new_overview = os.path.join(_dirname, f"{_housing}_Overview_{new_ts_str}.tdms")
+        logger.info(f"Guessed next overview file: {new_overview}")
+        break
+
+
+def _load_all_sources(
+    record: OverviewRecord,
+    housing_config: HousingConfig,
+    config: ProcessingConfig,
+    keys: list[str],
+) -> None:
+    """Load archive, pupitre, hybrid and incident data into *record.data*.
+
+    Also applies pupitre synchronisation when ``config.synchronize`` is set.
+    Mutates *record* in place.
+    """
+    if record.sources is None:
+        raise ValueError("No sources defined for record")
+    if record.t0 is None:
+        raise ValueError("record.t0 must be set before loading sources")
+    t0: datetime = record.t0
+
+    # Archive
+    if record.sources.archive:
+        df_archive = load_archive_data(record, housing_config, config.group, keys)
+        if not df_archive.empty:
+            record.data["archive"] = df_archive
+        logger.info(
+            f"{record.filename}: loaded archive data columns={df_archive.columns.tolist()}"
+        )
+
+    # Pupitre
+    if record.sources.pupitre:
+        df_pupitre = load_pupitre_data(record, housing_config, config.group, keys)
+        if not df_pupitre.empty:
+            if "teb" in df_pupitre.columns:
+                record.teb = float(df_pupitre["teb"].mean())
+            if "BP" in df_pupitre.columns:
+                record.BP = float(df_pupitre["BP"].mean())
+            record.data["pupitre"] = df_pupitre
+        logger.info(
+            f"{record.filename}: loaded pupitre data columns={df_pupitre.columns.tolist()}"
+        )
+
+    # Common reference for hybrid time alignment (same formula used for incidents).
+    _hybrid_reference_t0: datetime | None = (
+        record.data["archive"]["timestamp"].iloc[0]
+        if record.has_data("archive")
+        else t0
+    )
+
+    # Hybrid kHz
+    if record.sources.hybrid_kHz:
+        logger.info(f"hybrid_kHz={record.sources.hybrid_kHz}")
+        df_hybrid_kHz = load_hybrid_data(
+            record,
+            housing_config,
+            config.group,
+            keys,
+            htype="kHz",
+            reference_t0=_hybrid_reference_t0,
+        )
+        if not df_hybrid_kHz.empty:
+            record.data["hybrid_kHz"] = df_hybrid_kHz
+        logger.info(
+            f"{record.filename}: loaded hybrid kHz columns={df_hybrid_kHz.columns.tolist()}"
+        )
+
+    # Hybrid RMS
+    if record.sources.hybrid_rms:
+        logger.info(f"hybrid_rms={record.sources.hybrid_rms}")
+        df_hybrid_rms = load_hybrid_data(
+            record,
+            housing_config,
+            config.group,
+            keys,
+            htype="rms",
+            reference_t0=_hybrid_reference_t0,
+        )
+        if not df_hybrid_rms.empty:
+            record.data["hybrid_rms"] = df_hybrid_rms
+        logger.info(
+            f"{record.filename}: loaded hybrid rms columns={df_hybrid_rms.columns.tolist()}"
+        )
+
+    # Hybrid vprocess
+    if record.sources.hybrid_vprocess:
+        logger.info(f"hybrid_vprocess={record.sources.hybrid_vprocess}")
+        df_hybrid_vprocess = load_hybrid_data(
+            record,
+            housing_config,
+            config.group,
+            keys,
+            htype="vprocess",
+            reference_t0=_hybrid_reference_t0,
+        )
+        if not df_hybrid_vprocess.empty:
+            record.data["hybrid_vprocess"] = df_hybrid_vprocess
+        logger.info(
+            f"{record.filename}: loaded hybrid vprocess columns={df_hybrid_vprocess.columns.tolist()}"
+        )
+
+    # Hybrid trigger
+    if record.sources.hybrid_trigger:
+        logger.info(f"hybrid_trigger={record.sources.hybrid_trigger}")
+        reference_t0 = (
+            record.data["archive"]["timestamp"].iloc[0]
+            if record.has_data("archive")
+            else t0
+        )
+        result = load_hybrid_incidents_data(
+            record, housing_config, config.group, keys, reference_t0
+        )
+        record.data.update(result)
+        logger.debug(
+            f"{record.filename}: loaded {len(result.get('hybrid_trigger', []))} "
+            f"hybrid trigger incidents, reference_t0={reference_t0}"
+        )
+
+    # Synchronise pupitre
+    if config.synchronize and record.has_data("pupitre"):
+        _synchronize_pupitre(record, config)
+        logger.info(f"{record.filename}: synchronization done")
+
+    # Incidents (default / trigger / spike)
+    if any([record.sources.default, record.sources.trigger, record.sources.spike]):
+        reference_t0 = (
+            record.data["archive"]["timestamp"].iloc[0]
+            if record.has_data("archive")
+            else t0
+        )
+        incidents = load_incidents_data(
+            record, housing_config, config.group, keys, reference_t0
+        )
+        logger.debug(f"{record.filename}: loaded incidents reference_t0={reference_t0}")
+        record.data.update(incidents)
+
+
+def _extract_analysis(
+    record: OverviewRecord,
+    housing_config: HousingConfig,
+    keys: list[str],
+    config: ProcessingConfig,
+) -> None:
+    """Run post-load analysis: signatures and optional lag correlation."""
+    _extract_signatures(record, housing_config, keys, config)
+    logger.info(f"{record.filename}: extracted signatures for keys={keys}")
+
+    if config.compute_lag and record.has_data("pupitre"):
+        _compute_lag_correlation(record, housing_config, keys, config)
+        logger.info(f"{record.filename}: computed lag correlation")
+
+
 def process_overview_file(
     overview_file: str,
     config: ProcessingConfig,
-    site_config: Optional[SiteConfig] = None,
+    housing_config: HousingConfig | None = None,
+    dry_run: bool = False,
+    time_zone: str = "Europe/Paris",
 ) -> OverviewRecord:
-    """
-    Process a single overview file with all associated data.
+    """Process a single overview file with all associated data.
 
     This is the main entry point for processing a magnetrun experiment.
     It discovers related files, loads all data sources, synchronizes
@@ -569,163 +957,85 @@ def process_overview_file(
         Path to overview TDMS file
     config : ProcessingConfig
         Processing configuration
-    site_config : SiteConfig, optional
-        Site-specific configuration (auto-detected if not provided)
+    housing_config : HousingConfig, optional
+        Housing-specific configuration (auto-detected if not provided)
+    time_zone : str, optional
+        IANA timezone for filename timestamps (default ``"Europe/Paris"``)
 
     Returns
     -------
     OverviewRecord
         Complete record with all loaded and processed data
-
-    Examples
-    --------
-    >>> record = process_overview_file(
-    ...     "M9_Overview_241106-091500.tdms",
-    ...     ProcessingConfig(synchronize=True),
-    ... )
-    >>> print(f"Duration: {record.duration} s")
     """
-    # Extract site and filename info
-    dirname = os.path.dirname(overview_file)
     basename = os.path.basename(overview_file)
     filename = basename.replace(".tdms", "")
     parts = filename.split("_")
-    site = parts[0]
+    housing = parts[0]
     mode = parts[1] if len(parts) > 1 else "Overview"
-
     logger.info(
-        f"Processing overview file: {filename} (dirname={dirname}, site={site}, mode={mode})"
+        f"Processing {filename} (housing={housing}, mode={mode}), config={config}"
     )
 
-    # Get site configuration
-    if site_config is None:
-        if site not in SITE_CONFIGS:
+    if housing_config is None:
+        if housing not in HOUSING_CONFIGS:
             raise ValueError(
-                f"Unknown site: {site}. Available: {list(SITE_CONFIGS.keys())}"
+                f"Unknown housing: {housing}. Available: {list(HOUSING_CONFIGS.keys())}"
             )
-        site_config = SITE_CONFIGS[site]
+        housing_config = HOUSING_CONFIGS[housing]
 
-    # Create record
-    record = OverviewRecord(
-        filename=filename,
-        site=site,
-        mode=mode,
-    )
+    record = OverviewRecord(filename=filename, housing=housing, mode=mode)
 
-    # Discover associated files
     discovery = FileDiscovery(
+        pupitre_datadir=config.pupitre_datadir,
         pigbrother_datadir=config.pigbrother_datadir,
-        log_datadir=os.path.dirname(overview_file) or None,
+        pigbrother_runlog_dir=os.path.dirname(overview_file) or None,
+        hybrid_datadir=config.hybrid_datadir if housing == "M8" else None,
     )
-
-    # Use the new `discover` API which returns a FileSet
-    # tdms is loaded at this point
-    record.sources = discovery.discover(overview_file, site=site)
-
+    record.sources = discovery.discover(overview_file, housing=housing, dry_run=dry_run)
     logger.info(
-        "Discovered files - archive: %d, pupitre: %d, incidents: %d",
-        len(record.sources.archive),
-        len(record.sources.pupitre),
-        len(record.sources.default)
-        + len(record.sources.trigger)
-        + len(record.sources.spike),
+        f"Discovered: archive={len(record.sources.archive)}, "
+        f"pupitre={len(record.sources.pupitre)}, "
+        f"incidents={len(record.sources.default) + len(record.sources.trigger) + len(record.sources.spike)}, "
+        f"hybrid_kHz={len(record.sources.hybrid_kHz)}, "
+        f"hybrid_rms={len(record.sources.hybrid_rms)}, "
+        f"hybrid_vprocess={len(record.sources.hybrid_vprocess)}, "
+        f"hybrid_trigger={len(record.sources.hybrid_trigger)}"
     )
 
     if config.dry_run:
-        logger.info("Dry run - skipping data loading")
+        logger.info("Dry run — skipping data loading")
         return record
 
-    # Load overview data
+    # Load overview and set record metadata
     df_overview = load_overview_data(record, config.group, keys=None)
     if df_overview.empty:
         raise ValueError(f"Failed to load overview data from {overview_file}")
-    logger.info(f"{overview_file}: loaded done")
+    logger.info(f"{overview_file}: overview loaded")
+
+    _check_overview_end_state(df_overview, record, time_zone)
 
     keys = [
-        key.replace(config.group, "")
-        for key in df_overview.columns.tolist()
-        if key.startswith(config.group)
+        key for key in df_overview.columns.tolist()
+        if key not in ("t", "timestamp")
     ]
-    logger.info(
-        f"{overview_file}: group={config.group}, keys={keys}, df_overview.columns={df_overview.columns.tolist()}"
-    )
+    logger.info(f"{overview_file}: group={config.group}, keys={keys}")
 
-    # Set reference timestamp
     record.t0 = df_overview["timestamp"].iloc[0]
     record.data["overview"] = df_overview
+    record.duration = get_timestamp_info(df_overview)["duration"]
+    logger.info(f"{overview_file}: t0={record.t0}, duration={record.duration}s")
 
-    # Add time column to overview
-    t_offset = compute_time_offset(SAMPLING_RATE_OVERVIEW)
-    df_overview["t"] = df_overview.apply(
-        lambda row: (row["timestamp"] - record.t0).total_seconds() + t_offset,
-        axis=1,
-    )
+    _load_all_sources(record, housing_config, config, keys)
+    _extract_analysis(record, housing_config, keys, config)
 
-    # Calculate duration
-    timestamp_info = get_timestamp_info(df_overview)
-    record.duration = timestamp_info["duration"]
-
-    # Load archive data
-    if record.sources.archive:
-        df_archive = load_archive_data(record, site_config, config.group, keys)
-        if not df_archive.empty:
-            at0 = df_archive["timestamp"].iloc[0]
-            t_offset = compute_time_offset(SAMPLING_RATE_ARCHIVE)
-            df_archive["t"] = df_archive.apply(
-                lambda row: (row["timestamp"] - at0).total_seconds() + t_offset,
-                axis=1,
-            )
-            record.data["archive"] = df_archive
-
-    # Load pupitre data
-    if record.sources.pupitre:
-        df_pupitre = load_pupitre_data(record, site_config, config.group, keys)
-        if not df_pupitre.empty:
-            pt0 = df_pupitre["timestamp"].iloc[0]
-            df_pupitre["t"] = df_pupitre.apply(
-                lambda row: (row["timestamp"] - pt0).total_seconds(),
-                axis=1,
-            )
-
-            # Extract pupitre parameters
-            if "teb" in df_pupitre.columns:
-                record.teb = float(df_pupitre["teb"].mean())
-            if "BP" in df_pupitre.columns:
-                record.BP = float(df_pupitre["BP"].mean())
-
-            record.data["pupitre"] = df_pupitre
-
-    # Synchronize pupitre with overview if requested
-    if config.synchronize and record.has_data("pupitre"):
-        _synchronize_pupitre(record, config)
-
-    # Load incidents data
-    if any([record.sources.default, record.sources.trigger, record.sources.spike]):
-        reference_t0 = (
-            record.data["archive"]["timestamp"].iloc[0]
-            if record.has_data("archive")
-            else record.t0
-        )
-        incidents = load_incidents_data(
-            record, site_config, config.group, keys, reference_t0
-        )
-        record.data.update(incidents)
-
-    # Extract signatures for each key
-    _extract_signatures(record, site_config, keys, config)
-
-    # Compute lag if requested
-    if config.compute_lag and record.has_data("pupitre"):
-        _compute_lag_correlation(record, site_config, keys, config)
-
-    logger.info("Processing complete for %s", filename)
-
+    logger.info(f"Processing complete for {filename}")
     return record
 
 
 def process_experiment(
-    overview_files: List[str],
+    overview_files: list[str],
     config: ProcessingConfig,
+    dry_run: bool = False,
 ) -> ProcessingResult:
     """
     Process multiple overview files for an experiment.
@@ -747,23 +1057,23 @@ def process_experiment(
     result = ProcessingResult()
 
     # Sort files naturally
-    sorted_files = natsorted(overview_files)
+    sorted_files = cast("list[str]", natsorted(overview_files))
 
-    # Determine site from first file
+    # Determine housing from first file
     if sorted_files:
         first_basename = os.path.basename(sorted_files[0])
-        result.site = first_basename.split("_")[0]
+        result.housing = first_basename.split("_")[0]
 
     for overview_file in sorted_files:
         try:
-            record = process_overview_file(overview_file, config)
+            record = process_overview_file(overview_file, config, dry_run=dry_run)
             result.records[record.filename] = record
 
             # Track keys from first successful record
             if not result.keys and record.signatures:
                 result.keys = list(record.signatures.keys())
 
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             error_msg = f"Error processing {overview_file}: {e}"
             logger.error(error_msg)
             result.errors.append(error_msg)
@@ -785,22 +1095,11 @@ def process_experiment(
 # =============================================================================
 
 
-def _get_pupitre_channel(site_config: SiteConfig, key: str) -> Optional[str]:
-    """Get pupitre channel name for a key."""
-    if key == "Courant_GR1":
-        return site_config.reference_gr1_current
-    elif key == "Courant_GR2":
-        return site_config.reference_gr2_current
-    return None
-
-
-def _get_archive_channel(key: str) -> str:
-    """Get archive channel name for a key (typically same as key)."""
-    return key
-
-
 def _synchronize_pupitre(record: OverviewRecord, config: ProcessingConfig) -> None:
     """Synchronize pupitre data with overview reference time."""
+    if record.t0 is None:
+        raise ValueError("record.t0 must be set before synchronization")
+
     df_pupitre = record.data["pupitre"]
     ot0 = record.t0
 
@@ -813,18 +1112,20 @@ def _synchronize_pupitre(record: OverviewRecord, config: ProcessingConfig) -> No
     record.sync_info["timeshift"] = timeshift
     record.sync_info["timeshift_seconds"] = timeshift.total_seconds()
 
-    logger.info("Applied timeshift: %.3f s", timeshift.total_seconds())
+    logger.info(f"Applied timeshift: {timeshift.total_seconds():.3f} s")
 
 
 def _extract_signatures(
     record: OverviewRecord,
-    site_config: SiteConfig,
-    keys: List[str],
+    housing_config: HousingConfig,
+    keys: list[str],
     config: ProcessingConfig,
 ) -> None:
     """Extract signatures from overview data."""
     # This would integrate with the Signature class
     # For now, store placeholder info
+
+    logger.info(f"Extracting signatures for keys={keys} from overview data")
     df_overview = record.data["overview"]
 
     for key in keys:
@@ -837,17 +1138,14 @@ def _extract_signatures(
             }
 
             logger.debug(
-                "Signature for %s: min=%.2f, max=%.2f",
-                key,
-                record.signatures[key]["min"],
-                record.signatures[key]["max"],
+                f"Signature for {key}: min={record.signatures[key]['min']:.2f}, max={record.signatures[key]['max']:.2f}"
             )
 
 
 def _compute_lag_correlation(
     record: OverviewRecord,
-    site_config: SiteConfig,
-    keys: List[str],
+    housing_config: HousingConfig,
+    keys: list[str],
     config: ProcessingConfig,
 ) -> None:
     """Compute lag correlation between overview and pupitre."""
@@ -855,9 +1153,8 @@ def _compute_lag_correlation(
     df_pupitre = record.data["pupitre"]
 
     for key in keys:
-        # Get channel mappings using helper functions
-        overview_key = _get_archive_channel(key)
-        pupitre_key = _get_pupitre_channel(site_config, key)
+        overview_key = key
+        pupitre_key = housing_config.get_pupitre_current_channel(key)
 
         if not pupitre_key:
             continue
@@ -867,19 +1164,19 @@ def _compute_lag_correlation(
         if pupitre_key not in df_pupitre.columns:
             continue
 
-        logger.info("Computing lag for %s vs %s", overview_key, pupitre_key)
+        logger.info(f"Computing lag for {overview_key} vs {pupitre_key}")
 
         try:
             # Prepare data for lag computation
             df1_data = {
                 "df": df_overview[["timestamp", overview_key]].copy(),
                 "field": overview_key,
-                "range": (0, None),
+                "range": {"start": 0, "end": None},
             }
             df2_data = {
                 "df": df_pupitre[["timestamp", pupitre_key]].copy(),
                 "field": pupitre_key,
-                "range": (0, None),
+                "range": {"start": 0, "end": None},
             }
 
             lag = compute_lag(
@@ -894,16 +1191,16 @@ def _compute_lag_correlation(
             record.sync_info[f"lag_{key}"] = lag
             record.sync_info[f"lag_{key}_seconds"] = lag.total_seconds()
 
-            logger.info("Lag for %s: %.3f s", key, lag.total_seconds())
+            logger.info(f"Lag for {key}: {lag.total_seconds():.3f} s")
 
-        except Exception as e:
-            logger.warning("Failed to compute lag for %s: %s", key, e)
+        except (ValueError, RuntimeError) as e:
+            logger.warning(f"Failed to compute lag for {key}: {e}")
 
 
 # =============================================================================
 # Convenience functions
 # =============================================================================
-def create_overview_dict(result: ProcessingResult) -> Dict[str, Dict[str, Any]]:
+def create_overview_dict(result: ProcessingResult) -> dict[str, dict[str, Any]]:
     """
     Convert ProcessingResult to legacy overview_dict format.
 
@@ -945,7 +1242,7 @@ def create_overview_dict(result: ProcessingResult) -> Dict[str, Dict[str, Any]]:
     return overview_dict
 
 
-def summarize_record(record: OverviewRecord) -> Dict[str, Any]:
+def summarize_record(record: OverviewRecord) -> dict[str, Any]:
     """
     Create a summary of an OverviewRecord.
 
@@ -961,13 +1258,17 @@ def summarize_record(record: OverviewRecord) -> Dict[str, Any]:
     """
     return {
         "filename": record.filename,
-        "site": record.site,
+        "housing": record.housing,
         "mode": record.mode,
         "t0": str(record.t0) if record.t0 else None,
         "duration": record.duration,
         "has_overview": record.has_data("overview"),
         "has_archive": record.has_data("archive"),
         "has_pupitre": record.has_data("pupitre"),
+        "has_hybrid_kHz": record.has_data("hybrid_kHz"),
+        "has_hybrid_rms": record.has_data("hybrid_rms"),
+        "has_hybrid_vprocess": record.has_data("hybrid_vprocess"),
+        "n_hybrid_incidents": len(record.data.get("hybrid_trigger", [])),
         "n_default": len(record.data.get("default", [])),
         "n_trigger": len(record.data.get("trigger", [])),
         "n_spike": len(record.data.get("spike", [])),
@@ -982,25 +1283,108 @@ def print_record_summary(record: OverviewRecord) -> None:
     """Print a formatted summary of a record."""
     summary = summarize_record(record)
 
-    print(f"\n{'='*60}")
+    print("=" * 60)
     print(f"Overview Record: {summary['filename']}")
-    print(f"{'='*60}")
-    print(f"Site: {summary['site']}, Mode: {summary['mode']}")
+    print("=" * 60)
+    print(f"Housing: {summary['housing']}")
+    print(f"Mode: {summary['mode']}")
     print(f"Start time: {summary['t0']}")
     print(f"Duration: {summary['duration']:.1f} s")
-    print(f"\nData sources:")
-    print(f"  - Overview: {'✓' if summary['has_overview'] else '✗'}")
-    print(f"  - Archive: {'✓' if summary['has_archive'] else '✗'}")
-    print(f"  - Pupitre: {'✓' if summary['has_pupitre'] else '✗'}")
+    print("Data sources:")
+    print(f"  - Overview: {'yes' if summary['has_overview'] else 'no'}")
+    print(f"  - Archive: {'yes' if summary['has_archive'] else 'no'}")
+    print(f"  - Pupitre: {'yes' if summary['has_pupitre'] else 'no'}")
+
+    if record.housing == "M8":
+        print(f"  - Hybrid kHz: {'yes' if summary['has_hybrid_kHz'] else 'no'}")
+        print(f"  - Hybrid RMS: {'yes' if summary['has_hybrid_rms'] else 'no'}")
+        print(
+            f"  - Hybrid Vprocess: {'yes' if summary['has_hybrid_vprocess'] else 'no'}"
+        )
+
     print(
         f"  - Incidents: {summary['n_default']} default, {summary['n_trigger']} trigger, {summary['n_spike']} spike"
     )
-    print(f"\nSignatures: {', '.join(summary['signatures']) or 'None'}")
+    if record.housing == "M8":
+        print(f"  - Hybrid Incidents: {summary['n_hybrid_incidents']}")
+
+    print(f"Signatures: {', '.join(summary['signatures']) or 'None'}")
 
     if summary["sync_info"]:
-        print(f"\nSync info:")
+        print("Sync info:")
         for key, value in summary["sync_info"].items():
             print(f"  - {key}: {value}")
 
-    print(f"\nPupitre params: teb={summary['teb']:.2f}, BP={summary['BP']:.2f}")
-    print(f"{'='*60}\n")
+    print(f"Pupitre params: teb={summary['teb']:.2f}, BP={summary['BP']:.2f}")
+
+
+def benchmark_downsample_channel(
+    df: pd.DataFrame,
+    key: str,
+    tkey: str = "t",
+    n_out: int = 10_000,
+    compute_memory: bool = False,
+    memory_tier: int = 1,
+    save_csv: str | None = None,
+) -> pd.DataFrame:
+    """Benchmark all available downsampling methods on one channel.
+
+    Constructs a default set of :class:`~python_magnetrun.utils.DownsampleConfig`
+    objects covering all installed methods at the same *n_out*, then calls
+    :func:`~python_magnetrun.utils.benchmark_configs` and prints the result.
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        DataFrame containing the channel data.
+    key : str
+        Column name of the channel to benchmark.
+    tkey : str, optional
+        Time column name (default: ``'t'``).
+    n_out : int, optional
+        Target number of output points for all methods (default: 10 000).
+    compute_memory : bool, optional
+        When ``True``, measure peak memory allocation for each method.
+        Defaults to ``False``.
+    memory_tier : int, optional
+        Memory measurement tier (1/2/3); only used when *compute_memory* is
+        ``True``.
+    save_csv : str, optional
+        If provided, save the comparison table to this CSV path.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per method; columns match :class:`~python_magnetrun.utils.DownsampleMetrics`.
+    """
+
+    from ..utils.downsampling import HAS_TSDOWNSAMPLE
+    from ..utils.downsampling_metrics import benchmark_configs
+
+    data = df[key].to_numpy(dtype=float)
+    time = df[tkey].to_numpy(dtype=float)
+
+    configs = [
+        DownsampleConfig(n_out=n_out, method="stride"),
+        DownsampleConfig(n_out=n_out, method="minmax"),
+    ]
+    if HAS_TSDOWNSAMPLE:
+        configs += [
+            DownsampleConfig(n_out=n_out, method="minmax_lttb"),
+            DownsampleConfig(n_out=n_out, method="lttb"),
+        ]
+
+    result = benchmark_configs(
+        data, time, configs, compute_memory=compute_memory, memory_tier=memory_tier
+    )
+
+    cols = ["compression_ratio", "rmse", "max_error", "hausdorff_distance", "elapsed_s"]
+    print(f"\nDownsampling benchmark — key={key!r}, n_out={n_out}")
+    print(result[cols].to_string())
+
+    if save_csv:
+        result.to_csv(save_csv)
+        logger.info(f"Benchmark saved to {save_csv}")
+
+    return result
+    print("=" * 60, flush=True)

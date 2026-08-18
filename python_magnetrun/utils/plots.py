@@ -1,136 +1,16 @@
-from __future__ import unicode_literals
+from __future__ import annotations
 
 import logging
-import sys
+from pathlib import Path
 
-import matplotlib
+import matplotlib.cm as cm
+import matplotlib.colors as colors
 import numpy as np
 import pandas as pd
 
+from ..plotting.backend import get_backend
+
 logger = logging.getLogger(__name__)
-
-# print("matplotlib=", matplotlib.rcParams.keys())
-# matplotlib.rcParams['text.latex.unicode'] = True key not available
-import matplotlib.cm as cm
-import matplotlib.colors as colors
-import matplotlib.pyplot as plt
-
-matplotlib.rcParams["text.usetex"] = True
-
-
-# TODO add method to use MagnetData instead of df
-# TODO add symbol and unit to plot using json dict file
-
-
-def plot_vs_time(
-    df: pd.DataFrame,
-    items: list,
-    show: bool = False,
-    wd: str | None = None,
-    ax=None,
-    close: bool = False,
-):
-    print(f"plot_vs_time: items={items}, close={close}", flush=True)
-    keys = df.columns.values.tolist()
-
-    ax = plt.gca()
-    # loop over key
-    for key in items:
-        if key in keys:
-            df.plot(x="t", y=key, grid=True, ax=ax)
-        else:
-            raise RuntimeError(f"unknown key: {key}")
-    if close:
-        if show:
-            plt.show()
-        else:
-            imagefile = "Fields"  # input_file.replace(".txt", "")
-            filename = f"{imagefile}_vs_time.png"
-            if wd is not None:
-                filename = f"{wd}/{filename}"
-            print(f"save to file - {filename}")
-            plt.savefig(filename, dpi=300)
-        plt.close()
-
-
-def plot_key_vs_key(df, pairs, show: bool = False, wd: str | None = None):
-    keys = df.columns.values.tolist()
-    for pair in pairs:
-        print(f"pair={pair}")
-        ax = plt.gca()
-        # print("pair=", pair, " type=", type(pair))
-        items = pair.split("-")
-        if len(items) != 2:
-            print(f"invalid pair of keys: {pair}")
-            sys.exit(1)
-        key1 = items[0]
-        key2 = items[1]
-        if key1 in keys and key2 in keys:
-            df.plot(
-                x=key1, y=key2, kind="scatter", color="red", grid=True, ax=ax
-            )  # on graph per pair
-        else:
-            print(f"unknown pair of keys: {pair}")
-            print(f"valid keys: {keys}")
-            sys.exit(1)
-        if show:
-            plt.show()
-        else:
-            filename = f"{key1}_vs_{key2}.png"
-            if wd is not None:
-                filename = f"{wd}/{filename}"
-            print(f"save to file - {filename}")
-            plt.savefig(filename, dpi=300)
-        plt.close()
-
-
-# TODO use MagnetData instead of files
-def plot_df(
-    name: str,
-    df: pd.DataFrame,
-    key1: str,
-    key2: str,
-    from_i: int = 0,
-    to_i: int | None = None,
-    fit: tuple | None = None,
-    show: bool = False,
-    debug: bool = False,
-    wd: str | None = None,
-):
-
-    # Import Dataset
-    ax = plt.gca()
-
-    df.plot.scatter(
-        x=key1,
-        y=key2,
-        grid=True,
-        ax=ax,
-    )
-
-    # add fit if present
-    if fit:
-        (x, y) = fit
-        ax.plot(x, y, color="red", linestyle="dashed", linewidth=2, label="fit")
-
-    # add fit if present
-    if fit:
-        (x, y) = fit
-        ax.plot(x, y, color="red", linestyle="dashed", linewidth=2, label="fit")
-
-    plt.ylabel(key2)
-    plt.xlabel(key1)
-    plt.title(f"{name}: {key2}({key1})")
-
-    if not show:
-        filename = f"{name}-{key1}_vs_{key2}.png"
-        if wd is not None:
-            filename = f"{wd}/{filename}"
-        # print(f"save to file - {filename}")
-        plt.savefig(filename, dpi=300)
-    else:
-        plt.show()
-    plt.close()
 
 
 def plot_files(
@@ -144,74 +24,61 @@ def plot_files(
     show: bool = False,
     debug: bool = False,
     wd: str | None = None,
-):
+    backend: str = "matplotlib",
+) -> None:
     logger.debug(f"plot_files: input_files={input_files}, key1={key1}, key2={key2}")
 
-    # Import Dataset
-    ax = plt.gca()
-    colormap = cm.viridis
-    colorlist = [
-        colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(input_files))
-    ]
+    b = get_backend(backend)
+    colormap = cm.get_cmap("viridis")
+    colorlist = [colors.rgb2hex(colormap(i)) for i in np.linspace(0, 0.9, len(input_files))]
 
-    legends = []
+    fig = b.subplots(1, share_x=False)
+
     for i, f in enumerate(input_files):
         if i < from_i:
-            # print(f"plot_files: skip {i}")
             continue
-        elif to_i is not None:
-            if i >= to_i:
-                # print(f"plot_files: break {i}")
-                break
-        else:
-            # print(f"plot_files: try to plot i={i}, f={f}, key1={key1}, key2={key2}")
-            try:
-                if f.endswith(".txt"):
-                    _df = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=1)
-                    keys = _df.columns.values.tolist()
-                    if key1 in keys and key2 in keys:
-                        lname = f.replace("_", "-")
-                        lname = lname.replace(".txt", "")
-                        lname = lname.split("/")
-                        legends.append(f"{lname[-1]}")
-                        # print(f'rename Flow1 to {lname[-1]}')
-                        _df.plot.scatter(
-                            x=key1,
-                            y=key2,
-                            grid=True,
-                            label=f"{lname[-1]}",
-                            color=colorlist[i],
-                            ax=ax,
-                        )
-                        # print(f"{f}: displayed")
-                    else:
-                        print(
-                            f"{f}: no displayed - key1={key1} and key2={key2} not in keys"
-                        )
-            except:
-                print(f"plot_files: failed to load {f} with pandas")
+        if to_i is not None and i >= to_i:
+            break
+        try:
+            if f.endswith(".txt"):
+                _df = pd.read_csv(f, sep=r"\s+", engine="python", skiprows=1)
+                keys = _df.columns.values.tolist()
+                if key1 in keys and key2 in keys:
+                    lname = f.replace("_", "-").replace(".txt", "").split("/")[-1]
+                    b.add_series(
+                        fig,
+                        0,
+                        _df[key1].to_numpy(),
+                        _df[key2].to_numpy(),
+                        lname,
+                        color=colorlist[i],
+                        marker="o",
+                        linestyle="none",
+                        ylabel=key2,
+                    )
+                else:
+                    logger.warning(
+                        f"{f}: not displayed — key1={key1} and key2={key2} not in keys"
+                    )
+        except (OSError, pd.errors.ParserError, KeyError, ValueError) as e:
+            logger.error(f"plot_files: failed to load {f}: {e}")
 
-    # add fit if present
     if fit:
-        (x, y) = fit
-        ax.plot(x, y, color="red", linestyle="dashed", linewidth=2, label="fit")
+        x, y = fit
+        b.add_series(
+            fig, 0, np.asarray(x), np.asarray(y), "fit", color="#ff0000", linestyle="--"
+        )
 
-    # add fit if present
-    if fit:
-        (x, y) = fit
-        ax.plot(x, y, color="red", linestyle="dashed", linewidth=2, label="fit")
-
-    # ax.legend()
-    plt.legend(loc="best")
-    plt.ylabel(key2)
-    plt.xlabel(key1)
+    # Set x-axis label via backend-specific duck-typing
+    if hasattr(fig, "_magnetrun_axes"):  # MatplotlibBackend
+        fig._magnetrun_axes[0].set_xlabel(key1)
+    elif hasattr(fig, "update_xaxes"):   # PlotlyBackend
+        fig.update_xaxes(title_text=key1)
 
     if not show:
         filename = f"{name}-{key1}_vs_{key2}.png"
         if wd is not None:
             filename = f"{wd}/{filename}"
-        # print(f"save to file - {filename}")
-        plt.savefig(filename, dpi=300)
+        b.save(fig, Path(filename), dpi=300)
     else:
-        plt.show()
-    plt.close()
+        b.show(fig)

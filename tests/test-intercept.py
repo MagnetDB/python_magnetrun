@@ -2,25 +2,40 @@
 idea from chatgpt
 """
 
-import os
-import pandas as pd
-from sklearn.linear_model import LinearRegression
-
-from python_magnetrun.MagnetRun import MagnetRun
-from python_magnetrun.processing.smoothers import savgol
-
-import matplotlib.pyplot as plt
-
 import argparse
+import os
+
+import pytest
+
+pytest.importorskip("matplotlib")
+import matplotlib  # noqa: E402
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import pandas as pd  # noqa: E402
+from sklearn.linear_model import LinearRegression  # noqa: E402
+
+from python_magnetrun.MagnetRun import MagnetRun  # noqa: E402
+from python_magnetrun.processing.smoothers import savgol  # noqa: E402
+
+_default_input = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "..",
+    "data",
+    "M9_Default_200921-123303_Courants50Hz.tdms",
+)
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-    "input_file", help="enter input file (ex: ~/M9_Overview_240509-1634.tdms)"
+    "input_file",
+    nargs="?",
+    default=_default_input,
+    help="enter input file (ex: ~/M9_Overview_240509-1634.tdms)",
 )
-parser.add_argument(
-    "--window", help="stopping criteria for nlopt", type=int, default=10
-)
-args = parser.parse_args()
+parser.add_argument("--window", help="stopping criteria for nlopt", type=int, default=10)
+args, _unknown = parser.parse_known_args()
+if _unknown:
+    parser.error(f"unrecognized arguments: {' '.join(_unknown)}")
 print(f"args: {args}", flush=True)
 
 file = args.input_file

@@ -1,15 +1,13 @@
+import argparse
 import logging
 import os
-import pandas as np
-
-logger = logging.getLogger(__name__)
-
-from .magnetdata import MagnetData as mdata
 
 # import matplotlib
 import matplotlib.pyplot as plt
 
-import argparse
+from .magnetdata import load_magnetdata
+
+logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("input_file", nargs="+", help="enter input file")
@@ -35,7 +33,7 @@ ykey = args.ykey
 my_ax = plt.gca()
 
 for file in args.input_file:
-    mdata = mdata.fromcsv(file)
+    mdata = load_magnetdata(file)
     if args.info:
         print(mdata.getKeys())
     mdata.Units()

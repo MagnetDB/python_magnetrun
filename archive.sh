@@ -33,7 +33,7 @@ done
 shift $((OPTIND - 1))
 
 # add parameters
-: ${VERSION:="0.1.0"}
+: ${VERSION:="0.3.0"}
 : ${DIST:="trixie"}
 
 # cleanup source
@@ -76,6 +76,7 @@ tar \
     --exclude=python_magnetrun/*output* \
     --exclude=python_magnetrun/json \
     --exclude=python_magnetrun/png \
+    --exclude=python_magnetcooling \
     --exclude=*~ \
     --exclude=\#*\# \
     --exclude=poetry.lock \

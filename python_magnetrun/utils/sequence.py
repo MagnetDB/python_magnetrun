@@ -5,7 +5,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def list_sequence(lst, seq):
+def list_sequence(lst: list, seq: list) -> list[list[int]]:
     """Return sequences of seq in lst"""
     sequences = []
     count = 0
@@ -22,10 +22,10 @@ def list_sequence(lst, seq):
 # from collections import defaultdict
 
 
-def list_duplicates_of(seq, item):
+def list_duplicates_of(seq: list, item: int) -> list[list[int]]:
     """Return sequences of duplicate adjacent item in seq"""
     start_at = -1
-    locs = []
+    locs: list[int] = []
     sequences = []
     start_index = -1
     while True:

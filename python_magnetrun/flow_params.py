@@ -2,22 +2,21 @@
 Extract flow params from records using a fit
 """
 
+import json
 import logging
 import os
 
-import json
-import pandas as pd
+import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+from sympy import Symbol
+from tabulate import tabulate
+
+from .plotting.backend import get_backend
+from .plotting.timeseries import plot_xy
+from .processing.fit import find_eqn, fit
 
 logger = logging.getLogger(__name__)
-
-import matplotlib.pyplot as plt
-from tabulate import tabulate
-from sympy import Symbol
-
-from .processing.fit import fit, find_eqn
-from .utils.plots import plot_df
-from typing import List
 
 
 def setup():
@@ -53,16 +52,22 @@ def stats(
         print(f"df: nrows={df.shape[0]}, results: nrows={result.shape[0]}")
         print(f"result max: {result[Ikey].max()}")
 
-    plot_df(
-        filename,
+    from pathlib import Path
+
+    b = get_backend("matplotlib")
+    fig = plot_xy(
         df,
-        key1=Ikey,
-        key2=Okey,
-        fit=None,
-        show=show,
-        debug=debug,
-        wd=wd,
+        [(Ikey, Okey)],
+        backend=b,
+        title=f"{filename}: {Okey}({Ikey})",
+        marker="o",
+        linestyle="none",
     )
+    b.finalize(fig, xlabel=Ikey)
+    if show:
+        b.show(fig)
+    else:
+        b.save(fig, Path(wd) / f"{filename}-{Ikey}_vs_{Okey}.png")
 
     if debug:
         stats = result[Okey].describe(include="all")
@@ -77,7 +82,7 @@ def pwlf_fit(
     y,
     degree: int = 1,
     segment: int = 1,
-    guess: List[float] = None,
+    guess: list[float] = None,
     show: bool = False,
     debug: bool = False,
 ):
@@ -202,10 +207,10 @@ def compute(
         Imax = my_pwlf.fit_breaks[1]
 
     print(
-        f'new Vp0={flow_params["Vp0"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): 0})}'
+        f"new Vp0={flow_params['Vp0']['value']} -> {eqns[0].evalf(subs={Symbol('x'): 0})}"
     )
     print(
-        f'new Vpmax={flow_params["Vpmax"]["value"]} -> {eqns[0].evalf(subs={Symbol("x"): Imax})}'
+        f"new Vpmax={flow_params['Vpmax']['value']} -> {eqns[0].evalf(subs={Symbol('x'): Imax})}"
     )
     params = [
         float(eqns[0].evalf(subs={Symbol("x"): Imax})),
@@ -306,7 +311,7 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     # is it enough to get Pmagnet.max to have an idea of segments???
     # or try more advanded features: see find the best number of line segments
     # see https://jekel.me/piecewise_linear_fit_py/examples.html#fit-constants-or-polynomials
-    print(f'Pmagnet max: {df["Pmagnet"].max()}')
+    print(f"Pmagnet max: {df['Pmagnet'].max()}")
     # Pmagnet > 15 MW: 7
     # Pmagnet > 10 MW: 5
     # Pmagnet > MW: 3
@@ -322,9 +327,9 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     # (changes, regimes, times, values, trend_component) = trends_df(df_pupitre, "t", "debitbrut", args.window, threshold_dict["debitbrut"], overview_dict[ofile]["sources"]["pupitre"], show=True)
 
     from .processing.hysteresis import (
+        estimate_hysteresis_parameters,
         multi_level_hysteresis,
         remove_low_x_outliers,
-        estimate_hysteresis_parameters,
     )
 
     # Automatically detect bottom 25% of x, remove outliers there
@@ -376,7 +381,7 @@ def debitbrut(df: pd.DataFrame, ofile: str, nlevels: int = 4):
     my_ax.plot(xdf["t"].to_numpy(), y_model, marker="*", alpha=0.2)
     plt.legend(legends)
     plt.grid()
-    plt.title(f"Debitbrut(Pmagnet) model")
+    plt.title("Debitbrut(Pmagnet) model")
     plt.xlabel("t[s]")
     plt.ylabel(f"{symbol} [{yunit:~P}]")
     plt.show()

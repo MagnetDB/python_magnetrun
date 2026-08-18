@@ -1,0 +1,6 @@
+polars
+boto3
+botocore
+matplotlib
+streamlit
+panel

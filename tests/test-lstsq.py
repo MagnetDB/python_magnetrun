@@ -5,9 +5,7 @@ from scipy.linalg import lstsq
 time_points = np.linspace(0, 10, 100)  # Example time points
 
 # Example currents (replace with actual measurements)
-I1_measured = np.array(
-    [np.sin(time_points), np.cos(time_points)]
-).T  # Current for circuit 1
+I1_measured = np.array([np.sin(time_points), np.cos(time_points)]).T  # Current for circuit 1
 I2_measured = np.array(
     [np.sin(time_points + np.pi / 4), np.cos(time_points + np.pi / 4)]
 ).T  # Current for circuit 2
@@ -30,19 +28,20 @@ A2 = np.hstack([I2_measured, dI2_dt_measured])
 A_combined = np.vstack([A1, A2])
 
 # Combine the voltage measurements
-U_combined = np.vstack([U1_measured, U2_measured]).reshape(-1)
+U_combined = np.vstack([U1_measured, U2_measured])
 
 # Ensure A_combined has the correct dimensions
 assert A_combined.shape == (2 * len(time_points), 4), "A_combine"
 # Ensure U_combined has the correct dimension
-assert U_combined.shape == (2 * 2 * len(time_points),), "U_combine"
+assert U_combined.shape == (2 * len(time_points), 2), "U_combine"
 
 # Solve the least squares problem
 R_L_vector, _, _, _ = lstsq(A_combined, U_combined)
 
 # Extract the R and L matrices from the solution vector
-R = R_L_vector[:4].reshape((2, 2))
-L = R_L_vector[4:].reshape((2, 2))
+# x has shape (4, 2): x[:,j] = coefs for j-th output → R = x[:2].T, L = x[2:].T
+R = R_L_vector[:2].T
+L = R_L_vector[2:].T
 
 # Output the estimated matrices
 print("Estimated Resistance Matrix R:")

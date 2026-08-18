@@ -1,3 +1,3 @@
 """Configuration files for power supplies and controllers."""
 
-__all__ = ['convertxml']
+__all__ = ["convertxml"]

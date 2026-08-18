@@ -5,8 +5,10 @@ This module provides structured configuration for the magnetrun analysis pipelin
 replacing the original tuple-based setup() function with typed dataclasses.
 
 The configuration hierarchy is:
+
 - AnalysisConfig: Top-level configuration combining all settings
-  - SiteConfig: Site-specific channel mappings (M8, M9, M10)
+
+  - HousingConfig: Housing-specific channel mappings (M8, M9, M10)
   - ChannelMapping: Reference to current channel mappings
   - VoltageChannelMapping: Voltage probe channels per reference
   - ThresholdConfig: Detection thresholds for each channel
@@ -14,13 +16,13 @@ The configuration hierarchy is:
 
 Example usage::
 
-    from python_magnetrun.analysis.config import AnalysisConfig, SITE_CONFIGS
+    from python_magnetrun.analysis.config import AnalysisConfig, HOUSING_CONFIGS
 
     # Get complete configuration for M9
-    config = AnalysisConfig.for_site("M9")
+    config = AnalysisConfig.for_housing("M9")
 
-    # Access site-specific mappings
-    current_channel = config.site.reference_gr1_current  # "IH"
+    # Access housing-specific mappings
+    current_channel = config.housing.reference_gr1_current  # "IH"
 
     # Get threshold for signal detection
     threshold = config.thresholds.get("Courant_GR1")  # 0.5
@@ -29,12 +31,38 @@ Example usage::
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+
+from python_magnetrun.data_dirs import (
+    HYBRID_DATA_DIR as DEFAULT_HYBRID_DATA_DIR,
+)
+from python_magnetrun.data_dirs import (
+    PIGBROTHER_DATA_DIR as DEFAULT_PIGBROTHER_DATA_DIR,
+)
+from python_magnetrun.data_dirs import (
+    PUPITRE_DATA_DIR as DEFAULT_DATA_DIR,
+)
+from python_magnetrun.housing_config import (
+    HOUSING_CONFIGS,
+    ROLE_TO_FIELD,
+    HousingConfig,
+    get_housing_config,
+)
+
+# Re-exported names (used by analysis sub-modules and external callers).
+# Listed in __all__ so that linters (ruff F401) do not remove them.
+__all__ = [
+    "DEFAULT_DATA_DIR",
+    "DEFAULT_HYBRID_DATA_DIR",
+    "DEFAULT_PIGBROTHER_DATA_DIR",
+    "HOUSING_CONFIGS",
+    "ROLE_TO_FIELD",
+    "HousingConfig",
+    "get_housing_config",
+]
 
 # Module logger
-logger = logging.getLogger("magnetrun.analysis.config")
+logger = logging.getLogger("python_magnetrun.analysis.config")
 
 
 # =============================================================================
@@ -90,7 +118,7 @@ LAG_THRESHOLD_RATIO: float = 0.2
 """
 Threshold ratio for lag detection.
 
-If |lag| / duration >= this ratio, the lag is considered significant
+If ``abs(lag) / duration`` >= this ratio, the lag is considered significant
 and flagged as potentially unreliable.
 """
 
@@ -113,25 +141,9 @@ MODE_INTERCEPT_TOLERANCE: float = 10.0
 # =============================================================================
 # Default paths (can be overridden via environment variables)
 # =============================================================================
-DEFAULT_DATA_DIR: str = os.environ.get(
-    "MAGNETRUN_DATA_DIR",
-    "/home/LNCMI-G/christophe.trophime/LNCMIG-Data/srv-data-install",
-)
-"""
-Default directory for pupitre and log data files.
-
-Can be overridden by setting the MAGNETRUN_DATA_DIR environment variable.
-"""
-
-DEFAULT_PIGBROTHER_DATA_DIR: str = os.environ.get(
-    "MAGNETRUN_PIGBROTHER_DATA_DIR",
-    "/home/LNCMI-G/christophe.trophime/github/python_magnetrun/pigbrotherdata/Fichiers_Data",
-)
-"""
-Default directory for pupitre and log data files.
-
-Can be overridden by setting the MAGNETRUN_DATA_DIR environment variable.
-"""
+# DEFAULT_DATA_DIR, DEFAULT_PIGBROTHER_DATA_DIR, DEFAULT_HYBRID_DATA_DIR
+# are imported from python_magnetrun.data_dirs above and re-exported here
+# so all existing callers continue to work unchanged.
 
 
 # =============================================================================
@@ -186,7 +198,7 @@ class ColorConfig:
         }
         return mapping.get(signal_type, "black")
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> dict[str, str]:
         """Convert to dictionary format (backward compatibility)."""
         return {"U": self.up_color, "P": self.plateau_color, "D": self.down_color}
 
@@ -196,59 +208,80 @@ class ColorConfig:
 # =============================================================================
 @dataclass(frozen=True)
 class ChannelMapping:
-    """
-    Mapping between reference and current channels.
+    """TDMS setpoint/actual channel pairs for each power-supply group.
 
-    Maps TDMS reference channel names to their corresponding current channels.
+    For each group (GR1, GR2) the TDMS data contains two channels:
+    - a *setpoint* (``Référence_GRn``) — what the supply is asked to deliver
+    - an *actual* (``Courant_GRn``) — what is measured
 
-    Attributes
-    ----------
-    reference_gr1 : str
-        Current channel name for Référence_GR1
-    reference_gr2 : str
-        Current channel name for Référence_GR2
+    Attributes are the *actual* channel names; the setpoint names are
+    ``"Référence_GR1"`` / ``"Référence_GR2"`` and are fixed by the acquisition
+    system.
     """
 
     reference_gr1: str = "Courant_GR1"
     reference_gr2: str = "Courant_GR2"
 
-    def get_current_channel(self, reference_key: str) -> str:
-        """
-        Get the current channel name for a reference key.
+    # Fixed setpoint channel names (acquisition-system convention).
+    _SETPOINT: dict[str, str] = field(
+        default_factory=lambda: {
+            "GR1": "Référence_GR1",
+            "GR2": "Référence_GR2",
+        },
+        compare=False,
+        repr=False,
+    )
+
+    def get_group_channels(self, group: str) -> tuple[str, str]:
+        """Return ``(setpoint_channel, actual_channel)`` for *group*.
 
         Parameters
         ----------
-        reference_key : str
-            Reference channel name (e.g., "Référence_GR1")
+        group:
+            Group identifier: ``"GR1"`` or ``"GR2"``.
 
         Returns
         -------
-        str
-            Corresponding current channel name
+        tuple[str, str]
+            ``(setpoint_channel, actual_channel)`` — both are TDMS channel names.
+        """
+        actual = {"GR1": self.reference_gr1, "GR2": self.reference_gr2}.get(group)
+        if actual is None:
+            raise KeyError(f"Unknown group: {group!r}. Valid groups: GR1, GR2")
+        return self._SETPOINT[group], actual
 
-        Raises
-        ------
-        KeyError
-            If reference_key is not a valid reference channel
+    def get_setpoint_channel(self, group: str) -> str:
+        """Return the setpoint (Référence) channel name for *group*."""
+        return self.get_group_channels(group)[0]
+
+    def get_actual_channel(self, group: str) -> str:
+        """Return the actual (Courant) channel name for *group*."""
+        return self.get_group_channels(group)[1]
+
+    def get_current_channel(self, reference_key: str) -> str:
+        """Return the actual channel for a setpoint key (backward compat).
+
+        Parameters
+        ----------
+        reference_key:
+            Setpoint channel name, e.g. ``"Référence_GR1"``.
         """
         mapping = {
             "Référence_GR1": self.reference_gr1,
             "Référence_GR2": self.reference_gr2,
         }
         if reference_key not in mapping:
-            logger.error(
-                "Unknown reference key: %s. Valid keys: %s",
-                reference_key,
-                list(mapping.keys()),
-            )
             raise KeyError(
-                f"Unknown reference key: {reference_key}. "
-                f"Valid keys: {list(mapping.keys())}"
+                f"Unknown setpoint key: {reference_key!r}. Valid keys: {list(mapping)}"
             )
         return mapping[reference_key]
 
-    def to_dict(self) -> Dict[str, str]:
-        """Convert to dictionary format (backward compatibility)."""
+    def groups(self) -> list[str]:
+        """Return the list of group identifiers: ``["GR1", "GR2"]``."""
+        return list(self._SETPOINT)
+
+    def to_dict(self) -> dict[str, str]:
+        """Return ``{setpoint_channel: actual_channel}`` (backward compat)."""
         return {
             "Référence_GR1": self.reference_gr1,
             "Référence_GR2": self.reference_gr2,
@@ -307,7 +340,7 @@ class VoltageChannelMapping:
         }
         return mapping.get(reference_key, ())
 
-    def to_dict(self) -> Dict[str, List[str]]:
+    def to_dict(self) -> dict[str, list[str]]:
         """Convert to dictionary format (backward compatibility)."""
         return {
             "Référence_GR1": list(self.reference_gr1_channels),
@@ -318,213 +351,9 @@ class VoltageChannelMapping:
 # =============================================================================
 # Site-specific configuration
 # =============================================================================
-@dataclass(frozen=True)
-class SiteConfig:
-    """
-    Configuration specific to a measurement site (M8, M9, M10).
-
-    Different sites have different channel naming conventions and
-    probe configurations. This dataclass captures those differences.
-
-    Attributes
-    ----------
-    name : str
-        Site identifier (e.g., "M9")
-    reference_gr1_current : str
-        Pupitre current channel for GR1 reference
-    reference_gr2_current : str
-        Pupitre current channel for GR2 reference
-    reference_gr1_flow : str
-        Flow measurement channel for GR1
-    reference_gr2_flow : str
-        Flow measurement channel for GR2
-    reference_gr1_rpm : str
-        Pump RPM channel for GR1
-    reference_gr2_rpm : str
-        Pump RPM channel for GR2
-    reference_gr1_pin : str
-        Inlet pressure channel for GR1
-    reference_gr2_pin : str
-        Inlet pressure channel for GR2
-    voltage_channels_gr1 : tuple[str, ...]
-        Voltage probe channels for GR1 in pupitre data
-    voltage_channels_gr2 : tuple[str, ...]
-        Voltage probe channels for GR2 in pupitre data
-
-    Notes
-    -----
-    M9 uses IH/IB for GR1/GR2 respectively (H=High, B=Bas/Bottom).
-    M8 and M10 swap this: IB/IH for GR1/GR2.
-    """
-
-    name: str
-    reference_gr1_current: str
-    reference_gr2_current: str
-    reference_gr1_flow: str
-    reference_gr2_flow: str
-    reference_gr1_rpm: str
-    reference_gr2_rpm: str
-    reference_gr1_pin: str
-    reference_gr2_pin: str
-    voltage_channels_gr1: tuple = field(default_factory=tuple)
-    voltage_channels_gr2: tuple = field(default_factory=tuple)
-
-    def get_pupitre_channel(self, reference_key: str) -> str:
-        """
-        Get pupitre current channel for a reference key.
-
-        Parameters
-        ----------
-        reference_key : str
-            Reference channel name (e.g., "Référence_GR1")
-
-        Returns
-        -------
-        str
-            Corresponding pupitre channel name (e.g., "IH")
-        """
-        mapping = {
-            "Référence_GR1": self.reference_gr1_current,
-            "Référence_GR2": self.reference_gr2_current,
-        }
-        return mapping.get(reference_key, "")
-
-    def get_flow_channel(self, reference_key: str) -> str:
-        """Get flow channel for a reference key."""
-        mapping = {
-            "Référence_GR1": self.reference_gr1_flow,
-            "Référence_GR2": self.reference_gr2_flow,
-        }
-        return mapping.get(reference_key, "")
-
-    def get_rpm_channel(self, reference_key: str) -> str:
-        """Get RPM channel for a reference key."""
-        mapping = {
-            "Référence_GR1": self.reference_gr1_rpm,
-            "Référence_GR2": self.reference_gr2_rpm,
-        }
-        return mapping.get(reference_key, "")
-
-    def get_pin_channel(self, reference_key: str) -> str:
-        """Get inlet pressure channel for a reference key."""
-        mapping = {
-            "Référence_GR1": self.reference_gr1_pin,
-            "Référence_GR2": self.reference_gr2_pin,
-        }
-        return mapping.get(reference_key, "")
-
-    def get_voltage_channels(self, reference_key: str) -> tuple:
-        """Get voltage channels for a reference key."""
-        mapping = {
-            "Référence_GR1": self.voltage_channels_gr1,
-            "Référence_GR2": self.voltage_channels_gr2,
-        }
-        return mapping.get(reference_key, ())
-
-    def to_pupitre_dict(self) -> Dict[str, str]:
-        """
-        Convert to pupitre_dict format (backward compatibility).
-
-        Returns the dictionary format used by the original setup() function.
-        """
-        return {
-            "Référence_GR1": self.reference_gr1_current,
-            "Référence_GR2": self.reference_gr2_current,
-            "Référence_GR1_Q": self.reference_gr1_flow,
-            "Référence_GR2_Q": self.reference_gr2_flow,
-            "Référence_GR1_Rpm": self.reference_gr1_rpm,
-            "Référence_GR2_Rpm": self.reference_gr2_rpm,
-            "Référence_GR1_Pin": self.reference_gr1_pin,
-            "Référence_GR2_Pin": self.reference_gr2_pin,
-        }
-
-    def to_upupitre_dict(self) -> Dict[str, List[str]]:
-        """Convert to upupitre_dict format (backward compatibility)."""
-        return {
-            "Référence_GR1": list(self.voltage_channels_gr1),
-            "Référence_GR2": list(self.voltage_channels_gr2),
-        }
-
-
-# =============================================================================
-# Pre-defined site configurations
-# =============================================================================
-SITE_CONFIGS: Dict[str, SiteConfig] = {
-    "M9": SiteConfig(
-        name="M9",
-        reference_gr1_current="IH",
-        reference_gr2_current="IB",
-        reference_gr1_flow="FlowH",
-        reference_gr2_flow="FlowB",
-        reference_gr1_rpm="RpmH",
-        reference_gr2_rpm="RpmB",
-        reference_gr1_pin="HPH",
-        reference_gr2_pin="HPB",
-        voltage_channels_gr1=("UH",),
-        voltage_channels_gr2=("UB", "Ucoil15", "Ucoil16"),
-    ),
-    "M8": SiteConfig(
-        name="M8",
-        reference_gr1_current="IB",  # Note: swapped from M9
-        reference_gr2_current="IH",
-        reference_gr1_flow="FlowB",
-        reference_gr2_flow="FlowH",
-        reference_gr1_rpm="RpmB",
-        reference_gr2_rpm="RpmH",
-        reference_gr1_pin="HPB",
-        reference_gr2_pin="HPH",
-        voltage_channels_gr1=("UB", "Ucoil15", "Ucoil16"),  # Note: swapped
-        voltage_channels_gr2=("UH",),
-    ),
-    "M10": SiteConfig(
-        name="M10",
-        reference_gr1_current="IB",  # Same as M8
-        reference_gr2_current="IH",
-        reference_gr1_flow="FlowB",
-        reference_gr2_flow="FlowH",
-        reference_gr1_rpm="RpmB",
-        reference_gr2_rpm="RpmH",
-        reference_gr1_pin="HPB",
-        reference_gr2_pin="HPH",
-        voltage_channels_gr1=("UB", "Ucoil15", "Ucoil16"),
-        voltage_channels_gr2=("UH",),
-    ),
-}
-"""Pre-defined configurations for measurement sites M8, M9, and M10."""
-
-
-def get_site_config(site: str) -> SiteConfig:
-    """
-    Get site configuration by name.
-
-    Parameters
-    ----------
-    site : str
-        Site identifier (M8, M9, M10)
-
-    Returns
-    -------
-    SiteConfig
-        Site configuration
-
-    Raises
-    ------
-    ValueError
-        If site is unknown
-
-    Examples
-    --------
-    >>> config = get_site_config("M9")
-    >>> config.reference_gr1_current
-    'IH'
-    """
-    if site not in SITE_CONFIGS:
-        logger.error("Unknown site: %s. Available: %s", site, list(SITE_CONFIGS.keys()))
-        raise ValueError(
-            f"Unknown site: {site}. Available: {list(SITE_CONFIGS.keys())}"
-        )
-    logger.debug("Loading site configuration for %s", site)
-    return SITE_CONFIGS[site]
+# HousingConfig, HOUSING_CONFIGS, get_housing_config and ROLE_TO_FIELD are defined in
+# python_magnetrun.housing_config and imported + re-exported at the top of this
+# module.  Nothing more is needed here.
 
 
 # =============================================================================
@@ -547,7 +376,7 @@ class ThresholdConfig:
         Mapping of channel names to threshold values
     """
 
-    thresholds: Dict[str, float] = field(default_factory=dict)
+    thresholds: dict[str, float] = field(default_factory=dict)
 
     def get(self, key: str, default: float = 0.1) -> float:
         """
@@ -575,12 +404,12 @@ class ThresholdConfig:
         """Allow 'in' operator: 'IH' in config.thresholds."""
         return key in self.thresholds
 
-    def to_dict(self) -> Dict[str, float]:
+    def to_dict(self) -> dict[str, float]:
         """Convert to dictionary format (backward compatibility)."""
         return dict(self.thresholds)
 
     @classmethod
-    def default(cls) -> "ThresholdConfig":
+    def default(cls) -> ThresholdConfig:
         """
         Create default threshold configuration.
 
@@ -592,6 +421,9 @@ class ThresholdConfig:
             Configuration with default threshold values
         """
         thresholds = {
+            # Field
+            "Field": 0.001,
+            "Champ_Magn": 0.001,
             # Reference and current channels (TDMS)
             "Référence_GR1": 0.5,
             "Courant_GR1": 0.5,
@@ -626,7 +458,7 @@ class ThresholdConfig:
 # =============================================================================
 # Complete analysis configuration
 # =============================================================================
-@dataclass
+@dataclass(frozen=True)
 class AnalysisConfig:
     """
     Complete analysis configuration.
@@ -636,8 +468,8 @@ class AnalysisConfig:
 
     Attributes
     ----------
-    site : SiteConfig
-        Site-specific configuration
+    housing : HousingConfig
+        Housing-specific configuration
     channels : ChannelMapping
         Reference to current channel mapping
     voltage_channels : VoltageChannelMapping
@@ -649,14 +481,14 @@ class AnalysisConfig:
 
     Examples
     --------
-    >>> config = AnalysisConfig.for_site("M9")
-    >>> print(config.site.reference_gr1_current)
+    >>> config = AnalysisConfig.for_housing("M9")
+    >>> print(config.housing.reference_gr1_current)
     IH
     >>> print(config.thresholds.get("Courant_GR1"))
     0.5
     """
 
-    site: SiteConfig
+    housing: HousingConfig
     channels: ChannelMapping = field(default_factory=ChannelMapping)
     voltage_channels: VoltageChannelMapping = field(
         default_factory=VoltageChannelMapping
@@ -665,35 +497,32 @@ class AnalysisConfig:
     colors: ColorConfig = field(default_factory=ColorConfig)
 
     @classmethod
-    def for_site(cls, site_name: str) -> "AnalysisConfig":
+    def for_housing(cls, housing_name: str) -> AnalysisConfig:
         """
-        Create configuration for a specific site.
+        Create configuration for a specific housing.
 
         Parameters
         ----------
-        site_name : str
-            Site identifier (e.g., "M8", "M9", "M10")
+        housing_name : str
+            Housing identifier (e.g., "M8", "M9", "M10")
 
         Returns
         -------
         AnalysisConfig
-            Complete configuration for the specified site
+            Complete configuration for the specified housing
 
         Raises
         ------
         ValueError
-            If site_name is not a known site
+            If housing_name is not a known housing
 
         Examples
         --------
-        >>> config = AnalysisConfig.for_site("M9")
-        >>> config.site.name
+        >>> config = AnalysisConfig.for_housing("M9")
+        >>> config.housing.name
         'M9'
         """
-        if site_name not in SITE_CONFIGS:
-            available = ", ".join(sorted(SITE_CONFIGS.keys()))
-            raise ValueError(f"Unknown site: {site_name}. Available sites: {available}")
-        return cls(site=SITE_CONFIGS[site_name])
+        return cls(housing=get_housing_config(housing_name))
 
     def get_pupitre_channel(self, reference_key: str) -> str:
         """
@@ -711,7 +540,7 @@ class AnalysisConfig:
         str
             Pupitre channel name
         """
-        return self.site.get_pupitre_channel(reference_key)
+        return self.housing.get_pupitre_channel(reference_key)
 
     def get_current_channel(self, reference_key: str) -> str:
         """
@@ -728,71 +557,3 @@ class AnalysisConfig:
             TDMS current channel name
         """
         return self.channels.get_current_channel(reference_key)
-
-
-# =============================================================================
-# Backward compatibility: setup() function replacement
-# =============================================================================
-def get_legacy_config(site_name: Optional[str] = None) -> tuple:
-    """
-    Get configuration in the legacy tuple format.
-
-    This function provides backward compatibility with code that
-    expects the original setup() function return format.
-
-    Parameters
-    ----------
-    site_name : str, optional
-        If provided, include site-specific pupitre dicts.
-        If None, return all sites' configurations.
-
-    Returns
-    -------
-    tuple
-        (color_dict, channels_dict, uchannels_dict,
-         pupitre_dict, upupitre_dict, threshold_dict)
-
-    Examples
-    --------
-    >>> color_dict, channels_dict, uchannels_dict, \\
-    ...     pupitre_dict, upupitre_dict, threshold_dict = get_legacy_config()
-    """
-    colors = ColorConfig()
-    channels = ChannelMapping()
-    voltage_channels = VoltageChannelMapping()
-    thresholds = ThresholdConfig.default()
-
-    # Build pupitre dicts for all sites
-    pupitre_dict = {
-        site_name: config.to_pupitre_dict()
-        for site_name, config in SITE_CONFIGS.items()
-    }
-    upupitre_dict = {
-        site_name: config.to_upupitre_dict()
-        for site_name, config in SITE_CONFIGS.items()
-    }
-
-    return (
-        colors.to_dict(),
-        channels.to_dict(),
-        voltage_channels.to_dict(),
-        pupitre_dict,
-        upupitre_dict,
-        thresholds.to_dict(),
-    )
-
-
-# Alias for complete backward compatibility
-def setup() -> tuple:
-    """
-    Original setup() function for backward compatibility.
-
-    .. deprecated::
-        Use AnalysisConfig.for_site() instead.
-
-    Returns
-    -------
-    tuple
-        Configuration dictionaries in legacy format
-    """
-    return get_legacy_config()

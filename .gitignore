@@ -84,14 +84,21 @@ celerybeat-schedule
 # SageMath parsed files
 *.sage.py
 
-# dotenv
+# dotenv / direnv
 .env
+.envrc.local
+
+# marimo notebooks with sensitive data
+marimo/00_nas_setup.py
 
 # virtualenv
 .venv
 venv/
 magnetrun-env/
 ENV/
+
+# direnv
+.envrc
 
 # Spyder project settings
 .spyderproject
@@ -111,8 +118,7 @@ ENV/
 
 # Sphinx
 docs/build
-docs/source/_static
-docs/source/_templates
+docs/source/generated
 
 # Log files from installation
 log*
@@ -125,17 +131,18 @@ python_magnetrun/txt/
 python_magnetrun/png/
 python_magnetrun/json/
 
-srvdata
+*srvdata*
 pigbrotherdata
 *.csv
 *.csv.*
 *.tdms
+*.json~
 
 M*.csv
 #M*.txt
-M*.json
-H*.json
-M*.conf
+#M*.json
+#H*.json
+#M*.conf
 
 *log
 !*.log.py
@@ -153,6 +160,11 @@ M*.conf
 
 # Archive tarballs
 *.zip
+*.tar
 *.tar.*
 *.tgz
+
+# rustfs
+rustfs/rustfs_internal_data
+rustfs/rustfs_logs
 

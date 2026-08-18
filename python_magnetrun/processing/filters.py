@@ -7,12 +7,12 @@ https://xavierbourretsicotte.github.io/loess.html
 
 import logging
 import os
-
-logger = logging.getLogger(__name__)
-
-import numpy as np
+from typing import Any
 
 import matplotlib.pyplot as plt
+import numpy as np
+
+logger = logging.getLogger(__name__)
 
 ##from IPython.display import Image
 ##from IPython.display import display
@@ -20,13 +20,22 @@ import matplotlib.pyplot as plt
 ## if jupyter: %matplotlib inline
 
 
-def filterpikes(mrun, key, inplace, threshold, twindows, debug, show, input_file):
+def filterpikes(
+    mrun: Any,
+    key: str,
+    inplace: bool,
+    threshold: float,
+    twindows: int,
+    debug: bool,
+    show: bool,
+    input_file: str,
+) -> Any:
     """
     # filter spikes
     # see: https://ocefpaf.github.io/python4oceanographers/blog/2015/03/16/outlier_detection/
     """
 
-    print("type(mrun):", type(mrun))
+    logger.debug(f"type(mrun): {type(mrun)}")
     df = mrun.getData()  # .extractData(keys)
 
     kw = dict(marker="o", linestyle="none", color="r", alpha=0.3)
@@ -36,14 +45,8 @@ def filterpikes(mrun, key, inplace, threshold, twindows, debug, show, input_file
     if mean != 0:
         var = df[key].var()
         # print("mean(%s)=%g" % (key,mean), "std=%g" % math.sqrt(var) )
-        filtered = (
-            df[key]
-            .rolling(window=twindows, center=True)
-            .median()
-            .fillna(method="bfill")
-            .fillna(method="ffill")
-        )
-        filteredkey = "filtered%s" % key
+        filtered = df[key].rolling(window=twindows, center=True).median().bfill().ffill()
+        filteredkey = f"filtered{key}"
         # print("** ", filteredkey, type(filtered))
 
         df = df.assign(**{filteredkey: filtered.values})
@@ -60,14 +63,14 @@ def filterpikes(mrun, key, inplace, threshold, twindows, debug, show, input_file
             df[key][outlier_idx].plot(**kw)
 
             ax.legend()
-            plt.grid(b=True)
-            plt.title(mrun.getInsert().replace(r"_", r"\_") + ": Filtered %s" % key)
+            plt.grid(True)
+            plt.title(mrun.getInsert().replace(r"_", r"\_") + f": Filtered {key}")
             if show:
                 plt.show()
             else:
                 f_extension = os.path.splitext(input_file)[-1]
-                imagefile = input_file.replace(f_extension, "-filtered%s.png" % key)
-                print("save to %s" % imagefile)
+                imagefile = input_file.replace(f_extension, f"-filtered{key}.png")
+                logger.debug(f"save to {imagefile}")
                 plt.savefig(imagefile, dpi=300)
             plt.close()
 

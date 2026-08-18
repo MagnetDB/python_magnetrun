@@ -1,0 +1,192 @@
+"""Plot style and color configuration dataclasses."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+
+__all__ = [
+    "LabelStyle",
+    "PlotStyle",
+    "PlotColors",
+    "PlotConfig",
+    "DEFAULT_STYLE",
+    "DEFAULT_COLORS",
+    "BUNDLED_CONFIG_PATH",
+    "load_plot_config",
+    "save_plot_config",
+]
+
+# Path to the default config shipped with the package.
+BUNDLED_CONFIG_PATH: Path = Path(__file__).parent / "plot_config.json"
+
+
+@dataclass
+class LabelStyle:
+    """Font properties for a single text element (title, axis label, annotation).
+
+    All fields default to ``None`` (use the backend's own default).
+    ``style`` and ``weight`` are applied by the matplotlib backend only;
+    Plotly backends emit a ``logging.warning`` and ignore them.
+
+    Parameters
+    ----------
+    family : str, optional
+        Font family, e.g. ``"serif"``, ``"sans-serif"``, ``"monospace"``.
+    style : str, optional
+        Font style: ``"normal"``, ``"italic"``, or ``"oblique"``.
+        **Plotly**: not supported — triggers a warning when set.
+    weight : str, optional
+        Font weight: ``"normal"``, ``"bold"``, ``"light"``, etc.
+        **Plotly**: not supported — triggers a warning when set.
+    size : int, optional
+        Font size in points.  ``None`` falls back to the ``PlotStyle``
+        ``title_fontsize`` / ``label_fontsize`` field.
+    color : str, optional
+        Font colour (CSS colour string or hex, e.g. ``"#333333"``).
+    """
+
+    family: str | None = None
+    style: str | None = None
+    weight: str | None = None
+    size: int | None = None
+    color: str | None = None
+
+
+@dataclass
+class PlotStyle:
+    """Configuration for plot styling."""
+
+    figsize: tuple[int, int] = (12, 5)
+    dpi: int = 300
+    grid: bool = True
+    grid_alpha: float = 0.3
+    legend_loc: str = "best"
+    title_fontsize: int = 12
+    label_fontsize: int = 10
+    title_style: LabelStyle | None = None
+    xlabel_style: LabelStyle | None = None
+    ylabel_style: LabelStyle | None = None
+    annotation_style: LabelStyle | None = None
+
+
+@dataclass
+class PlotColors:
+    """Color configuration for different data sources and regimes."""
+
+    overview: str = "blue"
+    archive: str = "red"
+    pupitre: str = "green"
+    hybrid: str = "orange"
+    incident_default: str = "orange"
+    incident_spike: str = "yellow"
+    incident_trigger: str = "green"
+    incident_hybrid: str = "red"
+    regime_up: str = "green"
+    regime_down: str = "red"
+    regime_plateau: str = "blue"
+    # Matplotlib tab10 palette — cycled per file when same_color_per_type is False
+    palette: list[str] = field(default_factory=lambda: [
+        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+        "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+    ])
+
+    def get_file_color(self, file_idx: int, f_extension: str, same_color_per_type: bool) -> str:
+        """Return the color to use for a given file.
+
+        When *same_color_per_type* is True all files of the same extension
+        share the type color (pupitre / archive / overview).  Otherwise each
+        file gets a distinct color from *palette*, cycling when there are more
+        files than palette entries.
+        """
+        if same_color_per_type:
+            if f_extension == ".txt":
+                return self.pupitre
+            if f_extension == ".tdms":
+                return self.archive
+            return self.overview
+        return self.palette[file_idx % len(self.palette)]
+
+    def get_regime_color(self, regime: str) -> str:
+        """Return the color for a regime type ('U', 'D', 'P')."""
+        regime_map = {
+            "U": self.regime_up,
+            "D": self.regime_down,
+            "P": self.regime_plateau,
+        }
+        return regime_map.get(regime, "gray")
+
+    def get_incident_color(self, itype: str) -> str:
+        """Return the annotation box color for an incident type.
+
+        Parameters
+        ----------
+        itype : str
+            Incident type key: ``"default"``, ``"spike"``, ``"trigger"``,
+            or ``"hybrid_trigger"``.
+
+        Returns
+        -------
+        str
+            Colour string suitable for matplotlib ``fc`` or ``color`` kwargs.
+        """
+        return {
+            "default": self.incident_default,
+            "spike": self.incident_spike,
+            "trigger": self.incident_trigger,
+            "hybrid_trigger": self.incident_hybrid,
+        }.get(itype, self.incident_default)
+
+
+@dataclass
+class PlotConfig:
+    """Combined style + color configuration for plots."""
+
+    style: PlotStyle = None  # type: ignore[assignment]
+    colors: PlotColors = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.style is None:
+            self.style = PlotStyle()
+        if self.colors is None:
+            self.colors = PlotColors()
+
+    def to_dict(self) -> dict:
+        return {"style": asdict(self.style), "colors": asdict(self.colors)}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> PlotConfig:
+        style_data = data.get("style", {})
+        colors_data = data.get("colors", {})
+        # figsize is stored as a list in JSON; convert back to tuple
+        if "figsize" in style_data:
+            style_data["figsize"] = tuple(style_data["figsize"])
+        # Reconstruct nested LabelStyle objects from dicts (JSON deserialisation).
+        for key in ("title_style", "xlabel_style", "ylabel_style", "annotation_style"):
+            if isinstance(style_data.get(key), dict):
+                style_data[key] = LabelStyle(**style_data[key])
+        # Migrate old single-field "incident" key written by previous versions.
+        if "incident" in colors_data and "incident_default" not in colors_data:
+            colors_data["incident_default"] = colors_data.pop("incident")
+        elif "incident" in colors_data:
+            colors_data.pop("incident")
+        return cls(style=PlotStyle(**style_data), colors=PlotColors(**colors_data))
+
+
+def load_plot_config(path: str | Path) -> PlotConfig:
+    """Load a :class:`PlotConfig` from a JSON file."""
+    with open(path) as f:
+        data = json.load(f)
+    return PlotConfig.from_dict(data)
+
+
+def save_plot_config(config: PlotConfig, path: str | Path) -> None:
+    """Save a :class:`PlotConfig` to a JSON file."""
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(config.to_dict(), f, indent=2)
+
+
+DEFAULT_STYLE = PlotStyle()
+DEFAULT_COLORS = PlotColors()

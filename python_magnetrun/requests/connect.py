@@ -7,13 +7,20 @@ For each MagnetID list of attached record
 Check record consistency
 """
 
-import sys
 import logging
+from typing import Any
+
+import requests  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
 
-def createSession(s, url_logging: str, payload: dict, debug: bool | None = False):
+def createSession(
+    s: requests.Session,
+    url_logging: str,
+    payload: dict[str, Any],
+    debug: bool | None = False,
+) -> requests.Response:
     """create a request session"""
 
     p = s.post(url=url_logging, data=payload, verify=True)
@@ -21,22 +28,26 @@ def createSession(s, url_logging: str, payload: dict, debug: bool | None = False
     logger.debug(f"connect: {p.url}, status={p.status_code}")
     # check return status: if not ok stop
     if p.status_code != 200:
-        print(f"error {p.status_code} logging to {url_logging}")
-        sys.exit(1)
-    p.raise_for_status()
+        raise RuntimeError(f"login failed: HTTP {p.status_code} at {url_logging}")
     return p
 
 
 def download(
-    session, url_data, param, link: str | None = None, debug: bool | None = False
-):
+    session: requests.Session,
+    url_data: str,
+    param: dict[str, Any],
+    link: str | None = None,
+    debug: bool | None = False,
+) -> str:
     """download"""
 
-    d = session.get(url=url_data, params=param, verify=True)
+    # Build the query string manually to avoid double-encoding already-encoded
+    # values like %20 in filenames (requests.get(params=...) would encode % -> %25)
+    query = "&".join(f"{k}={v}" for k, v in param.items())
+    full_url = f"{url_data}?{query}"
+    d = session.get(url=full_url, verify=True)
     logger.debug(f"downloads: {d.url}, status={d.status_code}")
     if d.status_code != 200:
-        print(f"error {d.status_code} dowmload {url_data}")
-        sys.exit(1)
-    d.raise_for_status()
+        raise RuntimeError(f"download failed: HTTP {d.status_code} from {url_data}")
 
     return d.text

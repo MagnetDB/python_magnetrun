@@ -8,20 +8,23 @@ This module provides:
 - Configuration management for different measurement sites (M8, M9, M10)
 - Data loading from TDMS overview, archive, and pupitre files
 - Time synchronization between different data sources
-- Distance and similarity metrics (DTW alignment)
-- Visualization utilities
 - Core data processing logic
+
+Metrics and plotting live in their own sub-namespaces::
+
+    from python_magnetrun.analysis.metrics import calc_mahalanobis, compare_series
+    from python_magnetrun.analysis.plotting import plot_data, plot_comparison
 
 Example usage::
 
-    from python_magnetrun.analysis import AnalysisConfig, SiteConfig
+    from python_magnetrun.analysis import AnalysisConfig, HousingConfig
 
     # Get configuration for a specific site
-    config = AnalysisConfig.for_site("M9")
+    config = AnalysisConfig.for_housing("M9")
 
-    # Access site-specific channel mappings
-    print(config.site.reference_gr1_current)  # "IH"
-    print(config.site.reference_gr2_current)  # "IB"
+    # Access housing-specific channel mappings
+    print(config.housing.reference_gr1_current)  # "IH"
+    print(config.housing.reference_gr2_current)  # "IB"
 
     # Get threshold for a channel
     threshold = config.thresholds.get("Courant_GR1")
@@ -34,142 +37,90 @@ Submodules
 - metrics: Distance and similarity metrics
 - plotting: Visualization functions
 - processing: Core data processing logic
+- field_comparison: Alias-driven pupitre <-> pigbrother field comparison
 - cli: Command-line interface and main entry point
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
+from ..utils.downsampling import (
+    DownsampleConfig,
+    downsample_arrays,
+    downsample_dataframe,
+)
+from ..utils.timestamps import add_time_columns
 from .config import (
-    # Constants
-    SAMPLING_RATE_OVERVIEW,
-    SAMPLING_RATE_ARCHIVE,
-    SAMPLING_RATE_INCIDENTS,
-    LAG_THRESHOLD_RATIO,
-    DEFAULT_WINDOW_SIZE,
     DEFAULT_BINS,
-    DEFAULT_LEVELS,
     DEFAULT_DATA_DIR,
     DEFAULT_GROUP,
+    DEFAULT_LEVELS,
+    DEFAULT_WINDOW_SIZE,
+    # Pre-defined configurations
+    HOUSING_CONFIGS,
+    LAG_THRESHOLD_RATIO,
+    SAMPLING_RATE_ARCHIVE,
+    SAMPLING_RATE_INCIDENTS,
+    # Constants
+    SAMPLING_RATE_OVERVIEW,
+    AnalysisConfig,
     # Dataclasses
     ChannelMapping,
-    VoltageChannelMapping,
-    SiteConfig,
+    HousingConfig,
     ThresholdConfig,
-    AnalysisConfig,
-    # Pre-defined configurations
-    SITE_CONFIGS,
+    VoltageChannelMapping,
     # Functions
-    get_site_config,
+    get_housing_config,
+    get_time_offset,
 )
-
 from .loaders import (
     # Constants
     TIMESTAMP_FORMAT,
-    # Functions
-    convert_to_timestamp,
-    extract_data,
-    find_files,
-    select_files,
-    load_df,
-    load_data,
-    merge_data,
-    discover_files,
+    # Classes
+    FileDiscovery,
     # Dataclasses
     FileMetadata,
     FileSet,
-    # Classes
-    FileDiscovery,
-)
-
-from .synchronization import (
-    # Dataclasses
-    SyncResult,
-    LagResult,
-    RegimeMatch,
     # Functions
-    synchronize_data,
-    apply_lag_correction,
-    compute_lag,
-    lag_correlation,
-    compute_regime_score,
-    find_best_matching_regime,
-    check_lag_reliability,
-    compute_simple_timeshift,
-    add_time_column,
-    get_timestamp_info,
+    convert_to_timestamp,
+    discover_files,
+    load_files_data,
 )
-
-from .metrics import (
-    # Dataclasses
-    DistanceResult,
-    DTWResult,
-    CorrelationResult,
-    TLCCResult,
-    # Distance functions
-    calc_euclidean,
-    calc_mae,
-    calc_mape,
-    calc_correlation,
-    compute_all_distances,
-    # Cross-correlation functions
-    crosscorr,
-    compute_tlcc,
-    compute_windowed_tlcc,
-    compute_rolling_tlcc,
-    compute_pearson_correlation,
-    # DTW functions
-    compute_dtw_distance,
-    compute_dtw_distance_fast,
-    dtw_with_paa,
-    # Plotting
-    plot_tlcc,
-    plot_dtw_alignment,
-    # Convenience
-    compare_series,
-)
-
-from .plotting import (
-    # Dataclasses
-    PlotStyle,
-    PlotColors,
-    # Constants
-    DEFAULT_STYLE,
-    DEFAULT_COLORS,
-    # Downsampling functions
-    downsample_for_plot,
-    downsample_dataframe,
-    downsample_minmax,
-    estimate_downsample_percent,
-    # Main plotting functions
-    plot_data,
-    plot_comparison,
-    plot_regimes,
-    plot_incidents_markers,
-    plot_time_series,
-    # Utilities
-    setup_matplotlib_defaults,
-    create_figure_grid,
-    save_figure,
-)
-
 from .processing import (
-    # Configuration
-    ProcessingConfig,
     # Main dataclasses
     OverviewRecord,
+    # Configuration
+    ProcessingConfig,
     ProcessingResult,
-    # Main functions
-    process_overview_file,
-    process_experiment,
-    # Utilities
-    compute_time_offset,
     add_time_column_with_offset,
+    # Utilities
     create_overview_dict,
-    summarize_record,
-    print_record_summary,
+    load_archive_data,
+    load_incidents_data,
     # Data loading
     load_overview_data,
-    load_archive_data,
     load_pupitre_data,
-    load_incidents_data,
+    print_record_summary,
+    process_experiment,
+    # Main functions
+    process_overview_file,
+    summarize_record,
+)
+from .synchronization import (
+    LagResult,
+    RegimeMatch,
+    # Dataclasses
+    SyncResult,
+    add_time_column,
+    apply_lag_correction,
+    check_lag_reliability,
+    compute_lag,
+    compute_regime_score,
+    compute_simple_timeshift,
+    find_best_matching_regime,
+    get_timestamp_info,
+    lag_correlation,
+    # Functions
+    synchronize_data,
 )
 
 # The `cli` submodule is imported lazily below to avoid executing
@@ -203,7 +154,7 @@ def __getattr__(name: str):
         _cli = import_module(".cli", __name__)
         # map requested name to actual attribute in cli
         if name == "cli_main":
-            return getattr(_cli, "main")
+            return _cli.main
         return getattr(_cli, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
@@ -227,21 +178,16 @@ __all__ = [
     # Config dataclasses
     "ChannelMapping",
     "VoltageChannelMapping",
-    "SiteConfig",
+    "HousingConfig",
     "ThresholdConfig",
     "AnalysisConfig",
     # Pre-defined configurations
-    "SITE_CONFIGS",
+    "HOUSING_CONFIGS",
     # Loaders constants
     "TIMESTAMP_FORMAT",
     # Loaders functions
     "convert_to_timestamp",
-    "extract_data",
-    "find_files",
-    "select_files",
-    "load_df",
-    "load_data",
-    "merge_data",
+    "load_files_data",
     "discover_files",
     # Loaders dataclasses
     "FileMetadata",
@@ -262,54 +208,12 @@ __all__ = [
     "check_lag_reliability",
     "compute_simple_timeshift",
     "add_time_column",
+    "add_time_columns",
     "get_timestamp_info",
-    # Metrics dataclasses
-    "DistanceResult",
-    "DTWResult",
-    "CorrelationResult",
-    "TLCCResult",
-    # Metrics distance functions
-    "calc_euclidean",
-    "calc_mae",
-    "calc_mape",
-    "calc_correlation",
-    "compute_all_distances",
-    # Metrics cross-correlation functions
-    "crosscorr",
-    "compute_tlcc",
-    "compute_windowed_tlcc",
-    "compute_rolling_tlcc",
-    "compute_pearson_correlation",
-    # Metrics DTW functions
-    "compute_dtw_distance",
-    "compute_dtw_distance_fast",
-    "dtw_with_paa",
-    # Metrics plotting
-    "plot_tlcc",
-    "plot_dtw_alignment",
-    # Metrics convenience
-    "compare_series",
-    # Plotting dataclasses
-    "PlotStyle",
-    "PlotColors",
-    # Plotting constants
-    "DEFAULT_STYLE",
-    "DEFAULT_COLORS",
-    # Plotting downsampling functions
-    "downsample_for_plot",
+    # Downsampling (canonical, from utils.downsampling)
+    "DownsampleConfig",
+    "downsample_arrays",
     "downsample_dataframe",
-    "downsample_minmax",
-    "estimate_downsample_percent",
-    # Plotting main functions
-    "plot_data",
-    "plot_comparison",
-    "plot_regimes",
-    "plot_incidents_markers",
-    "plot_time_series",
-    # Plotting utilities
-    "setup_matplotlib_defaults",
-    "create_figure_grid",
-    "save_figure",
     # Processing configuration
     "ProcessingConfig",
     # Processing dataclasses
@@ -319,10 +223,10 @@ __all__ = [
     "process_overview_file",
     "process_experiment",
     # Processing utilities
-    "compute_time_offset",
+    "get_time_offset",
     "add_time_column_with_offset",
     "create_overview_dict",
-    "get_site_config",
+    "get_housing_config",
     "summarize_record",
     "print_record_summary",
     # Processing data loading
@@ -350,4 +254,7 @@ __all__ = [
     "cli_main",
 ]
 
-__version__ = "0.1.0"
+try:
+    __version__ = version("python_magnetrun")
+except PackageNotFoundError:
+    __version__ = "0.0.0"

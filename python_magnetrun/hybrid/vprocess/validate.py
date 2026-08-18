@@ -5,19 +5,18 @@ VProcess File Validation and Inspection Utility
 Utility for validating VProcess files and inspecting their contents.
 
 Usage:
-    python validate.py <filepath>
-    python validate.py <filepath> --check-data
-    python validate.py <filepath> --verbose
+    python -m python_magnetrun.hybrid.vprocess.validate <filepath>
+    python -m python_magnetrun.hybrid.vprocess.validate <filepath> --check-data
+    python -m python_magnetrun.hybrid.vprocess.validate <filepath> --verbose
 """
 
-import sys
-import argparse
-from pathlib import Path
-from typing import Dict, Any
 import logging
+from pathlib import Path
+from typing import Any
+
 import pandas as pd
 
-from vprocess_reader import VProcessFileReader
+from .vprocess_reader import VProcessFileReader
 
 # Setup logger
 logger = logging.getLogger(__name__)
@@ -25,10 +24,10 @@ logger = logging.getLogger(__name__)
 
 def validate_vprocess_file(
     filepath: str, check_data: bool = False, verbose: bool = True
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Validate a VProcess file structure and content.
-    
+
     Parameters
     ----------
     filepath : str
@@ -37,13 +36,13 @@ def validate_vprocess_file(
         Whether to perform detailed data validation
     verbose : bool
         Whether to print detailed output
-    
+
     Returns
     -------
     dict
         Validation results with 'valid', 'errors', 'warnings', and 'info' keys
     """
-    results = {
+    results: dict[str, Any] = {
         "valid": True,
         "errors": [],
         "warnings": [],
@@ -65,7 +64,7 @@ def validate_vprocess_file(
             print("=" * 70)
             print(f"VPROCESS FILE VALIDATION: {file_path.name}")
             print("=" * 70)
-            print(f"\nFile Information:")
+            print("\nFile Information:")
             print(f"  Path: {file_path}")
             print(f"  Size: {file_size_mb:.2f} MB")
 
@@ -75,7 +74,7 @@ def validate_vprocess_file(
         # Parse header
         try:
             reader.parse_header()
-        except Exception as e:
+        except (OSError, ValueError, RuntimeError) as e:
             results["valid"] = False
             results["errors"].append(f"Header parsing failed: {str(e)}")
             return results
@@ -85,7 +84,7 @@ def validate_vprocess_file(
         results["info"]["metadata"] = metadata
 
         if verbose:
-            print(f"\nMetadata:")
+            print("\nMetadata:")
             for key, value in metadata.items():
                 print(f"  {key}: {value}")
 
@@ -107,11 +106,15 @@ def validate_vprocess_file(
             results["valid"] = False
         else:
             results["info"]["num_variables"] = len(reader.variables)
-            results["info"]["num_analog"] = sum(1 for v in reader.variables if v.is_analog)
-            results["info"]["num_digital"] = sum(1 for v in reader.variables if not v.is_analog)
+            results["info"]["num_analog"] = sum(
+                1 for v in reader.variables if v.is_analog
+            )
+            results["info"]["num_digital"] = sum(
+                1 for v in reader.variables if not v.is_analog
+            )
 
             if verbose:
-                print(f"\nVariables:")
+                print("\nVariables:")
                 print(f"  Total: {len(reader.variables)}")
                 print(f"  Analog: {results['info']['num_analog']}")
                 print(f"  Digital: {results['info']['num_digital']}")
@@ -127,8 +130,7 @@ def validate_vprocess_file(
 
             if actual_width != expected_width:
                 results["warnings"].append(
-                    f"Sample width mismatch: header={actual_width}, "
-                    f"calculated={expected_width}"
+                    f"Sample width mismatch: header={actual_width}, calculated={expected_width}"
                 )
 
         # Time window information
@@ -142,10 +144,12 @@ def validate_vprocess_file(
             results["info"]["duration_seconds"] = duration
 
             if verbose:
-                print(f"\nTime Window:")
+                print("\nTime Window:")
                 print(f"  Start: {start}")
                 print(f"  End: {end}")
-                print(f"  Duration: {duration:.1f} seconds ({duration/3600:.2f} hours)")
+                print(
+                    f"  Duration: {duration:.1f} seconds ({duration / 3600:.2f} hours)"
+                )
 
                 if metadata.get("frequency"):
                     expected_samples = int(duration * metadata["frequency"])
@@ -153,7 +157,7 @@ def validate_vprocess_file(
 
         # Variable details
         if verbose and reader.variables:
-            print(f"\nVariables (first 10):")
+            print("\nVariables (first 10):")
             var_info = reader.get_variable_info()
             print(var_info.head(10).to_string(index=False))
             if len(reader.variables) > 10:
@@ -178,13 +182,15 @@ def validate_vprocess_file(
                 if verbose:
                     print(f"✓ Successfully read {len(df)} samples")
                     print(f"  Shape: {df.shape}")
-                    print(f"  Memory usage: {df.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB")
+                    print(
+                        f"  Memory usage: {df.memory_usage(deep=True).sum() / 1024 / 1024:.2f} MB"
+                    )
 
                 # Check for NaN values
                 nan_counts = df.isna().sum()
                 if nan_counts.any():
                     if verbose:
-                        print(f"\n⚠ NaN values detected:")
+                        print("\n⚠ NaN values detected:")
                     for var, count in nan_counts[nan_counts > 0].items():
                         warning = f"NaN values in {var}: {count}"
                         results["warnings"].append(warning)
@@ -196,7 +202,9 @@ def validate_vprocess_file(
                     time_diffs = df.index.to_series().diff()
                     negative_diffs = (time_diffs < pd.Timedelta(0)).sum()
                     if negative_diffs > 0:
-                        warning = f"Non-monotonic timestamps: {negative_diffs} backward jumps"
+                        warning = (
+                            f"Non-monotonic timestamps: {negative_diffs} backward jumps"
+                        )
                         results["warnings"].append(warning)
                         if verbose:
                             print(f"\n⚠ {warning}")
@@ -218,17 +226,17 @@ def validate_vprocess_file(
 
                 # Show sample data
                 if verbose:
-                    print(f"\nSample Data (first 5 rows, first 5 columns):")
+                    print("\nSample Data (first 5 rows, first 5 columns):")
                     print(df.iloc[:5, :5].to_string())
 
                     # Basic statistics
-                    print(f"\nData Statistics (first 5 analog variables):")
+                    print("\nData Statistics (first 5 analog variables):")
                     analog_vars = [v.name for v in reader.variables if v.is_analog][:5]
                     if analog_vars:
                         stats = df[analog_vars].describe()
                         print(stats.to_string())
 
-            except Exception as e:
+            except (OSError, ValueError, RuntimeError) as e:
                 results["errors"].append(f"Data reading error: {str(e)}")
                 results["valid"] = False
                 if verbose:
@@ -257,54 +265,13 @@ def validate_vprocess_file(
 
             print()
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         results["valid"] = False
         results["errors"].append(f"Unexpected error: {str(e)}")
         if verbose:
             print(f"\n✗ Validation failed with error: {str(e)}")
             import traceback
+
             traceback.print_exc()
 
     return results
-
-
-def main():
-    """Main function for command-line usage."""
-    parser = argparse.ArgumentParser(
-        description="Validate and inspect VProcess files",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python validate.py data.vprocess
-  python validate.py data.vprocess --check-data
-  python validate.py data.vprocess --check-data --quiet
-        """,
-    )
-
-    parser.add_argument("filepath", help="Path to VProcess file")
-    parser.add_argument(
-        "--check-data",
-        action="store_true",
-        help="Perform detailed data validation (slower)",
-    )
-    parser.add_argument(
-        "--quiet", "-q", action="store_true", help="Suppress detailed output"
-    )
-
-    args = parser.parse_args()
-
-    # Configure logging
-    if not args.quiet:
-        logging.basicConfig(level=logging.INFO)
-
-    # Run validation
-    results = validate_vprocess_file(
-        args.filepath, check_data=args.check_data, verbose=not args.quiet
-    )
-
-    # Exit with appropriate code
-    sys.exit(0 if results["valid"] else 1)
-
-
-if __name__ == "__main__":
-    main()

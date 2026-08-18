@@ -1,0 +1,340 @@
+"""Plotly-resampler backend — live-kernel only.
+
+Wraps a Plotly figure in ``FigureResampler`` (for Dash / ``show_dash()``)
+or ``FigureWidgetResampler`` (for Jupyter / marimo ipywidget), enabling
+view-dependent on-the-fly aggregation using ``tsdownsample`` (MinMaxLTTB).
+
+Tier-3 downsampling strategy
+-----------------------------
+When this backend is selected, the ``DownsampleConfig`` pre-computation
+step in ``plot_subplots()`` / ``plot_overlay()`` is skipped automatically
+— ``FigureResampler`` handles downsampling dynamically on each pan/zoom.
+
+Requires a live Python kernel — use ``PlotlyBackend`` for static export or
+the REST/JS path.
+
+Install: ``pip install python_magnetrun[resampler]``
+"""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from .style import LabelStyle, PlotStyle
+
+logger = logging.getLogger(__name__)
+
+__all__ = ["PlotlyResamplerBackend"]
+
+
+def _plotly_font_dict(
+    label_style: LabelStyle | None,
+    fallback_size: int,
+    *,
+    context: str = "label",
+) -> dict:
+    """Build a Plotly font dict from a :class:`LabelStyle`.
+
+    ``style`` and ``weight`` are not supported by Plotly and trigger a warning.
+    """
+    if label_style is None:
+        return {"size": fallback_size}
+    font: dict = {"size": label_style.size if label_style.size is not None else fallback_size}
+    if label_style.family is not None:
+        font["family"] = label_style.family
+    if label_style.color is not None:
+        font["color"] = label_style.color
+    if label_style.style is not None:
+        logger.warning(
+            "LabelStyle.style=%r for %r is not supported by the Plotly backend and will be ignored.",
+            label_style.style,
+            context,
+        )
+    if label_style.weight is not None:
+        logger.warning(
+            "LabelStyle.weight=%r for %r is not supported by the Plotly backend and will be ignored.",
+            label_style.weight,
+            context,
+        )
+    return font
+
+try:
+    from plotly_resampler import FigureResampler, FigureWidgetResampler
+
+    HAS_RESAMPLER = True
+except ImportError:
+    HAS_RESAMPLER = False
+
+try:
+    import plotly.graph_objects as go
+    from plotly.subplots import make_subplots
+
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
+
+
+def _require_resampler() -> None:
+    if not HAS_RESAMPLER:
+        raise ImportError(
+            "plotly-resampler is required for PlotlyResamplerBackend. "
+            "Install it with: pip install python_magnetrun[resampler]"
+        )
+    if not HAS_PLOTLY:
+        raise ImportError(
+            "plotly is required for PlotlyResamplerBackend. "
+            "Install it with: pip install python_magnetrun[plotting]"
+        )
+
+
+class PlotlyResamplerBackend:
+    """Plotly backend with dynamic, view-dependent resampling (live kernel only).
+
+    Parameters
+    ----------
+    widget:
+        ``True`` → ``FigureWidgetResampler`` (Jupyter / marimo ipywidget).
+        ``False`` → ``FigureResampler`` (Dash / ``show_dash()``).
+    """
+
+    def __init__(self, *, widget: bool = False) -> None:
+        self._widget = widget
+
+    def subplots(
+        self,
+        n: int,
+        *,
+        share_x: bool = True,
+        style: PlotStyle | None = None,
+    ) -> Any:
+        _require_resampler()
+        s = style or PlotStyle()
+        width, height_per = s.figsize
+        base = make_subplots(
+            rows=n,
+            cols=1,
+            shared_xaxes=share_x,
+            vertical_spacing=0.04,
+        )
+        base.update_layout(
+            width=width * 80,
+            height=height_per * n * 80,
+            template="plotly_white",
+        )
+        cls = FigureWidgetResampler if self._widget else FigureResampler
+        fig = cls(base)
+        fig._magnetrun_style = s
+        return fig
+
+    def add_series(
+        self,
+        fig: Any,
+        ax_idx: int,
+        t: np.ndarray,
+        y: np.ndarray,
+        label: str,
+        *,
+        normalize: bool = False,
+        color: str | None = None,
+        ylabel: str | None = None,
+        marker: str | None = None,
+        linestyle: str | None = None,
+        markevery: int | None = None,
+        alpha: float | None = None,
+    ) -> None:
+        _require_resampler()
+
+        # Drop NaN rows so sparse series (e.g. 1 Hz overview mixed with 120 Hz
+        # archive) are visible and the resampler doesn't process millions of
+        # NaN-only rows.
+        valid_mask = ~np.isnan(y)
+        t = t[valid_mask]
+        y = y[valid_mask]
+        if len(y) == 0:
+            return
+
+        if normalize:
+            abs_max = float(np.nanmax(np.abs(y))) if len(y) else 1.0
+            if abs_max == 0 or not np.isfinite(abs_max):
+                abs_max = 1.0
+            y = y / abs_max
+            label = f"{label}  (max={abs_max:.3g})"
+
+        has_markers = marker is not None
+        no_lines = linestyle is not None and linestyle.lower() == "none"
+        if has_markers and no_lines:
+            mode = "markers"
+        elif has_markers:
+            mode = "lines+markers"
+        else:
+            mode = "lines"
+
+        scatter_kwargs: dict[str, Any] = {
+            "x": t,
+            "y": y,
+            "name": label,
+            "mode": mode,
+        }
+        line_dict: dict[str, Any] = {}
+        if color is not None:
+            line_dict["color"] = color
+        if linestyle is not None and not no_lines:
+            _dash_map = {"-": "solid", "--": "dash", "-.": "dashdot", ":": "dot"}
+            line_dict["dash"] = _dash_map.get(linestyle, linestyle)
+        if line_dict:
+            scatter_kwargs["line"] = line_dict
+        if has_markers:
+            _symbol_map = {
+                "o": "circle",
+                "+": "cross",
+                "x": "x",
+                "s": "square",
+                "D": "diamond",
+                "^": "triangle-up",
+                "v": "triangle-down",
+                "<": "triangle-left",
+                ">": "triangle-right",
+                "*": "star",
+            }
+            marker_dict: dict[str, Any] = {"symbol": _symbol_map.get(marker, marker)}
+            if color is not None:
+                marker_dict["color"] = color
+            scatter_kwargs["marker"] = marker_dict
+        # plotly-resampler handles downsampling internally; markevery is ignored
+        fig.add_trace(go.Scatter(**scatter_kwargs), row=ax_idx + 1, col=1)
+        if alpha is not None:
+            fig.data[-1].update(opacity=alpha)
+        if ylabel is not None:
+            fig.update_yaxes(title_text=ylabel, row=ax_idx + 1, col=1)
+
+    def add_scatter(
+        self,
+        fig: Any,
+        ax_idx: int,
+        t: np.ndarray,
+        y: np.ndarray,
+        label: str,
+        *,
+        color: str = "red",
+        size: int = 10,
+        alpha: float = 0.7,
+    ) -> None:
+        _require_resampler()
+        fig.add_trace(
+            go.Scatter(
+                x=t,
+                y=y,
+                mode="markers",
+                marker=dict(color=color, size=size, opacity=alpha),
+                name=label,
+            ),
+            row=ax_idx + 1,
+            col=1,
+        )
+
+    def add_annotation(
+        self,
+        fig: Any,
+        ax_idx: int,
+        t: float,
+        f: float,
+        label: str,
+        detail: dict | None = None,
+    ) -> None:
+        _require_resampler()
+        # Build hover text from simple scalar/string detail entries only.
+        if detail:
+            parts = [
+                f"{k}: {v}"
+                for k, v in detail.items()
+                if isinstance(v, str | int | float)
+            ]
+            hover = "<br>".join(parts) if parts else label
+        else:
+            hover = label
+        # Marker at (t, f)
+        fig.add_trace(
+            go.Scatter(
+                x=[t],
+                y=[f],
+                mode="markers",
+                marker=dict(
+                    color="yellow",
+                    size=10,
+                    symbol="circle",
+                    line=dict(color="black", width=1),
+                ),
+                name=label,
+                showlegend=False,
+                hovertext=hover,
+                hovertemplate="%{hovertext}<extra></extra>",
+            ),
+            row=ax_idx + 1,
+            col=1,
+        )
+        # Text annotation with arrow
+        s: PlotStyle = getattr(fig, "_magnetrun_style", None) or PlotStyle()
+        annot_font = _plotly_font_dict(s.annotation_style, fallback_size=10, context="annotation")
+        fig.add_annotation(
+            x=t,
+            y=f,
+            text=label,
+            showarrow=True,
+            arrowhead=2,
+            ax=20,
+            ay=-30,
+            bgcolor="rgba(255,255,0,0.7)",
+            bordercolor="gray",
+            borderwidth=1,
+            font=annot_font,
+            row=ax_idx + 1,
+            col=1,
+        )
+
+    def finalize(self, fig: Any, *, xlabel: str = "t [s]") -> None:
+        """Add x-axis label and apply text styling to the figure."""
+        _require_resampler()
+        s: PlotStyle = getattr(fig, "_magnetrun_style", None) or PlotStyle()
+        _xlabel = getattr(fig, "_magnetrun_xlabel", xlabel)
+        n_rows = (
+            fig._get_subplot_rows_columns()[0][-1]
+            if hasattr(fig, "_get_subplot_rows_columns")
+            else 1
+        )
+        xl_font = _plotly_font_dict(s.xlabel_style, s.label_fontsize, context="xlabel")
+        fig.update_xaxes(title_text=_xlabel, title_font=xl_font, row=n_rows, col=1)
+
+        yl_font = _plotly_font_dict(s.ylabel_style, s.label_fontsize, context="ylabel")
+        fig.update_yaxes(title_font=yl_font)
+
+        t_font = _plotly_font_dict(s.title_style, s.title_fontsize, context="title")
+        fig.update_layout(title_font=t_font)
+
+    def save(self, fig: Any, path: Path, *, dpi: int = 300) -> None:
+        raise NotImplementedError(
+            "PlotlyResamplerBackend requires a live kernel — static export "
+            "is not supported.  Use get_backend('plotly') instead."
+        )
+
+    def show(self, fig: Any) -> None:
+        _require_resampler()
+        if self._widget:
+            # In Jupyter/marimo display() is sufficient.
+            try:
+                from IPython.display import display
+
+                display(fig)
+            except ImportError:
+                fig.show()
+        else:
+            fig.show_dash()
+
+    def to_json(self, fig: Any) -> str:
+        raise NotImplementedError(
+            "PlotlyResamplerBackend requires a live kernel — JSON export "
+            "is not supported.  Use get_backend('plotly') instead."
+        )
