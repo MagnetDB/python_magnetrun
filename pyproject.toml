@@ -48,7 +48,7 @@ resampler = [
     "plotly-resampler>=0.9",
 ]
 hybrid = [
-    "tsdownsample>=1.0",
+    "tsdownsample>=0.1.5",
 ]
 rdp = [
     "simplification>=0.7",
