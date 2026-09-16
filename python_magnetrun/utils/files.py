@@ -25,6 +25,9 @@ DIR_ARCHIVE: str = "Fichiers_Archive"
 DIR_DEFAULT: str = "Fichiers_Default"
 DIR_TRIGGER: str = "Fichiers_Manuel_Trig"
 DIR_SPIKE: str = "Fichiers_Spike"
+# Note: lower-case "s", unlike the other Fichiers_* directories above —
+# matches the real on-disk convention.
+DIR_STATS: str = "Fichiers_stats"
 
 # Mapping from TDMS mode name (2nd underscore-part of filename) to subdirectory name.
 _TDMS_MODE_DIRS: dict[str, str] = {
@@ -426,7 +429,7 @@ def find_files(
     date: str,
     time: str,
     pupitre_datadir: str | Path = ".",
-) -> tuple[str, str, str, str, str]:
+) -> tuple[str, str, str, str, str, str]:
     """Build glob patterns to find files related to an overview file.
 
     Parameters
@@ -444,9 +447,15 @@ def find_files(
 
     Returns
     -------
-    tuple[str, str, str, str, str]
-        (pupitre_filter, archive_filter, default_filter, trigger_filter, spike_filter)
-        Each is a glob pattern for finding related files.
+    tuple[str, str, str, str, str, str]
+        (pupitre_filter, archive_filter, default_filter, trigger_filter,
+        spike_filter, stats_filter)
+        Each is a glob pattern for finding related files. ``stats_filter``
+        is built from *housing*/*date* directly (not by substituting into
+        the overview filename) and wildcards the whole time portion, since
+        Stats files are timestamped independently of the overview session
+        and some legacy filenames have a stray extra underscore before the
+        timestamp (e.g. ``M9_Stats__190304-1459.tdms``).
     """
     logger.info(
         f"find_files: overview_file={overview_file}, housing={housing}, date={date}, time={time}"
@@ -479,12 +488,16 @@ def find_files(
     spike_name = filename.replace("Overview", "Spikes")
     spike_filter = f"{spike_datadir}/{spike_name.replace(time, '*.tdms')}"
 
+    stats_datadir = overview_dir.replace("Overview", DIR_STATS)
+    stats_filter = f"{stats_datadir}/{housing}_Stats_*{date}-*.tdms"
+
     return (
         pupitre_filter,
         archive_filter,
         default_filter,
         trigger_filter,
         spike_filter,
+        stats_filter,
     )
 
 
@@ -494,7 +507,7 @@ def find_files_from_archive(
     date: str,
     time: str,
     pupitre_datadir: str | Path = ".",
-) -> tuple[str, str, str, str]:
+) -> tuple[str, str, str, str, str]:
     """Build glob patterns to find files related to an Archive file.
 
     Counterpart to :func:`find_files` for sessions with no Overview TDMS
@@ -516,9 +529,12 @@ def find_files_from_archive(
 
     Returns
     -------
-    tuple[str, str, str, str]
-        (pupitre_filter, default_filter, trigger_filter, spike_filter)
-        Each is a glob pattern for finding related files.
+    tuple[str, str, str, str, str]
+        (pupitre_filter, default_filter, trigger_filter, spike_filter,
+        stats_filter)
+        Each is a glob pattern for finding related files. ``stats_filter``
+        is built from *housing*/*date* directly and wildcards the whole
+        time portion — see :func:`find_files` for why.
     """
     logger.info(
         f"find_files_from_archive: archive_file={archive_file}, housing={housing}, "
@@ -548,11 +564,15 @@ def find_files_from_archive(
     spike_name = filename.replace("Archive", "Spikes")
     spike_filter = f"{spike_datadir}/{spike_name.replace(time, '*.tdms')}"
 
+    stats_datadir = archive_dir.replace(DIR_ARCHIVE, DIR_STATS)
+    stats_filter = f"{stats_datadir}/{housing}_Stats_*{date}-*.tdms"
+
     return (
         pupitre_filter,
         default_filter,
         trigger_filter,
         spike_filter,
+        stats_filter,
     )
 
 

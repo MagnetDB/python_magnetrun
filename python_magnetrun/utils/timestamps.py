@@ -73,7 +73,10 @@ def parse_tdms_filename(filename: str) -> datetime | None:
     logger.debug(f"name={name!r}, ext={ext!r}")
     if ext != ".tdms":
         return None
-    parts = name.split("_")
+    # Filter empty tokens: some legacy Stats filenames have a stray extra
+    # underscore before the timestamp (e.g. "M9_Stats__190304-1459.tdms"),
+    # which would otherwise shift the timestamp off parts[2].
+    parts = [p for p in name.split("_") if p]
     if len(parts) < 3:
         logger.warning(
             f"parse_tdms_filename: cannot parse {filename} (expected site_mode_timestamp[_dmode])"

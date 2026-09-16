@@ -217,6 +217,7 @@ class TestFileSet:
         assert "default" in d
         assert "trigger" in d
         assert "spike" in d
+        assert "stats" in d
 
     def test_from_dict(self):
         """from_dict should create FileSet from dict."""
@@ -241,6 +242,7 @@ class TestFileSet:
             default=["d1.tdms"],
             trigger=["t1.tdms"],
             spike=["s1.tdms"],
+            stats=["st1.tdms"],
         )
         roundtrip = FileSet.from_dict(original.to_dict())
         assert roundtrip.overview == original.overview
@@ -249,13 +251,14 @@ class TestFileSet:
         assert roundtrip.default == original.default
         assert roundtrip.trigger == original.trigger
         assert roundtrip.spike == original.spike
+        assert roundtrip.stats == original.stats
 
 
 class TestFindFiles:
     """Test find_files function."""
 
-    def test_returns_five_patterns(self):
-        """find_files should return 5 glob patterns."""
+    def test_returns_six_patterns(self):
+        """find_files should return 6 glob patterns."""
         patterns = find_files(
             "/data/Overview/M9_Overview_241106-1643.tdms",
             "M9",
@@ -263,7 +266,7 @@ class TestFindFiles:
             "1643",
             pupitre_datadir="/pupitre",
         )
-        assert len(patterns) == 5
+        assert len(patterns) == 6
 
     def test_pupitre_pattern(self):
         """Pupitre pattern should use correct date format."""
@@ -293,7 +296,7 @@ class TestFindFiles:
 
     def test_incident_patterns(self):
         """Incident patterns should use correct directories."""
-        _, _, default, trigger, spike = find_files(
+        _, _, default, trigger, spike, stats = find_files(
             "/data/Overview/M9_Overview_241106-1643.tdms",
             "M9",
             "241106",
@@ -302,13 +305,25 @@ class TestFindFiles:
         assert "Fichiers_Default" in default
         assert "Fichiers_Manuel_Trig" in trigger
         assert "Fichiers_Spike" in spike
+        assert "Fichiers_stats" in stats
+
+    def test_stats_pattern(self):
+        """Stats pattern should wildcard the time to tolerate legacy naming quirks."""
+        *_, stats = find_files(
+            "/data/Overview/M9_Overview_241106-1643.tdms",
+            "M9",
+            "241106",
+            "1643",
+        )
+        assert "Fichiers_stats" in stats
+        assert "M9_Stats_*241106-*.tdms" in stats
 
 
 class TestFindFilesFromArchive:
     """Test find_files_from_archive function."""
 
-    def test_returns_four_patterns(self):
-        """find_files_from_archive should return 4 glob patterns (no archive_filter)."""
+    def test_returns_five_patterns(self):
+        """find_files_from_archive should return 5 glob patterns (no archive_filter)."""
         patterns = find_files_from_archive(
             "/data/Fichiers_Archive/M9_Archive_190315-1200.tdms",
             "M9",
@@ -316,7 +331,7 @@ class TestFindFilesFromArchive:
             "1200",
             pupitre_datadir="/pupitre",
         )
-        assert len(patterns) == 4
+        assert len(patterns) == 5
 
     def test_pupitre_pattern(self):
         """Pupitre pattern should use correct date format."""
@@ -334,7 +349,7 @@ class TestFindFilesFromArchive:
 
     def test_incident_patterns(self):
         """Incident patterns should use correct directories, derived from Fichiers_Archive."""
-        _, default, trigger, spike = find_files_from_archive(
+        _, default, trigger, spike, stats = find_files_from_archive(
             "/data/Fichiers_Archive/M9_Archive_190315-1200.tdms",
             "M9",
             "190315",
@@ -344,6 +359,8 @@ class TestFindFilesFromArchive:
         assert "M9_Default_190315" in default
         assert "Fichiers_Manuel_Trig" in trigger
         assert "Fichiers_Spike" in spike
+        assert "Fichiers_stats" in stats
+        assert "M9_Stats_*190315-*.tdms" in stats
 
 
 class TestMergeData:

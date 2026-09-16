@@ -210,6 +210,8 @@ class FileSet:
         Manual trigger incident files
     spike : List[str]
         Spike incident files
+    stats : List[str]
+        Stats TDMS files (4800 Hz data reduced to 1 Hz)
     hybrid_kHz : List[str]
         Hybrid kHz acquisition files
     hybrid_rms : List[str]
@@ -230,6 +232,7 @@ class FileSet:
     default: list[str] = field(default_factory=list)
     trigger: list[str] = field(default_factory=list)
     spike: list[str] = field(default_factory=list)
+    stats: list[str] = field(default_factory=list)
     hybrid_kHz: list[str] = field(default_factory=list)
     hybrid_rms: list[str] = field(default_factory=list)
     hybrid_trigger: list[str] = field(default_factory=list)
@@ -246,6 +249,7 @@ class FileSet:
             "default": self.default,
             "trigger": self.trigger,
             "spike": self.spike,
+            "stats": self.stats,
             "hybrid_kHz": self.hybrid_kHz,
             "hybrid_rms": self.hybrid_rms,
             "hybrid_trigger": self.hybrid_trigger,
@@ -264,6 +268,7 @@ class FileSet:
             default=d.get("default", []),
             trigger=d.get("trigger", []),
             spike=d.get("spike", []),
+            stats=d.get("stats", []),
             hybrid_kHz=d.get("hybrid_kHz", []),
             hybrid_rms=d.get("hybrid_rms", []),
             hybrid_trigger=d.get("hybrid_trigger", []),
@@ -281,6 +286,7 @@ class FileSet:
             + len(self.default)
             + len(self.trigger)
             + len(self.spike)
+            + len(self.stats)
             + len(self.hybrid_kHz)
             + len(self.hybrid_rms)
             + len(self.hybrid_trigger)
@@ -622,10 +628,10 @@ class FileDiscovery:
             time,
             pupitre_datadir=self.pupitre_datadir,
         )
-        pupitre_f, archive_f, default_f, trigger_f, spike_f = filters
+        pupitre_f, archive_f, default_f, trigger_f, spike_f, stats_f = filters
         logger.info(
             f"File patterns: pupitre={pupitre_f} archive={archive_f} "
-            f"default={default_f} trigger={trigger_f} spike={spike_f}"
+            f"default={default_f} trigger={trigger_f} spike={spike_f} stats={stats_f}"
         )
 
         file_set = FileSet()
@@ -641,9 +647,13 @@ class FileDiscovery:
         file_set.spike = select_files(
             glob.glob(spike_f), housing, start, end, min_duration_seconds=0.0
         )
+        file_set.stats = select_files(
+            glob.glob(stats_f), housing, start, end, min_duration_seconds=0.0
+        )
         logger.info(
             f"Selected: pupitre={file_set.pupitre} archive={file_set.archive} "
-            f"default={file_set.default} trigger={file_set.trigger} spike={file_set.spike}"
+            f"default={file_set.default} trigger={file_set.trigger} "
+            f"spike={file_set.spike} stats={file_set.stats}"
         )
         return file_set
 
@@ -669,10 +679,10 @@ class FileDiscovery:
             time,
             pupitre_datadir=self.pupitre_datadir,
         )
-        pupitre_f, default_f, trigger_f, spike_f = filters
+        pupitre_f, default_f, trigger_f, spike_f, stats_f = filters
         logger.info(
             f"File patterns: pupitre={pupitre_f} "
-            f"default={default_f} trigger={trigger_f} spike={spike_f}"
+            f"default={default_f} trigger={trigger_f} spike={spike_f} stats={stats_f}"
         )
 
         file_set = FileSet()
@@ -687,9 +697,13 @@ class FileDiscovery:
         file_set.spike = select_files(
             glob.glob(spike_f), housing, start, end, min_duration_seconds=0.0
         )
+        file_set.stats = select_files(
+            glob.glob(stats_f), housing, start, end, min_duration_seconds=0.0
+        )
         logger.info(
             f"Selected: pupitre={file_set.pupitre} "
-            f"default={file_set.default} trigger={file_set.trigger} spike={file_set.spike}"
+            f"default={file_set.default} trigger={file_set.trigger} "
+            f"spike={file_set.spike} stats={file_set.stats}"
         )
         return file_set
 
@@ -895,6 +909,7 @@ class FileDiscovery:
             f"Discovered files for {filename}: {len(file_set.archive)} archives, "
             f"{len(file_set.pupitre)} pupitres, "
             f"{len(file_set.default) + len(file_set.trigger) + len(file_set.spike)} incidents, "
+            f"{len(file_set.stats)} stats, "
             f"{len(file_set.pigbrother_runlog)} pigbrother runlog, "
             f"{len(file_set.pupitre_runlog)} pupitre runlog, "
             f"{len(file_set.hybrid_kHz)} kHz, "
@@ -971,6 +986,7 @@ class FileDiscovery:
             f"Discovered files for {filename}: "
             f"{len(file_set.pupitre)} pupitres, "
             f"{len(file_set.default) + len(file_set.trigger) + len(file_set.spike)} incidents, "
+            f"{len(file_set.stats)} stats, "
             f"{len(file_set.pigbrother_runlog)} pigbrother runlog, "
             f"{len(file_set.pupitre_runlog)} pupitre runlog, "
             f"{len(file_set.hybrid_kHz)} kHz, "

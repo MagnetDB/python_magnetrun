@@ -86,6 +86,16 @@ class TestParseTdmsFilename:
     def test_missing_hyphen_in_timestamp_returns_none(self) -> None:
         assert parse_tdms_filename("M9_Overview_231506.tdms") is None
 
+    def test_double_underscore_before_timestamp(self) -> None:
+        """Legacy Stats files sometimes have a stray extra underscore."""
+        dt = parse_tdms_filename("M9_Stats__190304-1459.tdms")
+        assert dt == datetime(2019, 3, 4, 14, 59)
+
+    def test_double_underscore_with_six_digit_time(self) -> None:
+        """The double-underscore quirk and HHMMSS timestamps can co-occur."""
+        dt = parse_tdms_filename("M9_Stats__210726-132412.tdms")
+        assert dt == datetime(2021, 7, 26, 13, 24, 12)
+
 
 # ---------------------------------------------------------------------------
 # parse_filename_timestamp  (dispatch)
