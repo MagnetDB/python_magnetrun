@@ -172,9 +172,9 @@ def _fromtdms(
         else:
             Groups[gname] = group
 
-    if reader.required_group not in Groups:
+    if not reader.has_required_group(Groups):
         raise RuntimeError(
-            f"_fromtdms: {reader.required_group} group not found in {name}"
+            f"_fromtdms: none of {reader.required_groups} found in {name}"
         )
 
     mdata = TdmsMagnetData(

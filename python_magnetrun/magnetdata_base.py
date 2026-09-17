@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import IntEnum
@@ -78,6 +79,7 @@ def _make_ureg():  # type: ignore[return]
         ("percent = 1 / 100 = %", "percent"),
         ("ppm = 1e-6 = ppm", "ppm"),
         ("var = 1", "var"),
+        ("vad = 1", "vad"),
     ]:
         try:
             ureg.parse_units(unit)
@@ -384,7 +386,7 @@ class MagnetDataBase(ABC):
         ``"unit": null`` stores ``None`` (used for timestamp/dimensionless).
         The ``"description"`` key is optional and only used for documentation.
         """
-        from .field_defs import load_defs
+        from .field_defs import load_defs, parse_combined_probe
 
         ureg = _make_ureg()
 
@@ -419,6 +421,50 @@ class MagnetDataBase(ABC):
             if debug:
                 logger.debug(
                     f"load_units_from_json: {key} → symbol={symbol}, unit={pint_unit}, label={label!r}"
+                )
+
+        # Combined-probe channels (e.g. "Interne1-2": probe 1 expected for the
+        # assembly but unavailable, folded into probe 2's channel, which it
+        # replaces) have no defs entry of their own — derive one from the
+        # replaced probe's entry instead. See parse_combined_probe().
+        for key in self.Keys:
+            if key in self.units or "/" not in key:
+                continue
+            group, _, channel = key.partition("/")
+            parsed = parse_combined_probe(channel)
+            if parsed is None:
+                continue
+            prefix, sensor, n, m = parsed
+            base_defn = field_defs.get(f"{group}/{prefix}{sensor}{m}")
+            if base_defn is None:
+                continue
+            symbol = base_defn["symbol"]
+            unit_str = base_defn.get("unit")
+            if unit_str is None:
+                pint_unit = None
+            else:
+                try:
+                    parsed_unit = ureg.parse_expression(unit_str)
+                    pint_unit = (
+                        parsed_unit.units if hasattr(parsed_unit, "units") else parsed_unit
+                    )
+                except (ValueError, AttributeError) as exc:
+                    raise ValueError(
+                        f"load_units_from_json: cannot parse unit {unit_str!r} for field {key!r}"
+                    ) from exc
+            label = base_defn.get("label", "")
+            description = (
+                f"{base_defn.get('description', '')} — probe {n} expected for this "
+                f"assembly but unavailable; combined reading of segments {n} and {m}"
+            )
+            self.units[key] = (symbol, pint_unit)
+            self.field_meta[key] = FieldMeta(
+                symbol=symbol, unit=pint_unit, label=label, description=description
+            )
+            if debug:
+                logger.debug(
+                    f"load_units_from_json: {key} → combined probe, derived from "
+                    f"{group}/{prefix}{sensor}{m}: symbol={symbol}, unit={pint_unit}"
                 )
 
     def getType(self) -> DataType:

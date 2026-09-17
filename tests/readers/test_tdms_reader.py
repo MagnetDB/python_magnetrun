@@ -14,6 +14,23 @@ class TestTdmsReader:
     def test_required_group(self):
         assert self.reader.required_group == "Courants_Alimentations"
 
+    def test_required_groups_present(self):
+        assert "Courants_Alimentations" in self.reader.required_groups
+        assert "Moy" in self.reader.required_groups
+        assert "Stats_moy" in self.reader.required_groups
+
+    def test_has_required_group_overview(self):
+        assert self.reader.has_required_group({"Courants_Alimentations": {}})
+
+    def test_has_required_group_stats_gen1(self):
+        assert self.reader.has_required_group({"Moy": {}, "Sigma": {}})
+
+    def test_has_required_group_stats_gen2_or_3(self):
+        assert self.reader.has_required_group({"D": {}, "Stats_moy": {}})
+
+    def test_has_required_group_missing(self):
+        assert not self.reader.has_required_group({"SomeOtherGroup": {}})
+
     def test_t_offsets_present(self):
         assert "Overview" in self.reader.t_offsets
         assert "Archive" in self.reader.t_offsets

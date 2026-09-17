@@ -33,6 +33,7 @@ import functools
 import importlib.resources
 import json
 import logging
+import re
 from pathlib import Path
 
 from .magnetdata_base import DataType
@@ -455,6 +456,78 @@ def _match_key(fmt: str, group_name: str, channel: str) -> str:
     return f"{group_name}/{channel}" if fmt == "pigbrother" else channel
 
 
+_COMBINED_PROBE_RE = re.compile(
+    r"^(?P<prefix>[a-z]+_)?(?P<sensor>Interne|Externe)(?P<n>\d+)-(?P<m>\d+)$"
+)
+
+
+def parse_combined_probe(channel: str) -> tuple[str, str, str, str] | None:
+    """Parse a combined-probe PigBrother channel name, e.g. ``moy_Interne1-2``.
+
+    Some assemblies are missing a probe; its reading is folded into the next
+    probe's channel, which it replaces — e.g. ``Interne1-2`` means probe 1 is
+    expected for the assembly but unavailable, combined into probe 2's channel.
+    This is a property of the assembly mounted in a housing, not of the TDMS
+    schema generation, and applies to both ``Interne`` and ``Externe`` probes.
+
+    Returns
+    -------
+    tuple of (prefix, sensor, n, m), or None
+        *prefix* is the optional stat prefix (``"moy_"``, ``"sig_"``, ...), or
+        ``""``; *sensor* is ``"Interne"`` or ``"Externe"``; *n*/*m* are the
+        missing and replacing probe numbers as strings. ``None`` if *channel*
+        doesn't match the pattern.
+    """
+    match = _COMBINED_PROBE_RE.match(channel)
+    if match is None:
+        return None
+    return (
+        match.group("prefix") or "",
+        match.group("sensor"),
+        match.group("n"),
+        match.group("m"),
+    )
+
+
+def resolve_combined_probe_defn(field_defs: dict, group: str, channel: str) -> dict | None:
+    """Return the base entry a combined-probe *channel* should inherit from.
+
+    See :func:`parse_combined_probe`. Looks up ``Group/{prefix}{sensor}{m}``
+    (the replaced probe's own entry, including its ``aliases``) in
+    *field_defs*. Returns ``None`` if *channel* isn't a combined-probe name or
+    that base entry isn't defined.
+    """
+    parsed = parse_combined_probe(channel)
+    if parsed is None:
+        return None
+    prefix, sensor, _n, m = parsed
+    return field_defs.get(f"{group}/{prefix}{sensor}{m}")
+
+
+def _defs_entry(fmt: str, group_name: str, channel: str) -> dict:
+    """Look up *channel*'s defs entry for *fmt*.
+
+    Falls back to the replaced probe's own entry for a combined-probe
+    PigBrother channel (see :func:`resolve_combined_probe_defn`). That entry
+    has no ``aliases`` of its own — derived Stats entries don't carry them —
+    so if one is needed, falls back again to the physical ``Tensions_Aimant``
+    base entry, which does (e.g. ``Interne1-2`` resolves its alias via
+    ``Tensions_Aimant/Interne2``).
+    """
+    entry = _cached_defs(fmt).get(_match_key(fmt, group_name, channel), {})
+    if entry or fmt != "pigbrother":
+        return entry
+    entry = resolve_combined_probe_defn(_cached_defs(fmt), group_name, channel) or {}
+    if not entry.get("aliases"):
+        parsed = parse_combined_probe(channel)
+        if parsed is not None:
+            _prefix, sensor, _n, m = parsed
+            base = _cached_defs(fmt).get(f"Tensions_Aimant/{sensor}{m}")
+            if base and base.get("aliases"):
+                entry = {**entry, "aliases": base["aliases"]} if entry else base
+    return entry
+
+
 def _resolve_entry_meta(group_name: str, matched: dict[str, str]) -> dict:
     """Build a UI-ready entry for one physical channel matched across formats.
 
@@ -462,10 +535,7 @@ def _resolve_entry_meta(group_name: str, matched: dict[str, str]) -> dict:
     Label/unit/description are taken from the first format (in *matched*
     iteration order) whose field definition provides them.
     """
-    infos = {
-        fmt: _cached_defs(fmt).get(_match_key(fmt, group_name, ch), {})
-        for fmt, ch in matched.items()
-    }
+    infos = {fmt: _defs_entry(fmt, group_name, ch) for fmt, ch in matched.items()}
 
     def _first(key):
         for info in infos.values():
@@ -532,9 +602,7 @@ def match_channels_across_formats(
 
     entries = []
     for channel in sorted(channels_by_format[reference_fmt]):
-        aliases = _cached_defs(reference_fmt).get(
-            _match_key(reference_fmt, group_name, channel), {}
-        ).get("aliases", {})
+        aliases = _defs_entry(reference_fmt, group_name, channel).get("aliases", {})
 
         matched = {reference_fmt: channel}
         for other_fmt, other_channels in channels_by_format.items():

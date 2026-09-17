@@ -713,22 +713,29 @@ class TdmsMagnetData(MagnetDataBase):
 
         if keys_to_add:
             for key, field_def in keys_to_add.items():
-                if key not in self.Keys:
-                    status = self.addData(
-                        key,
-                        field_def["formula"],
-                        symbol=field_def["symbol"],
-                        unit=field_def["unit"],
-                        label=field_def["label"],
-                        description=field_def["description"],
-                        debug=debug,
-                    )
-                    if status != 0:
-                        logger.warning(
-                            f"cleanupData: failed to add {key!r} (status={status})"
-                        )
-                else:
+                if key in self.Keys:
                     logger.debug(f"cleanupData: key {key!r} already exists, skipping")
+                    continue
+                target_group = key.split("/", 1)[0]
+                if target_group not in self.Groups:
+                    logger.debug(
+                        f"cleanupData: target group {target_group!r} not present in "
+                        f"this file, skipping formula for {key!r}"
+                    )
+                    continue
+                status = self.addData(
+                    key,
+                    field_def["formula"],
+                    symbol=field_def["symbol"],
+                    unit=field_def["unit"],
+                    label=field_def["label"],
+                    description=field_def["description"],
+                    debug=debug,
+                )
+                if status != 0:
+                    logger.warning(
+                        f"cleanupData: failed to add {key!r} (status={status})"
+                    )
 
         if keys_to_remove:
             assert isinstance(self.Data, dict)

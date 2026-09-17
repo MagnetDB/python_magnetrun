@@ -17,8 +17,14 @@ class TdmsReader:
     Attributes
     ----------
     required_group : str
-        Group that must be present for a TDMS file to be valid
+        Fallback group that must be present for a TDMS file to be valid
         (``"Courants_Alimentations"``).
+    required_groups : tuple[str, ...]
+        Groups of which at least one must be present for a TDMS file to be
+        valid. Covers ``required_group`` (Overview/Archive/Default) plus the
+        markers for each known Stats TDMS schema generation (``"Moy"`` for
+        the 2019-2021 layout, ``"Stats_moy"`` for 2022+) — see
+        :meth:`has_required_group`.
     t_offsets : dict[str, float]
         Map of filename substring → ``wf_start_offset`` override value [s].
     defs_file : str
@@ -26,11 +32,32 @@ class TdmsReader:
     """
 
     required_group: str = "Courants_Alimentations"
+    required_groups: tuple[str, ...] = (required_group, "Moy", "Stats_moy")
     t_offsets: dict[str, float] = {
         "Overview": 0.5,
         "Archive": 1 / 240.0,
     }
     defs_file: str = "pigbrother-defs.json"
+
+    def has_required_group(self, groups: dict) -> bool:
+        """Return whether *groups* contains at least one of :attr:`required_groups`.
+
+        Checks presence rather than a single fixed name so that Stats TDMS
+        files from any schema generation validate, without needing to infer
+        the generation from the filename or date.
+
+        Parameters
+        ----------
+        groups : dict
+            Group names present in the loaded TDMS file (keys of ``Groups``
+            in :func:`~python_magnetrun.magnetdata._fromtdms`).
+
+        Returns
+        -------
+        bool
+            ``True`` if any of :attr:`required_groups` is present.
+        """
+        return any(g in groups for g in self.required_groups)
 
     def t_offset_for(self, filename: str) -> float:
         """Return the ``wf_start_offset`` correction for *filename* [s].

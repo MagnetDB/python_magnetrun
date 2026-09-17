@@ -21,6 +21,8 @@ from python_magnetrun.field_defs import (
     get_aliases,
     load_defs,
     match_channels_across_formats,
+    parse_combined_probe,
+    resolve_combined_probe_defn,
     update_field_def,
 )
 from python_magnetrun.magnetdata_base import DataType
@@ -329,3 +331,58 @@ class TestMatchChannelsAcrossFormats:
 
     def test_empty_input_returns_empty(self):
         assert match_channels_across_formats({}, "Courants_Alimentations") == []
+
+    def test_combined_probe_matches_replaced_probe_alias(self):
+        """Interne1-2 (probe 1 unavailable, folded into probe 2) should alias
+        to Ucoil2, inherited from Tensions_Aimant/Interne2's own alias."""
+        channels_by_type = {
+            DataType.PUPITRE: {"Ucoil2"},
+            DataType.TDMS: {"moy_Interne1-2"},
+        }
+        entries = match_channels_across_formats(channels_by_type, "Stats_moy")
+        assert len(entries) == 1
+        assert entries[0]["channels"] == {
+            "pupitre": "Ucoil2",
+            "pigbrother": "moy_Interne1-2",
+        }
+
+
+# ---------------------------------------------------------------------------
+# parse_combined_probe / resolve_combined_probe_defn
+# ---------------------------------------------------------------------------
+
+
+class TestParseCombinedProbe:
+    def test_gen2_style_with_stat_prefix(self):
+        assert parse_combined_probe("moy_Interne1-2") == ("moy_", "Interne", "1", "2")
+
+    def test_gen1_style_no_prefix(self):
+        assert parse_combined_probe("Interne1-2") == ("", "Interne", "1", "2")
+
+    def test_externe_sensor(self):
+        assert parse_combined_probe("sig_Externe1-2") == ("sig_", "Externe", "1", "2")
+
+    def test_non_adjacent_pair(self):
+        assert parse_combined_probe("Interne3-5") == ("", "Interne", "3", "5")
+
+    def test_plain_channel_returns_none(self):
+        assert parse_combined_probe("moy_Interne1") is None
+
+    def test_unrelated_channel_returns_none(self):
+        assert parse_combined_probe("Courant_A1") is None
+
+
+class TestResolveCombinedProbeDefn:
+    def test_resolves_from_sibling_entry(self):
+        field_defs = {
+            "Stats_moy/moy_Interne2": {"symbol": "U", "unit": "volt"},
+        }
+        defn = resolve_combined_probe_defn(field_defs, "Stats_moy", "moy_Interne1-2")
+        assert defn == {"symbol": "U", "unit": "volt"}
+
+    def test_missing_base_entry_returns_none(self):
+        assert resolve_combined_probe_defn({}, "Stats_moy", "moy_Interne1-2") is None
+
+    def test_non_combined_channel_returns_none(self):
+        field_defs = {"Stats_moy/moy_Interne1": {"symbol": "U", "unit": "volt"}}
+        assert resolve_combined_probe_defn(field_defs, "Stats_moy", "moy_Interne1") is None
