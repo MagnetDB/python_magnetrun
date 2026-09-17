@@ -1,0 +1,63 @@
+{
+  "_comment": "Field definitions for the SUPERVISION 'bdd' table/CSV export (site-level data, not tied to a single magnet/housing). Each entry maps a column name to {description, symbol, unit, group}. unit must be a pint-parseable string; use null for dimensionless/time columns. 'group' assigns the field to a display block in the dashboards — 'Refroidissement' matches pupitre-defs.json's own cooling-loop group name so bdd's site-level temperatures can be shown alongside a magnet's own pupitre temperature channels.",
+  "teb": {
+    "description": "Site-level input temperature, secondary cooling loop (SUPERVISION)",
+    "symbol": "T",
+    "unit": "degC",
+    "group": "Refroidissement"
+  },
+  "tsb": {
+    "description": "Site-level output temperature, secondary cooling loop (SUPERVISION)",
+    "symbol": "T",
+    "unit": "degC",
+    "group": "Refroidissement"
+  },
+  "ted": {
+    "description": "Site-level input temperature, secondary cooling loop D (SUPERVISION) — circuit identity unconfirmed",
+    "symbol": "T",
+    "unit": "degC",
+    "group": "Refroidissement"
+  },
+  "tsd": {
+    "description": "Site-level output temperature, secondary cooling loop D (SUPERVISION) — circuit identity unconfirmed",
+    "symbol": "T",
+    "unit": "degC",
+    "group": "Refroidissement"
+  },
+  "res_lm1": {
+    "description": "Cooling water resistivity, circuit LM1 (SUPERVISION)",
+    "symbol": "ρ",
+    "unit": "megaohm * centimeter",
+    "group": "Water_Resistivity"
+  },
+  "res_r1": {
+    "description": "Cooling water resistivity, circuit R1 (SUPERVISION)",
+    "symbol": "ρ",
+    "unit": "megaohm * centimeter",
+    "group": "Water_Resistivity"
+  },
+  "res_bypass": {
+    "description": "Cooling water resistivity, bypass circuit (SUPERVISION)",
+    "symbol": "ρ",
+    "unit": "megaohm * centimeter",
+    "group": "Water_Resistivity"
+  },
+  "azote1": {
+    "description": "Nitrogen supply pressure 1 (SUPERVISION)",
+    "symbol": "P",
+    "unit": "bar",
+    "group": "Nitrogen_Level"
+  },
+  "azote2": {
+    "description": "Nitrogen supply pressure 2 (SUPERVISION)",
+    "symbol": "P",
+    "unit": "bar",
+    "group": "Nitrogen_Level"
+  },
+  "niv1": {
+    "description": "Nitrogen level, tank/dewar 1 (SUPERVISION)",
+    "symbol": "%",
+    "unit": "percent",
+    "group": "Nitrogen_Level"
+  }
+}
