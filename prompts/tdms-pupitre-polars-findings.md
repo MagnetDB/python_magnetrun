@@ -129,17 +129,28 @@ HTS. A pupitre-only rewrite of this class is not actually pupitre-only.
   Isolated to `readers/csv_readers.py`. S-M, ~1-3 days. Captures the
   parse-speed win only (~3×) — `PandasMagnetData.Data` stays pandas, so no
   downstream memory benefit.
-- **Full path** (real downstream win): the shared-class rewrite the
-  existing plan already calls "Phase 2b-pandas" and flags as long-term —
-  30 call sites in a class serving 4-5 formats, plus auditing ~26 other
-  files across the package calling `.getData()`/`.Data[`. Genuinely XL,
-  same order of magnitude the ROADMAP already implies for that phase —
-  and it isn't a pupitre-specific cost, since Ensight/BProfile/Feelpp/HTS
-  are dragged along regardless of whether that's wanted.
-- **Not yet estimated at all, either path:** moving the two
+- **Full path — shared-class rewrite** (real downstream win, but drags in
+  Ensight/BProfile/Feelpp/HTS): the existing plan already calls this
+  "Phase 2b-pandas" and flags it as long-term — 30 call sites in a class
+  serving 4-5 formats, plus auditing ~26 other files across the package
+  calling `.getData()`/`.Data[`. Genuinely XL, and not a pupitre-specific
+  cost since the other formats ride along regardless of whether that's
+  wanted.
+- **Full path — `PolarsMagnetData` sibling class** (real downstream win,
+  isolated to pupitre): a new class serving pupitre only, avoiding the
+  shared-class risk above entirely. Not smaller in raw effort than the
+  shared-class rewrite (`PandasMagnetData` has ~35 substantial methods to
+  port either way), but independently schedulable and risk-isolated. See
+  [polars-magnetdata-pupitre.plan.md](polars-magnetdata-pupitre.plan.md)
+  for the full design: Phase A (load/ETL parity, ~1-1.5 weeks, bounded to
+  ~15 methods traced from the actual `MagnetRun.fromtxt` → `prepareData`
+  call chain) and Phase B (analysis/plotting methods, incremental, added
+  only as exercised).
+- **Not yet estimated at all, any path:** moving the two
   format-robustness fixes (malformed header, header-only file) from the
-  benchmark script into the real `PupitreReader` — needed either way,
-  effort not yet scoped.
+  benchmark script into the real `PupitreReader` — needed either way;
+  `polars-magnetdata-pupitre.plan.md` covers this for the `PolarsMagnetData`
+  path specifically.
 
 ---
 
@@ -149,7 +160,8 @@ Performance evidence is solid for both formats — real, diverse, repeated
 samples, not a hunch. TDMS has a clear, bounded, ~1.5-2.5 week path
 forward because its container is isolated and the hardest part (fork
 implementation) is already done. Pupitre's performance case is actually
-*stronger* (~3× vs ~2×) but its cost is far less certain, because its
-container is shared with four other formats — the honest options are a
-small, partial-benefit read-step swap, or an XL shared-class rewrite that
-was already flagged as long-term before this investigation started.
+*stronger* (~3× vs ~2×); its cost was initially uncertain because its
+container is shared with four other formats, but the `PolarsMagnetData`
+sibling-class option (see `polars-magnetdata-pupitre.plan.md`) now gives it
+a bounded, isolated path too — Phase A at ~1-1.5 weeks, comparable in shape
+to TDMS's path, with Phase B cost spread incrementally over later work.

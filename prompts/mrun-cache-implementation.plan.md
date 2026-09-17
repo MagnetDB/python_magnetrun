@@ -57,12 +57,39 @@ break immediately:
 | `self.Data[group].drop(columns=[...], inplace=True)` | `.drop([...])`, reassign |
 
 **Substeps:**
-1. Implement polars output in the custom npTDMS fork.
-2. Validate custom npTDMS against existing TDMS test fixtures.
+1. Implement polars output in the custom npTDMS fork. ✅ **Done** — landed
+   upstream in `Trophime/npTDMS@master` (`849d3889`, `cc79e1be`).
+2. Validate custom npTDMS against existing TDMS test fixtures. ✅ **Done** —
+   see [tdms-pupitre-polars-findings.md](tdms-pupitre-polars-findings.md)
+   (8-file representative sample, ~2.1× speed / ~2.6× memory, consistent
+   across housings/categories/sizes).
 3. Change `TdmsMagnetData.Data` type to `dict[str, pl.DataFrame]`.
 4. Rewrite all internal methods in `TdmsMagnetData` to use polars / narwhals API,
    method by method, with tests after each step.
 5. Wrap `TdmsMagnetData.getData()` return value with `nw.from_native()`.
+
+### Phase 1b-pupitre — `PolarsMagnetData` for pupitre *(independent of Phase 1+2b-tdms)*
+
+Pupitre benchmarks show an even larger speed win than TDMS (~3.1× vs ~2.1×,
+see [tdms-pupitre-polars-findings.md](tdms-pupitre-polars-findings.md)), but
+pupitre's container (`PandasMagnetData`) is **shared** with `EnsightMagnetData`,
+`BProfileMagnetData`, `FeelppMagnetData`, and HTS — rewriting it in place
+would drag all four along. Instead of folding pupitre into Phase 2b-pandas
+below, this introduces a sibling class, `PolarsMagnetData(MagnetDataBase)`,
+serving pupitre only, so the other formats are never at risk.
+
+**See:** [polars-magnetdata-pupitre.plan.md](polars-magnetdata-pupitre.plan.md)
+for the full design — integration points (`load_magnetdata()`'s hardcoded
+pupitre dispatch, the currently-unused `CONTAINERS` registry entry,
+`PupitreReader`), the Phase A (load/ETL, ~1-1.5 weeks) vs. Phase B
+(analysis/plotting, incremental) method split, and the two format-robustness
+fixes (malformed header, header-only files) that need to move from the
+benchmark scripts into the real reader.
+
+Like `TdmsMagnetData` after Phase 1+2b-tdms, `PolarsMagnetData.getData()`
+wraps its output with `nw.from_native()` — it converges on the same
+narwhals boundary as Phase 2 below, just via an independent, separately
+schedulable path.
 
 ### Phase 2 — Narwhals boundary at `getData()` for `PandasMagnetData`
 
