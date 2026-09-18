@@ -70,6 +70,13 @@ break immediately:
 
 ### Phase 1b-pupitre — `PolarsMagnetData` for pupitre *(independent of Phase 1+2b-tdms)*
 
+**Status:** 🔶 **In progress** — `PupitreReader`'s polars read path
+(`read_polars()`/`read_stub_polars()`, both robustness fixes plus a third
+found along the way) is done; the `PolarsMagnetData` class itself and the
+`load_magnetdata()` wiring are not started. See
+[polars-magnetdata-pupitre.plan.md](polars-magnetdata-pupitre.plan.md) for
+current detail.
+
 Pupitre benchmarks show an even larger speed win than TDMS (~3.1× vs ~2.1×,
 see [tdms-pupitre-polars-findings.md](tdms-pupitre-polars-findings.md)), but
 pupitre's container (`PandasMagnetData`) is **shared** with `EnsightMagnetData`,

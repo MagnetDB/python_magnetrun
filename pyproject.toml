@@ -53,6 +53,9 @@ hybrid = [
 rdp = [
     "simplification>=0.7",
 ]
+polars = [
+    "polars>=1.0",
+]
 benchmark = [
     "memray>=1.0",
     "psutil>=5.9",

@@ -31,22 +31,69 @@ BProfile/Feelpp/HTS can't regress) and independent scheduling, not effort.
 ## Integration points (confirmed by reading the actual call paths)
 
 1. **`python_magnetrun/magnetdata.py::load_magnetdata()`** (lines 80-86) —
-   this is the *real*, sole dispatch point for `.txt`/`.csv` loading. It
-   currently hardcodes `PandasMagnetData.fromtxt()` / `.fromcsv()` for
-   `DataType.PUPITRE`. This is what needs to change (directly, or behind a
-   flag during rollout).
+   this is the *real*, sole dispatch point for `.txt`/`.csv` loading:
+
+   ```python
+   if ext == ".txt":
+       return PandasMagnetData.fromtxt(filename, defs_file=...)
+   return PandasMagnetData.fromcsv(filename, defs_file=defs_file)
+   ```
+
+   Only the `.txt`/`fromtxt` branch is in scope. `.fromcsv()` uses
+   `CsvReader` — a different reader entirely, not pupitre's tab format —
+   even though both branches share the same `DataType.PUPITRE` enum value
+   today (a slightly misleading name: it really means "delimited-text
+   formats routed through `PandasMagnetData`", not strictly pupitre).
+   `.fromcsv()`/`CsvReader` stay on `PandasMagnetData`, untouched.
+
+   The existing `fmt: str | None` parameter can't be reused as a
+   `PandasMagnetData`-vs-`PolarsMagnetData` toggle — it only overrides
+   `detect_type()`'s *type* detection (tdms/pupitre/hybrid/hts), not which
+   container class handles a given type. Simplest path: don't touch
+   `load_magnetdata()` at all during Phase A — validate against
+   `PolarsMagnetData.fromtxt()` directly (as the reader-level tests already
+   do), and make the eventual switch a single one-line change
+   (`PandasMagnetData.fromtxt` → `PolarsMagnetData.fromtxt`) only once
+   Phase A is fully validated. No flag-plumbing needed.
+
 2. **`python_magnetrun/readers/registry.py::CONTAINERS`** — maps
-   `DataType.PUPITRE → PandasMagnetData` today, but this mapping is
-   currently **unused for real dispatch** (only referenced in the module's
-   own docstring example — `load_magnetdata()` does not consult it). Update
-   it for consistency/future registry-driven dispatch, but note it is not
-   itself the mechanism that needs fixing.
+   `DataType.PUPITRE → PandasMagnetData`, but confirmed via grep that
+   `CONTAINERS[dtype]` is referenced **exactly once in the whole codebase**,
+   inside `registry.py`'s own module docstring — an illustrative snippet,
+   never executed. `detect_type()` itself is called in only two places
+   total: inside `load_magnetdata()` (feeding hardcoded if/elif branches,
+   not `CONTAINERS`) and that same docstring. Nothing anywhere actually
+   consults this registry for dispatch today.
+
+   **Do not update this entry as part of the pupitre migration.** Doing so
+   would actually be wrong, not merely redundant: `DataType.PUPITRE` covers
+   both `.txt` (→ `PolarsMagnetData`, once switched) and `.csv` (→ stays on
+   `PandasMagnetData` via `CsvReader`/`fromcsv`, see point 1) — a single
+   `CONTAINERS[DataType.PUPITRE]` entry can't represent both. Leave it
+   pointing at `PandasMagnetData` (stale/inert either way) until the type
+   system distinguishes pupitre-`.txt` from generic-`.csv`, or until
+   something actually builds the registry-driven dispatch path the
+   docstring describes.
 3. **`python_magnetrun/readers/csv_readers.py::PupitreReader`** — needs a
-   polars-returning read path. Already prototyped in
-   [examples/benchmark_pupitre_polars.py](../examples/benchmark_pupitre_polars.py),
-   including the two format-robustness fixes found there (malformed doubled-tab
-   header, header-only/zero-data-row files) — those fixes need to move from
-   the benchmark script into the real reader, not be redone from scratch.
+   polars-returning read path. ✅ **Done**: `read_polars()`, `read_stub_polars()`,
+   and shared `_parse_header()` / `_read_polars_impl()` helpers added, porting
+   the logic from
+   [examples/benchmark_pupitre_polars.py](../examples/benchmark_pupitre_polars.py)
+   including both known format-robustness fixes (malformed doubled-tab header,
+   header-only/zero-data-row files). `polars` imported lazily inside the new
+   methods only; added as an optional `polars` dependency group in
+   `pyproject.toml`. **A third real quirk surfaced during implementation**:
+   the existing `tests/data/sample_pupitre.txt` fixture has no trailing tab
+   at all (unlike every file benchmarked earlier), so the trailing-artifact
+   check now accepts `n_extra ∈ {0, 1}` instead of requiring exactly 1.
+   New fixtures `tests/data/pupitre_malformed_header.txt` and
+   `tests/data/pupitre_header_only.txt`, plus a `TestPupitreReaderPolars`
+   test class (gated on `pytest.importorskip("polars")`) in
+   `tests/readers/test_csv_readers.py` — 87/87 tests pass in
+   `tests/readers/` + `tests/test_truncated_pupitre.py`.
+   **Not yet done:** nothing wired into `load_magnetdata()` or
+   `PandasMagnetData` — today's default pupitre-loading behavior is
+   unchanged; these new reader methods aren't called from anywhere yet.
 
 No other call site constructs pupitre data directly (`MagnetRun.fromtxt`
 goes through `load_magnetdata()`).
@@ -103,11 +150,15 @@ driven by actual usage.
 ## Testing
 
 - New `tests/test_magnetdata_polars.py`, mirroring the structure of
-  `tests/test_magnetdata_tdms.py`.
+  `tests/test_magnetdata_tdms.py` — **still pending**, since the class
+  itself doesn't exist yet.
 - Two tests ported directly from the benchmark scripts' ad hoc checks, made
-  into real regression tests rather than one-off validation:
-  - malformed doubled-tab header row (synthetic fixture, small)
-  - header-only / zero-data-row file
+  into real regression tests rather than one-off validation: ✅ **Done at
+  the reader level** — `TestPupitreReaderPolars` in
+  `tests/readers/test_csv_readers.py` covers the malformed doubled-tab
+  header and the header-only/zero-data-row file, plus the no-trailing-tab
+  case found along the way. Will need equivalent coverage at the
+  `PolarsMagnetData` level once that class exists.
 - Existing pupitre tests (`tests/test_truncated_pupitre.py`, etc.) should
   keep passing unchanged against `PandasMagnetData` until the
   `load_magnetdata()` switch-over happens; add parallel coverage for
@@ -116,14 +167,17 @@ driven by actual usage.
 
 ## Rollout
 
-1. Implement `PolarsMagnetData` (Phase A) behind a flag or explicit `fmt=`
-   override in `load_magnetdata()` — do not flip the default until Phase A
-   is validated against real fixtures (reuse the representative samples from
-   `tdms-pupitre-polars-findings.md`: 14 real files across 7 housings).
-2. Flip `load_magnetdata()`'s `DataType.PUPITRE` branch to `PolarsMagnetData`
-   by default once validated.
-3. Update `readers/registry.py::CONTAINERS[DataType.PUPITRE]` to match, for
-   consistency (even though it isn't the active dispatch mechanism today).
+1. Implement `PolarsMagnetData` (Phase A), validating directly against
+   `PolarsMagnetData.fromtxt()` — no changes to `load_magnetdata()` needed
+   yet. Validate against real fixtures (reuse the representative samples
+   from `tdms-pupitre-polars-findings.md`: 14 real files across 7 housings).
+2. Flip `load_magnetdata()`'s `.txt` branch (only) from
+   `PandasMagnetData.fromtxt()` to `PolarsMagnetData.fromtxt()` once
+   validated — a single one-line change; the `.csv`/`fromcsv()` branch is
+   untouched.
+3. **Do not** update `readers/registry.py::CONTAINERS[DataType.PUPITRE]` —
+   see integration point 2 above; it can't correctly represent the
+   `.txt`-vs-`.csv` split and nothing reads it today regardless.
 4. Phase B methods added incrementally afterward, as needed.
 
 **Total estimate: Phase A ~1-1.5 weeks, plus incremental Phase B cost spread

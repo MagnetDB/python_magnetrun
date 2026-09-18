@@ -18,6 +18,8 @@ from python_magnetrun.readers.csv_readers import (
 
 DATA_DIR = Path(__file__).parent.parent / "data"
 SAMPLE_PUPITRE = DATA_DIR / "sample_pupitre.txt"
+PUPITRE_MALFORMED_HEADER = DATA_DIR / "pupitre_malformed_header.txt"
+PUPITRE_HEADER_ONLY = DATA_DIR / "pupitre_header_only.txt"
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +87,43 @@ class TestPupitreReader:
 
     def test_defs_file_attribute(self):
         assert self.reader.defs_file == "pupitre-defs.json"
+
+
+class TestPupitreReaderPolars:
+    def setup_method(self):
+        pytest.importorskip("polars")
+        self.reader = PupitreReader()
+
+    def test_read_polars_matches_pandas(self):
+        pandas_df = self.reader.read(SAMPLE_PUPITRE)
+        polars_df = self.reader.read_polars(SAMPLE_PUPITRE)
+        assert list(pandas_df.columns) == polars_df.columns
+        assert len(pandas_df) == polars_df.height
+
+    def test_read_stub_polars_returns_one_row(self):
+        df = self.reader.read_stub_polars(SAMPLE_PUPITRE)
+        assert df.height == 1
+
+    def test_read_stub_polars_columns_match_read_polars(self):
+        stub = self.reader.read_stub_polars(SAMPLE_PUPITRE)
+        full = self.reader.read_polars(SAMPLE_PUPITRE)
+        assert stub.columns == full.columns
+
+    def test_malformed_doubled_tab_header(self):
+        """Doubled tabs in the header row (not matching the single-tab data
+        rows below it) are collapsed the same way pandas' `sep=r"\\s+"` does."""
+        pandas_df = self.reader.read(PUPITRE_MALFORMED_HEADER)
+        polars_df = self.reader.read_polars(PUPITRE_MALFORMED_HEADER)
+        assert list(pandas_df.columns) == polars_df.columns
+        assert len(pandas_df) == polars_df.height == 2
+
+    def test_header_only_file(self):
+        """A file with no data rows returns a correctly-shaped empty
+        DataFrame instead of raising."""
+        pandas_df = self.reader.read(PUPITRE_HEADER_ONLY)
+        polars_df = self.reader.read_polars(PUPITRE_HEADER_ONLY)
+        assert list(pandas_df.columns) == polars_df.columns
+        assert len(pandas_df) == polars_df.height == 0
 
 
 # ---------------------------------------------------------------------------

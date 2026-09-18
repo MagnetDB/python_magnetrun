@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from ..utils.files import _open_text_with_fallback
+
+if TYPE_CHECKING:
+    import polars as pl
 
 
 class PupitreReader:
@@ -85,6 +90,124 @@ class PupitreReader:
             "skiprows": self.skip_rows,
             "on_bad_lines": self.on_bad_lines,
         }
+
+    def _parse_header(self, path: Path) -> list[str]:
+        """Parse the column-name row with the same whitespace regex as ``read()``.
+
+        Needed because some real pupitre files have doubled tabs in the
+        header row that don't match the single-tab data rows below it —
+        Polars' literal-separator ``read_csv`` cannot parse that correctly,
+        but the ``sep`` regex used by ``read()`` collapses it as intended.
+
+        Parameters
+        ----------
+        path : Path
+            Pupitre ``.txt`` file.
+
+        Returns
+        -------
+        list of str
+            Column names.
+        """
+        with _open_text_with_fallback(path) as f:
+            for _ in range(self.skip_rows):
+                f.readline()
+            header_line = f.readline()
+        return re.split(self.sep, header_line.strip())
+
+    def _read_polars_impl(self, path: Path, n_rows: int | None = None) -> pl.DataFrame:
+        """Read *path* as a Polars DataFrame, optionally limited to *n_rows*.
+
+        The header row is parsed separately (see ``_parse_header``) and the
+        data body is read without Polars' own header inference, since Polars
+        only supports a single literal separator character, not a regex.
+        Some real files end each data row with a trailing tab — one extra
+        field beyond the real column count, silently absorbed by pandas'
+        whitespace-regex split — which is dropped here after confirming it
+        is all-null; files without that trailing tab are left as-is. Header-
+        only files (no data rows) return a correctly-shaped empty DataFrame
+        instead of raising.
+
+        Unlike ``read()``, this does not fall back to Latin-1 on decode
+        errors for the data body — Polars' ``read_csv`` only supports UTF-8
+        (the header line itself still goes through the same encoding
+        fallback as ``read()``, via ``_parse_header``).
+
+        Parameters
+        ----------
+        path : Path
+            Pupitre ``.txt`` file.
+        n_rows : int, optional
+            Maximum number of data rows to read.
+
+        Returns
+        -------
+        pl.DataFrame
+            Parsed data.
+        """
+        import polars as pl
+
+        columns = self._parse_header(path)
+        try:
+            df = pl.read_csv(
+                path,
+                separator="\t",
+                skip_rows=self.skip_rows + 1,
+                has_header=False,
+                n_rows=n_rows,
+            )
+        except pl.exceptions.NoDataError:
+            return pl.DataFrame({col: [] for col in columns})
+
+        n_extra = df.width - len(columns)
+        if n_extra == 0:
+            df.columns = columns
+            return df
+        if n_extra != 1:
+            raise AssertionError(
+                f"expected at most one trailing artifact column, got {n_extra} "
+                f"(header has {len(columns)} names, body has {df.width} columns)"
+            )
+        trailing = df.columns[-1]
+        if not df[trailing].is_null().all():
+            raise AssertionError(
+                f"expected trailing column {trailing!r} to be all-null "
+                "(format assumption changed) — refusing to silently drop it"
+            )
+        df = df.drop(trailing)
+        df.columns = columns
+        return df
+
+    def read_polars(self, path: Path) -> pl.DataFrame:
+        """Read the full file as a Polars DataFrame.
+
+        Parameters
+        ----------
+        path : Path
+            Pupitre ``.txt`` file.
+
+        Returns
+        -------
+        pl.DataFrame
+            Parsed data with all rows.
+        """
+        return self._read_polars_impl(path)
+
+    def read_stub_polars(self, path: Path) -> pl.DataFrame:
+        """Read first data row only as a Polars DataFrame.
+
+        Parameters
+        ----------
+        path : Path
+            Pupitre ``.txt`` file.
+
+        Returns
+        -------
+        pl.DataFrame
+            Single-row (or empty, for header-only files) DataFrame used for
+            key discovery.
+        """
+        return self._read_polars_impl(path, n_rows=1)
 
     def validate(self, path: Path) -> bool:
         """Validate a pupitre ``.txt`` file.
