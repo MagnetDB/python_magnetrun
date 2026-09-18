@@ -181,7 +181,7 @@ def output_timerange(file, inputs, extensions, args):
                 selected_df.to_csv(file_name, sep="\t", index=False, header=True)
         elif mdata.Type == DataType.TDMS:
             for group in mdata.Groups:
-                selected_df = mdata.extractTimeData(item, group)
+                selected_df = to_pandas(mdata.extractTimeData(item, group))
                 if selected_df is not None:
                     selected_df.to_csv(file_name, sep="\t", index=False, header=True)
 
@@ -220,7 +220,7 @@ def output_time(file, inputs, extensions, times):
 
     elif mdata.Type == DataType.TDMS:
         for group in mdata.Groups:
-            df = mdata.getData(group)
+            df = to_pandas(mdata.getData(group))
             df = df[df.index.isin(times)]
             file_name = file.replace(f_extension, f"-{group}")
             file_name = file_name + select_args_str + ".csv"

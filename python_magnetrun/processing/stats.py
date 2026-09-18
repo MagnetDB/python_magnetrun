@@ -98,7 +98,7 @@ def stats(
 
     else:
         for group in Data.Groups:
-            df = Data.getData(group)
+            df = to_pandas(Data.getData(group))
             logger.info(f"stats for {group}: ")
             tables = df.describe()
             headers = "keys"

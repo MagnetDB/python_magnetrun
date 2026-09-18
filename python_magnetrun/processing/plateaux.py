@@ -45,7 +45,7 @@ def nplateaus(
             group, channel = yField[0].split("/")
 
             dt = Data.Groups[group][channel]["wf_increment"]
-            df = Data.getData(yField[0])
+            df = to_pandas(Data.getData(yField[0]))
             df["t"] = df.index * dt
             ykey = channel
 
@@ -204,7 +204,7 @@ def plateaus(
     df = pd.DataFrame()
     if Data.Type == DataType.TDMS:
         group, channel = yField[0].split("/")
-        df = Data.getData([f"{group}/t", yField[0]])
+        df = to_pandas(Data.getData([f"{group}/t", yField[0]]))
         ykey = channel
     else:
         df = to_pandas(Data.getData())

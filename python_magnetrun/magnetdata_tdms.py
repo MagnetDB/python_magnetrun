@@ -13,9 +13,12 @@ if TYPE_CHECKING:
     from .utils.downsampling import DownsampleConfig
 
 import pandas as pd
+import polars as pl
 import pytz
 
 from .magnetdata_base import DataType, MagnetDataBase
+from .utils.formula_polars import formula_to_polars_expr
+from .utils.narwhals_compat import to_pandas
 from .utils.timestamps import parse_filename_timestamp
 from .utils.timezone import (
     local_to_utc_naive,
@@ -143,14 +146,11 @@ class TdmsMagnetData(MagnetDataBase):
         t0 = time.perf_counter()
         df = group.as_dataframe(time_index=False, absolute_time=False, scaled_data=True)
         elapsed = time.perf_counter() - t0
-        mib = df.memory_usage(deep=True).sum() / 1024**2
+        mib = df.estimated_size() / 1024**2
         logger.debug(
             f"tdms.io: group={gname!r} file={self.FileName} rows={len(df)} size={mib:.1f}MiB time={elapsed:.3f}s"
         )
-        df.rename(
-            columns={col: col.replace(" ", "_") for col in df.columns},
-            inplace=True,
-        )
+        df = df.rename({col: col.replace(" ", "_") for col in df.columns})
         if self.Groups.get(gname):
             first_ch = next(iter(self.Groups[gname]))
             expected = self.Groups[gname][first_ch].get("wf_samples")
@@ -355,12 +355,18 @@ class TdmsMagnetData(MagnetDataBase):
         self,
         key: list[str] | str | None = None,
         downsample: DownsampleConfig | None = None,
-    ) -> pd.DataFrame:
-        """Return data for the given key(s), optionally downsampled.
+    ) -> Any:
+        """Return data for the given key(s), wrapped as a narwhals frame.
 
         *key* must reference a single TDMS group (directly or via
         ``"Group/Channel"`` notation); cross-group requests are not supported.
-        Unit metadata is attached to ``df.attrs["units"]``.
+
+        The narwhals boundary lets callers work with a backend-agnostic
+        frame regardless of the underlying container — see
+        ``prompts/mrun-cache-implementation.plan.md`` Phase 1+2b-tdms.
+        Unlike the pre-migration pandas path, unit metadata is **not**
+        attached via ``df.attrs["units"]`` — Polars/narwhals frames have no
+        equivalent (same documented gap as ``PolarsMagnetData.getData()``).
 
         Parameters
         ----------
@@ -370,17 +376,27 @@ class TdmsMagnetData(MagnetDataBase):
             TDMS data.
         downsample : DownsampleConfig, optional
             Downsampling configuration; ``None`` returns unmodified data.
+            When given, the group's data is converted to pandas, downsampled
+            via the existing (pandas-only) ``downsample_dataframe()``, then
+            wrapped back at the narwhals boundary — downsampling itself was
+            not ported to Polars, since reusing the already-tested pandas
+            implementation for this one conversion is cheap (see
+            ``examples/benchmark_to_pandas.py``) and lower-risk than
+            re-deriving it.
 
         Returns
         -------
-        pandas.DataFrame
-            DataFrame with unit metadata in ``df.attrs["units"]``.
+        narwhals.DataFrame
+            Requested data. Call ``.to_native()`` to get the underlying
+            :class:`polars.DataFrame`.
 
         Raises
         ------
         RuntimeError
             If *key* references more than one group, or zero groups.
         """
+        import narwhals as nw
+
         from .utils.downsampling import downsample_dataframe
 
         logger.debug(f"getData: key={key}, downsample={downsample}")
@@ -416,21 +432,15 @@ class TdmsMagnetData(MagnetDataBase):
 
         df = self.getTdmsData(groups[0], channels)
         if downsample is not None and len(df) > downsample.n_out:
-            time_col = "t" if "t" in df.columns else df.columns[0]
-            value_cols = [c for c in df.columns if c != time_col]
-            df = downsample_dataframe(
-                df, time_col=time_col, value_cols=value_cols, config=downsample
+            pdf = to_pandas(df)
+            time_col = "t" if "t" in pdf.columns else pdf.columns[0]
+            value_cols = [c for c in pdf.columns if c != time_col]
+            pdf = downsample_dataframe(
+                pdf, time_col=time_col, value_cols=value_cols, config=downsample
             )
+            return nw.from_native(pdf, eager_only=True)
 
-        # Attach unit metadata so plotting functions can label axes correctly.
-        # Uses a per-key try/except because Units() may not have been called yet.
-        units_attrs: dict = {}
-        for col in df.columns:
-            with contextlib.suppress(KeyError, RuntimeError):
-                units_attrs[col] = self.getUnitKey(col)
-        df.attrs["units"] = units_attrs
-
-        return df
+        return nw.from_native(df, eager_only=True)
 
     def getKeys(self) -> list[str]:
         """Return the list of available ``"Group/Channel"`` key strings.
@@ -748,7 +758,7 @@ class TdmsMagnetData(MagnetDataBase):
                 group, channel = key.split("/", 1)
                 self._ensure_group_loaded(group)
                 if group in self.Data and channel in self.Data[group].columns:
-                    self.Data[group].drop(columns=[channel], inplace=True)
+                    self.Data[group] = self.Data[group].drop(channel)
                     if key in self.Keys:
                         self.Keys.remove(key)
                 else:
@@ -818,7 +828,9 @@ class TdmsMagnetData(MagnetDataBase):
                     status = 1
                     continue
 
-                self.Data[group][src_channel] = self.Data[src_group][src_channel]  # type: ignore[index]
+                self.Data[group] = self.Data[group].with_columns(
+                    self.Data[src_group][src_channel].alias(src_channel)
+                )
                 nformula = nformula.replace(f"{src_group}/", "")
 
         if missing_keys:
@@ -915,8 +927,8 @@ class TdmsMagnetData(MagnetDataBase):
         Raises
         ------
         RuntimeError
-            If pandas ``eval`` raises
-            :class:`~pandas.errors.UndefinedVariableError`.
+            If the formula's right-hand side cannot be parsed (see
+            ``utils/formula_polars.py`` for the supported grammar).
         """
         from pint.errors import UndefinedUnitError
 
@@ -938,7 +950,9 @@ class TdmsMagnetData(MagnetDataBase):
             return status
 
         try:
-            self.Data[group].eval(nformula, inplace=True)  # type: ignore[index]
+            rhs = nformula.split("=", 1)[1] if "=" in nformula else nformula
+            expr = formula_to_polars_expr(rhs)
+            self.Data[group] = self.Data[group].with_columns(expr.alias(channel))
             self.Keys.append(key)
 
             first_key = list(self.Groups[group].keys())[0]
@@ -967,7 +981,7 @@ class TdmsMagnetData(MagnetDataBase):
                 symbol=symbol, unit=pint_unit, label=label, description=description
             )
 
-        except pd.errors.UndefinedVariableError as error:
+        except (SyntaxError, ValueError) as error:
             raise RuntimeError(
                 f"addData: {key}: {nformula} - failed for tdms {group} data - error={error}"
             ) from error
@@ -1141,7 +1155,9 @@ class TdmsMagnetData(MagnetDataBase):
 
             dt = props["wf_increment"]
             t_offset = props["wf_start_offset"]
-            self.Data[gname]["t"] = self.Data[gname].index * dt + t_offset
+            self.Data[gname] = self.Data[gname].with_columns(
+                (pl.int_range(0, pl.len()) * dt + t_offset).alias("t")
+            )
 
             key = f"{gname}/t"
             if key not in self.Keys:
@@ -1191,7 +1207,10 @@ class TdmsMagnetData(MagnetDataBase):
 
         Concatenates channels across groups; the special key ``"t"`` is added
         from the first group's time column when all referenced channels belong
-        to the same group.
+        to the same group. Each channel is converted to pandas immediately
+        (see ``utils/narwhals_compat.py``) so the existing ``pd.concat``-based
+        cross-group assembly logic below is reused unchanged, rather than
+        re-deriving it in Polars.
 
         Parameters
         ----------
@@ -1211,11 +1230,11 @@ class TdmsMagnetData(MagnetDataBase):
         logger.debug(f"extractData: filename={self.FileName}, keys={keys}")
         groups: list[str] = []
         channels: list[str] = []
-        dfs: list[pd.DataFrame] = []
+        dfs: list[pd.Series] = []
         for item in keys:
             if item != "t":
                 group, channel = item.split("/")
-                df = self.getTdmsData(group, channel)
+                df = to_pandas(self.getTdmsData(group, channel))
                 dfs.append(df)
                 groups.append(group)
                 channels.append(channel)
@@ -1228,7 +1247,7 @@ class TdmsMagnetData(MagnetDataBase):
 
             if all_same_string(groups):
                 group = groups[0]
-                result["t"] = self.Data[group]["t"]  # type: ignore[index]
+                result["t"] = to_pandas(self.Data[group]["t"])  # type: ignore[index]
             else:
                 raise RuntimeError(
                     f"extractData: keys={keys} - cannot add t column - groups are not the same: {groups}"
@@ -1255,7 +1274,8 @@ class TdmsMagnetData(MagnetDataBase):
         """
         group, channel = key.split("/")
         self._ensure_group_loaded(group)
-        return self.Data[group][channel].loc[self.Data[group][channel] >= threshold]  # type: ignore[index]
+        series = self.Data[group][channel]  # type: ignore[index]
+        return series.filter(series >= threshold)
 
     def addTdmsTimestamp(  # noqa: N802
         self,
@@ -1329,18 +1349,23 @@ class TdmsMagnetData(MagnetDataBase):
 
             self.addTdmsTime(group=gname)
 
+            # Timestamp arithmetic reuses pandas (round trip via to_pandas()) —
+            # this runs once per group, not a hot loop, and it's simpler and
+            # lower-risk than re-deriving pd.Timestamp/pd.to_timedelta/tz
+            # handling natively in Polars for a rarely-exercised code path
+            # (the timezone= branch has no real caller today).
             start_dt = props["wf_start_time"].astype(datetime)
-            self.Data[gname]["timestamp"] = pd.Timestamp(start_dt) + pd.to_timedelta(
-                self.Data[gname]["t"], unit="s"
+            timestamp_pd = pd.Timestamp(start_dt) + pd.to_timedelta(
+                self.Data[gname]["t"].to_pandas(), unit="s"
             )
 
             if timezone is not None:
                 tz = pytz.timezone(timezone)
-                self.Data[gname]["timestamp"] = (
-                    self.Data[gname]["timestamp"]
-                    .dt.tz_localize(pytz.utc)
-                    .dt.tz_convert(tz)
-                )
+                timestamp_pd = timestamp_pd.dt.tz_localize(pytz.utc).dt.tz_convert(tz)
+
+            self.Data[gname] = self.Data[gname].with_columns(
+                pl.from_pandas(timestamp_pd).alias("timestamp")
+            )
 
             key = f"{gname}/timestamp"
             if key not in self.Keys:
@@ -1359,7 +1384,7 @@ class TdmsMagnetData(MagnetDataBase):
 
     def extractTimeData(  # noqa: N802
         self, timerange: str, group: str | None = None, time_zone: str = "Europe/Paris"
-    ) -> pd.DataFrame:
+    ) -> pl.DataFrame:
         """Return rows whose ``timestamp`` falls within *timerange*.
 
         Parameters
@@ -1375,7 +1400,7 @@ class TdmsMagnetData(MagnetDataBase):
 
         Returns
         -------
-        pandas.DataFrame
+        polars.DataFrame
             Filtered DataFrame.
 
         Raises
@@ -1394,9 +1419,9 @@ class TdmsMagnetData(MagnetDataBase):
             )
         logger.debug(f"Select data from {timerange}")
         t_start, t_end = timerange_to_utc(timerange, time_zone)
-        return self.Data[group][
-            self.Data[group]["timestamp"].between(t_start, t_end, inclusive="both")
-        ]
+        return self.Data[group].filter(
+            pl.col("timestamp").is_between(t_start, t_end, closed="both")
+        )
 
     # --- persist / display -------------------------------------------
 
@@ -1418,7 +1443,7 @@ class TdmsMagnetData(MagnetDataBase):
         dfs = []
         for key in keys:
             group, channel = key.split("/")
-            dfs.append(self.getTdmsData(group, channel))
+            dfs.append(to_pandas(self.getTdmsData(group, channel)))
         df = pd.concat(dfs)
         df.to_csv(filename, sep="\t", index=False, header=True)
         return 0
@@ -1507,7 +1532,10 @@ class TdmsMagnetData(MagnetDataBase):
             )
 
         self._ensure_group_loaded(xgroup)
-        df = self.Data[xgroup].copy()  # type: ignore[index]
+        # Converting immediately reuses the existing pandas-based plotting
+        # logic below unchanged (Polars has no df.plot() equivalent) — see
+        # utils/narwhals_compat.py.
+        df = to_pandas(self.Data[xgroup])  # type: ignore[index]
 
         # Convert naive UTC timestamp → naive local time for display
         if xchannel == "timestamp":
@@ -1572,14 +1600,13 @@ class TdmsMagnetData(MagnetDataBase):
             self._ensure_group_loaded(group)
             if group in self.Data:
                 if channel in self.Data[group]:  # type: ignore[index]
+                    # Converting immediately reuses pandas' Series.describe()
+                    # unchanged (see utils/narwhals_compat.py).
+                    described = to_pandas(self.Data[group][channel]).describe()  # type: ignore[index]
                     logger.info(
-                        tabulate(
-                            self.Data[group][channel].describe(),  # type: ignore[index]
-                            headers="keys",
-                            tablefmt="psql",
-                        )
+                        tabulate(described, headers="keys", tablefmt="psql")
                     )
-                    return self.Data[group][channel].describe()  # type: ignore[index]
+                    return described
                 else:
                     raise RuntimeError(
                         f"magnetdata/stats: cannot find channel {channel}"
@@ -1590,7 +1617,7 @@ class TdmsMagnetData(MagnetDataBase):
             for group in list(self._tdms_groups):
                 self._ensure_group_loaded(group)
                 logger.info(f"stats[{group}]: ")
-                df = self.Data[group].describe(include="all")  # type: ignore[index]
+                df = to_pandas(self.Data[group]).describe(include="all")  # type: ignore[index]
                 logger.info(
                     tabulate(df.values, headers=list(df.columns), tablefmt="psql")
                 )

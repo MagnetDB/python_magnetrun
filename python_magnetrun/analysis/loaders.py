@@ -397,7 +397,7 @@ def load_files_data(
             if mdata.Type == DataType.TDMS:
                 from python_magnetrun.magnetdata_tdms import TdmsMagnetData
 
-                df = pd.DataFrame(
+                df = to_pandas(
                     cast(TdmsMagnetData, mdata).getTdmsData(group=group, channel=None)
                 )
             else:

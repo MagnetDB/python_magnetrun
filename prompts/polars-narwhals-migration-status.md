@@ -60,20 +60,31 @@ always narwhals) would need Phase 2 below plus a TDMS equivalent — out of
 scope for now, deliberately: that's the "Option A" full rewrite this
 migration chose *not* to do.
 
-## TDMS / pigbrother — ⬜ not started
+## TDMS / pigbrother — ✅ live
 
 `mrun-cache-implementation.plan.md` Phase 1+2b-tdms.
+`pyproject.toml`'s `nptdms` dependency now points at the pinned fork
+commit (`Trophime/npTDMS@cc79e1be`); `polars` promoted to a base
+dependency (no longer optional — every `.tdms` load needs it now).
 
 - ✅ Polars output in the npTDMS fork (already existed upstream)
 - ✅ Validated against real fixtures (8 files, 5 housings — ~2.1× speed, ~2.6× memory)
-- ⬜ Swap `nptdms` → the fork in `pyproject.toml`
-- ⬜ Rewrite `TdmsMagnetData`'s ~15 pandas-specific call sites (`.rename(inplace=True)`, `.memory_usage()`, etc.)
-- ⬜ Wrap `TdmsMagnetData.getData()` with `nw.from_native()`
-- ⬜ Its own downstream-consumer audit — pupitre proved this is a real,
-  necessary step (11 sites, one found only via full-suite testing), not
-  optional; budget for it here too, not just the container-class work
+- ✅ `nptdms` swapped for the pinned fork in `pyproject.toml`
+- ✅ `TdmsMagnetData` internals rewritten — formula evaluator shared with
+  `PolarsMagnetData` via `utils/formula_polars.py`; `extractData`/`saveData`/
+  `stats`/`plotData` deliberately **not** rewritten natively — each converts
+  via `to_pandas()` and reuses the existing pandas logic unchanged
+  (confirmed cheap by `examples/benchmark_to_pandas.py`)
+- ✅ `TdmsMagnetData.getData()` wrapped with `nw.from_native()`
+- ✅ Downstream-consumer audit — done *proactively this time* (learned from
+  pupitre): same files already touched for pupitre
+  (`processing/stats.py`, `processing/plateaux.py`, `commands/select.py`,
+  `analysis/loaders.py`) each had a parallel `DataType.TDMS` branch, all
+  fixed with the same `to_pandas()` pattern
 
-**Remaining: ~1.5-2.5 weeks**, independently schedulable from pupitre.
+Full suite: 1248 passed, 19 skipped, zero failures. Two more pre-existing
+bugs found and tracked (`REVIEW.md` items 18-19), confirmed independent of
+the migration.
 
 ## Not started / not currently planned
 
@@ -92,9 +103,8 @@ migration chose *not* to do.
 
 ## Bottom line
 
-Pupitre is the one format that's finished and live end-to-end, including
-its downstream-consumer shielding. TDMS is next in line, independently
-schedulable, and should budget for its own downstream-consumer audit up
-front rather than discovering it late the way pupitre did. Everything else
-(other readers, full pandas-side rewrite, pipeline restructure) is
-unstarted and not currently on a schedule.
+Pupitre and TDMS/pigbrother — the two formats explicitly benchmarked and
+scoped from the start — are both finished and live end-to-end, including
+downstream-consumer shielding for each. Everything else (Ensight/BProfile/
+Feelpp/HTS staying on `PandasMagnetData`, the full pandas-side rewrite,
+pipeline restructure) is unstarted and not currently on a schedule.

@@ -10,8 +10,10 @@ directory.
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import narwhals as nw
 import numpy as np
 import pandas as pd
+import polars as pl
 import pytest
 
 from python_magnetrun.magnetdata import load_magnetdata
@@ -289,7 +291,7 @@ class TestGetDataPandas:
 class TestGetDataTdms:
     @pytest.fixture()
     def tdms_magnetdata(self) -> TdmsMagnetData:
-        group_df = pd.DataFrame(
+        group_df = pl.DataFrame(
             {
                 "Courant_GR1": [100.0, 200.0, 300.0],
                 "Tension_GR1": [1.0, 2.0, 3.0],
@@ -309,9 +311,10 @@ class TestGetDataTdms:
         return TdmsMagnetData("test.tdms", groups, keys, data)
 
     def test_group_slash_channel(self, tdms_magnetdata: TdmsMagnetData) -> None:
-        """getData('Group/Channel') should return the channel's DataFrame."""
+        """getData('Group/Channel') should return a narwhals-wrapped frame."""
         df = tdms_magnetdata.getData("Courants_Alimentations/Courant_GR1")
-        assert isinstance(df, pd.DataFrame)
+        assert isinstance(df, nw.DataFrame)
+        assert isinstance(df.to_native(), pl.DataFrame)
 
     def test_list_of_group_slash_channels(
         self, tdms_magnetdata: TdmsMagnetData
@@ -323,7 +326,7 @@ class TestGetDataTdms:
                 "Courants_Alimentations/Tension_GR1",
             ]
         )
-        assert isinstance(df, pd.DataFrame)
+        assert isinstance(df, nw.DataFrame)
         assert "Courant_GR1" in df.columns
         assert "Tension_GR1" in df.columns
 
@@ -685,7 +688,7 @@ class TestShiftTime:
 class TestAddTdmsTime:
     @pytest.fixture()
     def tdms_md(self) -> TdmsMagnetData:
-        group_df = pd.DataFrame({"Courant_GR1": [100.0, 200.0, 300.0]})
+        group_df = pl.DataFrame({"Courant_GR1": [100.0, 200.0, 300.0]})
         groups = {
             "Courants_Alimentations": {
                 "Courant_GR1": {"wf_increment": 0.5, "wf_start_offset": 1.0},
@@ -702,7 +705,7 @@ class TestAddTdmsTime:
 
     def test_t_values_correct(self, tdms_md: TdmsMagnetData) -> None:
         tdms_md.addTdmsTime()
-        t = tdms_md.Data["Courants_Alimentations"]["t"].tolist()
+        t = tdms_md.Data["Courants_Alimentations"]["t"].to_list()
         # t = index * 0.5 + 1.0  →  [1.0, 1.5, 2.0]
         assert t == pytest.approx([1.0, 1.5, 2.0])
 
@@ -867,7 +870,7 @@ class TestExtractTimeDataTdms:
         import numpy as np
 
         wf_start = np.datetime64("2024-01-01T10:00:00")
-        df = pd.DataFrame({"ChA": [1.0, 2.0, 3.0, 4.0, 5.0]})
+        df = pl.DataFrame({"ChA": [1.0, 2.0, 3.0, 4.0, 5.0]})
         groups = {
             "GrpX": {
                 "ChA": {
@@ -922,7 +925,7 @@ class TestExtractTimeDataTdms:
         df = tdms_with_ts.extractTimeData(
             "2024-01-01 11:00:00;2024-01-01 11:00:04", group="GrpX"
         )
-        assert isinstance(df, pd.DataFrame)
+        assert isinstance(df, pl.DataFrame)
         assert len(df) == 5
 
 
@@ -1350,7 +1353,7 @@ class TestRealisticM9Tdms:
 
     def test_getData_single_channel(self, tdms: MagnetDataBase) -> None:
         df = tdms.getData("Courants_Alimentations/Courant_A1")
-        assert isinstance(df, pd.DataFrame)
+        assert isinstance(df, nw.DataFrame)
         assert len(df) == 432000
 
     def test_getData_multiple_channels(self, tdms: MagnetDataBase) -> None:
@@ -1365,9 +1368,9 @@ class TestRealisticM9Tdms:
         md = load_magnetdata(str(M9_TDMS))
         md.addTdmsTime(group="Courants_Alimentations")
         t = md.Data["Courants_Alimentations"]["t"]
-        assert t.iloc[0] == pytest.approx(0.0, abs=1e-6)
-        assert t.iloc[-1] == pytest.approx(90.0, abs=0.01)
-        assert t.is_monotonic_increasing
+        assert t[0] == pytest.approx(0.0, abs=1e-6)
+        assert t[-1] == pytest.approx(90.0, abs=0.01)
+        assert t.is_sorted()
 
     def test_extract_data_channel(self, tdms: MagnetDataBase) -> None:
         df = tdms.extractData(
@@ -1401,7 +1404,7 @@ class TestDataProperty:
         from unittest.mock import MagicMock
 
         group_mock = MagicMock()
-        group_mock.as_dataframe.return_value = pd.DataFrame({"Courant_GR1": [1.0, 2.0]})
+        group_mock.as_dataframe.return_value = pl.DataFrame({"Courant_GR1": [1.0, 2.0]})
 
         groups = {
             "Courants_Alimentations": {

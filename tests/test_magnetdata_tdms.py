@@ -12,7 +12,7 @@ Covers:
 import json
 import logging
 
-import pandas as pd
+import polars as pl
 
 from python_magnetrun.magnetdata_tdms import TdmsMagnetData
 
@@ -23,7 +23,7 @@ from python_magnetrun.magnetdata_tdms import TdmsMagnetData
 def _make_tdms(groups: dict | None = None) -> TdmsMagnetData:
     """Build a minimal TdmsMagnetData with one group containing two channels."""
     if groups is None:
-        df = pd.DataFrame({"ChA": [1.0, 2.0, 3.0], "ChB": [4.0, 5.0, 6.0]})
+        df = pl.DataFrame({"ChA": [1.0, 2.0, 3.0], "ChB": [4.0, 5.0, 6.0]})
         groups = {
             "GrpX": {
                 "ChA": {"wf_increment": 0.1, "wf_start_offset": 0.0, "wf_samples": 3},
@@ -37,7 +37,7 @@ def _make_tdms(groups: dict | None = None) -> TdmsMagnetData:
         keys = []
         for gname, channels in groups.items():
             cols = {ch: [float(i) for i in range(3)] for ch in channels}
-            data[gname] = pd.DataFrame(cols)
+            data[gname] = pl.DataFrame(cols)
             for ch in channels:
                 keys.append(f"{gname}/{ch}")
 
@@ -78,21 +78,17 @@ class TestCleanupDataKeysToAdd:
         assert "GrpX/ChC" in tdms.Keys
         assert "ChC" in tdms.Data["GrpX"].columns
         expected = tdms.Data["GrpX"]["ChA"] + tdms.Data["GrpX"]["ChB"]
-        pd.testing.assert_series_equal(
-            tdms.Data["GrpX"]["ChC"].reset_index(drop=True),
-            expected.reset_index(drop=True),
-            check_names=False,
-        )
+        assert tdms.Data["GrpX"]["ChC"].to_list() == expected.to_list()
 
     def test_skips_existing_key(self):
         """cleanupData must not call addData if the key already exists."""
         tdms = _make_tdms()
         # Pre-populate ChA as an existing key (already in Keys)
         assert "GrpX/ChA" in tdms.Keys
-        original_values = tdms.Data["GrpX"]["ChA"].copy()
+        original_values = tdms.Data["GrpX"]["ChA"].clone()
         # Try to overwrite via cleanupData — should be skipped
         tdms.cleanupData(keys_to_add={"GrpX/ChA": {"formula": "GrpX/ChA = ChA * 0", "symbol": "ChA", "unit": None, "label": "ChA zeroed", "description": "Should be skipped"}})
-        pd.testing.assert_series_equal(tdms.Data["GrpX"]["ChA"], original_values)
+        assert tdms.Data["GrpX"]["ChA"].to_list() == original_values.to_list()
 
     def test_returns_zero(self):
         tdms = _make_tdms()

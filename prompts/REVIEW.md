@@ -208,6 +208,31 @@ on the `MagnetDataBase` object itself, not a DataFrame. No such method exists on
 `AttributeError` whenever `convert_to_csv()` is reached for pupitre data, for any backend.
 Also found via the narwhals-migration audit; same category as item 16.
 
+**18. `processing/plateaux.py::plateaus()` uses a meaningless index for TDMS timestamps** *(minor — open)*
+
+The TDMS branch does `t0 = df.index[0]`, `t1 = df.index[-1]`
+([processing/plateaux.py:224-225](python_magnetrun/processing/plateaux.py#L224-L225)),
+then later calls `t0.strftime(...)`. `t`/`timestamp` have always been stored as regular
+*columns* on TDMS group DataFrames (via `addTdmsTime`/`addTdmsTimestamp`), never as the
+DataFrame's index — so `df.index` is always a plain `0, 1, 2, …` positional index,
+regardless of backend. `t0` ends up an `int`, and `.strftime()` raises `AttributeError`.
+This would have failed identically with the pre-migration pandas-backed `TdmsMagnetData`
+too; confirmed pre-existing, not a regression. Has zero test coverage — `tests/test-plateau.py`
+only exercises `nplateaus()` (a different function) via a pupitre file, never `plateaus()`'s
+TDMS branch. Found while validating the TDMS→Polars migration
+([mrun-cache-implementation.plan.md](mrun-cache-implementation.plan.md) Phase 1+2b-tdms).
+
+**19. `TdmsMagnetData.stats(key=...)` can't tabulate a single-channel result** *(minor — open)*
+
+`tabulate(described, headers="keys", tablefmt="psql")`
+([magnetdata_tdms.py](python_magnetrun/magnetdata_tdms.py), in `stats()`) where `described`
+is a `pandas.Series.describe()` result — `tabulate` raises
+`TypeError: 'numpy.float64' object is not iterable` when handed a bare Series this way,
+independent of Polars: reproduced with pure pandas, no TDMS/Polars code involved at all.
+The `stats(key=None)` branch (all groups) is unaffected — it passes `.values` + explicit
+headers, a different calling convention that works correctly. Found while validating the
+TDMS→Polars migration; same discovery method as item 18.
+
 ---
 
 ## Code Duplication Summary

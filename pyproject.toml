@@ -28,7 +28,8 @@ dependencies = [
     "numpy>=2.2.4",
     "scipy>=1.14.1",
     "pandas>=2.2.3,<3.0",
-    "nptdms>=1.7.0",
+    "nptdms @ git+https://github.com/Trophime/npTDMS.git@cc79e1be",
+    "polars>=1.0",
     "narwhals>=1.0",
     "pint>=0.17",
     "requests>=2.32.3",
@@ -53,9 +54,6 @@ hybrid = [
 ]
 rdp = [
     "simplification>=0.7",
-]
-polars = [
-    "polars>=1.0",
 ]
 benchmark = [
     "memray>=1.0",

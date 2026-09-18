@@ -22,9 +22,7 @@ Not yet supported in this Phase A cut (documented, not silent):
 
 from __future__ import annotations
 
-import ast
 import logging
-import operator
 import os
 import re
 from datetime import datetime
@@ -36,6 +34,7 @@ import polars as pl
 from natsort import natsorted
 
 from .magnetdata_base import DataType, MagnetDataBase
+from .utils.formula_polars import formula_to_polars_expr
 from .utils.timestamps import parse_filename_timestamp
 from .utils.timezone import (
     local_to_utc_naive,
@@ -82,50 +81,6 @@ def _polars_duplicate_columns(df: pl.DataFrame) -> list[str]:
             if col_x.equals(df.to_series(y)):
                 duplicates.add(columns[y])
     return list(duplicates)
-
-
-# ---------------------------------------------------------------------------
-# Formula evaluator — translates a "target = expr" formula's RHS into a
-# Polars expression. See module docstring for the supported grammar.
-# ---------------------------------------------------------------------------
-
-_AST_BINOPS = {
-    ast.Add: operator.add,
-    ast.Sub: operator.sub,
-    ast.Mult: operator.mul,
-    ast.Div: operator.truediv,
-}
-_AST_UNARYOPS = {
-    ast.UAdd: operator.pos,
-    ast.USub: operator.neg,
-}
-
-
-def _ast_to_polars_expr(node: ast.AST) -> pl.Expr | int | float:
-    """Recursively translate one AST node into a Polars expression or literal."""
-    if isinstance(node, ast.Expression):
-        return _ast_to_polars_expr(node.body)
-    if isinstance(node, ast.BinOp):
-        op = _AST_BINOPS.get(type(node.op))
-        if op is None:
-            raise ValueError(f"unsupported operator: {type(node.op).__name__}")
-        return op(_ast_to_polars_expr(node.left), _ast_to_polars_expr(node.right))
-    if isinstance(node, ast.UnaryOp):
-        op = _AST_UNARYOPS.get(type(node.op))
-        if op is None:
-            raise ValueError(f"unsupported unary operator: {type(node.op).__name__}")
-        return op(_ast_to_polars_expr(node.operand))
-    if isinstance(node, ast.Name):
-        return pl.col(node.id)
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-        return node.value
-    raise ValueError(f"unsupported expression: {ast.dump(node)}")
-
-
-def _formula_to_polars_expr(rhs: str) -> pl.Expr:
-    """Parse a formula's right-hand side into a Polars expression."""
-    tree = ast.parse(rhs.strip(), mode="eval")
-    return _ast_to_polars_expr(tree)
 
 
 class PolarsMagnetData(MagnetDataBase):
@@ -650,7 +605,7 @@ class PolarsMagnetData(MagnetDataBase):
 
         rhs = formula.split("=", 1)[1] if "=" in formula else formula
         try:
-            expr = _formula_to_polars_expr(rhs)
+            expr = formula_to_polars_expr(rhs)
         except (SyntaxError, ValueError) as exc:
             logger.warning(f"addData: {key}: cannot parse formula {formula!r}: {exc}")
             return 1

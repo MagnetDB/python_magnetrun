@@ -43,18 +43,44 @@ must be parsed to extract timestamps.
 
 ### Phase 1+2b-tdms — Custom npTDMS (polars) + `TdmsMagnetData` internals migration *(must land together)*
 
-These two tasks are coupled: custom npTDMS returns polars DataFrames, which
-`TdmsMagnetData` stores in `self.Data: dict[str, pd.DataFrame]`. If only Phase 1
-lands, all internal methods in `TdmsMagnetData` that use pandas-specific patterns
-break immediately:
+**Status: ✅ Live.** `pyproject.toml`'s `nptdms` dependency now points at the
+pinned fork commit (`Trophime/npTDMS@cc79e1be`); `polars` is a base
+dependency. Every `.tdms` file in the package loads through Polars
+internally. Full suite: 1248 passed, 19 skipped, zero failures — including
+a proactive downstream-consumer audit of the TDMS branches in the same
+files already fixed for pupitre (unlike pupitre, this was done *before*
+declaring victory, having learned from pupitre's experience that a green
+test suite doesn't mean every branch is exercised).
 
-| Broken pattern | Fix |
+These two tasks turned out to be as coupled as predicted — the actual
+pandas-specific patterns found (broader than this table's original guesses,
+narrower in others):
+
+| Broken pattern (found) | Fix applied |
 |----------------|-----|
-| `self.Data[group].eval(formula, inplace=True)` | Expression-based transform, reassign |
-| `self.Data[gname]["t"] = values` | `self.Data[gname] = self.Data[gname].with_columns(...)` |
-| `self.Data[group][channel].loc[...]` | polars slice / filter |
-| `pd.Timestamp(...) + pd.to_timedelta(...)` | polars / narwhals equivalents |
-| `self.Data[group].drop(columns=[...], inplace=True)` | `.drop([...])`, reassign |
+| `self.Data[group].eval(nformula, inplace=True)` (`addData`) | AST-based formula evaluator, shared with `PolarsMagnetData` via `utils/formula_polars.py` |
+| `self.Data[gname]["t"] = self.Data[gname].index * dt + offset` (`addTdmsTime`) | `pl.int_range(0, pl.len())`-based expression, `with_columns` |
+| `pd.Timestamp(...) + pd.to_timedelta(...)`, `.dt.tz_localize/tz_convert` (`addTdmsTimestamp`) | pandas round-trip via `to_pandas()` — not a hot loop, safer than re-deriving |
+| `self.Data[group][channel].loc[...]` (`extractDataThreshold`) | `series.filter(series >= threshold)` |
+| `.between()` + boolean row indexing (`extractTimeData`) | `.filter(pl.col(...).is_between(..., closed="both"))` |
+| `df.memory_usage()`, `.rename(inplace=True)` (`_ensure_group_loaded`) | `df.estimated_size()`, `.rename({...})` (reassign) |
+| `.drop(columns=[...], inplace=True)` (`cleanupData`) | `.drop(channel)` (reassign) |
+| `extractData`, `saveData`, `stats`, `plotData` | **Not rewritten natively** — each converts its `self.Data` slice to pandas via `to_pandas()` immediately, then reuses the existing pandas logic (`pd.concat`, `df.plot()`, `.describe()`) completely unchanged. Confirmed via `examples/benchmark_to_pandas.py` that this conversion cost is negligible; far lower-risk than re-deriving `pd.concat`'s exact multivariate-export semantics or matplotlib wiring in Polars. |
+
+**Downstream consumers** (same files already touched for pupitre —
+`processing/stats.py`, `processing/plateaux.py`, `commands/select.py`,
+`analysis/loaders.py` — each had a parallel `DataType.TDMS` branch not yet
+touched): all fixed with the same `to_pandas()` boundary pattern.
+`commands/plot.py`'s TDMS branches needed no change — they already go
+through `extractData()`, which converts internally.
+
+**Two more pre-existing bugs found and tracked** (`REVIEW.md` items 18-19),
+confirmed independent of this migration — `processing/plateaux.py::plateaus()`'s
+TDMS branch computes a meaningless `df.index[0]` "timestamp" (t/timestamp
+were always stored as columns, never the index, even pre-migration), and
+`TdmsMagnetData.stats(key=...)` can't tabulate a single-channel
+`pandas.Series.describe()` result (reproduced with pure pandas, no Polars
+involved).
 
 **Substeps:**
 1. Implement polars output in the custom npTDMS fork. ✅ **Done** — landed
@@ -63,10 +89,10 @@ break immediately:
    see [tdms-pupitre-polars-findings.md](tdms-pupitre-polars-findings.md)
    (8-file representative sample, ~2.1× speed / ~2.6× memory, consistent
    across housings/categories/sizes).
-3. Change `TdmsMagnetData.Data` type to `dict[str, pl.DataFrame]`.
+3. Change `TdmsMagnetData.Data` type to `dict[str, pl.DataFrame]`. ✅ **Done.**
 4. Rewrite all internal methods in `TdmsMagnetData` to use polars / narwhals API,
-   method by method, with tests after each step.
-5. Wrap `TdmsMagnetData.getData()` return value with `nw.from_native()`.
+   method by method, with tests after each step. ✅ **Done** — see table above.
+5. Wrap `TdmsMagnetData.getData()` return value with `nw.from_native()`. ✅ **Done.**
 
 ### Phase 1b-pupitre — `PolarsMagnetData` for pupitre *(independent of Phase 1+2b-tdms)*
 
