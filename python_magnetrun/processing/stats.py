@@ -7,6 +7,7 @@ import pandas as pd
 from tabulate import tabulate  # type: ignore[import-untyped]
 
 from ..magnetdata_base import DataType, MagnetDataBase
+from ..utils.narwhals_compat import to_pandas
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ def stats(
             ]
             if f in Data.getKeys():
                 fname, unit = Data.getUnitKey(f)
-                df = Data.getData([f])[f]
+                df = to_pandas(Data.getData([f])[f])
                 logger.debug(f"get stats for {f} ({Data.getKeys()})")
                 logger.debug(f"{f}: {df.head()}")
                 v_min = float(df.min())

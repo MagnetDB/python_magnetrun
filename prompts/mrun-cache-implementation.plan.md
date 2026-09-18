@@ -70,13 +70,20 @@ break immediately:
 
 ### Phase 1b-pupitre — `PolarsMagnetData` for pupitre *(independent of Phase 1+2b-tdms)*
 
-**Status:** 🔶 **Phase A done** — `PolarsMagnetData(MagnetDataBase)` implemented
-in `magnetdata_polars.py`, validated with full ETL-chain parity against
-`PandasMagnetData` on real fixtures (30 new tests, 1233 total pass). Not
-wired into `load_magnetdata()` yet (deliberately — see integration point 1
-in the sub-plan); Phase B (analysis/plotting methods) not started. See
-[polars-magnetdata-pupitre.plan.md](polars-magnetdata-pupitre.plan.md) for
-current detail.
+**Status:** ✅ **Live** — `load_magnetdata()`'s `.txt` branch now dispatches
+to `PolarsMagnetData` by default; every pupitre `.txt` file in the package
+loads via Polars. Got here via `PolarsMagnetData(MagnetDataBase)` (Phase A,
+full ETL-chain parity vs. `PandasMagnetData`), the 4 real-call-site Phase B
+methods (`plotData`/`stats`/`extractTimeData`/`saveData`), the
+downstream-consumer audit + `to_pandas()` boundary fixes
+([narwhals-downstream-consumers.plan.md](narwhals-downstream-consumers.plan.md)),
+and one more consumer + one more Phase B method
+(`extractDataThreshold`) found only once the full test suite ran against
+the flipped default. Full suite: 1248 passed, 19 skipped, zero failures.
+`.csv` still routes to `PandasMagnetData` unchanged. Remaining Phase B
+methods (`add_field`, `info`/`__repr__` variants) stay on-demand — no known
+caller yet. See [polars-magnetdata-pupitre.plan.md](polars-magnetdata-pupitre.plan.md)
+for full detail.
 
 Pupitre benchmarks show an even larger speed win than TDMS (~3.1× vs ~2.1×,
 see [tdms-pupitre-polars-findings.md](tdms-pupitre-polars-findings.md)), but
@@ -117,6 +124,18 @@ Update `MagnetDataBase.getData()` return type annotation to `nw.DataFrame`.
 - All external callers (`analysis/`, `waterflow_pipeline.py`, plotting,
   `MagnetRun.getDataFrame()`) now receive narwhals frames from both subclasses.
 - No `if backend == "pandas"` branches anywhere downstream.
+
+**"All external callers" turns out to be a real, separately-scoped effort,
+not a detail.** Discovered while rolling out `PolarsMagnetData` for pupitre
+(Phase 1b-pupitre) — `getData()` returning narwhals broke real call sites
+(`processing/stats.py`, `MagnetRun.getDataFrame()`, `processing/plateaux.py`,
+confirmed; ~10 more files suspected across a 76-call-site audit) because
+they chain pandas-only idioms (`.iloc`, `.mode()`, `.values`) directly on
+the result. See
+[narwhals-downstream-consumers.plan.md](narwhals-downstream-consumers.plan.md)
+for the full audit and the recommended fix (boundary `.to_pandas()`
+conversion at each risk point, rather than a full consumer rewrite). This
+applies identically once TDMS's `getData()` starts returning narwhals too.
 
 ### Phase 3 — Pipeline Restructure (eliminate double-load)
 

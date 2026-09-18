@@ -187,6 +187,27 @@ caching), and returns the element-wise sum.  Only `+` is supported; other operat
 `NotImplementedError`.  See [`prompts/hybrid-formula-key-resolution.plan.md`](hybrid-formula-key-resolution.plan.md)
 and `tests/test_hybrid_formula_resolution.py`.
 
+**16. `MagnetRun.getData()` raises immediately when called with no arguments** *(minor — open)*
+
+Default signature is `getData(self, key: str = "", downsample=None)`
+([MagnetRun.py:477](python_magnetrun/MagnetRun.py#L477)), which delegates to
+`MagnetData.getData(key, ...)`. Both `PandasMagnetData` and `PolarsMagnetData` treat `""` as a
+column name to select, and `""` is never a real column — so `mrun.getData()` with no arguments
+raises `KeyError` before returning anything, regardless of backend. Confirmed by reproducing
+against a real `PandasMagnetData` fixture. At least one real call site,
+`processing/filters.py`'s `df = mrun.getData()`, is dead code as a result. Found as a byproduct
+of the narwhals-migration audit ([`prompts/narwhals-downstream-consumers.plan.md`](narwhals-downstream-consumers.plan.md))
+but is pre-existing and backend-independent, not a regression from that work.
+
+**17. `commands/select.py::convert_to_csv()` calls a method that doesn't exist** *(minor — open)*
+
+`mdata.to_csv(file_name, sep="\t", index=False, header=True)`
+([commands/select.py:152](python_magnetrun/commands/select.py#L152)) calls `.to_csv()` directly
+on the `MagnetDataBase` object itself, not a DataFrame. No such method exists on
+`MagnetDataBase`, `PandasMagnetData`, or `PolarsMagnetData` — this branch raises
+`AttributeError` whenever `convert_to_csv()` is reached for pupitre data, for any backend.
+Also found via the narwhals-migration audit; same category as item 16.
+
 ---
 
 ## Code Duplication Summary

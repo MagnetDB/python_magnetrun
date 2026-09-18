@@ -18,6 +18,7 @@ import panel as pn
 import param
 
 from ..MagnetRun import MagnetRun
+from ..utils.narwhals_compat import to_pandas
 
 # data = pd.read_csv('./datatest.txt')
 mrun = MagnetRun.fromtxt("M9", "../python_magnetsetup/data/mrecords/M9_2019.06.19---17:04:21.txt")
@@ -33,7 +34,7 @@ mrun.MagnetData.removeData("Date")
 mrun.MagnetData.removeData("Time")
 print("keys:", mrun.getKeys())
 
-data = mrun.MagnetData.getData()
+data = to_pandas(mrun.MagnetData.getData())
 # print("data:", type(data) )
 # data.drop(['Date', 'Time'], axis=1)
 # print("data:", data )

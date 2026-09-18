@@ -16,6 +16,7 @@ import pandas as pd
 from python_magnetcooling.waterflow import WaterFlow
 
 from .log_utils import setup_logging
+from .utils.narwhals_compat import to_pandas
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +348,7 @@ def compute_waterflow_from_run(
         If insufficient data remain after filtering, or if method="simple"
         and no imax can be determined.
     """
-    df = mrun.getMData().getData()
+    df = to_pandas(mrun.getMData().getData())
     name = mrun.getInsert() if hasattr(mrun, "getInsert") else ""
 
     data = extract_hydraulic_data(

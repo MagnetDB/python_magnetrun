@@ -50,6 +50,7 @@ from ..utils.files import (
     find_files_from_archive,
     select_files,
 )
+from ..utils.narwhals_compat import to_pandas
 from .config import (
     DEFAULT_DATA_DIR,
     DEFAULT_PIGBROTHER_DATA_DIR,
@@ -405,7 +406,7 @@ def load_files_data(
                 missing = [k for k in (keys or []) if k not in available]
                 if missing:
                     logger.warning(f"load_files_data: {file}: requested keys not available: {missing}")
-                df = pd.DataFrame(mdata.getData(desired))
+                df = to_pandas(mdata.getData(desired))
 
             df["t"] = df["t"] + shift
 

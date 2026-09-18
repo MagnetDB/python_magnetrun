@@ -8,6 +8,8 @@ Covers:
   - cleanupData(): all-zero column drop, exact-duplicate column drop
   - addData() / computeData() / removeData() / renameData()
   - extractData() / getData() / getStartDate() / getDuration() / shiftTime()
+  - extractTimeData() / saveData() / plotData() / stats() (Phase B methods
+    exercised by real call sites: viewcsv.py, commands/select.py, MagnetRun.py)
   - header-only file rejected the same way as PandasMagnetData
   - full ETL parity against PandasMagnetData on real fixtures
 """
@@ -269,6 +271,98 @@ class TestExtractAndGetData:
         data = PolarsMagnetData.fromtxt(str(SAMPLE_PUPITRE))
         data.addTime()
         assert data.getDuration() > 0
+
+
+# ---------------------------------------------------------------------------
+# Phase B methods: extractTimeData / saveData / plotData / stats
+# (exercised by real call sites: viewcsv.py, commands/select.py, MagnetRun.py)
+# ---------------------------------------------------------------------------
+
+
+def _prepared_sample() -> PolarsMagnetData:
+    """A real, addTime()'d + Units()'d PolarsMagnetData for Phase B tests."""
+    data = PolarsMagnetData.fromtxt(str(SAMPLE_PUPITRE), defs_file="pupitre-defs.json")
+    data.addTime()
+    data.Units()
+    return data
+
+
+class TestExtractTimeData:
+    def test_filters_by_range(self):
+        data = _prepared_sample()
+        t0 = data.Data["timestamp"][0]
+        t1 = data.Data["timestamp"][-1]
+        full_range = f"{t0.strftime('%Y-%m-%d %H:%M:%S')};{t1.strftime('%Y-%m-%d %H:%M:%S')}"
+        sub = data.extractTimeData(full_range, time_zone="UTC")
+        assert sub.height == data.Data.height
+
+    def test_before_addtime_raises(self):
+        data = PolarsMagnetData.fromtxt(str(SAMPLE_PUPITRE))
+        with pytest.raises(RuntimeError):
+            data.extractTimeData("2022-01-01 00:00:00;2022-01-01 00:00:01")
+
+
+class TestSaveData:
+    def test_writes_tsv(self, tmp_path):
+        data = _prepared_sample()
+        out = tmp_path / "out.txt"
+        status = data.saveData(["Field", "t"], str(out))
+        assert status == 0
+        lines = out.read_text().splitlines()
+        assert lines[0] == "Field\tt"
+        assert len(lines) == data.Data.height + 1
+
+
+class TestPlotData:
+    def test_plots_t_vs_field(self):
+        matplotlib = pytest.importorskip("matplotlib")
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        data = _prepared_sample()
+        fig, ax = plt.subplots()
+        data.plotData(x="t", y="Field", ax=ax)
+        assert len(ax.lines) == 1
+        plt.close(fig)
+
+    def test_plots_timestamp_normalized(self):
+        matplotlib = pytest.importorskip("matplotlib")
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        data = _prepared_sample()
+        fig, ax = plt.subplots()
+        data.plotData(x="timestamp", y="Field", ax=ax, normalize=True)
+        assert len(ax.lines) == 1
+        plt.close(fig)
+
+    def test_unknown_y_key_raises(self):
+        matplotlib = pytest.importorskip("matplotlib")
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        data = _prepared_sample()
+        fig, ax = plt.subplots()
+        with pytest.raises(RuntimeError):
+            data.plotData(x="t", y="Nope", ax=ax)
+        plt.close(fig)
+
+
+class TestStats:
+    def test_single_key(self, caplog):
+        data = _prepared_sample()
+        data.stats("Field")  # should not raise
+
+    def test_all_keys(self, capsys):
+        data = _prepared_sample()
+        data.stats()
+        captured = capsys.readouterr()
+        assert "statistic" in captured.out
+
+    def test_unknown_key_raises(self):
+        data = _prepared_sample()
+        with pytest.raises(RuntimeError):
+            data.stats("Nope")
 
 
 # ---------------------------------------------------------------------------

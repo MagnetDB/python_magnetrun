@@ -29,6 +29,7 @@ dependencies = [
     "scipy>=1.14.1",
     "pandas>=2.2.3,<3.0",
     "nptdms>=1.7.0",
+    "narwhals>=1.0",
     "pint>=0.17",
     "requests>=2.32.3",
     "statsmodels>=0.14.4",
@@ -55,7 +56,6 @@ rdp = [
 ]
 polars = [
     "polars>=1.0",
-    "narwhals>=1.0",
 ]
 benchmark = [
     "memray>=1.0",

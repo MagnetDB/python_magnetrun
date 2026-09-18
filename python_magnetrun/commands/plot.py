@@ -16,6 +16,7 @@ from ..plotting.backend import get_backend
 from ..plotting.style import LabelStyle, PlotConfig, PlotStyle, load_plot_config
 from ..plotting.timeseries import plot_overlay, plot_subplots, plot_xy
 from ..utils.downsampling import DownsampleConfig
+from ..utils.narwhals_compat import to_pandas
 
 logger = logging.getLogger(__name__)
 
@@ -217,7 +218,7 @@ def _get_df_with_time(mdata, plot_args: list[str]) -> tuple[pd.DataFrame, list[s
     """
     logger.debug(f"_get_df_with_time: plot_args={plot_args}")
     if "t" in mdata.getKeys():
-        df = mdata.getData(["t"] + plot_args)
+        df = to_pandas(mdata.getData(["t"] + plot_args))
         return df, list(plot_args)
     else:
         # if 't' is not in keys, we assume TDMS data where channels are stored without group prefix and 't' is implicit
@@ -784,7 +785,7 @@ def plot_key_vs_key(input_files, inputs, extensions, args):
             logger.debug(f"extracting {key1} vs {key2} from {file}")
             try:
                 if mdata.getType() != DataType.TDMS:
-                    df_pair = mdata.getData([key1, key2])
+                    df_pair = to_pandas(mdata.getData([key1, key2]))
                     col1, col2 = key1, key2
                 else:
                     df_pair = mdata.extractData([key1, key2])

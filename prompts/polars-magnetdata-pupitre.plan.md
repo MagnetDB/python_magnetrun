@@ -165,17 +165,42 @@ primitives directly.
 
 ## Phase B — analysis/plotting surface (incremental, add as exercised)
 
-Everything else on `PandasMagnetData` (`plotData`, `stats`, `extractData`,
-`extractDataThreshold`, `extractTimeData`, `saveData`, `shiftTime`,
-`add_field`, `getStartDate`/`info`/`__repr__` variants not already covered)
-is only needed once analysis/plotting code actually runs against a
-`PolarsMagnetData` instance. Per "Simplicity first" — implement these
-on demand, one at a time, as real call sites hit `AttributeError` /
-`NotImplementedError`, rather than reimplementing all ~20 remaining methods
-upfront on spec.
+**Status: 🔶 4 methods done, driven by real call-site usage** —
+`plotData()`, `stats()`, `extractTimeData()`, `saveData()` implemented,
+found by grepping actual call sites of `PolarsMagnetData`-bound methods
+across the package (`viewcsv.py:45` → `plotData`, `commands/select.py:178,183`
+→ `extractTimeData`, `MagnetRun.py:568` → `stats`, `MagnetRun.py:618`/
+`viewcsv.py` → `saveData`). Notable implementation notes:
+- `plotData()` cannot reuse pandas' `DataFrame.plot()` (Polars has no
+  equivalent) — draws directly via `ax.plot()` on numpy arrays instead.
+  `x="timestamp"` local-time display reuses the same pandas-round-trip
+  pattern as `addTime()`.
+- `stats()` uses Polars' own `.describe()` (returns a tidy `statistic`-row
+  DataFrame) rather than porting pandas' `.describe()` shape exactly.
+
+Remaining (`extractDataThreshold`, `add_field`, `getStartDate`/`info`/
+`__repr__` variants not already covered): still genuinely on-demand,
+no real call site found yet exercising them for pupitre specifically.
+
+**⚠️ Implementing these 4 methods is necessary but NOT sufficient to
+safely execute Rollout step 2 (see below) — a deeper, separate issue was
+found while tracing call sites:** `python_magnetrun/processing/stats.py::stats()`
+(the function backing the `magnetrun stats` CLI's default path, via
+`commands/stats.py:62`) calls `Data.getData([f])[f].mode().iloc[0]` —
+pandas-Series-only chaining (`.mode()`, `.iloc`) applied directly to
+`getData()`'s result. Since `PolarsMagnetData.getData()` returns a
+narwhals-wrapped frame (not pandas), this breaks regardless of what the
+container class itself implements. This is the exact "migrate downstream
+consumers to narwhals API" work `mrun-cache-implementation.plan.md`
+already tracks as a separate, larger item for TDMS (Phase 2, Implementation
+Order step 10) — it turns out to apply to pupitre too, once the switch is
+flipped. `MagnetRun.getDataFrame()` has the same problem in miniature: its
+docstring/type-hint promises `pd.DataFrame` for `DataType.PUPITRE`, which a
+narwhals frame doesn't satisfy.
 
 **Phase B effort:** not scoped as a lump sum — S per method, incremental,
-driven by actual usage.
+driven by actual usage. The downstream-consumer audit above is a distinct,
+unscoped piece of work, not a Phase B method.
 
 ## Testing
 
@@ -201,14 +226,41 @@ driven by actual usage.
    `PolarsMagnetData.fromtxt()` — no changes to `load_magnetdata()` needed
    yet. Validate against real fixtures (reuse the representative samples
    from `tdms-pupitre-polars-findings.md`: 14 real files across 7 housings).
-2. Flip `load_magnetdata()`'s `.txt` branch (only) from
-   `PandasMagnetData.fromtxt()` to `PolarsMagnetData.fromtxt()` once
-   validated — a single one-line change; the `.csv`/`fromcsv()` branch is
-   untouched.
+2. ✅ **Done.** Flipped `load_magnetdata()`'s `.txt` branch (only) from
+   `PandasMagnetData.fromtxt()` to `PolarsMagnetData.fromtxt()`
+   ([magnetdata.py:82-85](../python_magnetrun/magnetdata.py#L82-L85)) — a
+   single one-line change; the `.csv`/`fromcsv()` branch is untouched.
+
+   Running the full suite against the flipped default surfaced **one more
+   real consumer the audit had missed**: `runetl.py::_cleanup_pupitre_icoil()`
+   (called by every `MagnetRun.fromtxt()` via `prepareData()`) does
+   `(df[col] == 0).all()` across *every* column, including `timestamp` —
+   Polars raises `NotImplementedError: Series of type Datetime(...) does
+   not have eq operator` there, where pandas silently returns all-`False`.
+   This is a genuinely different failure *mode* than anything Phase 0's
+   idiom-based grep could catch (`.mean()`/`.all()` exist on both
+   backends — the break is Polars' stricter type-comparison semantics, not
+   a missing method), which is why only a real end-to-end test run caught
+   it. Fixed the same way as everything else: `to_pandas()` at both
+   `getData()` call sites in that function.
+
+   Also surfaced a real, pre-existing test
+   (`tests/test_magnetdata.py::TestRealisticM9Txt::test_extract_threshold_field_20`)
+   exercising `extractDataThreshold()` on pupitre data — genuinely not
+   implemented yet on `PolarsMagnetData` (a Phase B method with no
+   previously-known caller). Implemented it (mirrors `PandasMagnetData`'s
+   `.loc[df[key] >= threshold]` as `self.Data.filter(pl.col(key) >= threshold)`,
+   returning raw Polars like `extractData`/`extractTimeData`).
+
+   Full suite: 1248 passed, 19 skipped, zero failures. Also smoke-tested
+   the real `MagnetRun.fromtxt()` → `getDataFrame()`/`stats()`/`plotData()`
+   chain directly (not just pytest) — confirmed working end-to-end.
 3. **Do not** update `readers/registry.py::CONTAINERS[DataType.PUPITRE]` —
    see integration point 2 above; it can't correctly represent the
    `.txt`-vs-`.csv` split and nothing reads it today regardless.
-4. Phase B methods added incrementally afterward, as needed.
+4. Phase B methods added incrementally afterward, as needed
+   (`extractDataThreshold` now done; `add_field`, `info`/`__repr__`
+   variants still genuinely unexercised).
 
 **Total estimate: Phase A ~1-1.5 weeks, plus incremental Phase B cost spread
 over subsequent work** — smaller and more boundable than the shared-class

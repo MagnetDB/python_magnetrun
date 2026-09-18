@@ -8,6 +8,7 @@ import pandas as pd
 
 from ..magnetdata import load_magnetdata
 from ..magnetdata_base import DataType, MagnetDataBase
+from ..utils.narwhals_compat import to_pandas
 from ..utils.sequence import list_duplicates_of, list_sequence
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ def nplateaus(
             ykey = channel
 
     else:
-        df = Data.getData()
+        df = to_pandas(Data.getData())
         ykey = yField[0]
 
     ysymbol = yField[1]
@@ -206,7 +207,7 @@ def plateaus(
         df = Data.getData([f"{group}/t", yField[0]])
         ykey = channel
     else:
-        df = Data.getData()
+        df = to_pandas(Data.getData())
         ykey = yField[0]
 
     ysymbol = yField[1]
@@ -306,7 +307,7 @@ def plateaus(
         if Data.Type == DataType.PUPITRE:
             from datetime import timedelta
 
-            _t = Data.getData(["t"])["t"]
+            _t = to_pandas(Data.getData(["t"])["t"])
             t0_s = float(_t.iloc[p[0]])
             t1_s = float(_t.iloc[p[1]])
             t0 = Data.start_timestamp + timedelta(seconds=t0_s)

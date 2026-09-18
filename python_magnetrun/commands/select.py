@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 from ..magnetdata_base import DataType
 from ..MagnetRun import MagnetRun
 from ..processing.smoothers import savgol
+from ..utils.narwhals_compat import to_pandas
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ def output_keys(file, inputs, extensions, args):
             file_name += f"_{key.replace('/', '_')}"
     file_name = file_name + "_vs_Time.csv"
 
-    selected_df = mdata.extractData(selected_keys)
+    selected_df = to_pandas(mdata.extractData(selected_keys))
     if selected_df is not None:
         if args.smoother is not None:
             from ..processing.smoothers import (
@@ -124,7 +125,7 @@ def extract_pairkeys(file, inputs, extensions, args):
             key1 = items[0]
             key2 = items[1]
             if mdata is not None:
-                newdf = mdata.extractData([key1, key2])
+                newdf = to_pandas(mdata.extractData([key1, key2]))
                 if newdf is not None:
                     # Remove line with I=0
                     newdf = newdf[newdf[key1] != 0]
@@ -175,7 +176,7 @@ def output_timerange(file, inputs, extensions, args):
         file_name = file_name + "_to" + timerange[1].replace(":", "-").replace(" ", "T") + ".csv"
 
         if mdata.Type == DataType.PUPITRE:
-            selected_df = mdata.extractTimeData(item)
+            selected_df = to_pandas(mdata.extractTimeData(item))
             if selected_df is not None:
                 selected_df.to_csv(file_name, sep="\t", index=False, header=True)
         elif mdata.Type == DataType.TDMS:
@@ -206,7 +207,7 @@ def output_time(file, inputs, extensions, times):
         select_args_str += f"-{item:.3f}s"
 
     if mdata.Type == DataType.PUPITRE:
-        data = mdata.getData()
+        data = to_pandas(mdata.getData())
         df = data[data["t"].isin(times)]
         if mdata.start_timestamp is not None:
             import pandas as pd

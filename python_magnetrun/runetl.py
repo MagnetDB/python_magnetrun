@@ -7,6 +7,7 @@ from typing import Any
 from natsort import natsorted
 
 from .magnetdata_base import DataType, MagnetDataBase
+from .utils.narwhals_compat import to_pandas
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase, cfg) -> None:
 
     assert data.Type == DataType.PUPITRE
 
-    df = data.getData()
+    df = to_pandas(data.getData())
 
     # Never drop the GR1/GR2 reference current columns (e.g. IH/IB), even if
     # all-zero: a magnet running on a single supply reports zeros for the
@@ -55,7 +56,7 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase, cfg) -> None:
     # Resolve duplicate Icoil columns
     Ikeys: list = natsorted([k for k in data.getKeys() if re.match(r"Icoil\d+", k)])
     if len(Ikeys) > 2:
-        ikeys_df = data.getData(Ikeys)
+        ikeys_df = to_pandas(data.getData(Ikeys))
         remove = []
         for i in range(len(Ikeys)):
             for j in range(i + 1, len(Ikeys)):

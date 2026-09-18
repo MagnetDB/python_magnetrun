@@ -592,13 +592,15 @@ class MagnetRun:
             If no :class:`.MagnetDataBase` is associated or the data type is
             not supported.
         """
+        from .utils.narwhals_compat import to_pandas
+
         if self.MagnetData is None:
             raise RuntimeError("MagnetRun.getDataFrame: no MagnetData associated")
         if self.MagnetData.Type == DataType.PUPITRE:
-            return self.MagnetData.getData(downsample=downsample)
+            return to_pandas(self.MagnetData.getData(downsample=downsample))
         elif self.MagnetData.Type == DataType.TDMS:
             return [
-                self.MagnetData.getData(group, downsample=downsample)
+                to_pandas(self.MagnetData.getData(group, downsample=downsample))
                 for group in self.MagnetData.Groups
             ]
         else:

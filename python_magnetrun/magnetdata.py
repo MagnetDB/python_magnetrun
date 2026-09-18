@@ -20,6 +20,7 @@ from .magnetdata_pandas import (
     FeelppMagnetData,
     PandasMagnetData,
 )
+from .magnetdata_polars import PolarsMagnetData
 from .magnetdata_tdms import TdmsMagnetData
 from .utils.validation import FileFormatError
 
@@ -29,6 +30,7 @@ __all__ = [
     "MagnetDataBase",
     "DataType",
     "PandasMagnetData",
+    "PolarsMagnetData",
     "EnsightMagnetData",
     "BProfileMagnetData",
     "FeelppMagnetData",
@@ -48,7 +50,7 @@ def load_magnetdata(
     Dispatches via :func:`~python_magnetrun.readers.registry.detect_type`:
 
     - ``.tdms`` → :class:`TdmsMagnetData`
-    - ``.txt``  → :class:`PandasMagnetData`
+    - ``.txt``  → :class:`PolarsMagnetData`
     - ``.csv``  → :class:`PandasMagnetData`
 
     Parameters
@@ -80,7 +82,7 @@ def load_magnetdata(
     elif data_type == DataType.PUPITRE:
         ext = os.path.splitext(filename)[-1].lower()
         if ext == ".txt":
-            return PandasMagnetData.fromtxt(
+            return PolarsMagnetData.fromtxt(
                 filename, defs_file=defs_file or "pupitre-defs.json"
             )
         return PandasMagnetData.fromcsv(filename, defs_file=defs_file)

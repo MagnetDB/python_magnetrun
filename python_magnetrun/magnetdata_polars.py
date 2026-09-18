@@ -30,13 +30,19 @@ import re
 from datetime import datetime
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import polars as pl
 from natsort import natsorted
 
 from .magnetdata_base import DataType, MagnetDataBase
 from .utils.timestamps import parse_filename_timestamp
-from .utils.timezone import local_to_utc_naive, series_local_to_utc_naive
+from .utils.timezone import (
+    local_to_utc_naive,
+    series_local_to_utc_naive,
+    series_utc_to_local_naive,
+    timerange_to_utc,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -506,7 +512,9 @@ class PolarsMagnetData(MagnetDataBase):
         # comparing a non-numeric (string/datetime) column to 0 raises in
         # Polars, unlike pandas which silently evaluates to all-False.
         numeric_cols = [
-            name for name, dtype in zip(self.Data.columns, self.Data.dtypes) if dtype.is_numeric()
+            name
+            for name, dtype in zip(self.Data.columns, self.Data.dtypes, strict=True)
+            if dtype.is_numeric()
         ]
         zero_cols = [c for c in numeric_cols if bool((self.Data[c] == 0).all())]
         logger.debug(f"zero columns: {natsorted(zero_cols)}")
@@ -828,6 +836,222 @@ class PolarsMagnetData(MagnetDataBase):
             if key not in self.Keys:
                 raise RuntimeError(f"{self.__class__.__name__}.extractData: no {key} key")
         return self.Data.select(keys)
+
+    def extractDataThreshold(  # noqa: N802
+        self, key: str, threshold: float
+    ) -> pl.DataFrame:
+        """Return rows where *key* >= *threshold*.
+
+        Parameters
+        ----------
+        key : str
+            Column name to filter on.
+        threshold : float
+            Minimum value (inclusive).
+
+        Returns
+        -------
+        polars.DataFrame
+            Filtered DataFrame.
+
+        Raises
+        ------
+        RuntimeError
+            If *key* is not present in :attr:`Keys`.
+        """
+        if key not in self.Keys:
+            raise RuntimeError(
+                f"extractData: key={key} - no such keys in dataframe (valid keys are: {self.Keys}"
+            )
+        return self.Data.filter(pl.col(key) >= threshold)
+
+    def extractTimeData(  # noqa: N802
+        self, timerange: str, group: str | None = None, time_zone: str = "Europe/Paris"
+    ) -> pl.DataFrame:
+        """Return rows whose ``timestamp`` falls within *timerange*.
+
+        Parameters
+        ----------
+        timerange : str
+            ``"YYYY-MM-DD HH:MM:SS;YYYY-MM-DD HH:MM:SS"`` in local time (the
+            *time_zone* timezone). Both boundaries are inclusive.
+        group : str, optional
+            Unused; accepted for interface compatibility.
+        time_zone : str
+            IANA timezone of the datetime strings in *timerange* (default
+            ``"Europe/Paris"``).
+
+        Returns
+        -------
+        polars.DataFrame
+            Filtered DataFrame.
+
+        Raises
+        ------
+        RuntimeError
+            If :meth:`addTime` has not been called yet.
+        """
+        if "timestamp" not in self.Keys:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.extractTimeData: call addTime() before extractTimeData()"
+            )
+        logger.debug(f"Select data from {timerange}")
+        t_start, t_end = timerange_to_utc(timerange, time_zone)
+        return self.Data.filter(pl.col("timestamp").is_between(t_start, t_end, closed="both"))
+
+    # --- persist / display -------------------------------------------------
+
+    def saveData(self, keys: list[str], filename: str) -> int:  # noqa: N802
+        """Save selected columns to *filename* as a tab-separated file."""
+        self.Data.select(keys).write_csv(filename, separator="\t", include_header=True)
+        return 0
+
+    def plotData(  # noqa: N802
+        self,
+        x: str,
+        y: str,
+        ax: Any,
+        alpha: float = 1,
+        label: str | None = None,
+        normalize: bool = False,
+        offset: float = 0,
+        time_zone: str = "Europe/Paris",
+        color: str | None = None,
+        marker: str | None = None,
+        linestyle: str | None = None,
+        markevery: int | None = None,
+    ) -> None:
+        """Plot *y* versus *x* on a matplotlib *ax*.
+
+        Unlike :meth:`PandasMagnetData.plotData`, this does not go through
+        pandas' ``DataFrame.plot()`` (Polars has no equivalent) — the line is
+        drawn directly via ``ax.plot()`` on the underlying numpy arrays.
+
+        Parameters
+        ----------
+        x : str
+            X-axis column name; ``"t"`` and ``"timestamp"`` are also accepted.
+        y : str
+            Y-axis column name.
+        ax : matplotlib.axes.Axes
+            Axes object to draw on.
+        alpha : float
+            Line opacity, 0-1 (default ``1``).
+        label : str, optional
+            Legend label; ``None`` uses the column name.
+        normalize : bool
+            Divide *y* by its absolute maximum when ``True``.
+        offset : float
+            Unused (kept for interface compatibility).
+        time_zone : str
+            IANA timezone for local-time display of ``"timestamp"`` x-axis
+            (default ``"Europe/Paris"``).
+        color : str, optional
+            Matplotlib colour string; ``None`` uses the default cycle.
+        marker : str, optional
+            Matplotlib marker string; ``None`` uses no markers.
+        linestyle : str, optional
+            Matplotlib linestyle string; ``None`` uses the default.
+        markevery : int, optional
+            Draw a marker every *n* data points; ``None`` for every point.
+
+        Raises
+        ------
+        RuntimeError
+            If *x* or *y* is not a valid column name.
+        """
+        import matplotlib
+        import matplotlib.pyplot as plt
+
+        logger.info(f"plotData: plotting {y} vs {x} from {self.FileName!r}")
+        matplotlib.rcParams["text.usetex"] = True
+
+        if x not in self.Keys + ["t", "timestamp"]:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.plotData: no x={x} key (valid keys= {self.Keys})"
+            )
+        if y not in self.Keys:
+            raise RuntimeError(
+                f"{self.__class__.__name__}.plotData: no {y} key (valid keys: {self.Keys})"
+            )
+
+        ysymbol, yunit = self.getUnitKey(y)
+
+        if x == "timestamp":
+            x_values = series_utc_to_local_naive(
+                self.Data["timestamp"].to_pandas(), time_zone
+            ).to_numpy()
+        else:
+            x_values = self.Data[x].to_numpy()
+
+        y_values = self.Data[y].to_numpy()
+
+        plot_kwargs: dict = {"alpha": alpha}
+        if color is not None:
+            plot_kwargs["color"] = color
+        if marker is not None:
+            plot_kwargs["marker"] = marker
+        if linestyle is not None:
+            plot_kwargs["linestyle"] = linestyle
+        if markevery is not None:
+            plot_kwargs["markevery"] = markevery
+
+        if normalize:
+            ymax = abs(float(np.nanmax(y_values)))
+            y_values = y_values / ymax
+            plot_kwargs["label"] = f"{label or y} (norm with {ymax:.3e} {yunit:~P})"
+        elif label is not None:
+            plot_kwargs["label"] = label
+
+        ax.plot(x_values, y_values, **plot_kwargs)
+
+        if yunit is not None:
+            logger.info(
+                f"ysymbol={ysymbol}, yunit={yunit:~P}, labeling y-axis accordingly"
+            )
+            plt.ylabel(f"{ysymbol} [{yunit:~P}]")
+
+        xsymbol, xunit = self.getUnitKey(x)
+        if xunit is not None:
+            logger.info(
+                f"plotData: xsymbol={xsymbol}, xunit={xunit:~P}, labeling x-axis accordingly"
+            )
+            plt.xlabel(f"{xsymbol} [{xunit:~P}]")
+
+    def stats(self, key: str | None = None) -> pl.DataFrame | None:
+        """Print descriptive statistics for the dataset.
+
+        Parameters
+        ----------
+        key : str, optional
+            Restrict output to this column; ``None`` describes all columns
+            (result is printed, not returned).
+
+        Returns
+        -------
+        None
+            Statistics are printed to stdout.
+
+        Raises
+        ------
+        RuntimeError
+            If *key* is given but not present in :attr:`Keys`.
+        """
+        from tabulate import tabulate
+
+        logger.info("magnetdata.stats")
+        if key is not None:
+            if key in self.Keys:
+                desc = self.Data[key].describe()
+                logger.info(
+                    tabulate(desc.rows(), headers=desc.columns, tablefmt="psql")
+                )
+            else:
+                raise RuntimeError(f"{self.__class__.__name__}.stats: no {key} key")
+        else:
+            df = self.Data.describe()
+            print(tabulate(df.rows(), headers=df.columns, tablefmt="psql"))
+        return None
 
     # --- construction ------------------------------------------------------
 

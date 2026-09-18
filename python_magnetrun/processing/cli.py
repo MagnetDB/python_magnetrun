@@ -16,6 +16,7 @@ import pandas as pd
 from ..log_utils import SIMPLE_FORMAT, setup_logging
 from ..magnetdata_base import DataType, MagnetDataBase
 from ..MagnetRun import MagnetRun
+from ..utils.narwhals_compat import to_pandas
 
 ##from IPython.display import Image
 ##from IPython.display import display
@@ -263,8 +264,8 @@ def main():
                 start_time = ""
                 if "Date" in dkeys and "Time" in dkeys:
                     tformat = "%Y.%m.%d %H:%M:%S"
-                    start_date = mrun.getMData().getData("Date").iloc[0]
-                    start_time = mrun.getMData().getData("Time").iloc[0]
+                    start_date = to_pandas(mrun.getMData().getData("Date")).iloc[0]
+                    start_time = to_pandas(mrun.getMData().getData("Time")).iloc[0]
 
                 plt.savefig(
                     f"{imagefile}_{start_date}---{start_time}-smoothed-{key}.png",
@@ -390,8 +391,8 @@ def _run(args: "argparse.Namespace") -> int:
                 start_date = ""
                 start_time = ""
                 if "Date" in dkeys and "Time" in dkeys:
-                    start_date = mrun.getMData().getData("Date").iloc[0]
-                    start_time = mrun.getMData().getData("Time").iloc[0]
+                    start_date = to_pandas(mrun.getMData().getData("Date")).iloc[0]
+                    start_time = to_pandas(mrun.getMData().getData("Time")).iloc[0]
                 plt.savefig(f"{imagefile}_{start_date}---{start_time}-smoothed-{key}.png", dpi=300)
             plt.close()
 
