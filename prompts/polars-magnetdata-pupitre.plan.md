@@ -100,6 +100,36 @@ goes through `load_magnetdata()`).
 
 ## Phase A — load + ETL parity (required)
 
+**Status: ✅ Done.** `python_magnetrun/magnetdata_polars.py` implements
+`PolarsMagnetData(MagnetDataBase)` with every method in the table below.
+Validated directly via `PolarsMagnetData.fromtxt()` (no `load_magnetdata()`
+changes, per integration point 1) against real fixtures, including a
+full ETL-chain parity check against `PandasMagnetData` (`Units()` →
+`addTime()` → `cleanupData()` with real housing-config formulas) on both
+`M10_2020.10.23---20_10_41.txt` (clean) and `M9_2019.02.14---23_00_38.txt`
+(malformed header) — identical keys, `np.allclose` on every numeric column.
+30 new tests in `tests/test_magnetdata_polars.py`; full suite (1233 tests)
+passes with zero regressions.
+
+Notable implementation decisions:
+- **`addData`/`computeData` formula grammar**: checked all 5 housing-config
+  JSON files — every real formula is a pure column sum (`"IH = Idcct1 +
+  Idcct2"`, generated voltage sums, etc.), no functions/division/etc. So
+  `addData` uses a small `ast`-based evaluator supporting only `+ - * /`,
+  unary `+ -`, parentheses, columns, and numeric literals — not the full
+  `pandas_builtins` function set (`sqrt`, `sin`, …), which is unused in
+  practice. Add functions there if a real formula ever needs one.
+- **`addTime`'s DST-ambiguity handling**: reused
+  `utils.timezone.series_local_to_utc_naive` (already-vetted pandas logic
+  for DST fall-back edge cases) via a small one-time round-trip through a
+  pandas Series, rather than reimplementing that logic in Polars. Runs
+  once per file, not a hot loop, so the conversion cost is negligible.
+- **`cleanupData`'s all-zero-column check**: restricted to numeric dtypes
+  explicitly (`dtype.is_numeric()`) — comparing a non-numeric column to `0`
+  raises in Polars, unlike pandas which silently evaluates to all-False.
+- **`getData()`** wraps its result with `nw.from_native()` as planned;
+  `narwhals>=1.0` added to the `polars` optional-dependency group.
+
 Scope determined by tracing the actual call chain `MagnetRun.fromtxt` →
 `runetl.prepareData()`:
 

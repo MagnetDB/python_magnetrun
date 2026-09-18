@@ -70,10 +70,11 @@ break immediately:
 
 ### Phase 1b-pupitre — `PolarsMagnetData` for pupitre *(independent of Phase 1+2b-tdms)*
 
-**Status:** 🔶 **In progress** — `PupitreReader`'s polars read path
-(`read_polars()`/`read_stub_polars()`, both robustness fixes plus a third
-found along the way) is done; the `PolarsMagnetData` class itself and the
-`load_magnetdata()` wiring are not started. See
+**Status:** 🔶 **Phase A done** — `PolarsMagnetData(MagnetDataBase)` implemented
+in `magnetdata_polars.py`, validated with full ETL-chain parity against
+`PandasMagnetData` on real fixtures (30 new tests, 1233 total pass). Not
+wired into `load_magnetdata()` yet (deliberately — see integration point 1
+in the sub-plan); Phase B (analysis/plotting methods) not started. See
 [polars-magnetdata-pupitre.plan.md](polars-magnetdata-pupitre.plan.md) for
 current detail.
 

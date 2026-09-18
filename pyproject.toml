@@ -55,6 +55,7 @@ rdp = [
 ]
 polars = [
     "polars>=1.0",
+    "narwhals>=1.0",
 ]
 benchmark = [
     "memray>=1.0",
