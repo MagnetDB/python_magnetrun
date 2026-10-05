@@ -21,14 +21,14 @@
       "formula": "IH = Idcct1 + Idcct2",
       "symbol": "I_H",
       "unit": "ampere",
-      "label": "Upper Coil Current",
+      "label": "Insert Coil Current",
       "description": "Upper coil current sum from DCCT sensors"
     },
     "IB": {
       "formula": "IB = Idcct3 + Idcct4",
       "symbol": "I_B",
       "unit": "ampere",
-      "label": "Lower Coil Current",
+      "label": "Bitter Coil Current",
       "description": "Lower coil current sum from DCCT sensors"
     }
   },

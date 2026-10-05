@@ -156,6 +156,30 @@ python -m python_magnetrun.requests.cli --user your.email@lncmi.cnrs.fr \
     --load-cirrus --cirrus-feed A3
 ```
 
+### Download Cirrus Logs as CSV
+
+`cirrus_logs.py` fetches the rows shown by the "Voir Propre" page
+(`cirrus.php?file=A1/2026-07-27_cirrus_out.log`) from its JSON endpoint
+`cirrus.php?filedata=...` and saves them as CSV (`Date,Time,Message,Type`) to
+`<datadir>/cirrus/<feed>/<date>_cirrus_out.csv`. Existing files are skipped
+unless `--overwrite` is given. Rows identical to a row already seen in the
+same file or a previously loaded one are reported as duplicates; add
+`--drop-duplicates` to remove them before saving.
+
+```bash
+# One or more files (reference or full cirrus.php URL)
+python -m python_magnetrun.requests.cirrus_logs --user your.email@lncmi.cnrs.fr \
+    --datadir ./runlogs A1/2026-07-27_cirrus_out.log
+
+# A date range for one feed
+python -m python_magnetrun.requests.cirrus_logs --user your.email@lncmi.cnrs.fr \
+    --datadir ./runlogs --feed A1 --start 2026-07-01 --end 2026-07-27
+
+# Same, removing duplicate rows
+python -m python_magnetrun.requests.cirrus_logs --user your.email@lncmi.cnrs.fr \
+    --datadir ./runlogs --feed A1 --start 2026-07-01 --end 2026-07-27 --drop-duplicates
+```
+
 ## Logging and Debug
 
 ### Set Log Level
