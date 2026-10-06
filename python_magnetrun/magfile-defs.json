@@ -1,0 +1,344 @@
+{
+  "_comment": "Field definitions for MAGFILE<housing>.conf (magnet parameter files: key=\"value\" lines, '#' comment lines, optional '****' banner block at the top which is NOT a key). Same base format as supervision-bdd-defs.json: {description, symbol, unit, group}. unit is a pint-parseable string or null (dimensionless, flag, code, date). Extra keys: description_fr = original French note from magfile.txt (verbatim, where one exists); unit_status = confirmed | inferred | unknown | n/a; status = active | obsolete | unused | disabled | unknown; target = schema column fed by the key (see PLAN_digital_twin_schema.md, L2); related = channel or table the key relates to; match = regex for indexed key families (one entry per family, aligned with python_magnetrun Stream 3.7 'pattern defs'); index = what the captured number refers to. Values are converted to SI at ingest.",
+
+  "Date": {
+    "description": "Date of calibration / generation of the file (not the start of an experiment)",
+    "description_fr": "Date de l'étalonnage/génération du fichier",
+    "symbol": "date", "unit": null, "unit_status": "n/a", "format": "%d/%m/%Y",
+    "group": "Header", "status": "active",
+    "target": "operating_configurations.source_timestamp"
+  },
+  "Heure": {
+    "description": "Time of calibration / generation of the file",
+    "description_fr": "Heure  de l'étalonnage/génération du fichier",
+    "symbol": "time", "unit": null, "unit_status": "n/a", "format": "%H:%M:%S",
+    "group": "Header", "status": "active",
+    "target": "operating_configurations.source_timestamp"
+  },
+  "NMagnet": {
+    "description": "Housing number (NMagnet=\"9\" means housing M9)",
+    "description_fr": "Numéro d'aimant",
+    "symbol": "N", "unit": null, "unit_status": "n/a",
+    "group": "Header", "status": "active",
+    "target": "operating_configurations.housing"
+  },
+  "MagnetCode": {
+    "description": "Code of the insert (helix) magnet only; the Bitters are implicit. Can be empty or a non-M code (e.g. HL23). To evolve with the new nomenclature",
+    "description_fr": "Code de l'assemblage hélice car à cette époque rien n'existait côté Code unique Hélices + Bitters -> Point à faire évoluer avec la nouvelle nomenclature !",
+    "symbol": "code", "unit": null, "unit_status": "n/a",
+    "group": "Header", "status": "active",
+    "target": "operating_configurations.insert_code"
+  },
+  "Couplage": {
+    "description": "Whether the 2 power supplies of a group are coupled in parallel to reach 33 kA (all housings except M5). No longer used since Basis",
+    "description_fr": "C'est pour les alimentations, savoir si les 2 alimentations sont en couplées en parallèles (tous les aimants sauf M5 !) pour faire 33kA. Depuis Basis ce paramètre n'est plus utilisé.",
+    "symbol": "couplage", "unit": null, "unit_status": "n/a",
+    "group": "Header", "status": "obsolete",
+    "target": "operating_configurations.couplage"
+  },
+  "Type": {
+    "description": "Which power supplies are coupled to which coil. Nearly obsolete: by convention helices are on voltage channels 1-14 and Bitters on 15-16. Still needed for M5 only: Bitter 1 on A1 and Bitter 2 on A2, 15 kA each",
+    "description_fr": "C'est pour savoir quelles alimentations sont couplées sur quelle bobine, ça devient quasi obsolète car aujourd'hui les hélices sont par convention de la voie 1 à la voie 14 et les voies de tension 15 et 16 sont réservées aux bitters. Avant c'était le n'importe quoi, les bitters pouvaient être sur les voies 9 et 10 ou 15 et 16 ou n'importe où etc Seul M5 nécessite encore ce type pour dire que la bitter 1 est sur A1 et la bitter 2 est sur A2 à 15kA chacune.",
+    "symbol": "type", "unit": null, "unit_status": "n/a",
+    "group": "Header", "status": "obsolete",
+    "target": "operating_configurations.type_code"
+  },
+  "NbCoil": {
+    "description": "Number of coil slots. Obsolete since the convention Bitters on voltage channels 15 and 16",
+    "description_fr": "Obsolète depuis qu'on est passé à la convention Bitters connectées sur les voies 15 et 16",
+    "symbol": "N_coil", "unit": null, "unit_status": "n/a",
+    "group": "Header", "status": "obsolete",
+    "target": "operating_configurations.nb_coil"
+  },
+  "PSused": {
+    "description": "Power supplies in use, for failure cases: bitmask, one bit per supply ON/OFF (4 supplies → 0..15)",
+    "description_fr": "Utilisé pour les cas de pannes, c'est du binaire, chaque bit représente l'état ON/OFF d'une alimentation, 4 alim => 4 bits => valeur de 0 à 15.",
+    "symbol": "PS", "unit": null, "unit_status": "n/a",
+    "group": "PowerSupplies", "status": "active",
+    "target": "operating_configurations.ps_used"
+  },
+
+  "Nmaxaimant<n>": {
+    "match": "^Nmaxaimant(\\d+)$", "index": "circuit (tranche) n",
+    "description": "Maximum pump speed for circuit n. Pump law v = 1000 + 2000 (I/Ivar)^2 [rpm] until this cap is reached",
+    "description_fr": "Bride de la vitesse maximale de la pompe (on suit la loi v = 1000 + 2000I/Ivar)² jusqu'à atteindre cette vmax en tours/min) tours par minute",
+    "symbol": "N_max", "unit": "rpm", "unit_status": "confirmed",
+    "group": "Pumps", "status": "active",
+    "target": "config_circuits.n_max_pump",
+    "related": "pupitre Rpm<n>"
+  },
+  "Imax<n>": {
+    "match": "^Imax(\\d+)$", "index": "circuit (tranche) n",
+    "description": "Maximum current on circuit (tranche) n. Data suggest it is per supply in paralleled housings (M9 run reached IH = 29.5 kA with Imax1 = 14.8 kA) — to confirm",
+    "description_fr": "Courant maximal sur l'aimant tranche 1 Ampères",
+    "symbol": "I_max", "unit": "ampere", "unit_status": "confirmed",
+    "group": "PowerSupplies", "status": "active",
+    "target": "config_circuits.i_max"
+  },
+  "dIdtmax": {
+    "description": "Theoretical maximum current ramp rate. Obsolete with the energy-saving (eco) mode: the limit is now dB/dt, roughly 50 A/s × FF in Gauss/s, converted back to A/s per circuit using Ratio",
+    "description_fr": "Vitesse maximale de balayage théorique -> Attention, obsolète avec éco énergie MODE ! La vitesse max est maintenant liée au dB/dt max, en gros on prendre 50A/s x FF ce qui donne une rampe en Gauss/s et on recalcule les vitesses en A/s selon ratio pour respecter la bonne vitesse en Gauss/s Ampères par seconde",
+    "symbol": "dI/dt_max", "unit": "ampere / second", "unit_status": "confirmed",
+    "group": "PowerSupplies", "status": "obsolete",
+    "target": "config_circuits.didt_max"
+  },
+  "Seuil": {
+    "description": "Eco-mode threshold: below it, I_helix = I_bitter × Ratio; above it the currents catch up to reach Imax. See RatioHelixBitter notebook (I(B) computation)",
+    "description_fr": "Seuil pour le mode Eco. On a donc courant hélice = courant bitter x ratio jusqu'à ce seuil à partir duquel on vient rattraper pour arriver aux Imax Ampères",
+    "symbol": "I_seuil", "unit": "ampere", "unit_status": "confirmed",
+    "group": "EcoMode", "status": "active",
+    "target": "config_circuits.seuil",
+    "related": "https://jupyter.lncmi.cnrs.fr/notebooks/Pages/RatioHelixBitter-Copy1.ipynb"
+  },
+  "Ratio": {
+    "description": "Eco-mode ratio: between 0 and Seuil, I_helix = I_bitter × Ratio",
+    "description_fr": "Ratio qui est utilisé pour le mode Eco Entre 0 et Seuil (hélices), on a courant hélice = courant bitter x ratio Sans unité",
+    "symbol": "ratio", "unit": null, "unit_status": "confirmed",
+    "group": "EcoMode", "status": "active",
+    "target": "config_circuits.ratio"
+  },
+  "Ivar": {
+    "description": "Reference current of the pump law v = 1000 + 2000 (I/Ivar)^2, circuit 1",
+    "description_fr": "Utilisé pour la vitesse des pompes dans la formule v = 1000 + 2000x (I/Ivar)² Ampères",
+    "symbol": "I_var", "unit": "ampere", "unit_status": "confirmed",
+    "group": "Pumps", "status": "active",
+    "target": "config_circuits.i_var", "index": "circuit 1"
+  },
+  "Ivar2": {
+    "description": "Reference current of the pump law, circuit 2",
+    "description_fr": "Pareil mais pour la tranche 2",
+    "symbol": "I_var", "unit": "ampere", "unit_status": "confirmed",
+    "group": "Pumps", "status": "active",
+    "target": "config_circuits.i_var", "index": "circuit 2"
+  },
+  "Center position": {
+    "description": "Magnetic centre of the helices (assumed field maximum), from Kévin's field map",
+    "description_fr": "Centre du champ, avec la carte de champ faite par Kévin, on indique ici le centre magnétique des hélices en se disant que le max de champ est ici (bitters + homogènes donc) millimètres",
+    "symbol": "z_c", "unit": "millimeter", "unit_status": "confirmed",
+    "group": "Field", "status": "active",
+    "target": "operating_configurations.center_position"
+  },
+  "FF<n>": {
+    "match": "^FF(\\d+)$", "index": "circuit (tranche) n for n = 1, 2; FF3/FF4 duplicate FF1/FF2 in M9",
+    "description": "Field factor linking B to I. B = FF1·I_circuit1 + FF2·I_circuit2 (checked: M5 10.0 T, M9 34.986 T)",
+    "description_fr": "Field Factor qui lie B à I Gauss/Ampère",
+    "symbol": "FF", "unit": "gauss / ampere", "unit_status": "confirmed",
+    "group": "Field", "status": "active",
+    "target": "config_supply_loads.field_factor"
+  },
+
+  "DeltaIA": {
+    "description": "Power-supply current surveillance: alarm if I_supply > I + DeltaIA",
+    "description_fr": "Surveillance des alims avec des seuils de sécu si I alim > I+ DeltaIA etc on met alarme si > DeltaIU =>défaut.... Ampères",
+    "symbol": "dI_A", "unit": "ampere", "unit_status": "confirmed",
+    "group": "Surveillance_Supplies", "status": "active",
+    "target": "operating_configurations.protection.DeltaIA"
+  },
+  "DeltaIU": {
+    "description": "Power-supply current surveillance: fault threshold",
+    "description_fr": "Ampères",
+    "symbol": "dI_U", "unit": "ampere", "unit_status": "confirmed",
+    "group": "Surveillance_Supplies", "status": "active",
+    "target": "operating_configurations.protection.DeltaIU"
+  },
+  "DeltaIS": {
+    "description": "Power-supply current surveillance: activation flag",
+    "description_fr": "Activation de la surveillance",
+    "symbol": "flag", "unit": null, "unit_status": "n/a",
+    "group": "Surveillance_Supplies", "status": "active",
+    "target": "operating_configurations.protection.DeltaIS"
+  },
+  "DeltaT0": {
+    "description": "Not documented",
+    "symbol": "dT0", "unit": null, "unit_status": "unknown",
+    "group": "Surveillance_Supplies", "status": "unknown",
+    "target": "operating_configurations.protection.DeltaT0"
+  },
+  "CableStop": {
+    "description": "Activation of the surveillance of water-cooled current cables with the flowmeters",
+    "description_fr": "Activation surveillance des câbles de courants refroidit par eau avec les débitmètres.",
+    "symbol": "flag", "unit": null, "unit_status": "n/a",
+    "group": "Surveillance_Cables", "status": "active",
+    "target": "operating_configurations.protection.CableStop"
+  },
+  "Qnom<n>": {
+    "match": "^Qnom(\\d+)$", "index": "circuit (tranche) n",
+    "description": "Nominal flow for flow surveillance, circuit n",
+    "description_fr": "Surveillance du débit litres/secondes",
+    "symbol": "Q_nom", "unit": "liter / second", "unit_status": "confirmed",
+    "group": "Surveillance_Flow", "status": "active",
+    "target": "config_circuits.q_nom",
+    "related": "pupitre Flow<n>"
+  },
+  "DeltaQA": {
+    "description": "Flow surveillance: alarm band (as for supplies)",
+    "description_fr": "Pareil que les alims pour borner la sécu litres/secondes",
+    "symbol": "dQ_A", "unit": "liter / second", "unit_status": "confirmed",
+    "group": "Surveillance_Flow", "status": "active",
+    "target": "operating_configurations.protection.DeltaQA"
+  },
+  "DeltaQU": {
+    "description": "Flow surveillance: fault band",
+    "symbol": "dQ_U", "unit": "liter / second", "unit_status": "confirmed",
+    "group": "Surveillance_Flow", "status": "active",
+    "target": "operating_configurations.protection.DeltaQU"
+  },
+  "DeltaQS": {
+    "description": "Flow surveillance activation. Disabled (0) because the flowmeters are unreliable",
+    "description_fr": "Sécurité désactivée car débitmètres qui déconnent ! => valeur = 0",
+    "symbol": "flag", "unit": null, "unit_status": "n/a",
+    "group": "Surveillance_Flow", "status": "disabled",
+    "target": "operating_configurations.protection.DeltaQS"
+  },
+  "PBnom<n>": {
+    "match": "^PBnom(\\d+)$", "index": "circuit (tranche) n",
+    "description": "Nominal pressure for pressure surveillance, circuit n",
+    "description_fr": "Surveillance de la pression bars",
+    "symbol": "P_nom", "unit": "bar", "unit_status": "confirmed",
+    "group": "Surveillance_Pressure", "status": "active",
+    "target": "config_circuits.pb_nom"
+  },
+  "DeltaPBA": {
+    "description": "Pressure surveillance: alarm band (as for supplies)",
+    "description_fr": "Pareil que les alims pour borner la sécu bars",
+    "symbol": "dP_A", "unit": "bar", "unit_status": "confirmed",
+    "group": "Surveillance_Pressure", "status": "active",
+    "target": "operating_configurations.protection.DeltaPBA"
+  },
+  "DeltaPBU": {
+    "description": "Pressure surveillance: fault band",
+    "description_fr": "bars",
+    "symbol": "dP_U", "unit": "bar", "unit_status": "confirmed",
+    "group": "Surveillance_Pressure", "status": "active",
+    "target": "operating_configurations.protection.DeltaPBU"
+  },
+  "DeltaPBS": {
+    "description": "Pressure surveillance activation flag",
+    "symbol": "flag", "unit": null, "unit_status": "n/a",
+    "group": "Surveillance_Pressure", "status": "active",
+    "target": "operating_configurations.protection.DeltaPBS"
+  },
+  "DeltaPFA": {
+    "description": "Filter pressure-drop surveillance: alarm band. No longer used (filter delta-P sensors not maintained)",
+    "description_fr": "Pour les filtres mais plus utilisé car les deltaP ne sont plus entretenus millibars ? plus utilisé donc je ne sais plus",
+    "symbol": "dPF_A", "unit": "millibar", "unit_status": "inferred",
+    "group": "Surveillance_Filters", "status": "unused",
+    "target": "operating_configurations.protection.DeltaPFA"
+  },
+  "DeltaPFU": {
+    "description": "Filter pressure-drop surveillance: fault band. No longer used",
+    "symbol": "dPF_U", "unit": "millibar", "unit_status": "inferred",
+    "group": "Surveillance_Filters", "status": "unused",
+    "target": "operating_configurations.protection.DeltaPFU"
+  },
+  "DeltaPFS": {
+    "description": "Filter pressure-drop surveillance activation flag. No longer used",
+    "symbol": "flag", "unit": null, "unit_status": "n/a",
+    "group": "Surveillance_Filters", "status": "unused",
+    "target": "operating_configurations.protection.DeltaPFS"
+  },
+
+  "AR<n>": {
+    "match": "^AR(\\d+)$", "index": "supply slot n (1..4)",
+    "description": "Load resistance. No longer used",
+    "description_fr": "Tout cela n'est plus utilisé",
+    "symbol": "R_load", "unit": null, "unit_status": "unknown",
+    "group": "Loads", "status": "unused",
+    "target": "config_supply_loads.load_r"
+  },
+  "AL<n>": {
+    "match": "^AL(\\d+)$", "index": "supply slot n (1..4)",
+    "description": "Load inductance. No longer used",
+    "description_fr": "Jusqu'ici ce n'est plus utilisé",
+    "symbol": "L_load", "unit": null, "unit_status": "unknown",
+    "group": "Loads", "status": "unused",
+    "target": "config_supply_loads.load_l"
+  },
+
+  "r0_coil<i>": {
+    "match": "^r0_coil(\\d+)$", "index": "coil slot i (Ucoil<i>); r0 = a0 = b0 = 0 means the coil does not exist",
+    "description": "Constant term of the section resistance R(I) = r0 + a0·I + b0·I^2",
+    "description_fr": "r0 + a0 *I + b0 *I²",
+    "symbol": "r0", "unit": "milliohm", "unit_status": "inferred",
+    "unit_note": "inferred from data: M5 polynomial 25.5 / 19.8 mΩ vs measured U/I 27.4 / 20.9 mΩ (warm coils)",
+    "group": "Coils_Resistance", "status": "active",
+    "target": "config_sections.r0",
+    "related": "pupitre Ucoil<i>/Icoil<i>"
+  },
+  "a0_coil<i>": {
+    "match": "^a0_coil(\\d+)$", "index": "coil slot i",
+    "description": "Linear term of the section resistance R(I) = r0 + a0·I + b0·I^2",
+    "symbol": "a0", "unit": "milliohm / ampere", "unit_status": "inferred",
+    "group": "Coils_Resistance", "status": "active",
+    "target": "config_sections.a0"
+  },
+  "b0_coil<i>": {
+    "match": "^b0_coil(\\d+)$", "index": "coil slot i",
+    "description": "Quadratic term of the section resistance R(I) = r0 + a0·I + b0·I^2",
+    "symbol": "b0", "unit": "milliohm / ampere ** 2", "unit_status": "inferred",
+    "group": "Coils_Resistance", "status": "active",
+    "target": "config_sections.b0"
+  },
+  "ar_coil<i>": {
+    "match": "^ar_coil(\\d+)$", "index": "coil slot i",
+    "description": "Alarm threshold on the resistance deviation",
+    "description_fr": "seuil alarme delta résistance en %",
+    "symbol": "dR_A", "unit": "percent", "unit_status": "confirmed",
+    "group": "Coils_Protection", "status": "active",
+    "target": "config_sections.protection.ar",
+    "related": "pupitre DRcoil<i>"
+  },
+  "dr_coil<i>": {
+    "match": "^dr_coil(\\d+)$", "index": "coil slot i",
+    "description": "Fault threshold on the resistance deviation",
+    "description_fr": "seuil défaut",
+    "symbol": "dR_U", "unit": "percent", "unit_status": "confirmed",
+    "group": "Coils_Protection", "status": "active",
+    "target": "config_sections.protection.dr",
+    "related": "pupitre DRcoil<i>"
+  },
+  "at_coil<i>": {
+    "match": "^at_coil(\\d+)$", "index": "coil slot i",
+    "description": "Alarm threshold on the coil temperature",
+    "description_fr": "seuil alarme température degrés celcius",
+    "symbol": "T_A", "unit": "degC", "unit_status": "confirmed",
+    "group": "Coils_Protection", "status": "active",
+    "target": "config_sections.protection.at",
+    "related": "pupitre Tcal<i>"
+  },
+  "dt_coil<i>": {
+    "match": "^dt_coil(\\d+)$", "index": "coil slot i",
+    "description": "Fault threshold on the coil temperature",
+    "description_fr": "seuil défaut température  degrés celcius",
+    "symbol": "T_U", "unit": "degC", "unit_status": "confirmed",
+    "group": "Coils_Protection", "status": "active",
+    "target": "config_sections.protection.dt",
+    "related": "pupitre Tcal<i>"
+  },
+  "ct<i>": {
+    "match": "^ct(\\d+)$", "index": "coil slot i",
+    "description": "Temperature coefficient of the section (global alpha of the 2 helices of a pair). Rarely updated, so often wrong; cross-checked against materials.alpha (the reference)",
+    "description_fr": "coefficient de température, rarement mis à jour donc souvent faux !",
+    "symbol": "alpha", "unit": "1 / kelvin", "unit_status": "confirmed",
+    "group": "Coils_Resistance", "status": "active",
+    "target": "config_sections.protection.ct",
+    "related": "materials.alpha"
+  },
+  "G<i>": {
+    "match": "^G(\\d+)$", "index": "coil slot i",
+    "description": "Gain of the signal-conditioning drawer bringing magnet voltages to 0/10 V for the voltage acquisition boards",
+    "description_fr": "Gain utilisé par le tiroire de conditionnement pour rammener les tensions aimants en 0/10V pour les cartes d'acquisition de tension",
+    "symbol": "G", "unit": null, "unit_status": "n/a",
+    "group": "Coils_Acquisition", "status": "active",
+    "target": "config_sections.protection.G",
+    "related": "pupitre Ucoil<i>"
+  },
+  "H<i>": {
+    "match": "^H(\\d+)$", "index": "coil slot i",
+    "description": "Rough inductance value found by experimental trial and error",
+    "description_fr": "Valeur à la louche de l'inductance trouvé par tatonnement expérimental...",
+    "symbol": "L", "unit": "millihenry", "unit_status": "inferred",
+    "group": "Coils_Inductance", "status": "active",
+    "target": "config_sections.protection.H"
+  }
+}

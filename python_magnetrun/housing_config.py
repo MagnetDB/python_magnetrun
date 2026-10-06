@@ -50,7 +50,6 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import importlib.resources
 import json
 import logging
 from dataclasses import dataclass, field
@@ -60,17 +59,31 @@ logger = logging.getLogger(__name__)
 
 _USER_CONFIG_DIR = Path.home() / ".config" / "magnetrun"
 
+# Bundled JSON files live next to this module. Resolved from __file__ rather
+# than importlib.resources.files("python_magnetrun"): the latter points to the
+# wrong directory when a plain ``python_magnetrun/`` folder in the current
+# directory is picked up as a namespace package (e.g. a git submodule root).
+_PACKAGE_DIR = Path(__file__).resolve().parent
+
 
 def get_bundled_housing_config_path(housing: str) -> Path:
     """Return the path to the bundled ``<Housing>-housing-config.json`` template.
 
-    Uses :mod:`importlib.resources` so it works correctly after installation.
     The bundled file is read-only — use :func:`get_user_housing_config_path` to
     obtain a writable user-local copy.
+
+    Parameters
+    ----------
+    housing : str
+        Housing name, e.g. ``"M9"``.
+
+    Returns
+    -------
+    Path
+        Path of the bundled file inside the package directory (it may not
+        exist if no config is bundled for *housing*).
     """
-    filename = f"{housing}-housing-config.json"
-    ref = importlib.resources.files("python_magnetrun") / filename
-    return Path(str(ref))
+    return _PACKAGE_DIR / f"{housing}-housing-config.json"
 
 
 def get_user_housing_config_path(housing: str) -> Path:
@@ -543,11 +556,8 @@ def show_housing_config(config: HousingConfig) -> None:
 def _load_bundled_configs() -> dict[str, HousingConfig]:
     """Load all ``*-housing-config.json`` files bundled with the package."""
     configs: dict[str, HousingConfig] = {}
-    pkg = importlib.resources.files("python_magnetrun")
-    for entry in pkg.iterdir():
+    for entry in sorted(_PACKAGE_DIR.glob("*-housing-config.json")):
         name = entry.name
-        if not name.endswith("-housing-config.json"):
-            continue
         try:
             with entry.open("r", encoding="utf-8") as fh:
                 d = json.load(fh)

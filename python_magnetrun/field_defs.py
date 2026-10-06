@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import argparse
 import functools
-import importlib.resources
 import json
 import logging
 import re
@@ -46,15 +45,14 @@ logger = logging.getLogger(__name__)
 
 _USER_CONFIG_DIR = Path.home() / ".config" / "magnetrun"
 
+# Resolved from __file__, not importlib.resources: see the same note in
+# housing_config.py (namespace-package shadowing from a submodule root).
+_PACKAGE_DIR = Path(__file__).resolve().parent
+
 
 def _bundled_defs_path(filename: str) -> Path:
-    """Return the path to a ``*-defs.json`` file bundled with the package.
-
-    Uses :mod:`importlib.resources` so it works correctly after installation
-    (including inside zip/wheel distributions).
-    """
-    ref = importlib.resources.files("python_magnetrun") / filename
-    return Path(str(ref))
+    """Return the path to a ``*-defs.json`` file bundled next to this module."""
+    return _PACKAGE_DIR / filename
 
 
 def resolve_defs_file(
