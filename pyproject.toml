@@ -144,6 +144,10 @@ target-version = "py311"
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "BLE"]
 ignore = ["E501", "W293", "F841"]
 
+[tool.bandit]
+exclude_dirs = ["tests", "examples", "notebooks", "marimo", "docs", "rustfs", "python_magnetcooling"]
+skips = ["B101"]  # assert_used
+
 [tool.mypy]
 python_version = "3.11"
 disallow_untyped_defs = true
