@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 from abc import ABC, abstractmethod
 from datetime import datetime
 from enum import IntEnum
@@ -57,6 +58,7 @@ class DataType(IntEnum):
 
 
 _ureg = None
+_ureg_lock = threading.Lock()
 
 
 def _make_ureg():  # type: ignore[return]
@@ -71,22 +73,29 @@ def _make_ureg():  # type: ignore[return]
     if _ureg is not None:
         return _ureg
 
-    from pint import UnitRegistry
-    from pint.errors import UndefinedUnitError
+    # Building a UnitRegistry is slow: without the lock, threads that
+    # call this concurrently on a cold start (e.g. parallel Dash callbacks)
+    # each build and return their own registry.
+    with _ureg_lock:
+        if _ureg is not None:
+            return _ureg
 
-    ureg = UnitRegistry()
-    for defn, unit in [
-        ("percent = 1 / 100 = %", "percent"),
-        ("ppm = 1e-6 = ppm", "ppm"),
-        ("var = 1", "var"),
-        ("vad = 1", "vad"),
-    ]:
-        try:
-            ureg.parse_units(unit)
-        except UndefinedUnitError:
-            ureg.define(defn)
-    _ureg = ureg
-    return _ureg
+        from pint import UnitRegistry
+        from pint.errors import UndefinedUnitError
+
+        ureg = UnitRegistry()
+        for defn, unit in [
+            ("percent = 1 / 100 = %", "percent"),
+            ("ppm = 1e-6 = ppm", "ppm"),
+            ("var = 1", "var"),
+            ("vad = 1", "vad"),
+        ]:
+            try:
+                ureg.parse_units(unit)
+            except UndefinedUnitError:
+                ureg.define(defn)
+        _ureg = ureg
+        return _ureg
 
 
 class MagnetDataBase(ABC):
