@@ -253,6 +253,7 @@ def _load_records(input_files, config, parsed_args, housing, logger):
                             "default": ", ".join(s.default),
                             "trigger": ", ".join(s.trigger),
                             "spike": ", ".join(s.spike),
+                            "stats": ", ".join(s.stats),
                             "hybrid_kHz": ", ".join(s.hybrid_kHz),
                             "hybrid_rms": ", ".join(s.hybrid_rms),
                             "hybrid_trigger": ", ".join(s.hybrid_trigger),
@@ -286,7 +287,7 @@ def _load_records(input_files, config, parsed_args, housing, logger):
 
         list_cols = [
             "overview", "archive", "pupitre",
-            "default", "trigger", "spike",
+            "default", "trigger", "spike", "stats",
             "hybrid_kHz", "hybrid_rms", "hybrid_trigger", "hybrid_vprocess",
             "pigbrother_runlog", "pupitre_runlog",
         ]
