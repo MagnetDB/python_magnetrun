@@ -384,6 +384,41 @@ class TestPiecewiseLinearApproximation:
 
 
 # ---------------------------------------------------------------------------
+# trends.py — trends() on a PolarsMagnetData (via Signature.from_mdata)
+# ---------------------------------------------------------------------------
+
+
+def test_signature_from_polars_pupitre_data() -> None:
+    from python_magnetrun.magnetdata import load_magnetdata
+    from python_magnetrun.signature import Signature
+
+    mdata = load_magnetdata(str(SAMPLE_TXT))
+    mdata.addTime()
+    mdata.Units()
+
+    signature = Signature.from_mdata(mdata, "Field", "t", 1.0e-3)
+
+    assert signature.to_dict()
+
+
+def test_trends_on_tdms_data() -> None:
+    import polars as pl
+
+    from python_magnetrun.magnetdata_tdms import TdmsMagnetData
+    from python_magnetrun.processing.trends import trends
+
+    # flat (20 samples) -> ramp (20) -> flat (20), sampled every 0.5 s
+    channel = np.concatenate([np.zeros(20), np.linspace(0.0, 100.0, 20), np.full(20, 100.0)])
+    groups = {"GrpX": {"ChA": {"wf_increment": 0.5, "wf_start_offset": 0.0, "wf_samples": 60}}}
+    mdata = TdmsMagnetData("test.tdms", groups, ["GrpX/ChA"], {"GrpX": pl.DataFrame({"ChA": channel})})
+    mdata.getUnitKey = lambda _key: ("ChA", None)
+
+    _, _, times, _, _ = trends(mdata, "t", "GrpX/ChA", threshold=1.0e-3)
+
+    assert list(times) == pytest.approx([0.0, 10.0, 19.5])
+
+
+# ---------------------------------------------------------------------------
 # stats.py
 # ---------------------------------------------------------------------------
 
