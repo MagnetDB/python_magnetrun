@@ -21,11 +21,16 @@ export
              The file is created if it does not exist.
              Existing tables are replaced (``CREATE OR REPLACE``).
 
+    ``--sort-time asc|desc`` orders rows by ``--time-field`` (or the first
+    TIMESTAMP column of each table); tables without one are left unsorted.
+
 view
     Query a MySQL table (or custom SQL) once and render the result as a
     styled table in the terminal using ``rich``.  Use ``--table`` or
     ``--query``, optionally filtered with ``--where``.  ``--limit`` caps
     the number of rows returned (default: 200; use ``--limit 0`` for all rows).
+    ``--sort-time asc|desc`` orders rows by ``--x-field`` (or the first
+    TIMESTAMP column) before the limit is applied; ignored with ``--query``.
 
 plot
     Query a MySQL table (or custom SQL) once and display all selected data as
@@ -128,6 +133,7 @@ Usage
 
     # View most recent 50 rows of measurements as a table
     python mysql_connect.py --mode view --table measurements --limit 50 \\
+        --sort-time desc \\
         --host myhost --user myuser --password mypw --database mydb
 
     # View all rows matching a filter, no row cap
@@ -316,6 +322,16 @@ def _auto_x_field(cols: Sequence[tuple[str, Any]]) -> str | None:
     return None
 
 
+def _time_sort_column(
+    con: duckdb.DuckDBPyConnection, table: str, override: str | None
+) -> str | None:
+    """Return *override* if it is a column of *table*, else the first TIMESTAMP column (or None)."""
+    cols = [(c[0], c[1]) for c in describe_table(con, table)]
+    if override:
+        return override if override in [name for name, _ in cols] else None
+    return _auto_x_field(cols)
+
+
 def list_numeric_columns(
     con: duckdb.DuckDBPyConnection, table: str
 ) -> list[tuple[str, str]]:
@@ -502,6 +518,17 @@ def mode_export(args: argparse.Namespace) -> None:
         else:
             select_sql = f"SELECT * FROM mysqldb.{table}"
 
+        if args.sort_time:
+            sort_col = _time_sort_column(con, table, time_field)
+            if sort_col:
+                select_sql += f" ORDER BY {sort_col} {args.sort_time.upper()}"
+            else:
+                print(
+                    f"Warning: no timestamp column in '{table}'; "
+                    "--sort-time ignored, rows left unsorted.",
+                    file=sys.stderr,
+                )
+
         if args.verbose:
             print(f"  SQL: {select_sql}")
 
@@ -549,8 +576,10 @@ def mode_export(args: argparse.Namespace) -> None:
 def mode_view(args: argparse.Namespace) -> None:
     """Display query results as a rich table in the terminal.
 
-    Uses ``--table`` / ``--query``, ``--fields``, ``--where``, and ``--limit``
-    from the CLI.  ``--limit 0`` means no row cap (show everything).
+    Uses ``--table`` / ``--query``, ``--fields``, ``--where``, ``--limit``
+    and ``--sort-time`` from the CLI.  ``--limit 0`` means no row cap (show
+    everything).  ``--sort-time`` orders by ``--x-field`` or, if omitted, the
+    first TIMESTAMP column; it is ignored with ``--query``.
     """
     try:
         from rich.console import Console
@@ -569,11 +598,27 @@ def mode_view(args: argparse.Namespace) -> None:
 
     if args.query:
         sql = args.query
+        if args.sort_time:
+            print(
+                "Warning: --sort-time is ignored with --query; "
+                "add ORDER BY to your SQL instead.",
+                file=sys.stderr,
+            )
     else:
         field_list = ", ".join(args.fields) if args.fields else "*"
         sql = f"SELECT {field_list} FROM mysqldb.{args.table}"
         if args.where:
             sql += f" WHERE {args.where}"
+        if args.sort_time:
+            sort_col = _time_sort_column(con, args.table, args.x_field)
+            if sort_col:
+                sql += f" ORDER BY {sort_col} {args.sort_time.upper()}"
+            else:
+                print(
+                    f"Warning: no timestamp column in '{args.table}'; "
+                    "--sort-time ignored, rows left unsorted.",
+                    file=sys.stderr,
+                )
         view_limit = args.limit if args.limit is not None else 200
         if view_limit > 0:
             sql += f" LIMIT {view_limit}"
@@ -2447,6 +2492,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         dest="list_databases",
         help="list all databases on MYSQL_HOST and exit (--database is not required)",
+    )
+    parser.add_argument(
+        "--sort-time",
+        choices=["asc", "desc"],
+        default=None,
+        dest="sort_time",
+        help=(
+            "--mode view/export only: sort rows by a timestamp column "
+            "(--x-field for view, --time-field for export, else the first "
+            "TIMESTAMP column); tables without one are left unsorted"
+        ),
     )
 
     # Connection parameters

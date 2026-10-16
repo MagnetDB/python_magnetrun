@@ -446,6 +446,7 @@ python mysql_connect.py --mode export --format duckdb \
 
 # View the most recent 50 rows of a table in the terminal
 python mysql_connect.py --mode view --table measurements --limit 50 \
+    --sort-time desc \
     --host myhost --user myuser --password mypw --database mydb
 
 # One-shot static chart (matplotlib)
@@ -506,6 +507,7 @@ python mysql_connect.py --mode poll \
 | `--time-field` | auto | TIMESTAMP column for `--start`/`--end` filtering |
 | `--start` | — | Start of time range, ISO 8601 |
 | `--end` | — | End of time range, ISO 8601 |
+| `--sort-time` | — | `asc` or `desc`: sort rows by `--time-field` (or first TIMESTAMP column). Also applies to `--mode view` (uses `--x-field`); ignored with `--query`. Tables without a timestamp column are left unsorted |
 
 **Poll/plot arguments:**
 
