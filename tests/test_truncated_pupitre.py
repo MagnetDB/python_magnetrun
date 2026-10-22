@@ -200,6 +200,28 @@ class TestStaleDiskTail:
         assert mdata.truncated is True
 
     @_BACKENDS
+    def test_binary_tail_dropped(self, tmp_path: Path, backend) -> None:
+        """Stale disk data that is not text (invalid UTF-8) after the NUL padding.
+
+        Modelled on M10 "2020.10.13 - 11:38:15.txt": the file cannot be decoded
+        as UTF-8 at all, so the tail is cut before parsing. The valid part is
+        longer than the 8 KB that ``_open_text_with_fallback`` probes, as in the
+        real file, so the Latin-1 fallback does not apply.
+        """
+        f = tmp_path / "2024.12.05 - 12:00:00.txt"
+        rows = [
+            _tab_row("2024.12.05", f"12:{i // 60:02d}:{i % 60:02d}", 20.0 + i / 1000)
+            for i in range(400)
+        ]
+        binary = b"\x00" * 64 + b"o\x9e\xf7\xefi\xaa9r\t\x9c\x8d+D6\n\xeb]\xde<\xef\x19H\n\x13J\x92"
+        f.write_bytes((_TAB_PARAMS + _TAB_HEADER + "".join(rows)).encode("utf-8") + binary)
+        mdata = backend.fromtxt(str(f))
+        assert len(mdata.Data) == len(rows)
+        assert float(mdata.Data["Field"].max()) == pytest.approx(20.399)
+        assert mdata.rows_dropped == 3
+        assert mdata.truncated is True
+
+    @_BACKENDS
     def test_old_rows_without_nul_line_dropped(self, tmp_path: Path, backend) -> None:
         """A backward jump of more than 1 h cuts the file even without a broken line."""
         f = tmp_path / "2024.12.05 - 12:15:30.txt"

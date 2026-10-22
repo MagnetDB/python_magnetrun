@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -71,14 +72,37 @@ class PupitreReader:
         pd.DataFrame
             Single-row DataFrame used for key discovery.
         """
-        with _open_text_with_fallback(path) as f:
-            return pd.read_csv(
-                f,
-                sep=self.sep,
-                skiprows=self.skip_rows,
-                on_bad_lines=self.on_bad_lines,
-                nrows=1,
-            )
+        return self.read_csv_decoded(path, **self.read_kwargs(), nrows=1)[0]
+
+    def read_csv_decoded(self, path: Path, **kwargs) -> tuple[pd.DataFrame, int]:
+        """Run :func:`pandas.read_csv` on *path*, cutting a binary tail if needed.
+
+        The file is opened with the Latin-1 fallback of
+        ``_open_text_with_fallback``, which only probes the start of the file;
+        if decoding still fails further on, only the lines before the first
+        one holding a NUL byte or invalid UTF-8 are parsed (see
+        :meth:`read_valid_prefix`).
+
+        Parameters
+        ----------
+        path : Path
+            Pupitre ``.txt`` file.
+        **kwargs
+            Keyword arguments for :func:`pandas.read_csv`.
+
+        Returns
+        -------
+        pd.DataFrame
+            Parsed data.
+        int
+            Number of lines cut before parsing (``0`` when decoding succeeded).
+        """
+        try:
+            with _open_text_with_fallback(path) as f:
+                return pd.read_csv(f, **kwargs), 0
+        except UnicodeDecodeError:
+            data, n_cut = self.read_valid_prefix(path)
+            return pd.read_csv(io.StringIO(data.decode("utf-8")), **kwargs), n_cut
 
     def read_kwargs(self) -> dict:
         """Return ``pd.read_csv`` kwargs stored on the container for lazy loading.
@@ -118,7 +142,9 @@ class PupitreReader:
             header_line = f.readline()
         return re.split(self.sep, header_line.strip())
 
-    def _read_polars_impl(self, path: Path, n_rows: int | None = None) -> pl.DataFrame:
+    def _read_polars_impl(
+        self, path: Path, n_rows: int | None = None, data: bytes | None = None
+    ) -> pl.DataFrame:
         """Read *path* as a Polars DataFrame, optionally limited to *n_rows*.
 
         The header row is parsed separately (see ``_parse_header``) and the
@@ -142,6 +168,9 @@ class PupitreReader:
             Pupitre ``.txt`` file.
         n_rows : int, optional
             Maximum number of data rows to read.
+        data : bytes, optional
+            File content to parse instead of reading *path* (see
+            :meth:`read_valid_prefix`); the header is still read from *path*.
 
         Returns
         -------
@@ -153,7 +182,7 @@ class PupitreReader:
         columns = self._parse_header(path)
         try:
             df = pl.read_csv(
-                path,
+                path if data is None else data,
                 separator="\t",
                 skip_rows=self.skip_rows + 1,
                 has_header=False,
@@ -200,10 +229,56 @@ class PupitreReader:
         """
         from ..utils.validation import count_valid_pupitre_rows
 
-        df = self._read_polars_impl(path)
+        df, n_cut = self._read_polars_decoded(path)
         n_valid = count_valid_pupitre_rows(df["Date"], df["Time"])
-        self.rows_dropped = df.height - n_valid
+        self.rows_dropped = n_cut + df.height - n_valid
         return df.head(n_valid)
+
+    def _read_polars_decoded(
+        self, path: Path, n_rows: int | None = None
+    ) -> tuple[pl.DataFrame, int]:
+        """``_read_polars_impl``, retried on the valid prefix if UTF-8 decoding fails; also returns the lines cut."""
+        import polars as pl
+
+        try:
+            return self._read_polars_impl(path, n_rows=n_rows), 0
+        except pl.exceptions.ComputeError as exc:
+            if "utf-8" not in str(exc):
+                raise
+        data, n_cut = self.read_valid_prefix(path)
+        return self._read_polars_impl(path, n_rows=n_rows, data=data), n_cut
+
+    def read_valid_prefix(self, path: Path) -> tuple[bytes, int]:
+        """Read the file up to the first line holding a NUL byte or invalid UTF-8.
+
+        Used when a full read fails to decode: a crash can leave the end of
+        the file as NUL padding followed by binary data from older disk
+        blocks.
+
+        Parameters
+        ----------
+        path : Path
+            Pupitre ``.txt`` file.
+
+        Returns
+        -------
+        bytes
+            The lines before the first bad one, each ending with ``\\n``.
+        int
+            Number of lines cut, the bad one included.
+        """
+        with open(path, "rb") as f:
+            lines = f.read().split(b"\n")
+        for i, line in enumerate(lines):
+            if b"\x00" in line:
+                break
+            try:
+                line.decode("utf-8")
+            except UnicodeDecodeError:
+                break
+        else:
+            return b"\n".join(lines), 0
+        return b"\n".join(lines[:i]) + b"\n", len(lines) - i
 
     def read_stub_polars(self, path: Path) -> pl.DataFrame:
         """Read first data row only as a Polars DataFrame.
@@ -219,7 +294,7 @@ class PupitreReader:
             Single-row (or empty, for header-only files) DataFrame used for
             key discovery.
         """
-        return self._read_polars_impl(path, n_rows=1)
+        return self._read_polars_decoded(path, n_rows=1)[0]
 
     def validate(self, path: Path) -> bool:
         """Validate a pupitre ``.txt`` file.

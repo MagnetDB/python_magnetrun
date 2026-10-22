@@ -17,7 +17,6 @@ import pandas as pd
 from natsort import natsorted
 
 from .magnetdata_base import DataType, MagnetDataBase
-from .utils.files import _open_text_with_fallback
 from .utils.timestamps import parse_filename_timestamp
 from .utils.timezone import (
     local_to_utc_naive,
@@ -136,12 +135,12 @@ class PandasMagnetData(MagnetDataBase):
             return
         if not self._read_kwargs:
             return
-        with _open_text_with_fallback(self.FileName) as f:
-            df = pd.read_csv(f, **self._read_kwargs)
+        from .readers.csv_readers import PupitreReader
         from .utils.validation import FileFormatError, count_valid_pupitre_rows
 
+        df, n_cut = PupitreReader().read_csv_decoded(self.FileName, **self._read_kwargs)
         n_valid = count_valid_pupitre_rows(df["Date"], df["Time"])
-        self._rows_dropped = len(df) - n_valid
+        self._rows_dropped = n_cut + len(df) - n_valid
         if self._rows_dropped:
             logger.warning(
                 "%s: dropped %d rows from the first corrupt timestamp on",
