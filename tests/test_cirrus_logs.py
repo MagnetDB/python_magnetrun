@@ -11,7 +11,8 @@ from python_magnetrun.requests.cirrus_logs import (
     find_duplicates,
     load_cirrus_log,
     normalize_file,
-    save_cirrus_log,
+    save_day,
+    split_by_day,
 )
 
 BASE_URL = "https://srv-data-install.lncmi.cnrs.fr/"
@@ -102,34 +103,47 @@ def test_load_cirrus_log_not_json():
         load_cirrus_log(session, BASE_URL, "A1/2026-07-27_cirrus_out.log")
 
 
-def test_save_cirrus_log(tmp_path):
-    session = FakeSession(FakeResponse(PAGES_URL + "cirrus.php", payload={"data": ROWS}))
+def test_load_cirrus_log_as_str():
+    rows = [{"date": "2026-07-27 08:00:01", "time": 9.72, "message": "Marche", "type": 7}]
+    session = FakeSession(FakeResponse(PAGES_URL + "cirrus.php", payload={"data": rows}))
     df = load_cirrus_log(session, BASE_URL, "A1/2026-07-27_cirrus_out.log")
+    assert df.loc[0, "Type"] == "7"
+    assert df.loc[0, "Time"] == "9.72"
 
-    path = save_cirrus_log(df, "A1/2026-07-27_cirrus_out.log", tmp_path)
-    assert path == tmp_path / "cirrus" / "A1" / "2026-07-27_cirrus_out.csv"
+
+def test_save_day_new_file(tmp_path):
+    added = save_day(_df(ROWS), "A1", date(2026, 7, 27), tmp_path)
+    path = tmp_path / "cirrus" / "A1" / "2026-07-27_cirrus_out.csv"
+    assert added == 2
 
     lines = path.read_text().splitlines()
     assert lines[0] == '"Date","Time","Message","Type"'
     with path.open(newline="") as f:
         rows = list(csv.DictReader(f))
-    assert rows[1]["Message"] == 'Defaut "T"'
     assert rows[0]["Message"] == "Marche, redresseur"
+    assert rows[1]["Message"] == 'Defaut "T"'
 
 
-def test_save_cirrus_log_no_overwrite(tmp_path):
-    target = tmp_path / "cirrus" / "A1" / "2026-07-27_cirrus_out.csv"
-    target.parent.mkdir(parents=True)
-    target.write_text("old")
+def test_save_day_merge(tmp_path):
+    first = {"date": "2026-07-27 08:00:01.000000", "time": "9.72", "message": "a", "type": "7"}
+    second = {"date": "2026-07-27 08:05:12.000000", "time": "320.8", "message": "b", "type": "7"}
+    save_day(_df([second]), "A1", date(2026, 7, 27), tmp_path)
+    added = save_day(_df([first, second]), "A1", date(2026, 7, 27), tmp_path)
+    assert added == 1
 
-    session = FakeSession(FakeResponse(PAGES_URL + "cirrus.php", payload={"data": ROWS}))
-    df = load_cirrus_log(session, BASE_URL, "A1/2026-07-27_cirrus_out.log")
+    path = tmp_path / "cirrus" / "A1" / "2026-07-27_cirrus_out.csv"
+    with path.open(newline="") as f:
+        rows = list(csv.DictReader(f))
+    # existing row kept, missing row added, sorted by Date
+    assert [r["Message"] for r in rows] == ["a", "b"]
 
-    assert save_cirrus_log(df, "A1/2026-07-27_cirrus_out.log", tmp_path) is None
-    assert target.read_text() == "old"
 
-    assert save_cirrus_log(df, "A1/2026-07-27_cirrus_out.log", tmp_path, overwrite=True) == target
-    assert target.read_text() != "old"
+def test_save_day_idempotent(tmp_path):
+    save_day(_df(ROWS), "A1", date(2026, 7, 27), tmp_path)
+    path = tmp_path / "cirrus" / "A1" / "2026-07-27_cirrus_out.csv"
+    before = path.read_text()
+    assert save_day(_df(ROWS), "A1", date(2026, 7, 27), tmp_path) == 0
+    assert path.read_text() == before
 
 
 def _df(rows):
@@ -140,22 +154,99 @@ def _df(rows):
     )
 
 
+def _row(date_, time_, message, type_="5"):
+    return {"date": date_, "time": time_, "message": message, "type": type_}
+
+
+# parameter dump: the KI/KP line is a continuation row (empty Time and Type)
+# sharing the Date of the message it follows
+DUMP = [
+    _row("2026-07-22 09:19:23.893318", "573267.653168895", "les nouveaux parametres pour reg 0 sont :"),
+    _row("2026-07-22 09:19:23.893318", "", " KI : 2.000000\tKP : 4.000000 \n", ""),
+    _row("2026-07-22 09:19:23.893396", "573267.653246392", "frequence_calcul:300.000000"),
+]
+
+
+def _shift(rows, us):
+    """Rows with ``date`` shifted by ``us`` microseconds, as in a re-download."""
+    from datetime import datetime, timedelta
+
+    return [
+        {**r, "date": f"{datetime.fromisoformat(r['date']) + timedelta(microseconds=us):%Y-%m-%d %H:%M:%S.%f}"}
+        for r in rows
+    ]
+
+
+def test_save_day_redownload_shifted(tmp_path):
+    assert save_day(_df(DUMP), "A1", date(2026, 7, 22), tmp_path) == 3
+    assert save_day(_df(_shift(DUMP, 8)), "A1", date(2026, 7, 22), tmp_path) == 0
+
+
+def test_save_day_repeated_message_kept(tmp_path):
+    rows = [
+        _row("2026-07-22 09:13:08.999211", "572892.759061980", "sans présence de défauts"),
+        _row("2026-07-22 09:13:08.999243", "572892.759093145", "sans présence de défauts"),
+    ]
+    assert save_day(_df(rows), "A1", date(2026, 7, 22), tmp_path) == 2
+    assert save_day(_df(_shift(rows, 8)), "A1", date(2026, 7, 22), tmp_path) == 0
+
+
+@pytest.mark.parametrize(
+    "shift_us, tolerance_us, added",
+    [(50, 1000, 0), (100_000, 1000, 1), (50, 10, 1)],
+)
+def test_save_day_continuation_tolerance(tmp_path, shift_us, tolerance_us, added):
+    cont = [DUMP[1]]
+    save_day(_df(cont), "A1", date(2026, 7, 22), tmp_path)
+    new = _df(_shift(cont, shift_us))
+    assert save_day(new, "A1", date(2026, 7, 22), tmp_path, tolerance_us=tolerance_us) == added
+
+
 def test_find_duplicates_within_file():
-    seen = set()
     df = _df([ROWS[0], ROWS[1], ROWS[0]])
-    assert find_duplicates(df, seen).tolist() == [False, False, True]
-    assert len(seen) == 2
+    assert find_duplicates(df).tolist() == [False, False, True]
 
 
 def test_find_duplicates_across_files():
-    seen = set()
-    find_duplicates(_df(ROWS), seen)
+    import pandas as pd
+
     other = {"date": "2026-07-28", "time": "00:00:01", "message": "Marche", "type": "Info"}
-    mask = find_duplicates(_df([ROWS[1], other]), seen)
-    assert mask.tolist() == [True, False]
-    assert len(seen) == 3
+    df = pd.concat([_df(ROWS), _df([ROWS[1], other])], ignore_index=True)
+    assert find_duplicates(df).tolist() == [False, False, True, False]
+
+
+def test_find_duplicates_shifted_copies():
+    df = _df(DUMP + _shift(DUMP, 8))
+    assert find_duplicates(df).tolist() == [False] * 3 + [True] * 3
+
+
+def test_find_duplicates_continuation_far_apart():
+    df = _df(DUMP + _shift(DUMP[1:2], 100_000))
+    assert find_duplicates(df).tolist() == [False] * 4
+    assert find_duplicates(df, tolerance_us=200_000).tolist() == [False] * 3 + [True]
 
 
 def test_find_duplicates_empty():
-    mask = find_duplicates(_df([]), set())
+    mask = find_duplicates(_df([]))
     assert mask.empty
+
+
+@pytest.mark.parametrize(
+    "day", ["2026-07-27 15:12:29.575500", "2026-07-27", "2026-7-27", "27/07/2026"]
+)
+def test_split_by_day(day):
+    rows = [
+        {"date": "2026-07-26 23:59:59", "time": "1", "message": "veille", "type": "Info"},
+        {"date": day, "time": "2", "message": "jour-1", "type": "Info"},
+        {"date": "n/a", "time": "3", "message": "illisible", "type": "Info"},
+        {"date": "2026-07-28 00:00:01", "time": "4", "message": "lendemain", "type": "Info"},
+        {"date": day, "time": "5", "message": "jour-2", "type": "Info"},
+    ]
+    days = split_by_day(_df(rows))
+    assert list(days) == [date(2026, 7, 26), date(2026, 7, 27), date(2026, 7, 28)]
+    assert days[date(2026, 7, 27)]["Message"].tolist() == ["jour-1", "jour-2"]
+    assert days[date(2026, 7, 28)]["Message"].tolist() == ["lendemain"]
+
+
+def test_split_by_day_empty():
+    assert split_by_day(_df([])) == {}

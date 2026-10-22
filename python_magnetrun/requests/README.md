@@ -160,11 +160,20 @@ python -m python_magnetrun.requests.cli --user your.email@lncmi.cnrs.fr \
 
 `cirrus_logs.py` fetches the rows shown by the "Voir Propre" page
 (`cirrus.php?file=A1/2026-07-27_cirrus_out.log`) from its JSON endpoint
-`cirrus.php?filedata=...` and saves them as CSV (`Date,Time,Message,Type`) to
-`<datadir>/cirrus/<feed>/<date>_cirrus_out.csv`. Existing files are skipped
-unless `--overwrite` is given. Rows identical to a row already seen in the
-same file or a previously loaded one are reported as duplicates; add
-`--drop-duplicates` to remove them before saving.
+`cirrus.php?filedata=...`. A log may contain rows for several days, so the
+rows of all loaded logs are split by their own `Date` and saved as CSV
+(`Date,Time,Message,Type`), one file per day:
+`<datadir>/cirrus/<feed>/<day>_cirrus_out.csv`. An existing day file is never
+overwritten: rows it does not already contain are appended, so re-running is
+safe and completes partial days. Rows repeated within or across the loaded
+logs are reported as duplicates; add `--drop-duplicates` to remove them
+before saving.
+
+The server recomputes `Date` on every download (a few µs of jitter), so rows
+are not compared on `Date`: rows with a `Time` are matched exactly on
+`Time`, `Message` and `Type`. Continuation rows (empty `Time`, e.g. the
+`KI : … KP : …` lines of a parameter dump) are matched on `Message` and on
+`Date` within `--tolerance-us` microseconds (default 1000).
 
 ```bash
 # One or more files (reference or full cirrus.php URL)
@@ -174,6 +183,10 @@ python -m python_magnetrun.requests.cirrus_logs --user your.email@lncmi.cnrs.fr 
 # A date range for one feed
 python -m python_magnetrun.requests.cirrus_logs --user your.email@lncmi.cnrs.fr \
     --datadir ./runlogs --feed A1 --start 2026-07-01 --end 2026-07-27
+
+# From a start date until today (no --end)
+python -m python_magnetrun.requests.cirrus_logs --user your.email@lncmi.cnrs.fr \
+    --datadir ./runlogs --feed A1 --start 2026-09-01
 
 # Same, removing duplicate rows
 python -m python_magnetrun.requests.cirrus_logs --user your.email@lncmi.cnrs.fr \
