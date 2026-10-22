@@ -125,6 +125,8 @@ class PolarsMagnetData(MagnetDataBase):
         """
         self._data: pl.DataFrame = Data if isinstance(Data, pl.DataFrame) else pl.DataFrame()
         self._data_loaded: bool = self._data.height > 1
+        self._tail_truncated: bool = False
+        self._rows_dropped: int = 0
         super().__init__(filename, Groups, Keys, defs_file=defs_file)
         dt = parse_filename_timestamp(filename)  # in local time
         self.start_timestamp = pd.Timestamp(dt) if dt is not None else None
@@ -157,7 +159,15 @@ class PolarsMagnetData(MagnetDataBase):
         from .readers.csv_readers import PupitreReader
         from .utils.validation import FileFormatError
 
-        df = PupitreReader().read_polars(self.FileName)
+        reader = PupitreReader()
+        df = reader.read_polars(self.FileName)
+        self._rows_dropped = reader.rows_dropped
+        if self._rows_dropped:
+            logger.warning(
+                "%s: dropped %d rows from the first corrupt timestamp on",
+                self.FileName,
+                self._rows_dropped,
+            )
         if df.height == 0:
             raise FileFormatError(
                 f"{self.FileName}: no data rows found (header-only file)"
@@ -166,6 +176,33 @@ class PolarsMagnetData(MagnetDataBase):
         self.Data = df
         self.Keys = df.columns
         logger.debug(f"_ensure_data_loaded: loaded {self.FileName} ({df.height} rows)")
+
+    # --- file integrity -----------------------------------------------
+
+    @property
+    def rows_dropped(self) -> int:
+        """Rows dropped from a corrupt file tail when the data was loaded.
+
+        Returns
+        -------
+        int
+            Number of rows dropped; triggers the lazy load.
+        """
+        self._ensure_data_loaded()
+        return self._rows_dropped
+
+    @property
+    def truncated(self) -> bool:
+        """Whether the source file is truncated or has a corrupt tail.
+
+        Returns
+        -------
+        bool
+            ``True`` if the file does not end cleanly (see
+            :func:`~python_magnetrun.utils.validation.check_pupitre_truncation`)
+            or rows were dropped on load; triggers the lazy load.
+        """
+        return self._tail_truncated or self.rows_dropped > 0
 
     # --- abstract property --------------------------------------------
 
@@ -1045,5 +1082,6 @@ class PolarsMagnetData(MagnetDataBase):
         if stub.height == 0:
             raise FileFormatError(f"{name}: no data rows found (header-only file)")
         Keys = stub.columns
-        check_pupitre_truncation(name, Keys)
-        return cls(name, {}, Keys, stub, defs_file=defs_file)
+        mdata = cls(name, {}, Keys, stub, defs_file=defs_file)
+        mdata._tail_truncated = check_pupitre_truncation(name, Keys)
+        return mdata

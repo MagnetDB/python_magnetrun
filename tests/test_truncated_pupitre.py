@@ -7,6 +7,8 @@ Covers:
 - fromtxt with header only, no data rows — raises FileFormatError
 - _pupitre_end_from_last_line on a truncated file — returns "", no exception
 - select_files with a Latin-1 file — skips cleanly
+- fromtxt (pandas and polars) on a file whose tail holds stale disk data
+  (NUL padding, then rows from an older run) — tail rows dropped and reported
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from unittest.mock import patch
 import pytest
 
 from python_magnetrun.magnetdata_pandas import PandasMagnetData
+from python_magnetrun.magnetdata_polars import PolarsMagnetData
 from python_magnetrun.utils.validation import FileFormatError, check_pupitre_truncation
 
 # ---------------------------------------------------------------------------
@@ -151,3 +154,95 @@ class TestSelectFilesSkipsUnicodeError:
 
         assert str(good) in result
         assert str(bad) not in result
+
+
+# ---------------------------------------------------------------------------
+# Stale disk data after a crash (tab-separated, like real pupitre files)
+# ---------------------------------------------------------------------------
+
+# Modelled on M10 "2024.12.05 - 11:16:02.txt": the acquisition stopped at
+# 12:15:32, the rest of the file is NUL padding followed by rows copied from
+# an older M10 run (2014.07.27), with fewer fields and no final newline.
+_TAB_PARAMS = "1\tM1\t100\t100\t0.1\t0\t0\t0.0035\n"
+_TAB_HEADER = "Date\tTime\tField\tIcoil1\t\n"
+
+
+def _tab_row(date: str, time: str, field: float) -> str:
+    return f"{date}\t{time}\t{field}\t1000.0\t\n"
+
+
+_GOOD_TAB_ROWS = [
+    _tab_row("2024.12.05", "12:15:30", 28.7457),
+    _tab_row("2024.12.05", "12:15:31", 28.7517),
+    _tab_row("2024.12.05", "12:15:32", 28.7578),
+]
+_NUL_LINE = "\x00" * 64 + ".0\t20897.5\t182.4\n"
+_OLD_ROWS = "2014.07.27\t22:38:31\t22.2053\n" "2014.07.27\t22:38:32\t22.2091"
+
+_BACKENDS = pytest.mark.parametrize(
+    "backend", [PandasMagnetData, PolarsMagnetData], ids=["pandas", "polars"]
+)
+
+
+def _write_tab(path: Path, body: str) -> None:
+    path.write_bytes((_TAB_PARAMS + _TAB_HEADER + body).encode("utf-8"))
+
+
+class TestStaleDiskTail:
+    @_BACKENDS
+    def test_nul_line_and_old_rows_dropped(self, tmp_path: Path, backend) -> None:
+        f = tmp_path / "2024.12.05 - 12:15:30.txt"
+        _write_tab(f, "".join(_GOOD_TAB_ROWS) + _NUL_LINE + _OLD_ROWS)
+        mdata = backend.fromtxt(str(f))
+        assert len(mdata.Data) == len(_GOOD_TAB_ROWS)
+        assert float(mdata.Data["Field"].max()) == pytest.approx(28.7578)
+        assert mdata.rows_dropped == 3
+        assert mdata.truncated is True
+
+    @_BACKENDS
+    def test_old_rows_without_nul_line_dropped(self, tmp_path: Path, backend) -> None:
+        """A backward jump of more than 1 h cuts the file even without a broken line."""
+        f = tmp_path / "2024.12.05 - 12:15:30.txt"
+        _write_tab(f, "".join(_GOOD_TAB_ROWS) + _OLD_ROWS + "\n")
+        mdata = backend.fromtxt(str(f))
+        assert len(mdata.Data) == len(_GOOD_TAB_ROWS)
+        assert mdata.rows_dropped == 2
+        assert mdata.truncated is True
+
+    @_BACKENDS
+    def test_dst_end_step_kept(self, tmp_path: Path, backend) -> None:
+        """Clock going back 1 h at the end of summer time is not corruption.
+
+        Real case: M9 "2018.10.27 - 18:12:19.txt" steps from 02:59:59 back
+        to 02:00:00 (-3599 s).
+        """
+        f = tmp_path / "2018.10.28 - 01:00:00.txt"
+        rows = [
+            _tab_row("2018.10.28", "01:00:00", 10.0),
+            _tab_row("2018.10.28", "02:59:59", 10.0),
+            _tab_row("2018.10.28", "02:00:00", 10.0),
+            _tab_row("2018.10.28", "02:00:01", 10.0),
+        ]
+        _write_tab(f, "".join(rows))
+        mdata = backend.fromtxt(str(f))
+        assert len(mdata.Data) == len(rows)
+        assert mdata.rows_dropped == 0
+        assert mdata.truncated is False
+
+    @_BACKENDS
+    def test_clean_file_not_truncated(self, tmp_path: Path, backend) -> None:
+        f = tmp_path / "2024.12.05 - 12:15:30.txt"
+        _write_tab(f, "".join(_GOOD_TAB_ROWS))
+        mdata = backend.fromtxt(str(f))
+        assert len(mdata.Data) == len(_GOOD_TAB_ROWS)
+        assert mdata.rows_dropped == 0
+        assert mdata.truncated is False
+
+    @_BACKENDS
+    def test_missing_final_newline_is_truncated(self, tmp_path: Path, backend) -> None:
+        """No row dropped, but the tail check still flags the file."""
+        f = tmp_path / "2024.12.05 - 12:15:30.txt"
+        _write_tab(f, "".join(_GOOD_TAB_ROWS).rstrip("\n"))
+        mdata = backend.fromtxt(str(f))
+        assert mdata.rows_dropped == 0
+        assert mdata.truncated is True

@@ -27,12 +27,15 @@ class PupitreReader:
         Behaviour on parse errors (``"warn"``).
     defs_file : str
         Default field-definition JSON file name.
+    rows_dropped : int
+        Rows dropped from a corrupt tail by the last :meth:`read_polars`.
     """
 
     sep: str = r"\s+"
     skip_rows: int = 1
     on_bad_lines: str = "warn"
     defs_file: str = "pupitre-defs.json"
+    rows_dropped: int = 0
 
     def read(self, path: Path) -> pd.DataFrame:
         """Read the full file.
@@ -181,6 +184,10 @@ class PupitreReader:
     def read_polars(self, path: Path) -> pl.DataFrame:
         """Read the full file as a Polars DataFrame.
 
+        Rows from the first corrupt timestamp on are dropped (see
+        :func:`~python_magnetrun.utils.validation.count_valid_pupitre_rows`);
+        their number is stored in :attr:`rows_dropped`.
+
         Parameters
         ----------
         path : Path
@@ -189,9 +196,14 @@ class PupitreReader:
         Returns
         -------
         pl.DataFrame
-            Parsed data with all rows.
+            Parsed data up to the first corrupt row.
         """
-        return self._read_polars_impl(path)
+        from ..utils.validation import count_valid_pupitre_rows
+
+        df = self._read_polars_impl(path)
+        n_valid = count_valid_pupitre_rows(df["Date"], df["Time"])
+        self.rows_dropped = df.height - n_valid
+        return df.head(n_valid)
 
     def read_stub_polars(self, path: Path) -> pl.DataFrame:
         """Read first data row only as a Polars DataFrame.

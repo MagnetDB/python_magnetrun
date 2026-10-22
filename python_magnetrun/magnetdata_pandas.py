@@ -95,6 +95,8 @@ class PandasMagnetData(MagnetDataBase):
         )
         self._data_loaded: bool = len(self._data) > 1
         self._read_kwargs: dict = _read_kwargs or {}
+        self._tail_truncated: bool = False
+        self._rows_dropped: int = 0
         super().__init__(filename, Groups, Keys, defs_file=defs_file)
         dt = parse_filename_timestamp(filename)  # in local time
         self.start_timestamp = pd.Timestamp(dt) if dt is not None else None
@@ -125,7 +127,10 @@ class PandasMagnetData(MagnetDataBase):
         """Load the full file from disk on first data access.
 
         Uses ``_read_kwargs`` stored at construction time to reproduce the
-        original ``pd.read_csv`` call.  Subsequent calls are no-ops.
+        original ``pd.read_csv`` call, then drops the rows from the first
+        corrupt timestamp on (see
+        :func:`~python_magnetrun.utils.validation.count_valid_pupitre_rows`).
+        Subsequent calls are no-ops.
         """
         if self._data_loaded:
             return
@@ -133,8 +138,17 @@ class PandasMagnetData(MagnetDataBase):
             return
         with _open_text_with_fallback(self.FileName) as f:
             df = pd.read_csv(f, **self._read_kwargs)
-        from .utils.validation import FileFormatError
+        from .utils.validation import FileFormatError, count_valid_pupitre_rows
 
+        n_valid = count_valid_pupitre_rows(df["Date"], df["Time"])
+        self._rows_dropped = len(df) - n_valid
+        if self._rows_dropped:
+            logger.warning(
+                "%s: dropped %d rows from the first corrupt timestamp on",
+                self.FileName,
+                self._rows_dropped,
+            )
+        df = df.iloc[:n_valid]
         if df.empty:
             raise FileFormatError(
                 f"{self.FileName}: no data rows found (header-only file)"
@@ -143,6 +157,33 @@ class PandasMagnetData(MagnetDataBase):
         self.Data = df
         self.Keys = _dataframe_keys(df)
         logger.debug(f"_ensure_data_loaded: loaded {self.FileName} ({len(df)} rows)")
+
+    # --- file integrity ----------------------------------------------
+
+    @property
+    def rows_dropped(self) -> int:
+        """Rows dropped from a corrupt file tail when the data was loaded.
+
+        Returns
+        -------
+        int
+            Number of rows dropped; triggers the lazy load.
+        """
+        self._ensure_data_loaded()
+        return self._rows_dropped
+
+    @property
+    def truncated(self) -> bool:
+        """Whether the source file is truncated or has a corrupt tail.
+
+        Returns
+        -------
+        bool
+            ``True`` if the file does not end cleanly (see
+            :func:`~python_magnetrun.utils.validation.check_pupitre_truncation`)
+            or rows were dropped on load; triggers the lazy load.
+        """
+        return self._tail_truncated or self.rows_dropped > 0
 
     # --- abstract property -------------------------------------------
 
@@ -1503,8 +1544,9 @@ class PandasMagnetData(MagnetDataBase):
         if stub.empty:
             raise FileFormatError(f"{name}: no data rows found (header-only file)")
         Keys = _dataframe_keys(stub)
-        check_pupitre_truncation(name, Keys)
-        return cls(name, {}, Keys, stub, defs_file=defs_file, _read_kwargs=reader.read_kwargs())
+        mdata = cls(name, {}, Keys, stub, defs_file=defs_file, _read_kwargs=reader.read_kwargs())
+        mdata._tail_truncated = check_pupitre_truncation(name, Keys)
+        return mdata
 
     @classmethod
     def fromcsv(cls, name: str, defs_file: str | None = None) -> PandasMagnetData:

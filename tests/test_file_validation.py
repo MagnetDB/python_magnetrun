@@ -11,6 +11,8 @@ import pytest
 from python_magnetrun.magnetdata import load_magnetdata
 from python_magnetrun.utils.validation import (
     FileFormatError,
+    classify_pupitre_header,
+    count_valid_pupitre_rows,
     validate_csv_format,
     validate_fepc_binary_format,
     validate_file_exists,
@@ -69,6 +71,82 @@ class TestValidateTxtFormat:
     def test_missing_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             validate_txt_format(str(tmp_path / "ghost.txt"))
+
+
+# ---------------------------------------------------------------------------
+# classify_pupitre_header (line 1 of a pupitre file)
+# ---------------------------------------------------------------------------
+
+
+def _write_line1(tmp_path, line1: bytes):
+    f = tmp_path / "2024.12.05 - 11:16:02.txt"
+    f.write_bytes(line1 + b"\nDate\tTime\tField\n2024.12.05\t11:16:04\t0.0\n")
+    return str(f)
+
+
+_COEFS = b"\t0.681129\t4.96613e-06\t6.87325e-11\t0.0035"
+
+
+class TestClassifyPupitreHeader:
+    def test_full(self, tmp_path):
+        line1 = b"2\tM19071101\t14200\t13900" + _COEFS + b"\t0\t0\t0\t0"
+        assert classify_pupitre_header(_write_line1(tmp_path, line1)) == "full"
+
+    def test_full_with_empty_magnet_code(self, tmp_path):
+        """M3 and M5 write an empty MagnetCode: two tabs in a row."""
+        line1 = b"1\t\t14200\t13900" + _COEFS
+        assert classify_pupitre_header(_write_line1(tmp_path, line1)) == "full"
+
+    def test_nbcoil_only_is_short(self, tmp_path):
+        assert classify_pupitre_header(_write_line1(tmp_path, b"2")) == "short"
+
+    def test_nbcoil_and_label_is_short(self, tmp_path):
+        line1 = b"16\tHL-28_1_BI04_1_BE02_1_13/05/2014"
+        assert classify_pupitre_header(_write_line1(tmp_path, line1)) == "short"
+
+    def test_wrong_field_count_is_short(self, tmp_path):
+        line1 = b"2\tM19071101\t14200\t13900" + _COEFS
+        assert classify_pupitre_header(_write_line1(tmp_path, line1)) == "short"
+
+    def test_date_first_token_is_data(self, tmp_path):
+        line1 = b"2011.02.09\t09:06:50\t0.0000\t8.6"
+        assert classify_pupitre_header(_write_line1(tmp_path, line1)) == "data"
+
+    def test_empty_line_is_empty(self, tmp_path):
+        assert classify_pupitre_header(_write_line1(tmp_path, b"")) == "empty"
+
+    def test_nul_bytes_is_empty(self, tmp_path):
+        assert classify_pupitre_header(_write_line1(tmp_path, b"\x00" * 32)) == "empty"
+
+
+# ---------------------------------------------------------------------------
+# count_valid_pupitre_rows
+# ---------------------------------------------------------------------------
+
+
+class TestCountValidPupitreRows:
+    def test_all_valid(self):
+        dates = ["2024.12.05"] * 3
+        times = ["12:15:30", "12:15:31", "12:15:32"]
+        assert count_valid_pupitre_rows(dates, times) == 3
+
+    def test_stops_at_unparseable(self):
+        dates = ["2024.12.05", "2024.12.05", None, "2014.07.27"]
+        times = ["12:15:31", "12:15:32", "20897.5", "22:38:31"]
+        assert count_valid_pupitre_rows(dates, times) == 2
+
+    def test_stops_at_backward_jump_over_one_hour(self):
+        dates = ["2024.12.05", "2024.12.05", "2024.12.05"]
+        times = ["12:15:31", "12:15:32", "11:15:31"]
+        assert count_valid_pupitre_rows(dates, times) == 2
+
+    def test_keeps_backward_step_of_one_hour(self):
+        dates = ["2018.10.28"] * 3
+        times = ["02:59:59", "02:00:00", "02:00:01"]
+        assert count_valid_pupitre_rows(dates, times) == 3
+
+    def test_unparseable_first_row(self):
+        assert count_valid_pupitre_rows(["junk"], ["12:00:00"]) == 0
 
 
 # ---------------------------------------------------------------------------

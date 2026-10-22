@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +109,83 @@ def check_pupitre_truncation(path: str, keys: list[str]) -> bool:
     except OSError:
         pass
     return False
+
+
+#: Largest backward step between consecutive pupitre rows that is not
+#: corruption [s]: the clock goes back 1 h when summer time ends.
+MAX_BACKWARD_STEP_S = 3600
+
+
+def count_valid_pupitre_rows(dates: Sequence, times: Sequence) -> int:
+    """Count the leading pupitre rows before the first corrupt timestamp.
+
+    A row is corrupt when its ``Date``/``Time`` does not parse as
+    ``%Y.%m.%d %H:%M:%S``, or when it is more than
+    :data:`MAX_BACKWARD_STEP_S` earlier than the row before. This catches
+    the tail of a file left by a crash: NUL padding, then rows from an older
+    run still on the disk.
+
+    Parameters
+    ----------
+    dates : Sequence
+        ``Date`` column values; missing values count as unparseable.
+    times : Sequence
+        ``Time`` column values, same length as *dates*.
+
+    Returns
+    -------
+    int
+        Number of rows to keep, from the start of the file.
+    """
+    import pandas as pd
+
+    stamps = pd.Series(list(dates), dtype=str) + " " + pd.Series(list(times), dtype=str)
+    ts = pd.to_datetime(stamps, format="%Y.%m.%d %H:%M:%S", errors="coerce")
+    corrupt = ts.isna() | (ts.diff() < -pd.Timedelta(seconds=MAX_BACKWARD_STEP_S))
+    return int(corrupt.to_numpy().argmax()) if corrupt.any() else len(ts)
+
+
+def classify_pupitre_header(path: str) -> str:
+    """Classify line 1 of a pupitre ``.txt`` file.
+
+    Line 1 is ``NbCoil MagnetCode Imax1 Imax2 [r0 a0 b0 ct] × NbCoil``,
+    tab-separated, in recent files; older files carry less or no parameters.
+
+    Parameters
+    ----------
+    path : str
+        Pupitre ``.txt`` file.
+
+    Returns
+    -------
+    str
+        ``"full"`` (proper header: integer ``NbCoil`` ≥ 1, exactly
+        4 + 4 × NbCoil tab-separated fields, ``MagnetCode`` possibly empty,
+        all other fields numeric), ``"short"`` (starts with ``NbCoil`` but is
+        not full), ``"data"`` (starts with a date: a data row, no parameter
+        line) or ``"empty"`` (empty, NUL bytes, or not recognised).
+    """
+    with open(path, "rb") as f:
+        line = f.readline().rstrip(b"\r\n")
+    if not line.strip() or b"\x00" in line:
+        return "empty"
+    fields = line.decode("latin-1").split("\t")
+    if re.fullmatch(r"\d{4}\.\d{2}\.\d{2}", fields[0].strip()):
+        return "data"
+    try:
+        nbcoil = int(fields[0])
+    except ValueError:
+        return "empty"
+    if nbcoil < 1:
+        return "empty"
+    if len(fields) != 4 + 4 * nbcoil:
+        return "short"
+    try:
+        for value in fields[2:]:  # Imax1, Imax2, then r0 a0 b0 ct per coil
+            float(value)
+    except ValueError:
+        return "short"
+    return "full"
 
 
 def validate_tdms_format(path: str) -> None:
