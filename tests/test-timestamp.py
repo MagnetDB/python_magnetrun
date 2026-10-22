@@ -198,6 +198,18 @@ class TestLocalToUtcNaive:
     def test_result_is_datetime(self) -> None:
         assert isinstance(local_to_utc_naive(_PARIS_LOCAL), datetime)
 
+    def test_fall_back_ambiguous_resolves_as_dst(self) -> None:
+        # 02:30 occurs twice on 2022-10-30; a single timestamp cannot be
+        # inferred, so it resolves as the first (DST, +02:00) occurrence,
+        # like series_local_to_utc_naive.
+        result = local_to_utc_naive(datetime(2022, 10, 30, 2, 30, 0))
+        assert result == datetime(2022, 10, 30, 0, 30, 0)
+
+    def test_spring_forward_gap_shifts(self) -> None:
+        # 2022-03-27 02:30 does not exist in Europe/Paris (02:00 → 03:00).
+        result = local_to_utc_naive(datetime(2022, 3, 27, 2, 30, 0))
+        assert result == datetime(2022, 3, 27, 1, 0, 0)
+
 
 # ---------------------------------------------------------------------------
 # ensure_utc_naive

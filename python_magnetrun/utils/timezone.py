@@ -35,15 +35,35 @@ def local_to_utc_naive(
     """Convert a local (naive) timestamp to a naive UTC datetime.
 
     If *ts* is already timezone-aware its tzinfo is used as-is (no
-    re-localizing).
+    re-localizing). Same rules as :func:`series_local_to_utc_naive` around
+    DST changes: an ambiguous time (autumn fall-back, e.g. ``02:30``
+    occurring twice) resolves as the first (DST) occurrence with a warning,
+    since a single timestamp cannot be inferred; a non-existent time
+    (spring gap) is shifted forward.
 
-    :param ts: local naive (or tz-aware) timestamp
-    :param time_zone: IANA timezone of the local time (default ``"Europe/Paris"``)
-    :return: naive UTC :class:`~datetime.datetime`
+    Parameters
+    ----------
+    ts : :class:`~pandas.Timestamp` or :class:`~datetime.datetime`
+        Local naive (or tz-aware) timestamp.
+    time_zone : str, optional
+        IANA timezone of the local time (default ``"Europe/Paris"``).
+
+    Returns
+    -------
+    :class:`~datetime.datetime`
+        Naive UTC datetime.
     """
     pts = pd.Timestamp(ts)
     if pts.tzinfo is None:
-        pts = pts.tz_localize(pytz.timezone(time_zone))
+        tz = pytz.timezone(time_zone)
+        try:
+            pts = pts.tz_localize(tz, nonexistent="shift_forward")
+        except pytz.exceptions.AmbiguousTimeError:
+            logger.warning(
+                f"local_to_utc_naive: ambiguous local time {pts} — resolving as DST "
+                "(first occurrence)"
+            )
+            pts = pts.tz_localize(tz, ambiguous=True, nonexistent="shift_forward")
     return pts.tz_convert(pytz.utc).to_pydatetime().replace(tzinfo=None)
 
 
