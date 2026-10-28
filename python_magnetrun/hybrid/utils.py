@@ -2,9 +2,11 @@
 Utility functions for hybrid data processing
 
 Includes:
+
 - Date listing utilities
 
 Re-exported for backward compatibility:
+
 - Outlier detection: ``remove_outliers``, ``detect_outliers``, ``OutlierDetector``
   (canonical: :mod:`python_magnetrun.outliers`)
 - Signal processing: ``normalize_signal``, ``binarize_signal``, ``_otsu_threshold``

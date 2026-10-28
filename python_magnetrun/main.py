@@ -30,12 +30,14 @@ def main() -> None:
 
     # workflow commands
     from .analysis.cli import register as _r_ana
+    from .analysis.sessions import register as _r_ses
     from .comparison.cli import register as _r_cmp
     from .hybrid.cli import register as _r_hyb
     from .processing.cli import register as _r_proc
     from .runlogs.pigbrother import register as _r_log
 
     _r_ana(sub)
+    _r_ses(sub)
     _r_proc(sub)
     _r_hyb(sub)
     _r_log(sub)

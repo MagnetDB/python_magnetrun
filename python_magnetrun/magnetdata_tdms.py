@@ -281,7 +281,7 @@ class TdmsMagnetData(MagnetDataBase):
     # --- core data access --------------------------------------------
 
     def getTdmsData(self, group: str, channel: str | list[str] | None) -> pd.DataFrame:
-        """Return data for *group*, optionally restricted to *channel*(s).
+        """Return data for *group*, optionally restricted to the given *channel* name(s).
 
         Parameters
         ----------

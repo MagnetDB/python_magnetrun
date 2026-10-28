@@ -36,6 +36,7 @@ python_magnetrun/analysis/
 ├── plotting.py          # Visualization with downsampling
 ├── processing.py        # Main orchestration & workflow
 ├── field_comparison.py  # Alias-driven pupitre <-> pigbrother field comparison
+├── sessions.py          # EXPERIENCES_LOG session records (`magnetrun sessions`)
 ├── cli.py               # Logging infrastructure & CLI
 └── py.typed             # PEP 561 type checking marker
 ```
@@ -192,6 +193,49 @@ df_merged = merge_data(df_list)
 - `FileDiscovery` - Orchestrates file discovery
 - `FileSet` - Container for related file paths
 - `FileMetadata` - Metadata extracted from filenames
+
+Besides `discover` (Overview anchor) and `discover_from_archive` (Archive
+anchor), `FileDiscovery.discover_window(housing, start, end)` lists every
+file overlapping a time window given by an external source, with no anchor
+file.
+
+File time ranges come from `utils.files.extract_data`. For Archive TDMS files
+the end is the file modification time when plausible (after the start, less
+than 24 h later), since opening a large archive without its `.tdms_index`
+takes seconds; for pupitre files whose last line lies in a corrupt tail, the
+end comes from the valid rows.
+
+### sessions.py - EXPERIENCES_LOG Session Records
+
+Turns the SUPERVISION experiment log (`EXPERIENCES_LOG.csv`) into one record
+per session and lists the files recorded during each session window: the
+counterpart of the Overview-anchored `summary.json`, for periods and housings
+with no Overview capture (e.g. M9/M10 before 2020, M10 in 2019).
+
+```bash
+magnetrun sessions --log Data/EXPERIENCES_LOG.csv --housing M9 \
+    --from 2018-01-01 --to 2019-01-01 --output-dir /tmp/M9_2018
+# → /tmp/M9_2018/sessions.json
+```
+
+- Times are naive Europe/Paris wall-clock times (`HStart`/`HStop` and data
+  filenames); the CSV `timestamp` column is ignored (it drifts from `HStart`
+  since 2020).
+- `EXPLOIT.` and `EXPLOIT` are the same operator account; exact duplicate
+  rows are removed.
+- An unclosed row (no `HStop`) followed by a new row on the same coil within
+  10 min is dropped; other unclosed rows stop at the next `HStart` on the same
+  coil, or after 12 h (`stop_capped: true`).
+- Rows of one housing whose windows overlap (`i`/`e` coils, several users)
+  are merged into one session. Long sessions (> 12 h) are kept as they are.
+- Overview, Archive and pupitre files claimed by no session are chained
+  (gaps up to 30 min) into unlogged sessions (`logged: false`).
+
+Each record holds `id`, `housing`, `logged`, `start`, `stop`, `stop_capped`,
+`data_end` (end of the last Overview/Archive/pupitre file found), `anchor`
+(`overview`, `archive`, `pupitre` or `none`), `users`, `operator`, `coils`
+(one entry per log row: `coil`, `elec_group`, `start`, `stop`,
+`minute_count`, `paimant`) and one list of paths per `FileSet` field.
 
 ### synchronization.py - Time Synchronization
 
