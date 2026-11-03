@@ -30,7 +30,7 @@ import logging
 import os
 import warnings
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -663,9 +663,7 @@ class HybridRun:
         # Resolve hybrid_formula_map keys (e.g. "FEPC-AUX-LNCMI/ALIM1")
         formula_entry = None
         try:
-            from ..housing_config import get_housing_config
-
-            hcfg = get_housing_config(self.Housing)
+            hcfg = self._get_housing_config()
             formula_entry = hcfg.hybrid_formula_map.get(key)
         except (ValueError, KeyError):
             pass  # housing unknown — fall through
@@ -791,10 +789,9 @@ class HybridRun:
             :func:`~python_magnetrun.processing.signal.binarize_signal` apply.
         """
         try:
-            from ..housing_config import get_housing_config
             from ..processing.signal import binarize_signal
 
-            hcfg = get_housing_config(self.Housing)
+            hcfg = self._get_housing_config()
             cfg_key = f"{system}/{variable}"
             voltage_chan = hcfg.hybrid_voltage_mask_map.get(cfg_key)
             logger.warning(
@@ -1011,6 +1008,20 @@ class HybridRun:
 
     def getDomain(self) -> str:
         return "operational"
+
+    def _get_housing_config(self):
+        """Return the housing wiring in force at the data start (resolved once)."""
+        cfg = getattr(self, "_housing_cfg", None)
+        if cfg is None:
+            from ..housing_config import get_housing_config
+
+            try:
+                start = self.get_time_range()[0].replace(tzinfo=timezone.utc)
+            except (RuntimeError, NotImplementedError):
+                start = None
+            cfg = get_housing_config(self.Housing, at=start)
+            self._housing_cfg = cfg
+        return cfg
 
     def get_time_range(self) -> tuple[datetime, datetime]:
         """Get time range of available data.

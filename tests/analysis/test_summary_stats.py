@@ -1,6 +1,7 @@
 """Tests that ``summary.json`` written by the analysis CLI includes Stats files."""
 
 import json
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -15,6 +16,7 @@ def _fake_record() -> MagicMock:
     record = MagicMock()
     record.filename = "M5_Overview_260101-1000"
     record.housing = "M5"
+    record.t0 = datetime(2026, 1, 1, 9, 0)  # naive UTC, as process_overview_file sets it
     record.duration = 60.0
     record.has_data.return_value = False
     record.get_overview.return_value = pd.DataFrame()

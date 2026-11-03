@@ -517,12 +517,16 @@ class PolarsMagnetData(MagnetDataBase):
             self.Data = self.Data.drop(empty_cols)
             self.Keys = self.Data.columns
 
+        # Columns explicitly added (e.g. UB = Ucoil14) are kept even when they
+        # duplicate their single source column.
         dropped_columns = _polars_duplicate_columns(self.Data)
         really_dropped_columns = natsorted(
             [
                 col
                 for col in dropped_columns
-                if not col.startswith("Ucoil") and col not in Fkeys
+                if not col.startswith("Ucoil")
+                and col not in Fkeys
+                and col not in (keys_to_add or {})
             ]
         )
         logger.info(

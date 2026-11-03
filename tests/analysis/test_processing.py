@@ -24,6 +24,7 @@ from python_magnetrun.analysis.processing import (
     # Utilities
     create_overview_dict,
     process_archive_file,
+    process_overview_file,
     summarize_record,
 )
 
@@ -250,6 +251,16 @@ class TestGetHousingConfig:
 
         assert "Unknown housing" in str(exc_info.value)
 
+    def test_analysis_config_for_housing_at(self):
+        """AnalysisConfig.for_housing passes `at` to the housing lookup."""
+        from datetime import timezone
+
+        from python_magnetrun.analysis.config import AnalysisConfig
+
+        when = datetime(2026, 3, 6, 8, 0, tzinfo=timezone.utc)
+        assert AnalysisConfig.for_housing("M8", at=when).housing.version == "M8-260305"
+        assert AnalysisConfig.for_housing("M8").housing.version == ""
+
 
 class TestSummarizeRecord:
     """Test summarize_record function."""
@@ -381,6 +392,32 @@ class TestProcessArchiveFile:
 
         assert record.t0 is None
         assert record.duration == 0.0
+
+
+class TestProcessOverviewHousingVersion:
+    """process_overview_file uses the housing wiring in force at record.t0."""
+
+    @staticmethod
+    def _run(t0: datetime):
+        """Process a mocked M8 overview starting at *t0* (naive UTC); return the config used."""
+        df = pd.DataFrame({"timestamp": [t0, t0 + timedelta(seconds=1)], "x": [0.0, 1.0]})
+        mod = "python_magnetrun.analysis.processing"
+        with (
+            patch(f"{mod}.FileDiscovery.discover", return_value=FileSet()),
+            patch(f"{mod}.load_overview_data", return_value=df),
+            patch(f"{mod}._check_overview_end_state"),
+            patch(f"{mod}.get_timestamp_info", return_value={"duration": 1.0}),
+            patch(f"{mod}._load_all_sources") as load_all,
+            patch(f"{mod}._extract_analysis"),
+        ):
+            process_overview_file("/data/M8_Overview_260306-0900.tdms", ProcessingConfig())
+        return load_all.call_args.args[1]
+
+    def test_version_after_change(self):
+        assert self._run(datetime(2026, 3, 6, 8, 0)).version == "M8-260305"
+
+    def test_base_before_change(self):
+        assert self._run(datetime(2025, 11, 5, 13, 0)).version == "M8-211225"
 
 
 class TestIntegration:

@@ -48,5 +48,14 @@
       "description": "Group 2 reference current sum from power supply outputs"
     }
   },
-  "hybrid_formula_map": {}
+  "hybrid_formula_map": {},
+  "_comment_versions": "Wiring changes over time, applied to the fields above by HousingConfig.at().",
+  "versions": [
+    {
+      "name": "M10-180220",
+      "valid_from": "2018-02-20T08:00:00+01:00",
+      "comment": "Base wiring, from the first assembly commissioned in this housing (assemblies.commissioned_at).",
+      "overrides": {}
+    }
+  ]
 }

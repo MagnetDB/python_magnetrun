@@ -187,3 +187,49 @@ class TestPrepareDataAutoDerivation:
         data = _pupitre(df)
         prepareData(data, "M9")
         assert "Icoil1" not in data.getKeys()
+
+
+def _m8_df(date: str) -> pd.DataFrame:
+    """Two-row M8 pupitre frame dated *date*: Ucoil<n> = n volts."""
+    extra = {f"Idcct{i}": [7000.0, 7001.0] for i in range(1, 5)}
+    extra.update({f"Ucoil{n}": [float(n), float(n)] for n in range(1, 17)})
+    df = _base_df(**extra)
+    df["Date"] = [date, date]
+    return df
+
+
+class TestPrepareDataHousingVersion:
+    """prepareData resolves the housing wiring in force at the data start."""
+
+    def test_m8_after_change_uses_ucoil14_for_ub(self):
+        data = _pupitre(_m8_df("2026.03.06"))
+        prepareData(data, "M8")
+        df = data.getData(["UB", "UH"])
+        assert list(df["UB"]) == [14.0, 14.0]
+        assert list(df["UH"]) == [float(sum(range(1, 14)))] * 2
+
+    def test_m8_before_change_keeps_base_wiring(self):
+        data = _pupitre(_m8_df("2025.11.05"))
+        prepareData(data, "M8")
+        df = data.getData(["UB", "UH"])
+        assert list(df["UB"]) == [15.0 + 16.0] * 2
+        assert list(df["UH"]) == [float(sum(range(1, 15)))] * 2
+
+    def test_m8_after_change_polars(self):
+        """Same as the pandas case on a polars data object."""
+        import polars as pl
+
+        from python_magnetrun.magnetdata_polars import PolarsMagnetData
+
+        df = pl.from_pandas(_m8_df("2026.03.06"))
+        data = PolarsMagnetData("test.txt", {}, df.columns, df, defs_file=None)
+        prepareData(data, "M8")
+        assert list(data.getData(["UB"])["UB"]) == [14.0, 14.0]
+
+    def test_m8_change_instant_is_local_time(self):
+        """valid_from 17:21:09+01:00 compares with the file's local Date/Time."""
+        df = _m8_df("2026.03.05")
+        df["Time"] = ["17:21:09", "17:21:10"]
+        data = _pupitre(df)
+        prepareData(data, "M8")
+        assert list(data.getData(["UB"])["UB"]) == [14.0, 14.0]

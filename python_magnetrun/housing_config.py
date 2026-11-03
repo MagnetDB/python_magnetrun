@@ -53,6 +53,7 @@ import dataclasses
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -122,7 +123,22 @@ ROLE_TO_FIELD: dict[str, str] = {
 }
 
 # Fields that are stored as lists in JSON but tuples in the dataclass
-_TUPLE_FIELDS = {"formats", "voltage_channels_gr1", "voltage_channels_gr2"}
+_TUPLE_FIELDS = {"formats", "voltage_channels_gr1", "voltage_channels_gr2", "versions"}
+
+# Keys of one entry of ``versions``, and fields a version may not override
+_VERSION_KEYS = {"name", "valid_from", "overrides", "comment"}
+_NOT_OVERRIDABLE = {"name", "version", "versions"}
+
+
+def _parse_valid_from(version: dict) -> datetime:
+    """Parse a version's ``valid_from`` (ISO 8601 with a UTC offset)."""
+    start = datetime.fromisoformat(version["valid_from"])
+    if start.utcoffset() is None:
+        raise ValueError(
+            f"version {version.get('name')!r}: valid_from "
+            f"{version['valid_from']!r} needs a UTC offset (e.g. '+01:00')"
+        )
+    return start
 
 # Flow/Rpm/Tin/HP base names used to build the pupitre rename map
 _PUPITRE_FLOW_FIELDS = ("Flow", "Rpm", "Tin", "HP")
@@ -172,6 +188,12 @@ class HousingConfig:
         Pupitre voltage-probe fields associated with GR1.
     voltage_channels_gr2 : tuple[str, ...]
         Pupitre voltage-probe fields associated with GR2.
+    version : str
+        Name of the wiring version applied by :meth:`at` (``""`` = base).
+    versions : tuple[dict, ...]
+        Wiring changes over time: ``{"name", "valid_from", "overrides",
+        "comment"}`` with ``valid_from`` in ISO 8601 with a UTC offset and
+        ``overrides`` keyed by field name, applied to the base wiring.
 
     Notes
     -----
@@ -213,6 +235,79 @@ class HousingConfig:
     # Target aggregate voltage field names for GR1/GR2
     reference_gr1_voltage: str = "UH"
     reference_gr2_voltage: str = "UB"
+
+    # Time-versioned wiring changes, see :meth:`at`. ``version`` is the name of
+    # the version applied ("" = base wiring); ``versions`` holds the history.
+    version: str = ""
+    versions: tuple = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Validate ``versions`` (keys, override fields, ``valid_from`` offsets)."""
+        overridable = {f.name for f in dataclasses.fields(self)} - _NOT_OVERRIDABLE
+        seen: set[datetime] = set()
+        for v in self.versions:
+            unknown = set(v) - _VERSION_KEYS
+            missing = {"name", "valid_from", "overrides"} - set(v)
+            if unknown or missing:
+                raise ValueError(
+                    f"HousingConfig {self.name!r}: version {v.get('name')!r} has "
+                    f"unknown key(s) {sorted(unknown)} / missing key(s) {sorted(missing)}"
+                )
+            bad = set(v["overrides"]) - overridable
+            if bad:
+                raise ValueError(
+                    f"HousingConfig {self.name!r}: version {v['name']!r} overrides "
+                    f"non-overridable field(s) {sorted(bad)}"
+                )
+            start = _parse_valid_from(v)
+            if start in seen:
+                raise ValueError(
+                    f"HousingConfig {self.name!r}: two versions share valid_from {start}"
+                )
+            seen.add(start)
+
+    def at(self, when: datetime) -> HousingConfig:
+        """Return the wiring in force at *when*.
+
+        The active version is the one with the latest ``valid_from <= when``;
+        its ``overrides`` are applied to the base wiring. Before the first
+        version, the base wiring is returned unchanged.
+
+        Parameters
+        ----------
+        when : datetime
+            Timezone-aware instant, e.g. the start of a data file.
+
+        Returns
+        -------
+        HousingConfig
+            Copy with the version's overrides applied and ``version`` set, or
+            ``self`` when no version is active.
+
+        Raises
+        ------
+        ValueError
+            If *when* is naive, or if ``self`` is already a resolved version
+            (versions apply to the base wiring only).
+        """
+        if when.tzinfo is None or when.utcoffset() is None:
+            raise ValueError(f"HousingConfig.at: {when!r} has no timezone")
+        if self.version:
+            raise ValueError(
+                f"HousingConfig.at: {self.name!r} is already version "
+                f"{self.version!r}; call at() on the base config"
+            )
+        active = None
+        for v in sorted(self.versions, key=_parse_valid_from):
+            if _parse_valid_from(v) <= when:
+                active = v
+        if active is None:
+            return self
+        overrides = {
+            k: tuple(val) if k in _TUPLE_FIELDS and isinstance(val, list) else val
+            for k, val in active["overrides"].items()
+        }
+        return dataclasses.replace(self, version=active["name"], **overrides)
 
     # ------------------------------------------------------------------
     # Serialization
@@ -546,6 +641,8 @@ def show_housing_config(config: HousingConfig) -> None:
         print(f"  Pigbrother formulas: {list(config.pigbrother_formula_map)}")
     if config.hybrid_formula_map:
         print(f"  Hybrid formulas: {list(config.hybrid_formula_map)}")
+    for v in config.versions:
+        print(f"  Version {v['name']} from {v['valid_from']}: {v['overrides']}")
 
 
 # ---------------------------------------------------------------------------
@@ -582,6 +679,7 @@ def get_housing_config(
     housing: str,
     json_file: str | Path | None = None,
     overrides: dict | None = None,
+    at: datetime | None = None,
 ) -> HousingConfig:
     """Return the :class:`HousingConfig` for *housing*.
 
@@ -590,7 +688,9 @@ def get_housing_config(
     1. If *json_file* is given, load the base config from that file.
     2. If ``~/.config/magnetrun/<Housing>-housing-config.json`` exists, load it.
     3. Otherwise use the built-in default from :data:`HOUSING_CONFIGS`.
-    4. Apply *overrides* on top (if any).
+    4. If *at* is given, apply the wiring version in force at *at*
+       (:meth:`HousingConfig.at`).
+    5. Apply *overrides* on top (if any).
 
     Parameters
     ----------
@@ -604,6 +704,9 @@ def get_housing_config(
     overrides:
         Optional ``{role: value}`` dict for runtime adjustments.
         Keys are role names from :data:`ROLE_TO_FIELD`.
+    at:
+        Optional timezone-aware instant (e.g. the start of the data). When
+        ``None``, the base wiring is returned, as before versions existed.
 
     Returns
     -------
@@ -614,7 +717,8 @@ def get_housing_config(
     ------
     ValueError
         If *housing* is unknown (no file given), the file's ``name`` field
-        does not match *housing*, or an override key is not a valid role.
+        does not match *housing*, an override key is not a valid role, or
+        *at* is naive.
 
     Examples
     --------
@@ -649,6 +753,9 @@ def get_housing_config(
             )
         else:
             base = HOUSING_CONFIGS[housing]
+
+    if at is not None:
+        base = base.at(at)
 
     if not overrides:
         return base

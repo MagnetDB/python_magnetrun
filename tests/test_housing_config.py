@@ -9,12 +9,16 @@ Covers:
   - update_housing_config(json_file, overrides)              update in place
 """
 
+import dataclasses
 import json
+from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
 from python_magnetrun.housing_config import (
+    HOUSING_CONFIGS,
     HousingConfig,
     get_bundled_housing_config_path,
     get_housing_config,
@@ -204,3 +208,142 @@ class TestUpdateHousingConfig:
         """update_housing_config should return the updated HousingConfig."""
         result = update_housing_config(str(m9_json_file), {"gr2_current": "IH"})
         assert isinstance(result, HousingConfig)
+
+
+# ---------------------------------------------------------------------------
+# Time-versioned wiring (HousingConfig.at / get_housing_config(at=...))
+# ---------------------------------------------------------------------------
+
+PARIS = ZoneInfo("Europe/Paris")
+M8_UCOIL1_13 = tuple(f"Ucoil{i}" for i in range(1, 14))
+
+
+def _versioned(**version) -> HousingConfig:
+    """Return a minimal config holding one version (defaults filled in)."""
+    v = {
+        "name": "X-1",
+        "valid_from": "2026-03-05T17:21:09+01:00",
+        "overrides": {"voltage_channels_gr1": ["Ucoil14"]},
+    }
+    v.update(version)
+    return HousingConfig(name="X", voltage_channels_gr1=("Ucoil15",), versions=(v,))
+
+
+class TestHousingConfigVersions:
+    def test_m8_default_is_base(self):
+        """Without a date, M8 keeps today's wiring and no version name."""
+        cfg = HOUSING_CONFIGS["M8"]
+        assert cfg.name == "M8"
+        assert cfg.version == ""
+        assert cfg.voltage_channels_gr1 == ("Ucoil15", "Ucoil16")
+
+    def test_m8_before_change_is_base_version(self):
+        cfg = HOUSING_CONFIGS["M8"].at(datetime(2026, 3, 5, 15, 56, 42, tzinfo=PARIS))
+        assert cfg.version == "M8-211225"
+        assert cfg.voltage_channels_gr1 == ("Ucoil15", "Ucoil16")
+
+    def test_m8_before_first_version_is_unnamed_base(self):
+        """Data older than the first commissioned assembly: base, no version name."""
+        cfg = HOUSING_CONFIGS["M8"].at(datetime(2015, 6, 1, tzinfo=PARIS))
+        assert cfg == HOUSING_CONFIGS["M8"]
+
+    @pytest.mark.parametrize(
+        "housing, name, valid_from",
+        [
+            ("M5", "M5-140101", "2014-01-01T08:00:00+01:00"),
+            ("M7", "M7-140101", "2014-01-01T08:00:00+01:00"),
+            ("M8", "M8-211225", "2021-12-25T08:00:00+01:00"),
+            ("M9", "M9-181109", "2018-11-09T08:00:00+01:00"),
+            ("M10", "M10-180220", "2018-02-20T08:00:00+01:00"),
+        ],
+    )
+    def test_dated_base_version(self, housing, name, valid_from):
+        """Every bundled housing starts with a dated version of its base wiring."""
+        first = HOUSING_CONFIGS[housing].versions[0]
+        assert (first["name"], first["valid_from"], first["overrides"]) == (name, valid_from, {})
+
+    def test_m8_from_change_uses_version(self):
+        cfg = HOUSING_CONFIGS["M8"].at(datetime(2026, 3, 5, 17, 21, 9, tzinfo=PARIS))
+        assert cfg.name == "M8"
+        assert cfg.version == "M8-260305"
+        assert cfg.voltage_channels_gr1 == ("Ucoil14",)
+        assert cfg.voltage_channels_gr2 == M8_UCOIL1_13
+        # fields not overridden are kept
+        assert cfg.reference_gr1_current == "IB"
+
+    def test_m8_version_from_utc_time(self):
+        """The same instant given in UTC resolves to the same version."""
+        cfg = HOUSING_CONFIGS["M8"].at(datetime(2026, 3, 5, 16, 21, 9, tzinfo=timezone.utc))
+        assert cfg.version == "M8-260305"
+
+    def test_m8_version_formulas(self):
+        """UB sums Ucoil14 only, UH no longer contains it."""
+        cfg = HOUSING_CONFIGS["M8"].at(datetime(2026, 10, 30, 9, 10, 3, tzinfo=PARIS))
+        formulas = cfg.get_pupitre_voltage_formulas()
+        assert formulas["UB"]["formula"] == "UB = Ucoil14"
+        assert "Ucoil14" not in formulas["UH"]["formula"]
+
+    def test_m9_base_version(self):
+        """M9 keeps its base wiring; only the version name is set."""
+        cfg = HOUSING_CONFIGS["M9"].at(datetime(2026, 10, 29, 18, 3, 45, tzinfo=PARIS))
+        assert cfg.version == "M9-181109"
+        assert dataclasses.replace(cfg, version="") == HOUSING_CONFIGS["M9"]
+
+    def test_get_housing_config_at(self):
+        when = datetime(2026, 3, 6, 9, 11, 2, tzinfo=PARIS)
+        assert get_housing_config("M8", at=when) == HOUSING_CONFIGS["M8"].at(when)
+
+    def test_get_housing_config_at_then_overrides(self):
+        """Runtime overrides apply on top of the resolved version."""
+        when = datetime(2026, 3, 6, 9, 11, 2, tzinfo=PARIS)
+        cfg = get_housing_config("M8", at=when, overrides={"gr1_current": "IH"})
+        assert cfg.version == "M8-260305"
+        assert cfg.reference_gr1_current == "IH"
+
+    def test_latest_version_wins(self):
+        v1 = {"name": "X-1", "valid_from": "2026-01-01T00:00:00+00:00",
+              "overrides": {"voltage_channels_gr1": ["Ucoil14"]}}
+        v2 = {"name": "X-2", "valid_from": "2026-06-01T00:00:00+00:00",
+              "overrides": {"voltage_channels_gr1": ["Ucoil15", "Ucoil16"]}}
+        cfg = HousingConfig(name="X", versions=(v2, v1))
+        assert cfg.at(datetime(2026, 3, 1, tzinfo=timezone.utc)).version == "X-1"
+        assert cfg.at(datetime(2026, 7, 1, tzinfo=timezone.utc)).version == "X-2"
+
+    def test_naive_at_raises(self):
+        with pytest.raises(ValueError, match="timezone"):
+            HOUSING_CONFIGS["M8"].at(datetime(2026, 3, 6))
+
+    def test_at_on_version_raises(self):
+        """Versions apply to the base config only."""
+        cfg = _versioned().at(datetime(2026, 4, 1, tzinfo=timezone.utc))
+        with pytest.raises(ValueError, match="base"):
+            cfg.at(datetime(2026, 4, 1, tzinfo=timezone.utc))
+
+    def test_naive_valid_from_raises(self):
+        with pytest.raises(ValueError, match="offset"):
+            _versioned(valid_from="2026-03-05T17:21:09")
+
+    def test_unknown_override_field_raises(self):
+        with pytest.raises(ValueError, match="not_a_field"):
+            _versioned(overrides={"not_a_field": "x"})
+
+    def test_override_of_name_raises(self):
+        with pytest.raises(ValueError, match="name"):
+            _versioned(overrides={"name": "Y"})
+
+    def test_unknown_version_key_raises(self):
+        with pytest.raises(ValueError, match="valid_form"):
+            _versioned(valid_form="2026-03-05T17:21:09+01:00")
+
+    def test_duplicate_valid_from_raises(self):
+        v = {"name": "X-1", "valid_from": "2026-03-05T17:21:09+01:00", "overrides": {}}
+        w = dict(v, name="X-2")
+        with pytest.raises(ValueError, match="valid_from"):
+            HousingConfig(name="X", versions=(v, w))
+
+    def test_round_trip_keeps_versions(self, tmp_path: Path):
+        dest = tmp_path / "M8-housing-config.json"
+        save_housing_config(dest, HOUSING_CONFIGS["M8"])
+        loaded = load_housing_config(dest)
+        assert loaded == HOUSING_CONFIGS["M8"]
+        assert [v["name"] for v in loaded.versions] == ["M8-211225", "M8-260305"]

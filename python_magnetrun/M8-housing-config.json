@@ -72,5 +72,25 @@
       "FEPC-AUX-LNCMI/ALIM1_J2": "FEPC-AUX-LNCMI/BITTER_V2",
       "FEPC-AUX-LNCMI/ALIM2_J1": "FEPC-AUX-LNCMI/PH_V14",
       "FEPC-AUX-LNCMI/ALIM2_J2": "FEPC-AUX-LNCMI/PH_V14"
-  }
+  },
+  "_comment_versions": "Wiring changes over time, applied to the fields above by HousingConfig.at(). valid_from = start of the first pupitre file with the new wiring.",
+  "versions": [
+    {
+      "name": "M8-211225",
+      "valid_from": "2021-12-25T08:00:00+01:00",
+      "comment": "Base wiring, from the first assembly commissioned in this housing (assemblies.commissioned_at).",
+      "overrides": {}
+    },
+    {
+      "name": "M8-260305",
+      "valid_from": "2026-03-05T17:21:09+01:00",
+      "comment": "M8Bitters read on a single tap Ucoil14 (pupitre header slot 14), Ucoil15-16 empty; expected wiring is Ucoil15/Ucoil16.",
+      "overrides": {
+        "voltage_channels_gr1": ["Ucoil14"],
+        "voltage_channels_gr2": ["Ucoil1", "Ucoil2", "Ucoil3", "Ucoil4", "Ucoil5",
+                                 "Ucoil6", "Ucoil7", "Ucoil8", "Ucoil9", "Ucoil10",
+                                 "Ucoil11", "Ucoil12", "Ucoil13"]
+      }
+    }
+  ]
 }

@@ -500,7 +500,8 @@ class PandasMagnetData(MagnetDataBase):
 
         After the explicit operations the method also drops all-zero columns
         (except those in a protected set such as flow/rpm/pressure channels)
-        and exact-duplicate columns.
+        and exact-duplicate columns (except ``Ucoil*``, the protected set and
+        the keys of *keys_to_add*).
 
         Parameters
         ----------
@@ -611,12 +612,16 @@ class PandasMagnetData(MagnetDataBase):
             self.Data = self.Data.drop(empty_cols, axis=1)
             self.Keys = _dataframe_keys(self.Data)
 
+        # Columns explicitly added (e.g. UB = Ucoil14) are kept even when they
+        # duplicate their single source column.
         dropped_columns = _get_duplicate_columns(self.Data)
         really_dropped_columns = natsorted(
             [
                 col
                 for col in dropped_columns
-                if not col.startswith("Ucoil") and col not in Fkeys
+                if not col.startswith("Ucoil")
+                and col not in Fkeys
+                and col not in (keys_to_add or {})
             ]
         )
         logger.info(

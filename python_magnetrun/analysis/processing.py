@@ -38,7 +38,7 @@ import contextlib
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, cast
 
@@ -958,7 +958,8 @@ def process_overview_file(
     config : ProcessingConfig
         Processing configuration
     housing_config : HousingConfig, optional
-        Housing-specific configuration (auto-detected if not provided)
+        Housing-specific configuration (auto-detected if not provided: the
+        wiring version in force at the overview start ``t0``)
     time_zone : str, optional
         IANA timezone for filename timestamps (default ``"Europe/Paris"``)
 
@@ -976,12 +977,10 @@ def process_overview_file(
         f"Processing {filename} (housing={housing}, mode={mode}), config={config}"
     )
 
-    if housing_config is None:
-        if housing not in HOUSING_CONFIGS:
-            raise ValueError(
-                f"Unknown housing: {housing}. Available: {list(HOUSING_CONFIGS.keys())}"
-            )
-        housing_config = HOUSING_CONFIGS[housing]
+    if housing_config is None and housing not in HOUSING_CONFIGS:
+        raise ValueError(
+            f"Unknown housing: {housing}. Available: {list(HOUSING_CONFIGS.keys())}"
+        )
 
     record = OverviewRecord(filename=filename, housing=housing, mode=mode)
 
@@ -1024,6 +1023,12 @@ def process_overview_file(
     record.data["overview"] = df_overview
     record.duration = get_timestamp_info(df_overview)["duration"]
     logger.info(f"{overview_file}: t0={record.t0}, duration={record.duration}s")
+
+    if housing_config is None:
+        # wiring in force at the run start (t0 is naive UTC)
+        housing_config = HOUSING_CONFIGS[housing].at(
+            record.t0.replace(tzinfo=timezone.utc)
+        )
 
     _load_all_sources(record, housing_config, config, keys)
     _extract_analysis(record, housing_config, keys, config)
@@ -1077,12 +1082,10 @@ def process_archive_file(
         f"Processing {filename} (housing={housing}, mode={mode}), config={config}"
     )
 
-    if housing_config is None:
-        if housing not in HOUSING_CONFIGS:
-            raise ValueError(
-                f"Unknown housing: {housing}. Available: {list(HOUSING_CONFIGS.keys())}"
-            )
-        housing_config = HOUSING_CONFIGS[housing]
+    if housing_config is None and housing not in HOUSING_CONFIGS:
+        raise ValueError(
+            f"Unknown housing: {housing}. Available: {list(HOUSING_CONFIGS.keys())}"
+        )
 
     record = OverviewRecord(filename=filename, housing=housing, mode=mode)
 

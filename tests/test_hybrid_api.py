@@ -1040,3 +1040,44 @@ class TestPlotTriggerVariable:
         mock_plot_fn.assert_called_once()
         _, kwargs = mock_plot_fn.call_args
         assert kwargs["outlier_result"] is outlier_result
+
+
+# ---------------------------------------------------------------------------
+# HybridRun — housing wiring version at the data start
+# ---------------------------------------------------------------------------
+
+
+class TestHybridRunHousingVersion:
+    @staticmethod
+    def _hrun(start):
+        """HybridRun on M8 whose data starts at *start* (naive UTC)."""
+        from datetime import timedelta
+        from unittest.mock import MagicMock
+
+        from python_magnetrun.hybrid.hybrid_run import HybridRun
+
+        hrun = object.__new__(HybridRun)
+        hrun.Housing = "M8"
+        hrun.HybridData = MagicMock()
+        hrun.HybridData.get_time_range.return_value = (start, start + timedelta(hours=1))
+        return hrun
+
+    def test_version_from_data_start(self):
+        from datetime import datetime
+
+        hrun = self._hrun(datetime(2026, 3, 6, 8, 0))
+        assert hrun._get_housing_config().version == "M8-260305"
+
+    def test_base_before_change(self):
+        from datetime import datetime
+
+        hrun = self._hrun(datetime(2025, 11, 5, 13, 0))
+        assert hrun._get_housing_config().version == "M8-211225"
+
+    def test_resolved_once(self):
+        from datetime import datetime
+
+        hrun = self._hrun(datetime(2026, 3, 6, 8, 0))
+        first = hrun._get_housing_config()
+        assert hrun._get_housing_config() is first
+        assert hrun.HybridData.get_time_range.call_count == 1

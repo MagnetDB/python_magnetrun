@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 
 from python_magnetrun.data_dirs import (
     HYBRID_DATA_DIR as DEFAULT_HYBRID_DATA_DIR,
@@ -497,7 +498,7 @@ class AnalysisConfig:
     colors: ColorConfig = field(default_factory=ColorConfig)
 
     @classmethod
-    def for_housing(cls, housing_name: str) -> AnalysisConfig:
+    def for_housing(cls, housing_name: str, at: datetime | None = None) -> AnalysisConfig:
         """
         Create configuration for a specific housing.
 
@@ -505,6 +506,9 @@ class AnalysisConfig:
         ----------
         housing_name : str
             Housing identifier (e.g., "M8", "M9", "M10")
+        at : datetime, optional
+            Timezone-aware instant selecting the housing wiring version
+            (see :meth:`HousingConfig.at`); ``None`` gives the base wiring.
 
         Returns
         -------
@@ -522,7 +526,7 @@ class AnalysisConfig:
         >>> config.housing.name
         'M9'
         """
-        return cls(housing=get_housing_config(housing_name))
+        return cls(housing=get_housing_config(housing_name, at=at))
 
     def get_pupitre_channel(self, reference_key: str) -> str:
         """

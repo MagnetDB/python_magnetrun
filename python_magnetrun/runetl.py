@@ -2,7 +2,9 @@
 
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from natsort import natsorted
 
@@ -114,6 +116,23 @@ def _cleanup_pupitre_icoil(data: MagnetDataBase, cfg) -> None:
     )
 
 
+def _data_start(data: MagnetDataBase) -> datetime | None:
+    """Return the start of *data* as an aware datetime (pupitre: local time, else UTC)."""
+    start = data.getStartDate()
+    if not start:
+        return None
+    try:
+        naive = datetime.strptime(f"{start[0]} {start[1]}", "%Y.%m.%d %H:%M:%S")
+    except ValueError:
+        logger.warning(
+            f"prepareData: unparsable start {start[:2]} in {data.FileName!r}, "
+            "using the base housing wiring"
+        )
+        return None
+    tz = ZoneInfo("Europe/Paris") if data.Type == DataType.PUPITRE else timezone.utc
+    return naive.replace(tzinfo=tz)
+
+
 def prepareData(
     data: MagnetDataBase,
     housing: str,
@@ -126,7 +145,8 @@ def prepareData(
 
     When *keys_to_add* and *keys_to_rename* are both ``None`` the ETL maps are
     derived automatically from the :class:`~python_magnetrun.housing_config.HousingConfig`
-    for the given *housing*:
+    for the given *housing*, in the wiring version in force at the start of
+    *data* (pupitre ``Date``/``Time`` read as Europe/Paris local time):
 
     - **PUPITRE**: adds ``pupitre_formula_map`` entries plus the UH/UB voltage
       sum formulas (filtered to columns actually present), and renames
@@ -143,7 +163,7 @@ def prepareData(
     """
     from .housing_config import get_housing_config
 
-    cfg = get_housing_config(housing)
+    cfg = get_housing_config(housing, at=_data_start(data))
 
     # Auto-build ETL maps from HousingConfig when caller passes None
     if keys_to_add is None and keys_to_rename is None:
