@@ -1,39 +1,64 @@
 import argparse
 import logging
 import sys
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import matplotlib
 import pandas as pd
 
+from ..housing_config import get_housing_config
 from ..log_utils import SIMPLE_FORMAT, setup_logging
 from ..magnetdata_pandas import PandasMagnetData
-from ..runetl import prepareData
+from ..runetl import (
+    PupitreEtlSpec,
+    load_pupitre_etl_spec,
+    prepare_pupitre,
+    prepareData,
+)
 from ..thermal_pipeline import (
     CoolingCircuitColumns,
     compute_circuit_thermal,
     compute_global_thermal,
 )
-from .plots import plot_key_vs_key, plot_vs_time
 
 matplotlib.rcParams["text.usetex"] = True
-logger = logging.getLogger(__name__)
+# Explicit name rather than __name__: executed as
+# `python -m python_magnetrun.utils.txt2csv`, __name__ == "__main__" which is
+# outside the "python_magnetrun.*" hierarchy and therefore bypasses the
+# handler configured by setup_logging().
+logger = logging.getLogger("python_magnetrun.utils.txt2csv")
 
 
 def concat_files(
     input_files: list,
     housing: str,
     keys: list = None,
+    etl_spec: PupitreEtlSpec | None = None,
 ) -> pd.DataFrame:
     """Load, concatenate and prepare pupitre txt files.
 
     Reads one or more pupitre .txt files (or .csv files), concatenates them,
-    and applies prepareData_legacy() to add the time column and rename/cleanup
-    voltage/current columns (UH/UB, IH/IB, TinH/TinB, etc.).
+    and prepares them: :func:`~python_magnetrun.runetl.prepareData` by
+    default (time column, UH/UB, IH/IB, TinH/TinB, …), or
+    :func:`~python_magnetrun.runetl.prepare_pupitre` when *etl_spec* is given.
 
-    :param input_files: list of input file paths
-    :param housing: housing name for prepareData_legacy (e.g. "M9", "M8", "M10")
-    :param keys: optional subset of columns to keep before concatenation
-    :return: prepared DataFrame
+    Parameters
+    ----------
+    input_files : list[str]
+        Input file paths.
+    housing : str
+        Housing name (e.g. ``"M9"``, ``"M8"``, ``"M10"``).
+    keys : list[str], optional
+        Subset of columns to keep before concatenation.
+    etl_spec : PupitreEtlSpec, optional
+        Opt-in spec-driven ETL, applied to the concatenated data.
+
+    Returns
+    -------
+    :class:`~pandas.DataFrame`
+        Prepared data.
     """
     logger.debug(
         f"concat_files: input_files={input_files}, housing={housing}, keys={keys}"
@@ -73,8 +98,24 @@ def concat_files(
         Keys=raw_df.columns.tolist(),
         Data=raw_df,
     )
-    prepareData(data, housing)
+    if etl_spec is not None:
+        prepare_pupitre(data, etl_spec)
+    else:
+        prepareData(data, housing)
     return data.getData()
+
+
+def _etl_spec_from_dir(etl_dir: str, assembly: str, housing: str, first_file: str) -> PupitreEtlSpec:
+    """Load ``<etl_dir>/<assembly>.<version>.pupitre-etl.json``, version at *first_file*'s start."""
+    skiprows = 1 if first_file.endswith(".txt") else 0
+    row = pd.read_csv(first_file, sep=r"\s+", engine="python", skiprows=skiprows, nrows=1)
+    start = datetime.strptime(
+        f"{row['Date'].iloc[0]} {row['Time'].iloc[0]}", "%Y.%m.%d %H:%M:%S"
+    ).replace(tzinfo=ZoneInfo("Europe/Paris"))
+    version = get_housing_config(housing, at=start).version
+    path = Path(etl_dir) / f"{assembly}.{version}.pupitre-etl.json"
+    logger.info(f"txt2csv: ETL spec {path} (housing version at {start})")
+    return load_pupitre_etl_spec(path)
 
 
 def main():
@@ -112,13 +153,37 @@ def main():
     parser.add_argument("--list", help="list keys in csv", action="store_true")
     parser.add_argument("--convert", help="convert file to csv", action="store_true")
     parser.add_argument("--debug", help="activate debug logging", action="store_true")
+    etl = parser.add_mutually_exclusive_group()
+    etl.add_argument(
+        "--etl-spec",
+        metavar="FILE",
+        help="opt-in spec-driven ETL: apply this *.pupitre-etl.json spec",
+    )
+    etl.add_argument(
+        "--etl-dir",
+        metavar="DIR",
+        help="opt-in spec-driven ETL: use DIR/<assembly>.<version>.pupitre-etl.json, "
+        "the housing version taken at the start of the first input file (needs --assembly)",
+    )
+    parser.add_argument("--assembly", help="assembly name, used with --etl-dir")
     args = parser.parse_args()
+    # INFO by default: --list / --output_time report their results via logger.info
     setup_logging(
-        level=logging.DEBUG if args.debug else logging.WARNING,
+        level=logging.DEBUG if args.debug else logging.INFO,
         fmt=SIMPLE_FORMAT,
     )
+    if args.etl_dir and not args.assembly:
+        parser.error("--etl-dir needs --assembly")
 
-    df = concat_files(args.input_files, args.housing)
+    etl_spec = None
+    if args.etl_spec:
+        etl_spec = load_pupitre_etl_spec(args.etl_spec)
+    elif args.etl_dir:
+        etl_spec = _etl_spec_from_dir(
+            args.etl_dir, args.assembly, args.housing, args.input_files[0]
+        )
+
+    df = concat_files(args.input_files, args.housing, etl_spec=etl_spec)
     keys = df.columns.values.tolist()
 
     if args.list:
@@ -156,12 +221,18 @@ def main():
 
     keys = df.columns.values.tolist()
 
+    # Imported here: utils/plots.py no longer has these functions (plotting
+    # refactor), so a module-level import broke every txt2csv command.
     if args.plot_vs_time:
+        from .plots import plot_vs_time
+
         logger.info(f"plot_vs_time={args.plot_vs_time}")
         items = args.plot_vs_time.split(";")
         plot_vs_time(df, items, args.show)
 
     if args.plot_key_vs_key:
+        from .plots import plot_key_vs_key
+
         pairs = args.plot_key_vs_key.split(";")
         plot_key_vs_key(df, pairs, args.show)
 
