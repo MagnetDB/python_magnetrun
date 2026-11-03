@@ -495,13 +495,15 @@ class PandasMagnetData(MagnetDataBase):
         keys_to_rename: dict[str, str] | None = None,
         keys_to_add: dict[str, dict[str, Any]] | None = None,
         debug: bool = False,
+        drop_redundant_columns: bool = True,
     ) -> int:
         """Apply ETL transformations (add, rename, remove columns) and normalise the DataFrame.
 
-        After the explicit operations the method also drops all-zero columns
-        (except those in a protected set such as flow/rpm/pressure channels)
-        and exact-duplicate columns (except ``Ucoil*``, the protected set and
-        the keys of *keys_to_add*).
+        After the explicit operations the method removes rows with a
+        duplicated ``t`` and, when *drop_redundant_columns* is ``True``, drops
+        all-zero columns (except those in a protected set such as
+        flow/rpm/pressure channels) and exact-duplicate columns (except
+        ``Ucoil*``, the protected set and the keys of *keys_to_add*).
 
         Parameters
         ----------
@@ -514,6 +516,10 @@ class PandasMagnetData(MagnetDataBase):
             :meth:`addData`.
         debug : bool
             Emit extra debug log messages when ``True``.
+        drop_redundant_columns : bool
+            Drop all-zero and duplicate columns (default ``True``); the
+            spec-driven ETL (:func:`~python_magnetrun.runetl.prepare_pupitre`)
+            passes ``False``.
 
         Returns
         -------
@@ -578,6 +584,9 @@ class PandasMagnetData(MagnetDataBase):
 
             self.Data = find_duplicates(self.Data, self.FileName, "t")
             self.Keys = _dataframe_keys(self.Data)
+
+        if not drop_redundant_columns:
+            return 0
 
         import re
 

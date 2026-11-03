@@ -1,15 +1,22 @@
 """ETL functions for preparing MagnetRun data."""
 
+import copy
+import json
 import logging
 import re
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
 from natsort import natsorted
 
 from .magnetdata_base import DataType, MagnetDataBase
 from .utils.narwhals_compat import to_pandas
+
+if TYPE_CHECKING:
+    from .housing_config import HousingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -196,3 +203,382 @@ def prepareData(
         _cleanup_pupitre_icoil(data, cfg)
 
     logger.debug(f"MagnetRun.prepareData: data.keys={data.getKeys()}")
+
+
+# ---------------------------------------------------------------------------
+# Spec-driven Pupitre ETL (PLAN_pupitre_etl_spec.md)
+# ---------------------------------------------------------------------------
+
+SPEC_KIND = "pupitre-etl-spec"
+SPEC_FORMAT_VERSION = 1
+ICOIL_CHECK_ATOL = 5.0  # [A]
+
+_FIELD_DEF_KEYS = {"formula", "symbol", "unit", "label", "description"}
+_SPEC_HOUSING_KEYS = {"name", "version", "remove", "rename", "add", "defaults", "companions"}
+_SPEC_MAGNET_KEYS = {"channels", "remove", "add", "current"}
+
+
+def _check_field_defs(where: str, defs: dict) -> None:
+    """Raise ``ValueError`` unless each field definition has exactly the field-def keys."""
+    for key, fd in defs.items():
+        if not isinstance(fd, dict) or set(fd) != _FIELD_DEF_KEYS:
+            got = sorted(fd) if isinstance(fd, dict) else fd
+            raise ValueError(
+                f"PupitreEtlSpec: {where} add {key!r} needs keys "
+                f"{sorted(_FIELD_DEF_KEYS)}, got {got}"
+            )
+
+
+@dataclass(frozen=True)
+class PupitreEtlSpec:
+    """Explicit ETL spec for the pupitre files of one assembly and housing version.
+
+    Attributes
+    ----------
+    assembly : str or None
+        Assembly name; ``None`` for a housing-only spec.
+    housing : dict
+        Housing part: ``name``, ``version`` (housing-config version it was
+        built from), ``remove`` (full-match regex patterns), ``rename``,
+        ``add`` and ``defaults`` (field definitions), ``companions``.
+    magnets : dict
+        Magnet name → part with ``channels``, ``remove``, ``add`` and
+        ``current`` (``{"source": "Icoil2", "check": "IH"}``); never ``rename``.
+
+    Raises
+    ------
+    ValueError
+        On unknown keys, incomplete field definitions, an ``add`` key given
+        twice (housing ``add`` or two magnet parts) or a channel claimed by
+        two magnet parts.
+    """
+
+    assembly: str | None
+    housing: dict
+    magnets: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate keys, field definitions and merge conflicts."""
+        unknown = set(self.housing) - _SPEC_HOUSING_KEYS
+        if unknown or "name" not in self.housing:
+            raise ValueError(
+                f"PupitreEtlSpec: housing part needs 'name' and only "
+                f"{sorted(_SPEC_HOUSING_KEYS)}; unknown {sorted(unknown)}"
+            )
+        _check_field_defs("housing", self.housing.get("add", {}))
+        _check_field_defs("housing defaults", self.housing.get("defaults", {}))
+        added = {key: "the housing" for key in self.housing.get("add", {})}
+        claimed: dict[str, str] = {}
+        for magnet, part in self.magnets.items():
+            unknown = set(part) - _SPEC_MAGNET_KEYS
+            if unknown:
+                raise ValueError(
+                    f"PupitreEtlSpec: magnet {magnet!r} has unknown key(s) "
+                    f"{sorted(unknown)} (allowed {sorted(_SPEC_MAGNET_KEYS)})"
+                )
+            _check_field_defs(f"magnet {magnet!r}", part.get("add", {}))
+            for key in part.get("add", {}):
+                if key in added:
+                    raise ValueError(
+                        f"PupitreEtlSpec: {key!r} added by both {added[key]} "
+                        f"and magnet {magnet!r}"
+                    )
+                added[key] = f"magnet {magnet!r}"
+            for channel in part.get("channels", []):
+                if channel in claimed:
+                    raise ValueError(
+                        f"PupitreEtlSpec: channel {channel!r} claimed by magnets "
+                        f"{claimed[channel]!r} and {magnet!r}"
+                    )
+                claimed[channel] = magnet
+            current = part.get("current")
+            if current is not None and set(current) != {"source", "check"}:
+                raise ValueError(
+                    f"PupitreEtlSpec: magnet {magnet!r} current needs "
+                    f"'source' and 'check', got {sorted(current)}"
+                )
+
+    @property
+    def remove(self) -> list[str]:
+        """Remove patterns: the housing's, then each magnet part's."""
+        patterns = list(self.housing.get("remove", []))
+        for part in self.magnets.values():
+            patterns += part.get("remove", [])
+        return patterns
+
+    @property
+    def rename(self) -> dict[str, str]:
+        """Rename map (housing only)."""
+        return dict(self.housing.get("rename", {}))
+
+    @property
+    def add(self) -> dict[str, dict]:
+        """Field definitions to add: housing ``add``, magnet ``add``, then the unreplaced ``defaults``."""
+        defs = dict(self.housing.get("add", {}))
+        for part in self.magnets.values():
+            defs.update(part.get("add", {}))
+        for key, fd in self.housing.get("defaults", {}).items():
+            defs.setdefault(key, fd)
+        return defs
+
+    @property
+    def checks(self) -> list[dict]:
+        """Current checks, one per magnet part with a ``current``."""
+        return [
+            {"magnet": magnet, **part["current"]}
+            for magnet, part in self.magnets.items()
+            if "current" in part
+        ]
+
+    def to_dict(self) -> dict:
+        """Return the JSON form of the spec (structure kept, not flattened).
+
+        Returns
+        -------
+        dict
+            ``{"kind", "version", "assembly", "housing", "magnets"}``.
+        """
+        return {
+            "kind": SPEC_KIND,
+            "version": SPEC_FORMAT_VERSION,
+            "assembly": self.assembly,
+            "housing": copy.deepcopy(self.housing),
+            "magnets": copy.deepcopy(self.magnets),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "PupitreEtlSpec":
+        """Build a spec from its JSON form.
+
+        Parameters
+        ----------
+        d : dict
+            Output of :meth:`to_dict` (or a JSON file of the same shape).
+
+        Returns
+        -------
+        PupitreEtlSpec
+            The validated spec.
+
+        Raises
+        ------
+        ValueError
+            If ``kind`` or the format ``version`` is not supported, or the
+            content is invalid (see the class).
+        """
+        if d.get("kind") != SPEC_KIND:
+            raise ValueError(f"PupitreEtlSpec: kind {d.get('kind')!r} is not {SPEC_KIND!r}")
+        if d.get("version") != SPEC_FORMAT_VERSION:
+            raise ValueError(
+                f"PupitreEtlSpec: format version {d.get('version')!r} is not "
+                f"{SPEC_FORMAT_VERSION}"
+            )
+        return cls(
+            assembly=d.get("assembly"),
+            housing=d["housing"],
+            magnets=d.get("magnets") or {},
+        )
+
+    @classmethod
+    def from_housing(
+        cls, cfg: "HousingConfig", assembly: str | None = None
+    ) -> "PupitreEtlSpec":
+        """Build the housing-only spec of a housing config.
+
+        Parameters
+        ----------
+        cfg : HousingConfig
+            Housing config already resolved at the file start
+            (``get_housing_config(housing, at=t0)``); its ``version`` is
+            recorded in ``housing.version``.
+        assembly : str, optional
+            Assembly name to record; no magnet part is added.
+
+        Returns
+        -------
+        PupitreEtlSpec
+            Spec adding ``IH``/``IB`` (``pupitre_formula_map``), the voltage
+            sums as ``defaults``, renaming Flow/Rpm/Tin/HP to role names,
+            removing every ``Icoil`` and the companions of removed ``Ucoil``.
+        """
+        housing = {
+            "name": cfg.name,
+            "version": cfg.version,
+            "remove": [r"Icoil\d+"],
+            "rename": cfg.get_pupitre_rename_map(),
+            "add": copy.deepcopy(cfg.pupitre_formula_map),
+            "defaults": cfg.get_pupitre_voltage_formulas(),
+            "companions": {"Ucoil": ["Icoil", "DRcoil", "Tcal"]},
+        }
+        return cls(assembly=assembly, housing=housing, magnets={})
+
+
+def load_pupitre_etl_spec(path: str | Path) -> PupitreEtlSpec:
+    """Load a ``*.pupitre-etl.json`` file.
+
+    Parameters
+    ----------
+    path : str or :class:`~pathlib.Path`
+        JSON file written by :func:`save_pupitre_etl_spec`.
+
+    Returns
+    -------
+    PupitreEtlSpec
+        The validated spec.
+    """
+    return PupitreEtlSpec.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
+
+def save_pupitre_etl_spec(path: str | Path, spec: PupitreEtlSpec) -> None:
+    """Write *spec* to *path* as pretty-printed JSON.
+
+    Parameters
+    ----------
+    path : str or :class:`~pathlib.Path`
+        Destination, by convention ``<assembly>.<housing version>.pupitre-etl.json``.
+    spec : PupitreEtlSpec
+        Spec to write.
+    """
+    Path(path).write_text(
+        json.dumps(spec.to_dict(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+
+
+def _housing_version_check(data: MagnetDataBase, spec: PupitreEtlSpec) -> dict:
+    """Compare the spec's housing version with the one in force at the data start."""
+    from .housing_config import get_housing_config
+
+    start = _data_start(data)
+    data_version = (
+        get_housing_config(spec.housing["name"], at=start).version if start else None
+    )
+    spec_version = spec.housing.get("version", "")
+    return {
+        "kind": "housing_version",
+        "spec": spec_version,
+        "data": data_version,
+        "ok": None if data_version is None else data_version == spec_version,
+    }
+
+
+def _current_checks(data: MagnetDataBase, spec: PupitreEtlSpec) -> list[dict]:
+    """Compare each magnet part's ``Icoil`` source with its target current [A]."""
+    keys = data.getKeys()
+    results = []
+    for check in spec.checks:
+        source, target = check["source"], check["check"]
+        result = {
+            "kind": "current",
+            "magnet": check["magnet"],
+            "target": target,
+            "source": source,
+            "max_abs_diff": None,
+            "ok": None,
+        }
+        if source in keys and target in keys:
+            df = to_pandas(data.getData([source, target]))
+            diff = (df[target] - df[source]).abs().max()
+            if diff == diff:  # not NaN
+                result["max_abs_diff"] = float(diff)
+                result["ok"] = bool(diff <= ICOIL_CHECK_ATOL)
+        results.append(result)
+    return results
+
+
+def _channel_checks(
+    data: MagnetDataBase, spec: PupitreEtlSpec, removed: list[str]
+) -> list[dict]:
+    """Check that each removed channel (``Ucoil n`` and its companions) is exactly 0."""
+    keys = data.getKeys()
+    results = []
+    for base, companions in spec.housing.get("companions", {}).items():
+        for key in natsorted(removed):
+            match = re.fullmatch(rf"{re.escape(base)}(\d+)", key)
+            if not match:
+                continue
+            n = match.group(1)
+            cols = [f"{f}{n}" for f in [base, *companions] if f"{f}{n}" in keys]
+            df = to_pandas(data.getData(cols))
+            fields = {}
+            for col in cols:
+                peak = df[col].abs().max()
+                if peak == peak and peak != 0:  # not NaN, not 0
+                    fields[col] = float(peak)
+            results.append(
+                {"kind": "channel", "channel": int(n), "fields": fields, "ok": not fields}
+            )
+    return results
+
+
+def prepare_pupitre(data: MagnetDataBase, spec: PupitreEtlSpec) -> list[dict]:
+    """Apply an explicit ETL spec to pupitre data, in place.
+
+    Order: housing-version check → ``addTime`` → rename → add → current and
+    channel checks → remove (full-match patterns) → companions → ``t``
+    dedupe. No content-based dropping (all-zero, duplicate columns) and no
+    ``Icoil`` guessing. Failed checks are logged as warnings; they never keep
+    or drop a column.
+
+    Parameters
+    ----------
+    data : MagnetDataBase
+        Pupitre data (pandas or polars backend), not yet prepared.
+    spec : PupitreEtlSpec
+        Spec of the file's assembly and housing version.
+
+    Returns
+    -------
+    list[dict]
+        Check results, each with a ``kind`` (``housing_version``,
+        ``current``, ``channel``) and an ``ok`` (``True``, ``False`` or
+        ``None`` when it could not be evaluated).
+    """
+    assert data.Type == DataType.PUPITRE
+
+    results = [_housing_version_check(data, spec)]  # needs Date/Time, before addTime
+    data.addTime()
+    data.getDuration()
+
+    keys = data.getKeys()
+    missing = [old for old in spec.rename if old not in keys]
+    if missing:
+        logger.warning(f"prepare_pupitre: {data.FileName}: no column to rename for {missing}")
+    rename = {old: new for old, new in spec.rename.items() if old in keys}
+    if rename:
+        data.renameData(rename)
+
+    keys = data.getKeys()
+    existing = [key for key in spec.add if key in keys]
+    if existing:
+        logger.warning(f"prepare_pupitre: {data.FileName}: {existing} already present, not added")
+    add = {key: fd for key, fd in spec.add.items() if key not in keys}
+    data.cleanupData(keys_to_add=add, drop_redundant_columns=False)
+
+    keys = data.getKeys()
+    removed = [k for k in keys if any(re.fullmatch(p, k) for p in spec.remove)]
+    for pattern in spec.remove:
+        if not any(re.fullmatch(pattern, k) for k in keys):
+            logger.debug(f"prepare_pupitre: {data.FileName}: {pattern!r} matches no column")
+
+    results += _current_checks(data, spec)
+    results += _channel_checks(data, spec, removed)
+    for result in results:
+        if result["ok"] is False:
+            logger.warning(f"prepare_pupitre: {data.FileName}: failed check {result}")
+
+    if removed:
+        data.removeData(removed)
+
+    keys = data.getKeys()
+    orphans = []
+    for base, companions in spec.housing.get("companions", {}).items():
+        for key in keys:
+            for comp in companions:
+                match = re.fullmatch(rf"{re.escape(comp)}(\d+)", key)
+                if match and f"{base}{match.group(1)}" not in keys:
+                    orphans.append(key)
+    if orphans:
+        data.removeData(orphans)
+
+    logger.debug(f"prepare_pupitre: data.keys={data.getKeys()}")
+    return results

@@ -10,6 +10,8 @@ housing
     Manage ``<Housing>-housing-config.json`` files (``magnetrun-housing-config``).
 field
     Manage ``*-defs.json`` field-definition files (``magnetrun-field-defs``).
+etl
+    Manage ``<assembly>.<version>.pupitre-etl.json`` spec files.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import argparse
 import sys
 
 from .configAlims.convertxml import register as _register_alim
+from .etl_cli import register as _register_etl
 from .field_defs import register as _register_field
 from .housing_config import register as _register_housing
 from .plotting.cli import register as _register_plot
@@ -39,6 +42,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     _register_housing(domain_sub)
     _register_field(domain_sub)
     _register_alim(domain_sub)
+    _register_etl(domain_sub)
     p.set_defaults(_handler=_run_config)
 
 
@@ -52,6 +56,7 @@ def main() -> None:
     _register_housing(sub)
     _register_field(sub)
     _register_alim(sub)
+    _register_etl(sub)
 
     args = parser.parse_args()
     sys.exit(args._domain_handler(args))

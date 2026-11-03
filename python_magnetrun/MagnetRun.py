@@ -16,7 +16,7 @@ import pandas as pd
 from .magnetdata import load_magnetdata
 from .magnetdata_base import DataType, MagnetDataBase
 from .magnetdata_pandas import PandasMagnetData
-from .runetl import prepareData
+from .runetl import PupitreEtlSpec, prepare_pupitre, prepareData
 from .utils.downsampling import DownsampleConfig
 from .utils.timezone import ensure_utc_naive, local_to_utc_naive
 
@@ -215,6 +215,7 @@ class MagnetRun:
         keys_to_rename: dict[str, str] | None = None,
         keys_to_add: dict[str, dict[str, Any]] | None = None,
         time_zone: str = "Europe/Paris",
+        etl_spec: PupitreEtlSpec | None = None,
     ) -> "MagnetRun":
         """Create a :class:`MagnetRun` from a pupitre ``.txt`` file.
 
@@ -235,6 +236,11 @@ class MagnetRun:
         time_zone : str
             IANA local timezone of the ``Date``/``Time`` columns (default
             ``"Europe/Paris"``); used to convert to naive UTC.
+        etl_spec : PupitreEtlSpec, optional
+            Opt-in spec-driven ETL: the file is prepared with
+            :func:`~python_magnetrun.runetl.prepare_pupitre` instead of
+            :func:`~python_magnetrun.runetl.prepareData`. Cannot be combined
+            with the three ETL arguments above.
 
         Notes
         -----
@@ -248,7 +254,19 @@ class MagnetRun:
         MagnetRun
             Fully initialised instance with ``StartTime`` set to the naive UTC
             equivalent of the first data row's date/time.
+
+        Raises
+        ------
+        ValueError
+            If *etl_spec* is given together with an ETL argument.
         """
+        if etl_spec is not None and not (
+            keys_to_remove is None and keys_to_rename is None and keys_to_add is None
+        ):
+            raise ValueError(
+                "MagnetRun.fromtxt: etl_spec cannot be combined with "
+                "keys_to_remove / keys_to_rename / keys_to_add"
+            )
         logger.debug(
             f"MagnetRun/fromtxt: housing={housing}, assembly={assembly}, filename={filename}"
         )
@@ -258,13 +276,16 @@ class MagnetRun:
         # logger.debug(f"MagnetRun/from_txt: data={data}")
         res = data.getStartDate()
         logger.debug(f"MagnetRun.from_txt: getStartDate={res}")
-        prepareData(
-            data,
-            housing,
-            keys_to_remove=keys_to_remove,
-            keys_to_rename=keys_to_rename,
-            keys_to_add=keys_to_add,
-        )
+        if etl_spec is not None:
+            prepare_pupitre(data, etl_spec)
+        else:
+            prepareData(
+                data,
+                housing,
+                keys_to_remove=keys_to_remove,
+                keys_to_rename=keys_to_rename,
+                keys_to_add=keys_to_add,
+            )
         logger.debug(
             f"MagnetRun/from_txt: after prepareData - data keys={data.getKeys()}"
         )

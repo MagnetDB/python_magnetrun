@@ -420,6 +420,7 @@ class PolarsMagnetData(MagnetDataBase):
         keys_to_rename: dict[str, str] | None = None,
         keys_to_add: dict[str, dict[str, Any]] | None = None,
         debug: bool = False,
+        drop_redundant_columns: bool = True,
     ) -> int:
         """Apply ETL transformations (add, rename, remove columns) and normalise the DataFrame.
 
@@ -482,6 +483,9 @@ class PolarsMagnetData(MagnetDataBase):
         if "t" in self.Keys:
             self.Data = _polars_find_duplicates(self.Data, self.FileName, "t")
             self.Keys = self.Data.columns
+
+        if not drop_redundant_columns:
+            return 0
 
         Fkeys = set(
             [_key for _key in self.Keys if re.match(r"Flow\w+", _key)]

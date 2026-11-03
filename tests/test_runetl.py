@@ -233,3 +233,236 @@ class TestPrepareDataHousingVersion:
         data = _pupitre(df)
         prepareData(data, "M8")
         assert list(data.getData(["UB"])["UB"]) == [14.0, 14.0]
+
+
+# ---------------------------------------------------------------------------
+# Spec-driven ETL: PupitreEtlSpec / prepare_pupitre
+# (accessed through the module so that each test fails on its own until the
+# API exists)
+# ---------------------------------------------------------------------------
+
+import logging  # noqa: E402
+from datetime import datetime  # noqa: E402
+from zoneinfo import ZoneInfo  # noqa: E402
+
+import pytest  # noqa: E402
+
+from python_magnetrun import runetl  # noqa: E402
+from python_magnetrun.housing_config import HOUSING_CONFIGS  # noqa: E402
+
+PARIS = ZoneInfo("Europe/Paris")
+
+
+def _fd(formula: str) -> dict:
+    """Complete field definition for *formula*."""
+    key = formula.split("=")[0].strip()
+    return {"formula": formula, "symbol": key, "unit": "volt", "label": key, "description": key}
+
+
+def _frame(date: str = "2026.05.15", **cols) -> pd.DataFrame:
+    """Two-row pupitre frame with 16 channels, all four fields 0 unless overridden."""
+    data = {
+        "Date": [date, date],
+        "Time": ["10:00:00", "10:00:01"],
+        "Field": [1.0, 1.1],
+        "Flow1": [50.0, 50.0], "Flow2": [40.0, 40.0],
+        "Tin1": [15.0, 15.0], "Tin2": [16.0, 16.0],
+        "Rpm1": [1500.0, 1500.0], "Rpm2": [1400.0, 1400.0],
+        "HP1": [20.0, 20.0], "HP2": [19.0, 19.0],
+        "Idcct1": [1000.0, 1000.0], "Idcct2": [1000.0, 1000.0],
+        "Idcct3": [500.0, 500.0], "Idcct4": [500.0, 500.0],
+        "ZeroCol": [0.0, 0.0],
+    }
+    for n in range(1, 17):
+        for f in ("Icoil", "Ucoil", "DRcoil", "Tcal"):
+            data[f"{f}{n}"] = [0.0, 0.0]
+    data.update(cols)
+    return pd.DataFrame(data)
+
+
+def _spec(housing: str = "M9", when=datetime(2026, 5, 15, tzinfo=PARIS), magnets=None):
+    """Spec = housing part of *housing* at *when* + *magnets*."""
+    base = runetl.PupitreEtlSpec.from_housing(HOUSING_CONFIGS[housing].at(when))
+    return runetl.PupitreEtlSpec(assembly="A", housing=base.housing, magnets=magnets or {})
+
+
+class TestPupitreEtlSpec:
+    def test_round_trip(self):
+        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "add": {"UH": _fd("UH = Ucoil2")}}})
+        assert runetl.PupitreEtlSpec.from_dict(spec.to_dict()) == spec
+
+    def test_wrong_kind_refused(self):
+        d = _spec().to_dict()
+        d["kind"] = "other"
+        with pytest.raises(ValueError, match="kind"):
+            runetl.PupitreEtlSpec.from_dict(d)
+
+    def test_wrong_format_version_refused(self):
+        d = _spec().to_dict()
+        d["version"] = 99
+        with pytest.raises(ValueError, match="version"):
+            runetl.PupitreEtlSpec.from_dict(d)
+
+    def test_two_magnets_adding_same_key_raise(self):
+        with pytest.raises(ValueError, match="UH"):
+            _spec(magnets={
+                "A1": {"channels": ["Ucoil2"], "add": {"UH": _fd("UH = Ucoil2")}},
+                "A2": {"channels": ["Ucoil3"], "add": {"UH": _fd("UH = Ucoil3")}},
+            })
+
+    def test_magnet_add_conflicting_with_housing_add_raises(self):
+        with pytest.raises(ValueError, match="IH"):
+            _spec(magnets={"A1": {"add": {"IH": _fd("IH = Idcct1")}}})
+
+    def test_channel_claimed_twice_raises(self):
+        with pytest.raises(ValueError, match="Ucoil2"):
+            _spec(magnets={"A1": {"channels": ["Ucoil2"]}, "A2": {"channels": ["Ucoil2"]}})
+
+    def test_magnet_rename_refused(self):
+        with pytest.raises(ValueError, match="rename"):
+            _spec(magnets={"A1": {"rename": {"Flow1": "X"}}})
+
+    def test_incomplete_field_def_refused(self):
+        with pytest.raises(ValueError, match="formula"):
+            _spec(magnets={"A1": {"add": {"UH": {"formula": "UH = Ucoil2"}}}})
+
+    def test_magnet_add_replaces_default(self):
+        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "add": {"UH": _fd("UH = Ucoil2")}}})
+        assert spec.add["UH"]["formula"] == "UH = Ucoil2"
+        assert "UB" in spec.add  # other default kept
+
+    def test_save_then_load(self, tmp_path):
+        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "current": {"source": "Icoil2", "check": "IH"}}})
+        path = tmp_path / "A.M9-181109.pupitre-etl.json"
+        runetl.save_pupitre_etl_spec(path, spec)
+        assert runetl.load_pupitre_etl_spec(path) == spec
+
+
+class TestFromHousing:
+    def test_m9_m10_renames_differ(self):
+        m9 = _spec("M9")
+        m10 = _spec("M10")
+        assert m9.rename["Flow1"] == "FlowH"
+        assert m10.rename["Flow1"] == "FlowB"
+        assert m9.magnets == {} and m10.magnets == {}
+
+    def test_version_recorded(self):
+        assert _spec("M9").housing["version"] == "M9-181109"
+
+    def test_m8_after_wiring_change(self):
+        spec = _spec("M8", when=datetime(2026, 3, 6, tzinfo=PARIS))
+        assert spec.housing["version"] == "M8-260305"
+        assert spec.add["UB"]["formula"] == "UB = Ucoil14"
+        assert "Ucoil14" not in spec.add["UH"]["formula"]
+
+    def test_m8_before_wiring_change(self):
+        spec = _spec("M8", when=datetime(2025, 11, 5, tzinfo=PARIS))
+        assert spec.housing["version"] == "M8-211225"
+        assert spec.add["UB"]["formula"] == "UB = Ucoil15 + Ucoil16"
+
+
+class TestPreparePupitre:
+    def test_rename_before_add_and_removal(self):
+        spec = _spec(magnets={"Ins": {"add": {"F2": _fd("F2 = FlowH * 2")}}})
+        data = _pupitre(_frame())
+        runetl.prepare_pupitre(data, spec)
+        keys = data.getKeys()
+        assert "FlowH" in keys and "Flow1" not in keys
+        assert list(data.getData(["F2"])["F2"]) == [100.0, 100.0]
+        assert not [k for k in keys if k.startswith("Icoil")]
+        assert "t" in keys
+        assert "ZeroCol" in keys  # no content-based dropping
+        assert list(data.getData(["IH"])["IH"]) == [2000.0, 2000.0]
+
+    def test_current_check_ok(self):
+        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "current": {"source": "Icoil2", "check": "IH"}}})
+        data = _pupitre(_frame(Icoil2=[2000.0, 2000.0]))
+        checks = runetl.prepare_pupitre(data, spec)
+        cur = [c for c in checks if c["kind"] == "current"]
+        assert cur[0]["ok"] is True and cur[0]["max_abs_diff"] == 0.0
+
+    def test_current_check_offset_fails(self, caplog):
+        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "current": {"source": "Icoil2", "check": "IH"}}})
+        data = _pupitre(_frame(Icoil2=[2007.0, 2007.0]))
+        with caplog.at_level(logging.WARNING):
+            checks = runetl.prepare_pupitre(data, spec)
+        cur = [c for c in checks if c["kind"] == "current"][0]
+        assert cur["ok"] is False and cur["max_abs_diff"] == pytest.approx(7.0)
+        assert "current" in caplog.text
+
+    def test_current_check_missing_source(self):
+        spec = _spec(magnets={"Ins": {"current": {"source": "Icoil99", "check": "IH"}}})
+        checks = runetl.prepare_pupitre(_pupitre(_frame()), spec)
+        assert [c for c in checks if c["kind"] == "current"][0]["ok"] is None
+
+    def test_companions_follow_removed_ucoil(self):
+        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "remove": ["Ucoil1"]}})
+        data = _pupitre(_frame(Ucoil2=[3.0, 3.0], Tcal2=[20.0, 20.0]))
+        runetl.prepare_pupitre(data, spec)
+        keys = data.getKeys()
+        assert not {"Ucoil1", "DRcoil1", "Tcal1"} & set(keys)
+        assert {"Ucoil2", "DRcoil2", "Tcal2"} <= set(keys)
+
+    def test_channel_check_all_zero_ok(self):
+        spec = _spec(magnets={"Ins": {"remove": ["Ucoil1"]}})
+        checks = runetl.prepare_pupitre(_pupitre(_frame()), spec)
+        ch = [c for c in checks if c["kind"] == "channel"]
+        assert ch == [{"kind": "channel", "channel": 1, "fields": {}, "ok": True}]
+
+    def test_channel_check_tcal_fails(self, caplog):
+        spec = _spec(magnets={"Ins": {"remove": ["Ucoil5"]}})
+        data = _pupitre(_frame(Tcal5=[9.3, 9.3]))
+        with caplog.at_level(logging.WARNING):
+            checks = runetl.prepare_pupitre(data, spec)
+        ch = [c for c in checks if c["kind"] == "channel"][0]
+        assert ch["ok"] is False and ch["fields"] == {"Tcal5": 9.3}
+        assert "Tcal5" not in data.getKeys()  # removed anyway
+
+    def test_housing_version_mismatch_flagged(self, caplog):
+        spec = _spec("M8", when=datetime(2025, 11, 5, tzinfo=PARIS))  # M8-211225
+        data = _pupitre(_frame(date="2026.03.06"))
+        with caplog.at_level(logging.WARNING):
+            checks = runetl.prepare_pupitre(data, spec)
+        hv = [c for c in checks if c["kind"] == "housing_version"][0]
+        assert hv == {"kind": "housing_version", "spec": "M8-211225", "data": "M8-260305", "ok": False}
+        assert "M8-260305" in caplog.text
+        assert "t" in data.getKeys()  # still processed
+
+    def test_housing_version_match_ok(self):
+        spec = _spec("M8", when=datetime(2026, 3, 6, tzinfo=PARIS))
+        checks = runetl.prepare_pupitre(_pupitre(_frame(date="2026.03.06")), spec)
+        assert [c for c in checks if c["kind"] == "housing_version"][0]["ok"] is True
+
+    def test_polars(self):
+        import polars as pl
+
+        from python_magnetrun.magnetdata_polars import PolarsMagnetData
+
+        df = pl.from_pandas(_frame(Icoil2=[2000.0, 2000.0]))
+        data = PolarsMagnetData("test.txt", {}, df.columns, df, defs_file=None)
+        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "current": {"source": "Icoil2", "check": "IH"}}})
+        checks = runetl.prepare_pupitre(data, spec)
+        keys = data.getKeys()
+        assert "IH" in keys and "FlowH" in keys and "ZeroCol" in keys
+        assert not [k for k in keys if k.startswith("Icoil")]
+        assert [c for c in checks if c["kind"] == "current"][0]["ok"] is True
+
+
+class TestFromTxtEtlSpec:
+    """MagnetRun.fromtxt(etl_spec=...) uses prepare_pupitre instead of prepareData."""
+
+    def test_spec_applied(self):
+        from python_magnetrun.MagnetRun import MagnetRun
+
+        spec = _spec("M9", when=datetime(2022, 3, 30, tzinfo=PARIS))
+        mrun = MagnetRun.fromtxt("M9", "A", str(SAMPLE_TXT), etl_spec=spec)
+        keys = mrun.getKeys()
+        assert "FlowH" in keys and "Flow1" not in keys
+        assert not [k for k in keys if k.startswith("Icoil")]
+        assert "t" in keys
+
+    def test_spec_with_keys_refused(self):
+        from python_magnetrun.MagnetRun import MagnetRun
+
+        with pytest.raises(ValueError, match="etl_spec"):
+            MagnetRun.fromtxt("M9", "A", str(SAMPLE_TXT), keys_to_add={}, etl_spec=_spec())
