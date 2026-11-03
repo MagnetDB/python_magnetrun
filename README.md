@@ -1458,18 +1458,74 @@ print(df_bench[["compression_ratio", "rmse", "max_error", "elapsed_s"]])
 
 ### ETL (`runetl`)
 
-`python_magnetrun.runetl` provides functions to clean and normalise raw Pupitre data
-before further processing or ingestion into a database:
+`python_magnetrun.runetl` prepares raw Pupitre data in one of two ways. Both use
+the housing wiring in force at the start of the data: a housing config holds a
+list of dated `versions` (e.g. `M8-260305`: M8 Bitters read on `Ucoil14` from
+2026-03-05), resolved with `get_housing_config(housing, at=...)`.
 
-- drop all-zero non-essential columns
-- rename `Icoil` → `IH` / `IB` based on housing config
-- attach computed `timestamp` (naive UTC)
+**Default: `prepareData`** (housing config + content-based cleanup):
+
+- adds `IH`/`IB` (Idcct sums) and the `UH`/`UB` voltage sums, renames
+  Flow/Rpm/Tin/HP to role names, attaches `t` and `timestamp` (naive UTC);
+- drops all-zero and duplicate columns, renames or drops the `Icoil` columns.
 
 ```python
-from python_magnetrun.runetl import prepare_pupitre
+from python_magnetrun.magnetdata import load_magnetdata
+from python_magnetrun.runetl import prepareData
 
-data = prepare_pupitre("data/M9_2024.05.09---16_34_03.txt", housing="M9")
+data = load_magnetdata("data/M9_2019.02.14-23_00_38.txt")
+prepareData(data, housing="M9")
 ```
+
+**Opt-in: spec-driven `prepare_pupitre`** (explicit spec, no content-based dropping).
+A spec, `<assembly>.<housing version>.pupitre-etl.json`, lists what to rename, add
+and remove for one assembly and one housing version, plus per-magnet parts (the
+`Ucoil` channels of each magnet and an `Icoil` current check). It is exported from
+DuckDB (`python magnetdb.py etl export <assembly>` in `to_duckdb`), or built
+standalone from the housing config alone (no magnet parts):
+
+```python
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from python_magnetrun.housing_config import get_housing_config
+from python_magnetrun.magnetdata import load_magnetdata
+from python_magnetrun.runetl import (
+    PupitreEtlSpec, load_pupitre_etl_spec, prepare_pupitre, save_pupitre_etl_spec,
+)
+
+# housing-only spec, for the wiring in force at the file start (Europe/Paris time)
+start = datetime(2019, 2, 14, 23, 0, 38, tzinfo=ZoneInfo("Europe/Paris"))
+spec = PupitreEtlSpec.from_housing(get_housing_config("M9", at=start))
+save_pupitre_etl_spec("M9.pupitre-etl.json", spec)
+
+data = load_magnetdata("data/M9_2019.02.14-23_00_38.txt")
+checks = prepare_pupitre(data, load_pupitre_etl_spec("M9.pupitre-etl.json"))
+print([c for c in checks if c["ok"] is False])  # failed checks (also logged)
+```
+
+`prepare_pupitre` returns its checks: `housing_version` (the spec's version vs the
+one in force at the data start), `current` (`max |IH − Icoil n|` ≤ 5 A per magnet
+part) and `channel` (each removed `Ucoil n` and its `Icoil`/`DRcoil`/`Tcal` are
+exactly 0). A failed check is logged; it never keeps or drops a column.
+
+The same spec is available from the command line:
+
+```bash
+# create / show a housing-only spec (--at: no offset = Europe/Paris time; default now)
+magnetrun config etl M9_test.M9-181109.pupitre-etl.json create --from-housing M9 \
+    --assembly M9_test --at 2026-05-15T10:00
+magnetrun config etl M9_test.M9-181109.pupitre-etl.json show
+
+# txt2csv: explicit spec, or DIR/<assembly>.<version>.pupitre-etl.json for the
+# housing version at the start of the first file
+python -m python_magnetrun.utils.txt2csv file.txt --housing M9 --list \
+    --etl-spec M9_test.M9-181109.pupitre-etl.json
+python -m python_magnetrun.utils.txt2csv file.txt --housing M9 --list \
+    --etl-dir specs/ --assembly M9_test
+```
+
+and from `MagnetRun.fromtxt(housing, assembly, filename, etl_spec=spec)`.
 
 ### Waterflow pipeline (`waterflow_pipeline`)
 
