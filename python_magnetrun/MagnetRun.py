@@ -236,6 +236,13 @@ class MagnetRun:
             IANA local timezone of the ``Date``/``Time`` columns (default
             ``"Europe/Paris"``); used to convert to naive UTC.
 
+        Notes
+        -----
+        The three ETL arguments are passed to
+        :func:`~python_magnetrun.runetl.prepareData`. When *keys_to_add* or
+        *keys_to_rename* is given, the maps derived from the housing config
+        are not applied: the caller's lists replace them.
+
         Returns
         -------
         MagnetRun
@@ -251,7 +258,13 @@ class MagnetRun:
         # logger.debug(f"MagnetRun/from_txt: data={data}")
         res = data.getStartDate()
         logger.debug(f"MagnetRun.from_txt: getStartDate={res}")
-        prepareData(data, housing)
+        prepareData(
+            data,
+            housing,
+            keys_to_remove=keys_to_remove,
+            keys_to_rename=keys_to_rename,
+            keys_to_add=keys_to_add,
+        )
         logger.debug(
             f"MagnetRun/from_txt: after prepareData - data keys={data.getKeys()}"
         )

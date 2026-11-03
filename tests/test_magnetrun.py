@@ -197,6 +197,34 @@ class TestFromTxt:
         mrun = MagnetRun.fromtxt("M9", "assembly", str(SAMPLE_TXT))
         assert len(mrun.getKeys()) > 0
 
+    def test_keys_to_add_forwarded(self):
+        usum = {
+            "formula": "Usum = Ucoil1 + Ucoil2",
+            "symbol": "U",
+            "unit": "volt",
+            "label": "Usum",
+            "description": "test sum",
+        }
+        mrun = MagnetRun.fromtxt(
+            "M9", "assembly", str(SAMPLE_TXT), keys_to_rename={}, keys_to_add={"Usum": usum}
+        )
+        assert "Usum" in mrun.getKeys()
+
+    def test_keys_to_remove_forwarded(self):
+        mrun = MagnetRun.fromtxt(
+            "M9", "assembly", str(SAMPLE_TXT),
+            keys_to_remove=["Field"], keys_to_rename={}, keys_to_add={},
+        )
+        assert "Field" not in mrun.getKeys()
+
+    def test_keys_to_rename_forwarded(self):
+        mrun = MagnetRun.fromtxt(
+            "M9", "assembly", str(SAMPLE_TXT),
+            keys_to_rename={"Tout": "Tout_renamed"}, keys_to_add={},
+        )
+        assert "Tout_renamed" in mrun.getKeys()
+        assert "Tout" not in mrun.getKeys()
+
 
 class TestLoadMrun:
     def test_txt_dispatches_to_fromtxt(self):
