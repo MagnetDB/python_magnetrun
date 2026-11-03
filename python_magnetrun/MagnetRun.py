@@ -16,7 +16,14 @@ import pandas as pd
 from .magnetdata import load_magnetdata
 from .magnetdata_base import DataType, MagnetDataBase
 from .magnetdata_pandas import PandasMagnetData
-from .runetl import PupitreEtlSpec, prepare_pupitre, prepareData
+from .runetl import (
+    PupitreEtlSpec,
+    find_pupitre_etl_spec,
+    load_pupitre_etl_spec,
+    prepare_pupitre,
+    prepareData,
+    pupitre_file_start,
+)
 from .utils.downsampling import DownsampleConfig
 from .utils.timezone import ensure_utc_naive, local_to_utc_naive
 
@@ -29,13 +36,20 @@ def load_mrun(
     assembly: str = "",
     time_zone: str = "Europe/Paris",
     auto_resolve: bool = True,
-    **kwargs,
+    keys_to_remove: list[str] | None = None,
+    keys_to_rename: dict[str, str] | None = None,
+    keys_to_add: dict[str, dict[str, Any]] | None = None,
+    etl_spec: PupitreEtlSpec | None = None,
+    etl_dir: str | None = None,
 ) -> "MagnetRun":
     """Load a MagnetRun from a file, dispatching on extension.
 
     - ``.tdms`` → :meth:`MagnetRun.fromtdms`
     - ``.txt``  → :meth:`MagnetRun.fromtxt`
     - ``.csv``  → :meth:`MagnetRun.fromcsv`
+
+    The ETL arguments apply to pupitre ``.txt`` files only; they are refused
+    for other extensions rather than ignored.
 
     Parameters
     ----------
@@ -52,8 +66,15 @@ def load_mrun(
         the file is not found at the given path.  Uses the same resolution
         logic as the CLI (searches current dir, then extension-specific data
         dirs, then ``data_dir/housing``).
-    **kwargs
-        Extra keyword arguments forwarded to the underlying classmethod.
+    keys_to_remove, keys_to_rename, keys_to_add : optional
+        Explicit ETL lists for :func:`~python_magnetrun.runetl.prepareData`
+        (see :meth:`MagnetRun.fromtxt`).
+    etl_spec : PupitreEtlSpec, optional
+        Opt-in spec-driven ETL (:func:`~python_magnetrun.runetl.prepare_pupitre`).
+    etl_dir : str, optional
+        Opt-in spec-driven ETL with the spec file
+        ``<etl_dir>/<assembly>.<housing version>.pupitre-etl.json`` of the
+        housing version at the file start; needs *assembly*.
 
     Returns
     -------
@@ -63,11 +84,28 @@ def load_mrun(
     Raises
     ------
     ValueError
-        If the file extension is not recognised.
+        If the file extension is not recognised, an ETL argument is given for
+        a non-``.txt`` file, *etl_spec* and *etl_dir* are both given, or
+        *etl_dir* is given without *assembly*.
     FileNotFoundError
-        If the file cannot be found.
+        If the file, or the spec file in *etl_dir*, cannot be found.
     """
     import os
+
+    etl_args = {
+        "keys_to_remove": keys_to_remove,
+        "keys_to_rename": keys_to_rename,
+        "keys_to_add": keys_to_add,
+        "etl_spec": etl_spec,
+        "etl_dir": etl_dir,
+    }
+    given = [name for name, value in etl_args.items() if value is not None]
+    if given and os.path.splitext(filename)[-1].lower() != ".txt":
+        raise ValueError(f"load_mrun: {given} only apply to pupitre .txt files ({filename})")
+    if etl_spec is not None and etl_dir is not None:
+        raise ValueError("load_mrun: give either etl_spec or etl_dir, not both")
+    if etl_dir is not None and not assembly:
+        raise ValueError("load_mrun: etl_dir needs the assembly name")
 
     resolved_filename = filename
 
@@ -104,8 +142,21 @@ def load_mrun(
     if ext == ".tdms":
         return MagnetRun.fromtdms(housing, assembly, resolved_filename, time_zone=time_zone)
     elif ext == ".txt":
+        if etl_dir is not None:
+            spec_path = find_pupitre_etl_spec(
+                etl_dir, assembly, housing, pupitre_file_start(resolved_filename)
+            )
+            logger.info(f"load_mrun: ETL spec {spec_path}")
+            etl_spec = load_pupitre_etl_spec(spec_path)
         return MagnetRun.fromtxt(
-            housing, assembly, resolved_filename, time_zone=time_zone, **kwargs
+            housing,
+            assembly,
+            resolved_filename,
+            keys_to_remove=keys_to_remove,
+            keys_to_rename=keys_to_rename,
+            keys_to_add=keys_to_add,
+            time_zone=time_zone,
+            etl_spec=etl_spec,
         )
     elif ext == ".csv":
         return MagnetRun.fromcsv(housing, assembly, resolved_filename)
@@ -258,7 +309,8 @@ class MagnetRun:
         Raises
         ------
         ValueError
-            If *etl_spec* is given together with an ETL argument.
+            If *etl_spec* is given together with an ETL argument, or is the
+            spec of another housing.
         """
         if etl_spec is not None and not (
             keys_to_remove is None and keys_to_rename is None and keys_to_add is None
@@ -266,6 +318,11 @@ class MagnetRun:
             raise ValueError(
                 "MagnetRun.fromtxt: etl_spec cannot be combined with "
                 "keys_to_remove / keys_to_rename / keys_to_add"
+            )
+        if etl_spec is not None and etl_spec.housing["name"] != housing:
+            raise ValueError(
+                f"MagnetRun.fromtxt: etl_spec is for housing {etl_spec.housing['name']!r}, "
+                f"not {housing!r}"
             )
         logger.debug(
             f"MagnetRun/fromtxt: housing={housing}, assembly={assembly}, filename={filename}"

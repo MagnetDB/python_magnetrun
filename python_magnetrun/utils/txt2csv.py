@@ -1,21 +1,19 @@
 import argparse
 import logging
 import sys
-from datetime import datetime
-from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import matplotlib
 import pandas as pd
 
-from ..housing_config import get_housing_config
 from ..log_utils import SIMPLE_FORMAT, setup_logging
 from ..magnetdata_pandas import PandasMagnetData
 from ..runetl import (
     PupitreEtlSpec,
+    find_pupitre_etl_spec,
     load_pupitre_etl_spec,
     prepare_pupitre,
     prepareData,
+    pupitre_file_start,
 )
 from ..thermal_pipeline import (
     CoolingCircuitColumns,
@@ -107,13 +105,8 @@ def concat_files(
 
 def _etl_spec_from_dir(etl_dir: str, assembly: str, housing: str, first_file: str) -> PupitreEtlSpec:
     """Load ``<etl_dir>/<assembly>.<version>.pupitre-etl.json``, version at *first_file*'s start."""
-    skiprows = 1 if first_file.endswith(".txt") else 0
-    row = pd.read_csv(first_file, sep=r"\s+", engine="python", skiprows=skiprows, nrows=1)
-    start = datetime.strptime(
-        f"{row['Date'].iloc[0]} {row['Time'].iloc[0]}", "%Y.%m.%d %H:%M:%S"
-    ).replace(tzinfo=ZoneInfo("Europe/Paris"))
-    version = get_housing_config(housing, at=start).version
-    path = Path(etl_dir) / f"{assembly}.{version}.pupitre-etl.json"
+    start = pupitre_file_start(first_file)
+    path = find_pupitre_etl_spec(etl_dir, assembly, housing, start)
     logger.info(f"txt2csv: ETL spec {path} (housing version at {start})")
     return load_pupitre_etl_spec(path)
 

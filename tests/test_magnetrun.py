@@ -241,3 +241,80 @@ class TestLoadMrun:
     def test_missing_file_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
             load_mrun(str(tmp_path / "nonexistent.txt"), auto_resolve=False)
+
+
+# ---------------------------------------------------------------------------
+# load_mrun: explicit ETL arguments (spec-driven ETL, never silently ignored)
+# ---------------------------------------------------------------------------
+
+from datetime import datetime  # noqa: E402
+from zoneinfo import ZoneInfo  # noqa: E402
+
+from python_magnetrun.housing_config import get_housing_config  # noqa: E402
+from python_magnetrun.runetl import PupitreEtlSpec, save_pupitre_etl_spec  # noqa: E402
+
+_ETL_COLS = (
+    ["Date", "Time", "Field", "Flow1", "Flow2", "Tin1", "Tin2", "Rpm1", "Rpm2", "HP1", "HP2"]
+    + [f"Idcct{i}" for i in range(1, 5)]
+    + [f"{f}{n}" for n in range(1, 17) for f in ("Icoil", "Ucoil", "DRcoil", "Tcal")]
+)
+
+
+@pytest.fixture()
+def m9_etl(tmp_path):
+    """Synthetic M9 file starting 2026-05-15 10:00:00 and the spec dir with A.M9-181109."""
+    values = {"Field": "1.0", "Flow1": "50", "Flow2": "40", "Idcct1": "1000", "Idcct2": "1000"}
+    rows = [
+        "\t".join({"Date": "2026.05.15", "Time": t, **values}.get(c, "0") for c in _ETL_COLS)
+        for t in ("10:00:00", "10:00:01")
+    ]
+    path = tmp_path / "2026.05.15 - 10:00:00.txt"
+    path.write_text("16\tM0\t1\t1\n" + "\t".join(_ETL_COLS) + "\n" + "\n".join(rows) + "\n")
+    cfg = get_housing_config("M9", at=datetime(2026, 5, 15, 10, tzinfo=ZoneInfo("Europe/Paris")))
+    spec = PupitreEtlSpec.from_housing(cfg, assembly="A")
+    specs = tmp_path / "specs"
+    specs.mkdir()
+    save_pupitre_etl_spec(specs / "A.M9-181109.pupitre-etl.json", spec)
+    return path, specs, spec
+
+
+class TestLoadMrunEtl:
+    @pytest.mark.parametrize("ext", [".tdms", ".csv"])
+    @pytest.mark.parametrize("arg", ["etl_spec", "etl_dir", "keys_to_add"])
+    def test_etl_arguments_refused_for_non_txt(self, m9_etl, tmp_path, ext, arg):
+        value = {"etl_spec": m9_etl[2], "etl_dir": str(m9_etl[1]), "keys_to_add": {}}[arg]
+        with pytest.raises(ValueError, match="txt"):
+            load_mrun(str(tmp_path / f"x{ext}"), housing="M9", auto_resolve=False, **{arg: value})
+
+    def test_etl_spec_applied(self, m9_etl):
+        path, _, spec = m9_etl
+        mrun = load_mrun(str(path), housing="M9", assembly="A", auto_resolve=False, etl_spec=spec)
+        keys = mrun.getKeys()
+        assert "FlowH" in keys and not [k for k in keys if k.startswith("Icoil")]
+        assert "Ucoil1" in keys  # no content-based dropping
+
+    def test_etl_dir_picks_version_file(self, m9_etl):
+        path, specs, _ = m9_etl
+        mrun = load_mrun(str(path), housing="M9", assembly="A", auto_resolve=False, etl_dir=str(specs))
+        assert "FlowH" in mrun.getKeys() and "Ucoil1" in mrun.getKeys()
+
+    def test_etl_dir_needs_assembly(self, m9_etl):
+        path, specs, _ = m9_etl
+        with pytest.raises(ValueError, match="assembly"):
+            load_mrun(str(path), housing="M9", auto_resolve=False, etl_dir=str(specs))
+
+    def test_etl_dir_missing_spec_file(self, m9_etl):
+        path, specs, _ = m9_etl
+        with pytest.raises(FileNotFoundError, match="B.M9-181109.pupitre-etl.json"):
+            load_mrun(str(path), housing="M9", assembly="B", auto_resolve=False, etl_dir=str(specs))
+
+    def test_etl_spec_and_dir_exclusive(self, m9_etl):
+        path, specs, spec = m9_etl
+        with pytest.raises(ValueError, match="etl_dir"):
+            load_mrun(str(path), housing="M9", assembly="A", auto_resolve=False,
+                      etl_spec=spec, etl_dir=str(specs))
+
+    def test_spec_of_other_housing_refused(self, m9_etl):
+        path, _, spec = m9_etl
+        with pytest.raises(ValueError, match="M9"):
+            MagnetRun.fromtxt("M8", "A", str(path), etl_spec=spec)

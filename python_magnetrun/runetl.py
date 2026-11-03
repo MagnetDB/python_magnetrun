@@ -444,6 +444,68 @@ def save_pupitre_etl_spec(path: str | Path, spec: PupitreEtlSpec) -> None:
     )
 
 
+def pupitre_file_start(path: str | Path) -> datetime:
+    """Return the start of a pupitre file: its first ``Date``/``Time`` row, in Europe/Paris time.
+
+    Parameters
+    ----------
+    path : str or :class:`~pathlib.Path`
+        Pupitre ``.txt`` file (line 1 = parameter line) or a ``.csv`` export.
+
+    Returns
+    -------
+    datetime
+        Timezone-aware start time.
+    """
+    import pandas as pd
+
+    is_txt = str(path).endswith(".txt")
+    row = pd.read_csv(
+        path, sep=r"\s+" if is_txt else ",", engine="python", skiprows=1 if is_txt else 0, nrows=1
+    )
+    naive = datetime.strptime(
+        f"{row['Date'].iloc[0]} {row['Time'].iloc[0]}", "%Y.%m.%d %H:%M:%S"
+    )
+    return naive.replace(tzinfo=ZoneInfo("Europe/Paris"))
+
+
+def find_pupitre_etl_spec(
+    etl_dir: str | Path, assembly: str, housing: str, at: datetime
+) -> Path:
+    """Return ``<etl_dir>/<assembly>.<housing version>.pupitre-etl.json`` for the version at *at*.
+
+    Parameters
+    ----------
+    etl_dir : str or :class:`~pathlib.Path`
+        Directory of exported spec files.
+    assembly : str
+        Assembly name.
+    housing : str
+        Housing name, used to resolve the housing-config version.
+    at : datetime
+        Timezone-aware time, normally the file start (:func:`pupitre_file_start`).
+
+    Returns
+    -------
+    :class:`~pathlib.Path`
+        Existing spec file.
+
+    Raises
+    ------
+    FileNotFoundError
+        If no spec file exists for that assembly and version.
+    """
+    from .housing_config import get_housing_config
+
+    version = get_housing_config(housing, at=at).version
+    path = Path(etl_dir) / f"{assembly}.{version}.pupitre-etl.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"No ETL spec {path} (assembly {assembly!r}, housing version {version!r} at {at})"
+        )
+    return path
+
+
 def _housing_version_check(data: MagnetDataBase, spec: PupitreEtlSpec) -> dict:
     """Compare the spec's housing version with the one in force at the data start."""
     from .housing_config import get_housing_config
