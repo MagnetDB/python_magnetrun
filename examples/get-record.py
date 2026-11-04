@@ -10,12 +10,14 @@ import pandas as pd
 from tabulate import tabulate
 
 from python_magnetrun.cli_args import create_base_parser, get_datadir_mapping
+from python_magnetrun.housing_config import HOUSING_CONFIGS
 from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.magnetdata_base import MagnetDataBase
 from python_magnetrun.MagnetRun import MagnetRun
 from python_magnetrun.processing.correlations import pearson
 from python_magnetrun.processing.stats import stats
 from python_magnetrun.utils.files import expand_input_files
+from python_magnetrun.utils.narwhals_compat import to_pandas
 from python_magnetrun.utils.timestamps import parse_filename_timestamp
 
 logger = get_logger(__name__)
@@ -26,6 +28,15 @@ def load_record(file: str, args, show: bool = False) -> MagnetDataBase:
     filename = os.path.basename(file)
     extension = os.path.splitext(filename)[-1]
     housing = args.housing if args.housing != "notdefined" else filename.split("_")[0]
+    if args.housing == "ALL":
+        # pupitre files live in <pupitre_datadir>/<housing>/; tdms names carry it
+        housing = filename.split("_")[0]
+        if extension == ".txt":
+            housing = os.path.basename(os.path.dirname(file))
+            if housing not in HOUSING_CONFIGS:
+                raise RuntimeError(
+                    f"{file}: cannot infer housing from directory {housing!r}"
+                )
     assembly = args.assembly
 
     try:
@@ -53,9 +64,9 @@ def select_data(data, args) -> dict | None:
     """Return a result dict if the record passes selection criteria, else None."""
     duration = data.getDuration()
     if duration > args.duration:
-        bdata = data.extractDataThreshold("Field", args.field)
+        bdata = to_pandas(data.extractDataThreshold("Field", args.field))
         if not bdata.empty:
-            bfield = data.getData("Field").squeeze()
+            bfield = to_pandas(data.getData("Field")).squeeze()
             return {
                 "file": data.FileName,
                 "duration (s)": f"{duration:.1f}",
@@ -64,6 +75,20 @@ def select_data(data, args) -> dict | None:
                 "Field max (T)": f"{bfield.max():.3f}",
             }
     return None
+
+
+def _expand_files(args, datadir: dict[str, str]) -> list[str]:
+    """Expand input patterns; ``--housing ALL`` searches every known housing."""
+    if args.housing != "ALL":
+        return expand_input_files(args.input_file, datadir, args.housing)
+    files: list[str] = []
+    for housing in HOUSING_CONFIGS:
+        files += [
+            f
+            for f in expand_input_files(args.input_file, datadir, housing)
+            if os.path.isfile(f)
+        ]
+    return list(dict.fromkeys(files))
 
 
 def _sort_key(file: str) -> datetime:
@@ -159,7 +184,7 @@ def main():
 
     # Expand glob patterns and search configured data directories
     datadir = get_datadir_mapping(args)
-    files = expand_input_files(args.input_file, datadir, args.housing)
+    files = _expand_files(args, datadir)
     print(f"files: {len(files)} records, datadir={datadir}")
 
     # need to be sorted by time??
@@ -204,7 +229,7 @@ def main():
                 # logger.info(f"record: {file} - duration: {data.getDuration():.1f} s")
                 if data.getDuration() >= min_duration:
                     try:
-                        df_.append(data.getData(selected_keys))
+                        df_.append(to_pandas(data.getData(selected_keys)))
                     except (KeyError, IndexError) as error:
                         logger.error(
                             f"record: {file} - ignored: {selected_keys} not all in {data.getKeys()} (error={error})",
@@ -220,7 +245,7 @@ def main():
         logger.info(f"aggregate: {len(df_)} dataframes collected")
 
         try:
-            df = pd.concat(df_, axis=0)
+            df = pd.concat(df_, axis=0, ignore_index=True)
         except ValueError as _exc:
             if "different registries" not in str(_exc):
                 raise
@@ -373,7 +398,7 @@ def main():
                     if args.fields:
                         selected_keys = args.fields
 
-                    selected_df = data.getData(selected_keys)
+                    selected_df = to_pandas(data.getData(selected_keys))
                     logger.info(f"pairplot: selected_keys={len(selected_keys)}")
                     ax = sns.pairplot(selected_df)
                     if args.show:
