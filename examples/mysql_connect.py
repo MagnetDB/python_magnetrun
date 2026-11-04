@@ -161,8 +161,10 @@ import sys
 import time
 import webbrowser
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import duckdb
 
@@ -174,6 +176,8 @@ _DEFAULT_HOST = "localhost"
 _DEFAULT_PORT = 3306
 _DEFAULT_OUTPUT = "magnetdb_mysql.duckdb"
 _DEFAULT_OUTPUT_DIR = "."
+# Time zone of the naive TIMESTAMP columns stored in the MySQL database.
+_SOURCE_TZ = "Europe/Paris"
 
 
 # ---------------------------------------------------------------------------
@@ -420,8 +424,43 @@ def _build_export_select(
     return sql
 
 
+def _utc_select(select_sql: str, columns: list[str]) -> str:
+    """Wrap *select_sql* so that *columns* are converted from local time to naive UTC.
+
+    Parameters
+    ----------
+    select_sql : str
+        Export query whose naive TIMESTAMP *columns* hold ``_SOURCE_TZ`` local time.
+    columns : list of str
+        Columns to convert; other columns are passed through unchanged.
+
+    Returns
+    -------
+    str
+        *select_sql* unchanged if *columns* is empty, else a ``SELECT * REPLACE``
+        wrapper keeping the column names and order.
+    """
+    if not columns:
+        return select_sql
+    replace = ", ".join(
+        f"timezone('UTC', timezone('{_SOURCE_TZ}', \"{c}\")) AS \"{c}\"" for c in columns
+    )
+    return f"SELECT * REPLACE ({replace}) FROM ({select_sql})"
+
+
+def _utc_to_local(value: str | None) -> str | None:
+    """Convert a naive-UTC ISO datetime string to naive ``_SOURCE_TZ`` local time."""
+    if value is None:
+        return None
+    dt = datetime.fromisoformat(value).replace(tzinfo=UTC).astimezone(ZoneInfo(_SOURCE_TZ))
+    return dt.replace(tzinfo=None).isoformat(sep=" ")
+
+
 def mode_export(args: argparse.Namespace) -> None:
     """Export MySQL tables to a local file (CSV, Parquet, or DuckDB).
+
+    With ``args.utc``, naive TIMESTAMP columns (assumed ``_SOURCE_TZ`` local
+    time) are written as naive UTC, and ``--start``/``--end`` are read as UTC.
 
     Parameters
     ----------
@@ -510,13 +549,28 @@ def mode_export(args: argparse.Namespace) -> None:
     if args.verbose:
         print(f"Exporting {len(tables)} table(s): {', '.join(tables)}")
 
+    # --start/--end are UTC with --utc; filter on the raw local column so the
+    # condition can still be pushed down to MySQL.
+    start, end = args.start, args.end
+    if args.utc:
+        start, end = _utc_to_local(start), _utc_to_local(end)
+
     for table in tables:
         if filtered:
             select_sql = _build_export_select(
-                table, export_fields, time_field, args.start, args.end
+                table, export_fields, time_field, start, end
             )
         else:
             select_sql = f"SELECT * FROM mysqldb.{table}"
+
+        if args.utc:
+            utc_cols = [
+                c[0]
+                for c in describe_table(con, table)
+                if str(c[1]).upper().strip() == "TIMESTAMP"
+                and (not export_fields or c[0] in export_fields)
+            ]
+            select_sql = _utc_select(select_sql, utc_cols)
 
         if args.sort_time:
             sort_col = _time_sort_column(con, table, time_field)
@@ -2597,6 +2651,17 @@ def parse_args() -> argparse.Namespace:
         "--end",
         metavar="DATETIME",
         help="end of time range, ISO 8601, e.g. '2024-01-15 20:00:00'",
+    )
+    exp.add_argument(
+        "--utc",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            f"write naive TIMESTAMP columns as naive UTC, converted from {_SOURCE_TZ} "
+            "local time; --start/--end are then read as UTC (default: on). "
+            "Text columns holding times (e.g. EXPERIENCES_LOG HStart/HStop) are "
+            "not converted. --no-utc keeps local time"
+        ),
     )
 
     # Poll / plot options

@@ -34,6 +34,16 @@ def _fake_attach(con, dsn, verbose=False):
         )
     con.execute("CREATE TABLE mysqldb.notime (name VARCHAR, val DOUBLE)")
     con.execute("INSERT INTO mysqldb.notime VALUES ('b', 2.0), ('a', 1.0)")
+    # Europe/Paris local times: summer (UTC+2) and winter (UTC+1).
+    con.execute(
+        'CREATE TABLE mysqldb.stamps (t TIMESTAMP, "Timestamp Field" TIMESTAMP, '
+        "d DATE, label VARCHAR)"
+    )
+    con.execute(
+        "INSERT INTO mysqldb.stamps VALUES "
+        "('2026-09-17 08:42:37', '2026-09-17 08:42:37', '2026-09-17', '09/17/26  08:42:37'), "
+        "('2026-12-17 08:42:37', '2026-12-17 08:42:37', '2026-12-17', '12/17/26  08:42:37')"
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -57,6 +67,7 @@ def _export_args(tmp_path, **kw):
         "fmt": "csv", "output": str(tmp_path / "out.duckdb"),
         "output_dir": str(tmp_path), "tables": ["meas"], "table": None,
         "export_fields": None, "time_field": None, "start": None, "end": None,
+        "utc": False,
     }
     base.update(kw)
     return _conn_args(**base)
@@ -144,6 +155,54 @@ def test_export_sort_without_time_column_warns(tmp_path, capsys):
 
 
 # ---------------------------------------------------------------------------
+# export --utc
+# ---------------------------------------------------------------------------
+
+
+def _read_rows(path):
+    with open(path, newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+def test_export_utc_converts_timestamp_columns(tmp_path):
+    mc.mode_export(_export_args(tmp_path, tables=["stamps"], utc=True))
+    rows = _read_rows(tmp_path / "stamps.csv")
+    assert [r["t"] for r in rows] == ["2026-09-17 06:42:37", "2026-12-17 07:42:37"]
+    assert [r["Timestamp Field"] for r in rows] == [r["t"] for r in rows]
+    # DATE and VARCHAR columns are left untouched.
+    assert [r["d"] for r in rows] == ["2026-09-17", "2026-12-17"]
+    assert [r["label"] for r in rows] == ["09/17/26  08:42:37", "12/17/26  08:42:37"]
+
+
+def test_export_no_utc_keeps_local_time(tmp_path):
+    mc.mode_export(_export_args(tmp_path, tables=["stamps"]))
+    rows = _read_rows(tmp_path / "stamps.csv")
+    assert [r["t"] for r in rows] == ["2026-09-17 08:42:37", "2026-12-17 08:42:37"]
+
+
+def test_export_utc_start_end_are_utc_and_sorted(tmp_path):
+    # meas holds 2026-01-01 00:00..00:09 local (CET), i.e. 2025-12-31 23:00..23:09 UTC.
+    mc.mode_export(
+        _export_args(
+            tmp_path, utc=True, sort_time="desc",
+            start="2025-12-31 23:02:00", end="2025-12-31 23:05:00",
+        )
+    )
+    rows = _read_rows(tmp_path / "meas.csv")
+    assert [float(r["Icoil"]) for r in rows] == [5.25, 4.25, 3.25, 2.25]
+    assert rows[0]["t"] == "2025-12-31 23:05:00"
+
+
+def test_export_utc_duckdb_format(tmp_path):
+    import duckdb
+
+    out = tmp_path / "out.duckdb"
+    mc.mode_export(_export_args(tmp_path, fmt="duckdb", output=str(out), tables=["stamps"], utc=True))
+    with duckdb.connect(str(out)) as c:
+        assert c.execute("SELECT min(t)::VARCHAR FROM stamps").fetchone()[0] == "2026-09-17 06:42:37"
+
+
+# ---------------------------------------------------------------------------
 # view
 # ---------------------------------------------------------------------------
 
@@ -179,6 +238,16 @@ def test_parse_args_sort_time(monkeypatch):
 def test_parse_args_sort_time_default(monkeypatch):
     monkeypatch.setattr(sys, "argv", _CLI_BASE)
     assert mc.parse_args().sort_time is None
+
+
+def test_parse_args_utc_default(monkeypatch):
+    monkeypatch.setattr(sys, "argv", _CLI_BASE)
+    assert mc.parse_args().utc is True
+
+
+def test_parse_args_no_utc(monkeypatch):
+    monkeypatch.setattr(sys, "argv", _CLI_BASE + ["--no-utc"])
+    assert mc.parse_args().utc is False
 
 
 def test_parse_args_sort_time_invalid(monkeypatch):

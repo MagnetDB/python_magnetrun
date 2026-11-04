@@ -507,6 +507,7 @@ python mysql_connect.py --mode poll \
 | `--time-field` | auto | TIMESTAMP column for `--start`/`--end` filtering |
 | `--start` | — | Start of time range, ISO 8601 |
 | `--end` | — | End of time range, ISO 8601 |
+| `--utc` / `--no-utc` | `--utc` | Write naive TIMESTAMP columns as naive UTC (converted from Europe/Paris local time); `--start`/`--end` are then read as UTC. Text columns holding times (e.g. `EXPERIENCES_LOG` `HStart`/`HStop`) are not converted. `--no-utc` keeps local time |
 | `--sort-time` | — | `asc` or `desc`: sort rows by `--time-field` (or first TIMESTAMP column). Also applies to `--mode view` (uses `--x-field`); ignored with `--query`. Tables without a timestamp column are left unsorted |
 
 **Poll/plot arguments:**
