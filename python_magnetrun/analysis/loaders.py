@@ -32,8 +32,9 @@ import glob
 import logging
 import os
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import cast
 
@@ -44,6 +45,10 @@ from ..magnetdata_base import DataType
 from ..runlogs.pigbrother import PIGBROTHER_LOG_FILENAME
 from ..utils.files import (
     DIR_ARCHIVE,
+    DIR_DEFAULT,
+    DIR_SPIKE,
+    DIR_STATS,
+    DIR_TRIGGER,
     TIMESTAMP_FORMAT,
     extract_data,
     find_files,
@@ -759,15 +764,33 @@ class FileDiscovery:
         end_time_str = _local_end_dt.strftime("%H:%M")
         hours = range(_local_dt.hour, _local_end_dt.hour + 1)
 
+        self._select_hybrid_files(file_set, _local_dt.date(), hours)
+        logger.info(
+            f"Hybrid data for {date_str} {time_str}–{end_time_str} (local)"
+            f" hours={list(hours)}: "
+            f"{len(file_set.hybrid_kHz)} kHz, "
+            f"{len(file_set.hybrid_rms)} rms, "
+            f"{len(file_set.hybrid_trigger)} trigger dirs, "
+            f"{len(file_set.hybrid_vprocess)} vprocess"
+        )
+
+    def _select_hybrid_files(
+        self,
+        file_set: FileSet,
+        local_date: date,
+        hours: Iterable[int],
+    ) -> None:
+        """Append the hybrid files of *local_date* recorded during local *hours* to *file_set*."""
+        date_str = local_date.strftime("%Y-%m-%d")
+
         # kHz/RMS/trigger filenames encode UTC hours; convert French local hours
         # to UTC so the file-name filter matches correctly (handles CET/CEST).
         from zoneinfo import ZoneInfo
 
         _tz_paris = ZoneInfo("Europe/Paris")
         _tz_utc = ZoneInfo("UTC")
-        _local_date = _local_dt.date()
         utc_hours = {
-            datetime(_local_date.year, _local_date.month, _local_date.day,
+            datetime(local_date.year, local_date.month, local_date.day,
                      h, 0, 0, tzinfo=_tz_paris).astimezone(_tz_utc).hour
             for h in hours
         }
@@ -795,7 +818,7 @@ class FileDiscovery:
                 m = re.match(r"^\d{8}_(\d{2})", p.name)
                 return int(m.group(1)) if m else None
 
-            file_set.hybrid_kHz = cast(
+            file_set.hybrid_kHz += cast(
                 list[str],
                 natsorted(
                     str(f)
@@ -805,7 +828,7 @@ class FileDiscovery:
                     if _khz_hour(f) in utc_hours
                 ),
             )
-            file_set.hybrid_rms = cast(
+            file_set.hybrid_rms += cast(
                 list[str],
                 natsorted(
                     str(f)
@@ -814,7 +837,7 @@ class FileDiscovery:
                     if _rms_hour(f) in utc_hours
                 ),
             )
-            file_set.hybrid_trigger = cast(
+            file_set.hybrid_trigger += cast(
                 list[str],
                 natsorted(
                     str(d)
@@ -823,21 +846,13 @@ class FileDiscovery:
                     if _trigger_dir_hour(d) in utc_hours
                 ),
             )
-            file_set.hybrid_vprocess = cast(
+            file_set.hybrid_vprocess += cast(
                 list[str],
                 natsorted(
                     str(f)
                     for f in hdata._info.vprocess_files
                     if _vprocess_hour(f) in utc_hours
                 ),
-            )
-            logger.info(
-                f"Hybrid data for {date_str} {time_str}–{end_time_str} (local)"
-                f" hours={list(hours)}: "
-                f"{len(file_set.hybrid_kHz)} kHz, "
-                f"{len(file_set.hybrid_rms)} rms, "
-                f"{len(file_set.hybrid_trigger)} trigger dirs, "
-                f"{len(file_set.hybrid_vprocess)} vprocess"
             )
         except (OSError, ValueError, ImportError) as e:
             logger.warning(f"Could not discover hybrid data for {date_str}: {e}")
@@ -994,6 +1009,120 @@ class FileDiscovery:
             f"{len(file_set.hybrid_rms)} rms, "
             f"{len(file_set.hybrid_trigger)} trigger dirs, "
             f"{len(file_set.hybrid_vprocess)} vprocess"
+        )
+        return file_set
+
+    def candidate_files(
+        self,
+        housing: str,
+        start: datetime,
+        end: datetime,
+    ) -> dict[str, list[str]]:
+        """List the files of each type whose name is dated within a time window.
+
+        Files are globbed for every day the window touches plus the day before,
+        since a file started before midnight can run into the window (Archive
+        files rotate every few hours).
+
+        Parameters
+        ----------
+        housing : str
+            Housing identifier (e.g. ``"M9"``).
+        start : datetime
+            Window start, naive local (Europe/Paris) wall-clock time.
+        end : datetime
+            Window end, same convention.
+
+        Returns
+        -------
+        dict[str, list[str]]
+            Keys ``overview``, ``archive``, ``default``, ``trigger``,
+            ``spike``, ``stats``, ``pupitre``; naturally sorted paths.
+        """
+        pb = self.pigbrother_datadir / housing
+        patterns = {
+            "overview": (pb / "Overview", f"{housing}_Overview_{{d}}-*.tdms"),
+            "archive": (pb / DIR_ARCHIVE, f"{housing}_Archive_{{d}}-*.tdms"),
+            "default": (pb / DIR_DEFAULT, f"{housing}_Default_{{d}}-*.tdms"),
+            "trigger": (pb / DIR_TRIGGER, f"{housing}_ManuelTrig_{{d}}-*.tdms"),
+            "spike": (pb / DIR_SPIKE, f"{housing}_Spikes_{{d}}-*.tdms"),
+            "stats": (pb / DIR_STATS, f"{housing}_Stats_*{{d}}-*.tdms"),
+        }
+        first_day = start.date() - timedelta(days=1)
+        n_days = (end.date() - first_day).days + 1
+        days = [first_day + timedelta(days=i) for i in range(n_days)]
+
+        found: dict[str, list[str]] = {}
+        for kind, (directory, pattern) in patterns.items():
+            files: list[str] = []
+            for d in days:
+                files += glob.glob(str(directory / pattern.format(d=d.strftime("%y%m%d"))))
+            found[kind] = cast(list[str], natsorted(set(files)))
+        pupitre: list[str] = []
+        for d in days:
+            pupitre += glob.glob(str(self.pupitre_datadir / housing / f"{d:%Y.%m.%d}*.txt"))
+        found["pupitre"] = cast(list[str], natsorted(set(pupitre)))
+        return found
+
+    def discover_window(
+        self,
+        housing: str,
+        start: datetime,
+        end: datetime,
+    ) -> FileSet:
+        """Discover all files recorded during a time window, with no anchor file.
+
+        Counterpart to :meth:`discover` for windows given by an external
+        source, such as an EXPERIENCES_LOG session. Every file type, including
+        Overview and Archive files, is kept when its time range overlaps
+        ``[start, end]``.
+
+        Parameters
+        ----------
+        housing : str
+            Housing identifier (e.g. ``"M9"``).
+        start : datetime
+            Window start, naive local (Europe/Paris) wall-clock time, the
+            convention of the data filenames.
+        end : datetime
+            Window end, same convention.
+
+        Returns
+        -------
+        FileSet
+            Container with all files overlapping the window.
+        """
+        s = start.strftime(TIMESTAMP_FORMAT)
+        e = end.strftime(TIMESTAMP_FORMAT)
+        candidates = self.candidate_files(housing, start, end)
+
+        file_set = FileSet()
+        for kind in ("overview", "archive", "pupitre"):
+            setattr(file_set, kind, select_files(candidates[kind], housing, s, e))
+        # Incident files are intentionally short; disable the min-duration guard.
+        for kind in ("default", "trigger", "spike", "stats"):
+            setattr(
+                file_set,
+                kind,
+                select_files(candidates[kind], housing, s, e, min_duration_seconds=0.0),
+            )
+
+        self._discover_runlogs(file_set, s, e)
+        if housing == "M8" and self.hybrid_datadir is not None:
+            n_days = (end.date() - start.date()).days + 1
+            for i in range(n_days):
+                d = start.date() + timedelta(days=i)
+                first = start.hour if d == start.date() else 0
+                last = end.hour if d == end.date() else 23
+                self._select_hybrid_files(file_set, d, range(first, last + 1))
+
+        logger.info(
+            f"Discovered files for {housing} {s} → {e}: "
+            f"{len(file_set.overview)} overviews, {len(file_set.archive)} archives, "
+            f"{len(file_set.pupitre)} pupitres, "
+            f"{len(file_set.default) + len(file_set.trigger) + len(file_set.spike)} incidents, "
+            f"{len(file_set.stats)} stats, "
+            f"{len(file_set.hybrid_kHz)} kHz, {len(file_set.hybrid_rms)} rms"
         )
         return file_set
 

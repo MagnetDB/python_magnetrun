@@ -24,11 +24,11 @@ and `.csv` files) and TDMS binary files (pigbrother).
 
 ## Configuration & Field Definitions
 
-Site-specific sensor wiring (which physical channel plays which role on M8, M9, M10) is
-managed by {class}`~python_magnetrun.site_config.SiteConfig`. Convenience functions
-{func}`~python_magnetrun.site_config.get_site_config`,
-{func}`~python_magnetrun.site_config.load_site_config`, and
-{func}`~python_magnetrun.site_config.save_site_config` handle JSON persistence.
+Housing-specific sensor wiring (which physical channel plays which role on M5, M7, M8,
+M9, M10) is managed by {class}`~python_magnetrun.housing_config.HousingConfig`.
+Convenience functions {func}`~python_magnetrun.housing_config.get_housing_config`,
+{func}`~python_magnetrun.housing_config.load_housing_config`, and
+{func}`~python_magnetrun.housing_config.save_housing_config` handle JSON persistence.
 
 Field-definition JSON files that map column names to physical metadata (symbol, unit,
 cross-format aliases) are handled by {mod}`python_magnetrun.field_defs`.
@@ -37,7 +37,7 @@ cross-format aliases) are handled by {mod}`python_magnetrun.field_defs`.
 .. autosummary::
    :toctree: generated
 
-   python_magnetrun.site_config
+   python_magnetrun.housing_config
    python_magnetrun.field_defs
 ```
 
@@ -72,6 +72,8 @@ distance/similarity metrics, and plotting into a single coherent workflow.
    python_magnetrun.analysis.metrics
    python_magnetrun.analysis.plotting
    python_magnetrun.analysis.processing
+   python_magnetrun.analysis.field_comparison
+   python_magnetrun.analysis.sessions
 ```
 
 ---
@@ -94,11 +96,13 @@ independently.
 | `trends` | Trend analysis |
 | `hysteresis` | Hysteresis curve fitting |
 | `fit` | Curve and piecewise-linear fitting |
+| `python_magnetrun.outliers` | General-purpose outlier detection (IQR, z-score, modified z-score, MAD, percentile) |
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
+   python_magnetrun.outliers
    python_magnetrun.processing.stats
    python_magnetrun.processing.filters
    python_magnetrun.processing.smoothers
@@ -132,7 +136,6 @@ access to individual binary files.
 
    python_magnetrun.hybrid.hybrid_run
    python_magnetrun.hybrid.hybrid_data
-   python_magnetrun.hybrid.outliers
    python_magnetrun.hybrid.data_protocol
    python_magnetrun.hybrid.utils
    python_magnetrun.hybrid.kHz
@@ -189,11 +192,15 @@ the User DataBase API.
    python_magnetrun.requests.deserialize
 ```
 
-### TDMS Log Parsing
+### Run Logs
+
+Parsers for the acquisition run logs: the pigbrother log (`LOG_ACQ_ENET.txt`) and
+the pupitre Cirrus logs (`cirrus/A[1-4]/YYYY-MM-DD_cirrus_out.log`).
 
 ```{eval-rst}
 .. autosummary::
    :toctree: generated
 
-   python_magnetrun.tdms.log_parser
+   python_magnetrun.runlogs.pigbrother
+   python_magnetrun.runlogs.pupitre
 ```

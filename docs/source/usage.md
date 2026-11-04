@@ -120,38 +120,39 @@ To permanently override a bundled file for your site, place an edited copy in
 cp /path/to/my-pupitre-defs.json ~/.config/magnetrun/pupitre-defs.json
 ```
 
-### Housing / site configuration (`<Housing>-site-config.json`)
+### Housing configuration (`<Housing>-housing-config.json`)
 
-Per-housing JSON files (`M8-site-config.json`, `M9-site-config.json`,
-`M10-site-config.json`) are bundled as read-only templates.
-`get_site_config()` resolves in this order:
+Per-housing JSON files (`M5-housing-config.json`, `M7-housing-config.json`,
+`M8-housing-config.json`, `M9-housing-config.json`, `M10-housing-config.json`)
+are bundled as read-only templates. `get_housing_config()` resolves in this order:
 
 1. Explicit `json_file` argument.
-2. `~/.config/magnetrun/<Housing>-site-config.json` — persistent user override.
+2. `~/.config/magnetrun/<Housing>-housing-config.json` — persistent user override.
 3. Hardcoded built-in default.
+4. Runtime `overrides` (e.g. GR1/GR2 swapped for an atypical run) applied on top.
 
 ```python
-from python_magnetrun.site_config import (
-    get_site_config,
-    get_bundled_site_config_path,
-    get_user_site_config_path,
+from python_magnetrun.housing_config import (
+    get_housing_config,
+    get_bundled_housing_config_path,
+    get_user_housing_config_path,
 )
 
 # Always works — falls back to built-in if no user override exists
-cfg = get_site_config("M9")
+cfg = get_housing_config("M9")
 
 # Path to the read-only bundled template
-get_bundled_site_config_path("M9")
+get_bundled_housing_config_path("M9")
 
 # Path to the user-writable config (directory is created if needed)
-get_user_site_config_path("M9")
+get_user_housing_config_path("M9")
 ```
 
 To create a persistent user config from a bundled template:
 
 ```bash
-magnetrun-site-config M9-site-config.json create M9 --from-builtin M9
-cp M9-site-config.json ~/.config/magnetrun/M9-site-config.json
+magnetrun config housing M9-housing-config.json create M9 --from-builtin M9
+cp M9-housing-config.json ~/.config/magnetrun/M9-housing-config.json
 ```
 
 ## Command-Line Interface
@@ -170,6 +171,17 @@ The package installs several CLI commands:
 
   ```console
   magnetrun-analysis --help
+  ```
+
+`magnetrun sessions`
+: List the files recorded during each EXPERIENCES_LOG session of a housing
+  (overview, archive, pupitre, incident, stats, hybrid and runlog files),
+  whether or not an Overview file exists; files claimed by no session are
+  grouped into unlogged records. Writes `sessions.json` in `--output-dir`.
+
+  ```console
+  magnetrun sessions --log EXPERIENCES_LOG.csv --housing M9 \
+      --from 2018-01-01 --to 2019-01-01 --output-dir /tmp/M9_2018
   ```
 
 `hybrid-magnetrun`

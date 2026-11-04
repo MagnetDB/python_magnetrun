@@ -275,6 +275,24 @@ def _tdms_end_from_properties(
     return ""
 
 
+def _archive_end_from_mtime(file: str, start_ftimestamp: str) -> str:
+    """Return the file modification time as end timestamp when plausible, else ``""``.
+
+    Valid for Archive TDMS files only: the file is last written when the
+    acquisition stops, and opening a large one without its ``.tdms_index``
+    takes seconds. Plausible means after the filename start and less than
+    24 h after it.
+    """
+    if not start_ftimestamp:
+        return ""
+    start_dt = datetime.strptime(start_ftimestamp, TIMESTAMP_FORMAT)
+    end_dt = datetime.fromtimestamp(os.path.getmtime(file))
+    if start_dt < end_dt < start_dt + timedelta(hours=24):
+        return end_dt.strftime(TIMESTAMP_FORMAT)
+    logger.debug(f"{file}: implausible mtime {end_dt} for start {start_dt}")
+    return ""
+
+
 def _pupitre_end_from_last_line(file: str, keys: list[str]) -> str:
     """Return end timestamp from the last data row without loading the full file.
 
@@ -333,8 +351,12 @@ def extract_data(
     the file to verify keys and get exact end timestamp.
 
     When *key* is ``None`` and *dry_run* is ``False``, uses lightweight
-    metadata-only paths (TDMS channel properties / last line of pupitre file)
-    to compute the end timestamp without loading full data arrays.
+    metadata-only paths to compute the end timestamp without loading full
+    data arrays: the modification time of Archive TDMS files (when
+    plausible), the TDMS channel properties of other TDMS files, the last
+    line of pupitre files. A pupitre file whose last line gives no end, or
+    one before the start (corrupt tail), is loaded so that the end comes
+    from its valid rows.
 
     Parameters
     ----------
@@ -389,6 +411,16 @@ def extract_data(
                     )
                 _keys = _hdr.columns.tolist()
                 end_ftimestamp = _pupitre_end_from_last_line(file, _keys)
+                if not end_ftimestamp or end_ftimestamp < start_ftimestamp:
+                    logger.info(
+                        f"{file}: last line gives end={end_ftimestamp!r}, loading valid rows"
+                    )
+                    end_ftimestamp = ""
+                    try:
+                        mrun = MagnetRun.fromtxt(housing, assembly, file)
+                    except Exception as exc:  # noqa: BLE001
+                        # best effort: an unloadable file keeps no end, as before
+                        logger.warning(f"{file}: cannot load valid rows ({exc})")
             else:
                 mrun = MagnetRun.fromtxt(housing, assembly, file)
                 logger.info(f"Loaded pupitre file: {file}")
@@ -397,9 +429,12 @@ def extract_data(
         logger.info(f"Parsed TDMS filename: start_ftimestamp={start_ftimestamp}")
         if not dry_run:
             if key is None:
-                end_ftimestamp = _tdms_end_from_properties(
-                    file, start_timestamp, start_ftimestamp
-                )
+                if classify_pigbrother_file(file) == "archive":
+                    end_ftimestamp = _archive_end_from_mtime(file, start_ftimestamp)
+                if not end_ftimestamp:
+                    end_ftimestamp = _tdms_end_from_properties(
+                        file, start_timestamp, start_ftimestamp
+                    )
             else:
                 mrun = MagnetRun.fromtdms(housing, assembly, file)
                 logger.info(f"Loaded TDMS file: {file}")

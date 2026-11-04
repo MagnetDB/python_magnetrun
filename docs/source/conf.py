@@ -3,6 +3,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
 import os
+import re
 import sys
 from importlib.metadata import PackageNotFoundError, version
 
@@ -45,6 +46,12 @@ autodoc_default_options = {
     "show-inheritance": True,
 }
 
+# Render NumPy "Attributes" sections as a field list: as attribute directives they
+# duplicate the dataclass fields that autodoc already documents (undoc-members).
+napoleon_use_ivar = True
+# Non-standard docstring sections, rendered as generic sections.
+napoleon_custom_sections = ["Timestamp convention"]
+
 # Mock heavy/optional imports so docs can build without them installed
 autodoc_mock_imports = [
     "clawpack",
@@ -85,3 +92,29 @@ html_static_path = ["_static"]
 # -- EPUB output -------------------------------------------------------------
 
 epub_show_urls = "footnote"
+
+# -- Re-exported members -----------------------------------------------------
+
+# Modules listed in the autosummary directives of api.md.
+with open(os.path.join(os.path.dirname(__file__), "api.md"), encoding="utf-8") as _api:
+    _DOCUMENTED_MODULES = set(re.findall(r"^\s+(python_magnetrun[\w.]*)\s*$", _api.read(), re.M))
+
+
+def _skip_reexported(app, what, name, obj, skip, options):
+    """Skip a module member re-exported from another documented module.
+
+    Documenting it twice (e.g. ``MagnetDataBase`` in both ``magnetdata`` and
+    ``magnetdata_base``) makes cross-references ambiguous. Re-exports whose
+    home module is not documented are kept.
+    """
+    if what != "module":
+        return None
+    home = getattr(obj, "__module__", None)
+    current = app.env.temp_data.get("autodoc:module")
+    if home != current and home in _DOCUMENTED_MODULES:
+        return True
+    return None
+
+
+def setup(app):
+    app.connect("autodoc-skip-member", _skip_reexported)
