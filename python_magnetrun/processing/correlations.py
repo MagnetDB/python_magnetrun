@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from ..magnetdata_base import MagnetDataBase
+from ..utils.narwhals_compat import to_pandas
 
 logger = logging.getLogger(__name__)
 
@@ -124,39 +125,54 @@ def pearson(
     show: bool = False,
     debug: bool = False,
 ) -> None:
-    """
-    compute Pearson correlation for fields
+    """Compute the Pearson correlation for each pair of *fields*.
+
+    For each pair, logs the overall Pearson r (pandas and SciPy) and plots
+    the rolling-window median of the pair.
 
     ref: https://www.kaggle.com/code/adepvenugopal/time-series-correlation-pearson-tlcc-dtw
+
+    Parameters
+    ----------
+    Data : MagnetDataBase
+        Record holding the fields and the time column ``"t"``.
+    fields : list[str]
+        Column names; every pair is correlated.
+    save : bool, optional
+        Save each plot to ``<field_i>-<field_j>-pearson.png``.
+    show : bool, optional
+        Display each plot.
+    debug : bool, optional
+        Unused.
+
+    Returns
+    -------
+    None
     """
     from scipy import stats
 
     nFields = len(fields)
-    if isinstance(Data, pd.DataFrame):
-        for i in range(nFields):
-            for j in range(i + 1, nFields):
-                df = Data.getData(["t", fields[i], fields[j]])
-                overall_pearson_r = df.corr().iloc[0, 1]
-                logger.info(f"Pandas computed Pearson r: {overall_pearson_r}")
+    for i in range(nFields):
+        for j in range(i + 1, nFields):
+            df = to_pandas(Data.getData(["t", fields[i], fields[j]]))
+            overall_pearson_r = df[[fields[i], fields[j]]].corr().iloc[0, 1]
+            logger.info(f"Pandas computed Pearson r: {overall_pearson_r}")
 
-                r, p = stats.pearsonr(df.dropna()[fields[i]], df.dropna()[fields[j]])
-                logger.info(f"Scipy computed Pearson r: {r} and p-value: {p}")
+            r, p = stats.pearsonr(df.dropna()[fields[i]], df.dropna()[fields[j]])
+            logger.info(f"Scipy computed Pearson r: {r} and p-value: {p}")
 
-                # Compute rolling window synchrony
-                f, ax = plt.subplots(figsize=(7, 3))
-                df.rolling(window=30, center=True).median().plot(ax=ax)
-                ax.set(xlabel="Time", ylabel="Pearson r")
-                ax.set(title=f"Overall Pearson r = {np.round(overall_pearson_r, 2)}")
+            # Compute rolling window synchrony
+            f, ax = plt.subplots(figsize=(7, 3))
+            df.rolling(window=30, center=True).median().plot(ax=ax)
+            ax.set(xlabel="Time", ylabel="Pearson r")
+            ax.set(title=f"Overall Pearson r = {np.round(overall_pearson_r, 2)}")
 
-                if save:
-                    outputfile = f"{fields[i]}-{fields[j]}-pearson.png"
-                    plt.savefig(f"{outputfile}.png", dpi=300)
-                if show:
-                    plt.show()
-                plt.close()
-
-    else:
-        raise RuntimeError(f"stats/pearson: {Data.FileName} not a panda dataframe")
+            if save:
+                outputfile = f"{fields[i]}-{fields[j]}-pearson"
+                plt.savefig(f"{outputfile}.png", dpi=300)
+            if show:
+                plt.show()
+            plt.close()
 
 
 def crosscorr(datax: pd.Series, datay: pd.Series, lag: int = 0, wrap: bool = False) -> float:
@@ -187,8 +203,30 @@ def tlcc(
     show: bool = False,
     debug: bool = False,
 ) -> None:
-    d1 = Data.getData(xfield)
-    d2 = Data.getData(yfield)
+    """Plot the time lagged cross correlation (TLCC) of *yfield* vs *xfield*.
+
+    Parameters
+    ----------
+    Data : MagnetDataBase
+        Record holding both fields.
+    xfield : str
+        Reference column name.
+    yfield : str
+        Column name shifted by each lag.
+    save : bool, optional
+        Save the plot to ``<xfield>-<yfield>-TLCC.png``.
+    show : bool, optional
+        Display the plot.
+    debug : bool, optional
+        Unused.
+
+    Returns
+    -------
+    None
+    """
+    df = to_pandas(Data.getData([xfield, yfield]))
+    d1 = df[xfield]
+    d2 = df[yfield]
     seconds = 5
     fps = 30
     rs = [crosscorr(d1, d2, lag) for lag in range(-int(seconds * fps), int(seconds * fps + 1))]
@@ -224,9 +262,30 @@ def wtlcc(
     show: bool = False,
     debug: bool = False,
 ) -> None:
+    """Plot the windowed time lagged cross correlation (WTLCC) of *yfield* vs *xfield*.
+
+    Parameters
+    ----------
+    Data : MagnetDataBase
+        Record holding both fields.
+    xfield : str
+        Reference column name.
+    yfield : str
+        Column name shifted by each lag.
+    save : bool, optional
+        Save the plot to ``<xfield>-<yfield>-WTLCC.png``.
+    show : bool, optional
+        Display the plot.
+    debug : bool, optional
+        Unused.
+
+    Returns
+    -------
+    None
+    """
     import seaborn as sns
 
-    df = Data.getData([xfield, yfield])
+    df = to_pandas(Data.getData([xfield, yfield]))
     # Windowed time lagged cross correlation
     seconds = 5
     fps = 30
@@ -266,9 +325,30 @@ def rwtlcc(
     show: bool = False,
     debug: bool = False,
 ) -> None:
+    """Plot the rolling-window time lagged cross correlation (RWTLCC) of *yfield* vs *xfield*.
+
+    Parameters
+    ----------
+    Data : MagnetDataBase
+        Record holding both fields.
+    xfield : str
+        Reference column name.
+    yfield : str
+        Column name shifted by each lag.
+    save : bool, optional
+        Save the plot to ``<xfield>-<yfield>-RWTLCC.png``.
+    show : bool, optional
+        Display the plot.
+    debug : bool, optional
+        Unused.
+
+    Returns
+    -------
+    None
+    """
     import seaborn as sns
 
-    df = Data.getData([xfield, yfield])
+    df = to_pandas(Data.getData([xfield, yfield]))
     # Rolling window time lagged cross correlation
     seconds = 5
     fps = 30

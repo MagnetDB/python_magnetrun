@@ -3,7 +3,7 @@
 Covers:
   - distance: calc_euclidean, calc_mape, calc_correlation
   - smoothers: kernel_function, savgol, lowess_bell_shape_kern, lowess_ag, lowess_sm
-  - correlations: crosscorr
+  - correlations: crosscorr, pearson, tlcc, wtlcc, rwtlcc
   - trends: piecewise_linear_approximation
   - stats: stats()
   - hysteresis: remove_outliers, remove_outliers_by_x_range, hysteresis_model,
@@ -12,6 +12,7 @@ Covers:
   - breakingpoints: detect_changes (skipped if ruptures not installed)
 """
 
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import matplotlib
@@ -311,6 +312,64 @@ class TestCrosscorr:
         r_no_wrap = crosscorr(x, y, lag=2, wrap=False)
         assert isinstance(float(r_wrap), float)
         assert isinstance(float(r_no_wrap), float)
+
+
+# ---------------------------------------------------------------------------
+# correlations.py — pearson / tlcc / wtlcc / rwtlcc on a Polars-backed record
+# ---------------------------------------------------------------------------
+
+from python_magnetrun.MagnetRun import MagnetRun  # noqa: E402
+from python_magnetrun.processing.correlations import (  # noqa: E402
+    pearson,
+    rwtlcc,
+    tlcc,
+    wtlcc,
+)
+
+
+class TestCorrelationsOnMagnetData:
+    @pytest.fixture
+    def magnet_data(self, tmp_path: Path):
+        """400 s record where teb = 10 + 2 * Field and Field is not linear in time."""
+        start = datetime(2022, 3, 30, 21, 55, 17)
+        first, header, row = SAMPLE_TXT.read_text().splitlines()[:3]
+        keys = header.split("\t")
+        values = row.split("\t")
+        lines = [first, header]
+        for i in range(400):
+            field = 0.5 + 0.4 * np.sin(i / 20)
+            values[keys.index("Field")] = f"{field:.6f}"
+            values[keys.index("teb")] = f"{10.0 + 2.0 * field:.6f}"
+            stamp = start + timedelta(seconds=i)
+            values[0] = stamp.strftime("%Y.%m.%d")
+            values[1] = stamp.strftime("%H:%M:%S")
+            lines.append("\t".join(values))
+        path = tmp_path / f"{start:%Y.%m.%d - %H:%M:%S}.txt"
+        path.write_text("\n".join(lines) + "\n")
+        return MagnetRun.fromtxt("M9", "assembly", str(path)).MagnetData
+
+    def test_pearson_correlates_requested_fields(
+        self, magnet_data, tmp_path: Path, monkeypatch, caplog
+    ) -> None:
+        monkeypatch.chdir(tmp_path)
+        with caplog.at_level("INFO", logger="python_magnetrun.processing.correlations"):
+            pearson(magnet_data, ["Field", "teb"], save=True)
+        r_values = [
+            float(rec.getMessage().split("Pearson r: ")[1].split()[0])
+            for rec in caplog.records
+            if "Pearson r: " in rec.getMessage()
+        ]
+        assert r_values == [pytest.approx(1.0), pytest.approx(1.0)]
+        assert (tmp_path / "Field-teb-pearson.png").exists()
+
+    def test_tlcc(self, magnet_data) -> None:
+        tlcc(magnet_data, "Field", "teb")
+
+    def test_wtlcc(self, magnet_data) -> None:
+        wtlcc(magnet_data, "Field", "teb")
+
+    def test_rwtlcc(self, magnet_data) -> None:
+        rwtlcc(magnet_data, "Field", "teb")
 
 
 # ---------------------------------------------------------------------------
