@@ -152,6 +152,37 @@ One log file per power-supply unit (A1–A4) per calendar day:
 
 Override the root via the env var `MAGNETRUN_PUPITRE_RUNLOG_DIR`.
 
+### Getting the files
+
+The raw logs and the CIRRUS XML configurations are published by the
+srv-data-install web server as Apache directory listings, without login:
+
+```
+https://srv-data-install.lncmi.cnrs.fr/cirrus/<feed>/YYYY-MM-DD_cirrus_out.log
+https://srv-data-install.lncmi.cnrs.fr/cirrus/<feed>/xml/*.xml
+```
+
+Each daily file holds everything since the controller's last boot, so a
+later file of the same boot contains the earlier ones. The undated
+`cirrus_out.log` in the same folder is the live file.
+
+`magnetrun cirrus-mirror` copies them unchanged into
+`<root>/cirrus/<feed>/` and `<root>/cirrus/<feed>/xml/` (`<root>`:
+`--root`, else `MAGNETRUN_PUPITRE_RUNLOG_DIR`). Missing files are
+downloaded; logs dated before yesterday that are already present are
+skipped; yesterday's and today's are downloaded again; XMLs already
+present are never overwritten; the live `cirrus_out.log` is not mirrored.
+
+```bash
+magnetrun cirrus-mirror --root /data/runlogs                      # A1–A4, logs + XMLs
+magnetrun cirrus-mirror --root /data/runlogs --feeds A1 --start 2026-09-17 --end 2026-09-21
+magnetrun cirrus-mirror --root /data/runlogs --delay 2            # slower, for a full back-fill
+```
+
+A full back-fill (about 2400 logs and 150 XMLs, about 1.7 GB in 2026) at
+the default `--delay 0.5` got a few temporary HTTP 403 answers; use
+`--delay 2` and re-run until the summary reports `0 failed`.
+
 ### Log file format
 
 Each line has three whitespace-separated fields:

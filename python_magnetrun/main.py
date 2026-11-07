@@ -45,9 +45,11 @@ def main() -> None:
 
     # infrastructure commands (were separate executables)
     from .config_cli import register as _r_cfg
+    from .requests.cirrus_mirror import register as _r_mirror
     from .requests.cli import register as _r_fetch
 
     _r_fetch(sub)
+    _r_mirror(sub)
     _r_cfg(sub)
 
     args = parser.parse_args()
