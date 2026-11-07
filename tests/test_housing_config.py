@@ -283,6 +283,34 @@ class TestHousingConfigVersions:
         assert formulas["UB"]["formula"] == "UB = Ucoil14"
         assert "Ucoil14" not in formulas["UH"]["formula"]
 
+    @pytest.mark.parametrize(
+        "housing, when, version, ih, ib",
+        [
+            # M7: insert fed by A1 + A3 in 2014 (PLAN_pupitre_checks_file.md, data issues)
+            ("M7", datetime(2014, 1, 2, tzinfo=PARIS), "M7-140101", "IH = Idcct1 + Idcct2", None),
+            ("M7", datetime(2014, 4, 1, 22, 2, tzinfo=PARIS), "M7-140317", "IH = Idcct1 + Idcct3", None),
+            ("M7", datetime(2016, 7, 27, tzinfo=PARIS), "M7-160726", "IH = Idcct1 + Idcct2", None),
+            # M10: insert fed by A1 + A2, Bitters by A3 + A4, 2021-03-25 -> 2021-07-10
+            ("M10", datetime(2021, 3, 9, 9, 17, tzinfo=PARIS), "M10-180220",
+             "IH = Idcct3 + Idcct4", "IB = Idcct1 + Idcct2"),
+            ("M10", datetime(2021, 5, 1, tzinfo=PARIS), "M10-210325",
+             "IH = Idcct1 + Idcct2", "IB = Idcct3 + Idcct4"),
+            ("M10", datetime(2021, 10, 1, tzinfo=PARIS), "M10-210929",
+             "IH = Idcct3 + Idcct4", "IB = Idcct1 + Idcct2"),
+        ],
+    )
+    def test_swapped_supply_versions(self, housing, when, version, ih, ib):
+        cfg = HOUSING_CONFIGS[housing].at(when)
+        assert cfg.version == version
+        assert cfg.pupitre_formula_map["IH"]["formula"] == ih
+        if ib:
+            assert cfg.pupitre_formula_map["IB"]["formula"] == ib
+        # only the current formulas change: wiring and the rest of the map are kept
+        base = HOUSING_CONFIGS[housing]
+        assert (cfg.voltage_channels_gr1, cfg.voltage_channels_gr2) == (
+            base.voltage_channels_gr1, base.voltage_channels_gr2)
+        assert set(cfg.pupitre_formula_map) == set(base.pupitre_formula_map)
+
     def test_m9_base_version(self):
         """M9 keeps its base wiring; only the version name is set."""
         cfg = HOUSING_CONFIGS["M9"].at(datetime(2026, 10, 29, 18, 3, 45, tzinfo=PARIS))

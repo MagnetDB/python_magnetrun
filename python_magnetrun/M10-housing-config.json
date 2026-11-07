@@ -56,6 +56,35 @@
       "valid_from": "2018-02-20T08:00:00+01:00",
       "comment": "Base wiring, from the first assembly commissioned in this housing (assemblies.commissioned_at).",
       "overrides": {}
+    },
+    {
+      "name": "M10-210325",
+      "valid_from": "2021-03-25T09:50:00+01:00",
+      "comment": "Supplies swapped: insert fed by A1 + A2 (Idcct1 + Idcct2 = Icoil7), Bitters by A3 + A4, in every powered file from 2021.03.25 - 11:52 to 2021.07.10 - 10:29 (M10_A201214_00 end, M10_A210414_00, M10_A210519_00); A3 + A4 until 2021.03.09 - 09:17.",
+      "overrides": {
+        "pupitre_formula_map": {
+          "IH": {
+            "formula": "IH = Idcct1 + Idcct2",
+            "symbol": "I_H",
+            "unit": "ampere",
+            "label": "Insert Coil Current",
+            "description": "Upper coil current sum from DCCT sensors (supplies A1 + A2)"
+          },
+          "IB": {
+            "formula": "IB = Idcct3 + Idcct4",
+            "symbol": "I_B",
+            "unit": "ampere",
+            "label": "Bitter Coil Current",
+            "description": "Lower coil current sum from DCCT sensors (supplies A3 + A4)"
+          }
+        }
+      }
+    },
+    {
+      "name": "M10-210929",
+      "valid_from": "2021-09-29T08:00:00+02:00",
+      "comment": "Back to the base wiring (insert on A3 + A4) from M10_A210929_00; no M10 files between 2021-07-10 and 2021-09-30.",
+      "overrides": {}
     }
   ]
 }

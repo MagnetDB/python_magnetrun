@@ -40,6 +40,28 @@
       "valid_from": "2014-01-01T08:00:00+01:00",
       "comment": "Base wiring, from the first assembly commissioned in this housing (assemblies.commissioned_at).",
       "overrides": {}
+    },
+    {
+      "name": "M7-140317",
+      "valid_from": "2014-03-17T15:16:53+01:00",
+      "comment": "Insert fed by supplies A1 + A3 (Idcct1 + Idcct3 = Icoil7, Idcct2 = Idcct4 = 0) in every powered file from 2014.03.17 - 15:16:53 to 2014.04.15 - 16:16; no files until 2016-07-26.",
+      "overrides": {
+        "pupitre_formula_map": {
+          "IH": {
+            "formula": "IH = Idcct1 + Idcct3",
+            "symbol": "I_H",
+            "unit": "ampere",
+            "label": "Insert Coil Current",
+            "description": "Upper coil current sum from DCCT sensors (supplies A1 + A3)"
+          }
+        }
+      }
+    },
+    {
+      "name": "M7-160726",
+      "valid_from": "2016-07-26T15:54:00+02:00",
+      "comment": "Back to the base wiring (A1 + A2) from the first file of 2016-07-26; three isolated A1 + A3 files follow (2016.07.27 - 10:17, 2016.08.03 - 19:38 and 20:18), left to the check rules.",
+      "overrides": {}
     }
   ]
 }
