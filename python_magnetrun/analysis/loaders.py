@@ -32,6 +32,7 @@ import glob
 import logging
 import os
 import re
+import warnings
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -46,8 +47,8 @@ from ..runlogs.pigbrother import PIGBROTHER_LOG_FILENAME
 from ..utils.files import (
     DIR_ARCHIVE,
     DIR_DEFAULT,
+    DIR_SIGNAL_STATS,
     DIR_SPIKE,
-    DIR_STATS,
     DIR_TRIGGER,
     TIMESTAMP_FORMAT,
     extract_data,
@@ -216,8 +217,10 @@ class FileSet:
         Manual trigger incident files
     spike : List[str]
         Spike incident files
-    stats : List[str]
-        Stats TDMS files (4800 Hz data reduced to 1 Hz)
+    signal_stats : List[str]
+        Pigbrother Stats TDMS files: mean, standard deviation and
+        power-spectral-density bands of each signal over 1 s windows
+        (formerly ``stats``)
     hybrid_kHz : List[str]
         Hybrid kHz acquisition files
     hybrid_rms : List[str]
@@ -238,13 +241,29 @@ class FileSet:
     default: list[str] = field(default_factory=list)
     trigger: list[str] = field(default_factory=list)
     spike: list[str] = field(default_factory=list)
-    stats: list[str] = field(default_factory=list)
+    signal_stats: list[str] = field(default_factory=list)
     hybrid_kHz: list[str] = field(default_factory=list)
     hybrid_rms: list[str] = field(default_factory=list)
     hybrid_trigger: list[str] = field(default_factory=list)
     hybrid_vprocess: list[str] = field(default_factory=list)
     pigbrother_runlog: list[str] = field(default_factory=list)
     pupitre_runlog: list[str] = field(default_factory=list)
+
+    @property
+    def stats(self) -> list[str]:
+        """Deprecated alias of :attr:`signal_stats`.
+
+        Returns
+        -------
+        list[str]
+            The ``signal_stats`` list.
+        """
+        warnings.warn(
+            "FileSet.stats is deprecated, use FileSet.signal_stats instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.signal_stats
 
     def to_dict(self) -> dict[str, list[str]]:
         """Convert to dictionary format (backward compatibility)."""
@@ -255,7 +274,7 @@ class FileSet:
             "default": self.default,
             "trigger": self.trigger,
             "spike": self.spike,
-            "stats": self.stats,
+            "signal_stats": self.signal_stats,
             "hybrid_kHz": self.hybrid_kHz,
             "hybrid_rms": self.hybrid_rms,
             "hybrid_trigger": self.hybrid_trigger,
@@ -266,7 +285,20 @@ class FileSet:
 
     @classmethod
     def from_dict(cls, d: dict[str, list[str]]) -> FileSet:
-        """Create from dictionary."""
+        """Create from dictionary.
+
+        Parameters
+        ----------
+        d : dict[str, list[str]]
+            One list of paths per file kind, as written by :meth:`to_dict`.
+            The pre-rename key ``"stats"`` is read when ``"signal_stats"`` is
+            absent, so older ``summary.json``/``sessions.json`` files load.
+
+        Returns
+        -------
+        FileSet
+            The file set; missing kinds are empty lists.
+        """
         return cls(
             overview=d.get("overview", []),
             archive=d.get("archive", []),
@@ -274,7 +306,7 @@ class FileSet:
             default=d.get("default", []),
             trigger=d.get("trigger", []),
             spike=d.get("spike", []),
-            stats=d.get("stats", []),
+            signal_stats=d.get("signal_stats", d.get("stats", [])),
             hybrid_kHz=d.get("hybrid_kHz", []),
             hybrid_rms=d.get("hybrid_rms", []),
             hybrid_trigger=d.get("hybrid_trigger", []),
@@ -292,7 +324,7 @@ class FileSet:
             + len(self.default)
             + len(self.trigger)
             + len(self.spike)
-            + len(self.stats)
+            + len(self.signal_stats)
             + len(self.hybrid_kHz)
             + len(self.hybrid_rms)
             + len(self.hybrid_trigger)
@@ -634,10 +666,11 @@ class FileDiscovery:
             time,
             pupitre_datadir=self.pupitre_datadir,
         )
-        pupitre_f, archive_f, default_f, trigger_f, spike_f, stats_f = filters
+        pupitre_f, archive_f, default_f, trigger_f, spike_f, signal_stats_f = filters
         logger.info(
             f"File patterns: pupitre={pupitre_f} archive={archive_f} "
-            f"default={default_f} trigger={trigger_f} spike={spike_f} stats={stats_f}"
+            f"default={default_f} trigger={trigger_f} spike={spike_f} "
+            f"signal_stats={signal_stats_f}"
         )
 
         file_set = FileSet()
@@ -653,13 +686,13 @@ class FileDiscovery:
         file_set.spike = select_files(
             glob.glob(spike_f), housing, start, end, min_duration_seconds=0.0
         )
-        file_set.stats = select_files(
-            glob.glob(stats_f), housing, start, end, min_duration_seconds=0.0
+        file_set.signal_stats = select_files(
+            glob.glob(signal_stats_f), housing, start, end, min_duration_seconds=0.0
         )
         logger.info(
             f"Selected: pupitre={file_set.pupitre} archive={file_set.archive} "
             f"default={file_set.default} trigger={file_set.trigger} "
-            f"spike={file_set.spike} stats={file_set.stats}"
+            f"spike={file_set.spike} signal_stats={file_set.signal_stats}"
         )
         return file_set
 
@@ -685,10 +718,11 @@ class FileDiscovery:
             time,
             pupitre_datadir=self.pupitre_datadir,
         )
-        pupitre_f, default_f, trigger_f, spike_f, stats_f = filters
+        pupitre_f, default_f, trigger_f, spike_f, signal_stats_f = filters
         logger.info(
             f"File patterns: pupitre={pupitre_f} "
-            f"default={default_f} trigger={trigger_f} spike={spike_f} stats={stats_f}"
+            f"default={default_f} trigger={trigger_f} spike={spike_f} "
+            f"signal_stats={signal_stats_f}"
         )
 
         file_set = FileSet()
@@ -703,13 +737,13 @@ class FileDiscovery:
         file_set.spike = select_files(
             glob.glob(spike_f), housing, start, end, min_duration_seconds=0.0
         )
-        file_set.stats = select_files(
-            glob.glob(stats_f), housing, start, end, min_duration_seconds=0.0
+        file_set.signal_stats = select_files(
+            glob.glob(signal_stats_f), housing, start, end, min_duration_seconds=0.0
         )
         logger.info(
             f"Selected: pupitre={file_set.pupitre} "
             f"default={file_set.default} trigger={file_set.trigger} "
-            f"spike={file_set.spike} stats={file_set.stats}"
+            f"spike={file_set.spike} signal_stats={file_set.signal_stats}"
         )
         return file_set
 
@@ -925,7 +959,7 @@ class FileDiscovery:
             f"Discovered files for {filename}: {len(file_set.archive)} archives, "
             f"{len(file_set.pupitre)} pupitres, "
             f"{len(file_set.default) + len(file_set.trigger) + len(file_set.spike)} incidents, "
-            f"{len(file_set.stats)} stats, "
+            f"{len(file_set.signal_stats)} signal stats, "
             f"{len(file_set.pigbrother_runlog)} pigbrother runlog, "
             f"{len(file_set.pupitre_runlog)} pupitre runlog, "
             f"{len(file_set.hybrid_kHz)} kHz, "
@@ -1002,7 +1036,7 @@ class FileDiscovery:
             f"Discovered files for {filename}: "
             f"{len(file_set.pupitre)} pupitres, "
             f"{len(file_set.default) + len(file_set.trigger) + len(file_set.spike)} incidents, "
-            f"{len(file_set.stats)} stats, "
+            f"{len(file_set.signal_stats)} signal stats, "
             f"{len(file_set.pigbrother_runlog)} pigbrother runlog, "
             f"{len(file_set.pupitre_runlog)} pupitre runlog, "
             f"{len(file_set.hybrid_kHz)} kHz, "
@@ -1037,7 +1071,7 @@ class FileDiscovery:
         -------
         dict[str, list[str]]
             Keys ``overview``, ``archive``, ``default``, ``trigger``,
-            ``spike``, ``stats``, ``pupitre``; naturally sorted paths.
+            ``spike``, ``signal_stats``, ``pupitre``; naturally sorted paths.
         """
         pb = self.pigbrother_datadir / housing
         patterns = {
@@ -1046,7 +1080,7 @@ class FileDiscovery:
             "default": (pb / DIR_DEFAULT, f"{housing}_Default_{{d}}-*.tdms"),
             "trigger": (pb / DIR_TRIGGER, f"{housing}_ManuelTrig_{{d}}-*.tdms"),
             "spike": (pb / DIR_SPIKE, f"{housing}_Spikes_{{d}}-*.tdms"),
-            "stats": (pb / DIR_STATS, f"{housing}_Stats_*{{d}}-*.tdms"),
+            "signal_stats": (pb / DIR_SIGNAL_STATS, f"{housing}_Stats_*{{d}}-*.tdms"),
         }
         first_day = start.date() - timedelta(days=1)
         n_days = (end.date() - first_day).days + 1
@@ -1100,7 +1134,7 @@ class FileDiscovery:
         for kind in ("overview", "archive", "pupitre"):
             setattr(file_set, kind, select_files(candidates[kind], housing, s, e))
         # Incident files are intentionally short; disable the min-duration guard.
-        for kind in ("default", "trigger", "spike", "stats"):
+        for kind in ("default", "trigger", "spike", "signal_stats"):
             setattr(
                 file_set,
                 kind,
@@ -1121,7 +1155,7 @@ class FileDiscovery:
             f"{len(file_set.overview)} overviews, {len(file_set.archive)} archives, "
             f"{len(file_set.pupitre)} pupitres, "
             f"{len(file_set.default) + len(file_set.trigger) + len(file_set.spike)} incidents, "
-            f"{len(file_set.stats)} stats, "
+            f"{len(file_set.signal_stats)} signal stats, "
             f"{len(file_set.hybrid_kHz)} kHz, {len(file_set.hybrid_rms)} rms"
         )
         return file_set

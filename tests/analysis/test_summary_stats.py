@@ -1,4 +1,4 @@
-"""Tests that ``summary.json`` written by the analysis CLI includes Stats files."""
+"""Tests that ``summary.json`` written by the analysis CLI includes SignalStats files."""
 
 import json
 from datetime import datetime
@@ -12,7 +12,7 @@ from python_magnetrun.analysis.loaders import FileSet
 
 
 def _fake_record() -> MagicMock:
-    """Build a record whose sources include one overview and two Stats files."""
+    """Build a record whose sources include one overview and two SignalStats files."""
     record = MagicMock()
     record.filename = "M5_Overview_260101-1000"
     record.housing = "M5"
@@ -25,7 +25,7 @@ def _fake_record() -> MagicMock:
     record.get_incidents.return_value = {}
     record.sources = FileSet(
         overview=["/data/M5/Overview/M5_Overview_260101-1000.tdms"],
-        stats=[
+        signal_stats=[
             "/data/M5/Fichiers_stats/M5_Stats_260101-0900.tdms",
             "/data/M5/Fichiers_stats/M5_Stats_260101-1000.tdms",
         ],
@@ -33,8 +33,8 @@ def _fake_record() -> MagicMock:
     return record
 
 
-def test_summary_json_includes_stats(tmp_path):
-    """Discovered Stats files are written to the ``stats`` key of summary.json."""
+def test_summary_json_includes_signal_stats(tmp_path):
+    """Discovered SignalStats files are written to the ``signal_stats`` key of summary.json."""
     record = _fake_record()
     parsed_args = SimpleNamespace(dry_run=False, debug=False, output_dir=str(tmp_path))
 
@@ -48,4 +48,5 @@ def test_summary_json_includes_stats(tmp_path):
 
     data = json.loads((tmp_path / "summary.json").read_text())
     assert len(data) == 1
-    assert data[0]["stats"] == ", ".join(record.sources.stats)
+    assert data[0]["signal_stats"] == ", ".join(record.sources.signal_stats)
+    assert "stats" not in data[0]

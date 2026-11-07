@@ -217,7 +217,19 @@ class TestFileSet:
         assert "default" in d
         assert "trigger" in d
         assert "spike" in d
-        assert "stats" in d
+        assert "signal_stats" in d
+        assert "stats" not in d
+
+    def test_from_dict_legacy_stats_key(self):
+        """from_dict should read the pre-rename ``stats`` key into signal_stats."""
+        fs = FileSet.from_dict({"stats": ["st1.tdms"]})
+        assert fs.signal_stats == ["st1.tdms"]
+
+    def test_stats_property_is_deprecated(self):
+        """FileSet.stats should warn and return signal_stats."""
+        fs = FileSet(signal_stats=["st1.tdms"])
+        with pytest.warns(DeprecationWarning, match="signal_stats"):
+            assert fs.stats == ["st1.tdms"]
 
     def test_from_dict(self):
         """from_dict should create FileSet from dict."""
@@ -242,7 +254,7 @@ class TestFileSet:
             default=["d1.tdms"],
             trigger=["t1.tdms"],
             spike=["s1.tdms"],
-            stats=["st1.tdms"],
+            signal_stats=["st1.tdms"],
         )
         roundtrip = FileSet.from_dict(original.to_dict())
         assert roundtrip.overview == original.overview
@@ -251,7 +263,7 @@ class TestFileSet:
         assert roundtrip.default == original.default
         assert roundtrip.trigger == original.trigger
         assert roundtrip.spike == original.spike
-        assert roundtrip.stats == original.stats
+        assert roundtrip.signal_stats == original.signal_stats
 
 
 class TestFindFiles:
@@ -296,7 +308,7 @@ class TestFindFiles:
 
     def test_incident_patterns(self):
         """Incident patterns should use correct directories."""
-        _, _, default, trigger, spike, stats = find_files(
+        _, _, default, trigger, spike, signal_stats = find_files(
             "/data/Overview/M9_Overview_241106-1643.tdms",
             "M9",
             "241106",
@@ -305,18 +317,18 @@ class TestFindFiles:
         assert "Fichiers_Default" in default
         assert "Fichiers_Manuel_Trig" in trigger
         assert "Fichiers_Spike" in spike
-        assert "Fichiers_stats" in stats
+        assert "Fichiers_stats" in signal_stats
 
-    def test_stats_pattern(self):
-        """Stats pattern should wildcard the time to tolerate legacy naming quirks."""
-        *_, stats = find_files(
+    def test_signal_stats_pattern(self):
+        """SignalStats pattern should wildcard the time to tolerate legacy naming quirks."""
+        *_, signal_stats = find_files(
             "/data/Overview/M9_Overview_241106-1643.tdms",
             "M9",
             "241106",
             "1643",
         )
-        assert "Fichiers_stats" in stats
-        assert "M9_Stats_*241106-*.tdms" in stats
+        assert "Fichiers_stats" in signal_stats
+        assert "M9_Stats_*241106-*.tdms" in signal_stats
 
 
 class TestFindFilesFromArchive:
@@ -349,7 +361,7 @@ class TestFindFilesFromArchive:
 
     def test_incident_patterns(self):
         """Incident patterns should use correct directories, derived from Fichiers_Archive."""
-        _, default, trigger, spike, stats = find_files_from_archive(
+        _, default, trigger, spike, signal_stats = find_files_from_archive(
             "/data/Fichiers_Archive/M9_Archive_190315-1200.tdms",
             "M9",
             "190315",
@@ -359,8 +371,8 @@ class TestFindFilesFromArchive:
         assert "M9_Default_190315" in default
         assert "Fichiers_Manuel_Trig" in trigger
         assert "Fichiers_Spike" in spike
-        assert "Fichiers_stats" in stats
-        assert "M9_Stats_*190315-*.tdms" in stats
+        assert "Fichiers_stats" in signal_stats
+        assert "M9_Stats_*190315-*.tdms" in signal_stats
 
 
 class TestMergeData:
