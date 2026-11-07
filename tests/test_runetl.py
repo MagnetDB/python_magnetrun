@@ -280,10 +280,28 @@ def _frame(date: str = "2026.05.15", **cols) -> pd.DataFrame:
     return pd.DataFrame(data)
 
 
-def _spec(housing: str = "M9", when=datetime(2026, 5, 15, tzinfo=PARIS), magnets=None):
-    """Spec = housing part of *housing* at *when* + *magnets*."""
+def _spec(
+    housing: str = "M9", when=datetime(2026, 5, 15, tzinfo=PARIS), magnets=None, rules=None
+):
+    """Spec = housing part of *housing* at *when* + *magnets* + *rules*."""
     base = runetl.PupitreEtlSpec.from_housing(HOUSING_CONFIGS[housing].at(when))
-    return runetl.PupitreEtlSpec(assembly="A", housing=base.housing, magnets=magnets or {})
+    return runetl.PupitreEtlSpec(
+        assembly="A", housing=base.housing, magnets=magnets or {}, rules=rules or []
+    )
+
+
+def _rule(expr: str = "IH - Icoil2", stat: str = "max_abs", tol: float = 5.0, **extra) -> dict:
+    """Rule named ``r`` on *expr*."""
+    return {"name": "r", "expr": expr, "stat": stat, "tol": tol, **extra}
+
+
+def _long_frame(n: int = 100, **cols) -> pd.DataFrame:
+    """*n*-row pupitre frame, one second apart; *cols* give full columns."""
+    df = pd.concat([_frame().iloc[[0]]] * n, ignore_index=True)
+    df["Time"] = [f"10:{i // 60:02d}:{i % 60:02d}" for i in range(n)]
+    for col, values in cols.items():
+        df[col] = values
+    return df
 
 
 class TestPupitreEtlSpec:
@@ -332,10 +350,55 @@ class TestPupitreEtlSpec:
         assert "UB" in spec.add  # other default kept
 
     def test_save_then_load(self, tmp_path):
-        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "current": {"source": "Icoil2", "check": "IH"}}})
+        spec = _spec(
+            magnets={"Ins": {"channels": ["Ucoil2"]}},
+            rules=[_rule(unit="A", tag="check:current_mismatch", scope="magnet:Ins")],
+        )
         path = tmp_path / "A.M9-181109.pupitre-etl.json"
         runetl.save_pupitre_etl_spec(path, spec)
         assert runetl.load_pupitre_etl_spec(path) == spec
+
+    def test_format_version_1_refused(self):
+        d = _spec().to_dict()
+        d["version"] = 1
+        with pytest.raises(ValueError, match="version"):
+            runetl.PupitreEtlSpec.from_dict(d)
+
+    def test_magnet_current_refused(self):
+        with pytest.raises(ValueError, match="current"):
+            _spec(magnets={"Ins": {"current": {"source": "Icoil2", "check": "IH"}}})
+
+    def test_duplicate_rule_names_refused(self):
+        with pytest.raises(ValueError, match="'r'"):
+            _spec(rules=[_rule(), _rule("Idcct1 - Idcct2")])
+
+
+class TestCheckRule:
+    def test_valid(self):
+        runetl.check_rule(_rule("abs(Idcct1) - Idcct2", stat="p99_abs", unit="A", tag="x:y"))
+
+    @pytest.mark.parametrize(
+        "rule, match",
+        [
+            ({"name": "r", "expr": "IH", "stat": "max_abs"}, "tol"),
+            (_rule(other=1), "other"),
+            (_rule(stat="median"), "stat"),
+            (_rule(tol=-1.0), "tol"),
+            (_rule(tol="5"), "tol"),
+            (_rule("IH - "), "expr"),
+            (_rule("IH = Icoil2"), "expr"),
+            (_rule("IH - @x"), "@"),
+            (_rule("`pupitre.IH` - Icoil2"), "backtick"),
+            (_rule("1 + 2"), "column"),
+            ({**_rule(), "name": "2 bad"}, "name"),
+        ],
+    )
+    def test_invalid(self, rule, match):
+        with pytest.raises(ValueError, match=match):
+            runetl.check_rule(rule)
+
+    def test_rule_columns(self):
+        assert runetl.rule_columns("abs(IH) - (Idcct1 + Idcct2) * 2") == ["IH", "Idcct1", "Idcct2"]
 
 
 class TestFromHousing:
@@ -374,26 +437,49 @@ class TestPreparePupitre:
         assert "ZeroCol" in keys  # no content-based dropping
         assert list(data.getData(["IH"])["IH"]) == [2000.0, 2000.0]
 
-    def test_current_check_ok(self):
-        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "current": {"source": "Icoil2", "check": "IH"}}})
+    def test_rule_ok(self):
+        spec = _spec(rules=[_rule(unit="A", tag="check:current_mismatch", scope="magnet:Ins")])
         data = _pupitre(_frame(Icoil2=[2000.0, 2000.0]))
         checks = runetl.prepare_pupitre(data, spec)
-        cur = [c for c in checks if c["kind"] == "current"]
-        assert cur[0]["ok"] is True and cur[0]["max_abs_diff"] == 0.0
+        assert [c for c in checks if c["kind"] == "rule"] == [{
+            "kind": "rule", "name": "r", "scope": "magnet:Ins", "expr": "IH - Icoil2",
+            "stat": "max_abs", "value": 0.0, "tol": 5.0, "unit": "A",
+            "tag": "check:current_mismatch", "missing": [], "ok": True,
+        }]
 
-    def test_current_check_offset_fails(self, caplog):
-        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "current": {"source": "Icoil2", "check": "IH"}}})
+    def test_rule_offset_fails(self, caplog):
+        spec = _spec(rules=[_rule()])
         data = _pupitre(_frame(Icoil2=[2007.0, 2007.0]))
         with caplog.at_level(logging.WARNING):
             checks = runetl.prepare_pupitre(data, spec)
-        cur = [c for c in checks if c["kind"] == "current"][0]
-        assert cur["ok"] is False and cur["max_abs_diff"] == pytest.approx(7.0)
-        assert "current" in caplog.text
+        rule = [c for c in checks if c["kind"] == "rule"][0]
+        assert rule["ok"] is False and rule["value"] == pytest.approx(7.0)
+        assert "IH - Icoil2" in caplog.text
 
-    def test_current_check_missing_source(self):
-        spec = _spec(magnets={"Ins": {"current": {"source": "Icoil99", "check": "IH"}}})
-        checks = runetl.prepare_pupitre(_pupitre(_frame()), spec)
-        assert [c for c in checks if c["kind"] == "current"][0]["ok"] is None
+    def test_rule_missing_column(self):
+        spec = _spec(rules=[_rule("IH - Icoil99")])
+        rule = [c for c in runetl.prepare_pupitre(_pupitre(_frame()), spec) if c["kind"] == "rule"][0]
+        assert rule["ok"] is None and rule["value"] is None and rule["missing"] == ["Icoil99"]
+
+    def test_rule_on_renamed_name(self):
+        """Rules run after rename: FlowH exists, Flow1 does not."""
+        spec = _spec(rules=[_rule("FlowH - 50", tol=0.0), {**_rule("Flow1"), "name": "old"}])
+        checks = [c for c in runetl.prepare_pupitre(_pupitre(_frame()), spec) if c["kind"] == "rule"]
+        assert [(c["name"], c["ok"]) for c in checks] == [("r", True), ("old", None)]
+
+    def test_rule_p99_ignores_transient(self):
+        """One 13 A spike in 100 rows fails max_abs but passes p99_abs."""
+        icoil2 = [2000.0] * 99 + [1987.0]
+        spec = _spec(rules=[_rule(), {**_rule(stat="p99_abs"), "name": "p99"}])
+        data = _pupitre(_long_frame(Icoil2=icoil2))
+        checks = {c["name"]: c for c in runetl.prepare_pupitre(data, spec) if c["kind"] == "rule"}
+        assert checks["r"]["ok"] is False and checks["r"]["value"] == pytest.approx(13.0)
+        assert checks["p99"]["ok"] is True and checks["p99"]["value"] == pytest.approx(0.13)
+
+    def test_rule_mean_abs(self):
+        spec = _spec(rules=[_rule("Idcct1 - Idcct2 - Field", stat="mean_abs", tol=1.0)])
+        rule = [c for c in runetl.prepare_pupitre(_pupitre(_frame()), spec) if c["kind"] == "rule"][0]
+        assert rule["value"] == pytest.approx(1.05) and rule["ok"] is False
 
     def test_companions_follow_removed_ucoil(self):
         spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "remove": ["Ucoil1"]}})
@@ -440,12 +526,12 @@ class TestPreparePupitre:
 
         df = pl.from_pandas(_frame(Icoil2=[2000.0, 2000.0]))
         data = PolarsMagnetData("test.txt", {}, df.columns, df, defs_file=None)
-        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"], "current": {"source": "Icoil2", "check": "IH"}}})
+        spec = _spec(magnets={"Ins": {"channels": ["Ucoil2"]}}, rules=[_rule()])
         checks = runetl.prepare_pupitre(data, spec)
         keys = data.getKeys()
         assert "IH" in keys and "FlowH" in keys and "ZeroCol" in keys
         assert not [k for k in keys if k.startswith("Icoil")]
-        assert [c for c in checks if c["kind"] == "current"][0]["ok"] is True
+        assert [c for c in checks if c["kind"] == "rule"][0]["ok"] is True
 
 
 class TestFromTxtEtlSpec:

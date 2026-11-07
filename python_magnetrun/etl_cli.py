@@ -51,10 +51,15 @@ def show_pupitre_etl_spec(spec: PupitreEtlSpec) -> None:
     for fd in spec.add.values():
         print(f"  add    : {fd['formula']}")
     print(f"  companions: {housing.get('companions', {})}")
-    for magnet, part in spec.magnets.items():
-        print(f"Magnet {magnet}: {part}")
-    for check in spec.checks:
-        print(f"  check  : {check['check']} vs {check['source']} ({check['magnet']})")
+    for magnet, wiring in spec.magnets.items():
+        print(f"Magnet {magnet}: {wiring}")
+    for rule in spec.rules:
+        unit = f" {rule['unit']}" if rule.get("unit") else ""
+        tag = f"  -> {rule['tag']}" if rule.get("tag") else ""
+        print(
+            f"  rule   : {rule['name']}: {rule['stat']}({rule['expr']}) <= {rule['tol']}{unit}"
+            f"  [{rule.get('scope') or '-'}]{tag}"
+        )
 
 
 def _populate_etl_parser(parser: argparse.ArgumentParser) -> None:

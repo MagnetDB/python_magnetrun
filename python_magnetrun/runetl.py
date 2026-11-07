@@ -1,5 +1,6 @@
 """ETL functions for preparing MagnetRun data."""
 
+import ast
 import copy
 import json
 import logging
@@ -210,12 +211,93 @@ def prepareData(
 # ---------------------------------------------------------------------------
 
 SPEC_KIND = "pupitre-etl-spec"
-SPEC_FORMAT_VERSION = 1
-ICOIL_CHECK_ATOL = 5.0  # [A]
+SPEC_FORMAT_VERSION = 2
 
 _FIELD_DEF_KEYS = {"formula", "symbol", "unit", "label", "description"}
 _SPEC_HOUSING_KEYS = {"name", "version", "remove", "rename", "add", "defaults", "companions"}
-_SPEC_MAGNET_KEYS = {"channels", "remove", "add", "current"}
+_SPEC_MAGNET_KEYS = {"channels", "remove", "add"}
+_RULE_REQUIRED_KEYS = {"name", "expr", "stat", "tol"}
+_RULE_KEYS = _RULE_REQUIRED_KEYS | {"unit", "tag", "scope"}
+_RULE_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+RULE_STATS = {
+    "max_abs": lambda values: values.abs().max(),
+    "p99_abs": lambda values: values.abs().quantile(0.99),
+    "mean_abs": lambda values: values.abs().mean(),
+}
+
+
+def rule_columns(expr: str) -> list[str]:
+    """Return the column names used by a rule expression, in order of appearance.
+
+    Parameters
+    ----------
+    expr : str
+        Rule expression, e.g. ``"IH - Icoil2"`` or ``"abs(Idcct1) - Idcct2"``.
+
+    Returns
+    -------
+    list[str]
+        Names other than called functions (``abs``), without duplicates.
+
+    Raises
+    ------
+    ValueError
+        If *expr* is not a single expression (syntax error, assignment), or
+        uses ``@`` variables or backtick-quoted names.
+    """
+    if "@" in expr:
+        raise ValueError(f"rule expr {expr!r}: '@' variables are not allowed")
+    if "`" in expr:
+        raise ValueError(
+            f"rule expr {expr!r}: backtick names are reserved for multi-source rules "
+            "(not supported yet)"
+        )
+    try:
+        tree = ast.parse(expr, mode="eval")
+    except SyntaxError as exc:
+        raise ValueError(f"rule expr {expr!r} is not an expression: {exc.msg}") from None
+    called = {
+        id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)
+    }
+    names = [
+        node for node in ast.walk(tree) if isinstance(node, ast.Name) and id(node) not in called
+    ]
+    names.sort(key=lambda node: node.col_offset)
+    return list(dict.fromkeys(node.id for node in names))
+
+
+def check_rule(rule: dict) -> None:
+    """Validate a check rule.
+
+    Parameters
+    ----------
+    rule : dict
+        ``name``, ``expr``, ``stat`` (one of :data:`RULE_STATS`), ``tol``
+        (≥ 0, in the rule's unit), and optionally ``unit``, ``tag`` and
+        ``scope``.
+
+    Raises
+    ------
+    ValueError
+        On missing or unknown keys, a bad name, statistic or tolerance, or an
+        expression that does not parse or uses no column.
+    """
+    missing = _RULE_REQUIRED_KEYS - set(rule)
+    unknown = set(rule) - _RULE_KEYS
+    if missing or unknown:
+        raise ValueError(
+            f"rule {rule.get('name')!r}: missing {sorted(missing)}, unknown {sorted(unknown)} "
+            f"(allowed {sorted(_RULE_KEYS)})"
+        )
+    if not isinstance(rule["name"], str) or not _RULE_NAME.fullmatch(rule["name"]):
+        raise ValueError(f"rule name {rule['name']!r}: letters, digits and '_' only")
+    if rule["stat"] not in RULE_STATS:
+        raise ValueError(f"rule {rule['name']!r}: stat {rule['stat']!r} not in {list(RULE_STATS)}")
+    tol = rule["tol"]
+    if isinstance(tol, bool) or not isinstance(tol, (int, float)) or tol < 0:
+        raise ValueError(f"rule {rule['name']!r}: tol {tol!r} must be a number ≥ 0")
+    if not rule_columns(rule["expr"]):
+        raise ValueError(f"rule {rule['name']!r}: expr {rule['expr']!r} uses no column")
 
 
 def _check_field_defs(where: str, defs: dict) -> None:
@@ -242,23 +324,27 @@ class PupitreEtlSpec:
         built from), ``remove`` (full-match regex patterns), ``rename``,
         ``add`` and ``defaults`` (field definitions), ``companions``.
     magnets : dict
-        Magnet name → part with ``channels``, ``remove``, ``add`` and
-        ``current`` (``{"source": "Icoil2", "check": "IH"}``); never ``rename``.
+        Magnet name → magnet wiring with ``channels``, ``remove`` and
+        ``add``; never ``rename``.
+    rules : list[dict]
+        Check rules, already merged across housing, assembly and magnet
+        levels (see :func:`check_rule`); ``scope`` records the level.
 
     Raises
     ------
     ValueError
         On unknown keys, incomplete field definitions, an ``add`` key given
-        twice (housing ``add`` or two magnet parts) or a channel claimed by
-        two magnet parts.
+        twice (housing ``add`` or two magnet wirings), a channel claimed by
+        two magnet wirings, an invalid rule or two rules with one name.
     """
 
     assembly: str | None
     housing: dict
     magnets: dict = field(default_factory=dict)
+    rules: list = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        """Validate keys, field definitions and merge conflicts."""
+        """Validate keys, field definitions, rules and merge conflicts."""
         unknown = set(self.housing) - _SPEC_HOUSING_KEYS
         if unknown or "name" not in self.housing:
             raise ValueError(
@@ -291,12 +377,12 @@ class PupitreEtlSpec:
                         f"{claimed[channel]!r} and {magnet!r}"
                     )
                 claimed[channel] = magnet
-            current = part.get("current")
-            if current is not None and set(current) != {"source", "check"}:
-                raise ValueError(
-                    f"PupitreEtlSpec: magnet {magnet!r} current needs "
-                    f"'source' and 'check', got {sorted(current)}"
-                )
+        names: set[str] = set()
+        for rule in self.rules:
+            check_rule(rule)
+            if rule["name"] in names:
+                raise ValueError(f"PupitreEtlSpec: two rules named {rule['name']!r}")
+            names.add(rule["name"])
 
     @property
     def remove(self) -> list[str]:
@@ -321,22 +407,13 @@ class PupitreEtlSpec:
             defs.setdefault(key, fd)
         return defs
 
-    @property
-    def checks(self) -> list[dict]:
-        """Current checks, one per magnet part with a ``current``."""
-        return [
-            {"magnet": magnet, **part["current"]}
-            for magnet, part in self.magnets.items()
-            if "current" in part
-        ]
-
     def to_dict(self) -> dict:
         """Return the JSON form of the spec (structure kept, not flattened).
 
         Returns
         -------
         dict
-            ``{"kind", "version", "assembly", "housing", "magnets"}``.
+            ``{"kind", "version", "assembly", "housing", "magnets", "rules"}``.
         """
         return {
             "kind": SPEC_KIND,
@@ -344,6 +421,7 @@ class PupitreEtlSpec:
             "assembly": self.assembly,
             "housing": copy.deepcopy(self.housing),
             "magnets": copy.deepcopy(self.magnets),
+            "rules": copy.deepcopy(self.rules),
         }
 
     @classmethod
@@ -377,6 +455,7 @@ class PupitreEtlSpec:
             assembly=d.get("assembly"),
             housing=d["housing"],
             magnets=d.get("magnets") or {},
+            rules=d.get("rules") or [],
         )
 
     @classmethod
@@ -392,7 +471,7 @@ class PupitreEtlSpec:
             (``get_housing_config(housing, at=t0)``); its ``version`` is
             recorded in ``housing.version``.
         assembly : str, optional
-            Assembly name to record; no magnet part is added.
+            Assembly name to record; no magnet wiring and no rule is added.
 
         Returns
         -------
@@ -523,26 +602,31 @@ def _housing_version_check(data: MagnetDataBase, spec: PupitreEtlSpec) -> dict:
     }
 
 
-def _current_checks(data: MagnetDataBase, spec: PupitreEtlSpec) -> list[dict]:
-    """Compare each magnet part's ``Icoil`` source with its target current [A]."""
+def _rule_checks(data: MagnetDataBase, spec: PupitreEtlSpec) -> list[dict]:
+    """Evaluate each rule: its statistic over all rows (NaN ignored) must be ≤ ``tol``."""
     keys = data.getKeys()
     results = []
-    for check in spec.checks:
-        source, target = check["source"], check["check"]
+    for rule in spec.rules:
+        columns = rule_columns(rule["expr"])
         result = {
-            "kind": "current",
-            "magnet": check["magnet"],
-            "target": target,
-            "source": source,
-            "max_abs_diff": None,
+            "kind": "rule",
+            "name": rule["name"],
+            "scope": rule.get("scope"),
+            "expr": rule["expr"],
+            "stat": rule["stat"],
+            "value": None,
+            "tol": rule["tol"],
+            "unit": rule.get("unit"),
+            "tag": rule.get("tag"),
+            "missing": [c for c in columns if c not in keys],
             "ok": None,
         }
-        if source in keys and target in keys:
-            df = to_pandas(data.getData([source, target]))
-            diff = (df[target] - df[source]).abs().max()
-            if diff == diff:  # not NaN
-                result["max_abs_diff"] = float(diff)
-                result["ok"] = bool(diff <= ICOIL_CHECK_ATOL)
+        if not result["missing"]:
+            df = to_pandas(data.getData(columns))
+            value = RULE_STATS[rule["stat"]](df.eval(rule["expr"]))
+            if value == value:  # not NaN
+                result["value"] = float(value)
+                result["ok"] = bool(value <= rule["tol"])
         results.append(result)
     return results
 
@@ -575,11 +659,12 @@ def _channel_checks(
 def prepare_pupitre(data: MagnetDataBase, spec: PupitreEtlSpec) -> list[dict]:
     """Apply an explicit ETL spec to pupitre data, in place.
 
-    Order: housing-version check → ``addTime`` → rename → add → current and
+    Order: housing-version check → ``addTime`` → rename → add → rule and
     channel checks → remove (full-match patterns) → companions → ``t``
     dedupe. No content-based dropping (all-zero, duplicate columns) and no
     ``Icoil`` guessing. Failed checks are logged as warnings; they never keep
-    or drop a column.
+    or drop a column. Rules therefore see raw, added and renamed names, not
+    the original name of a renamed column.
 
     Parameters
     ----------
@@ -591,9 +676,9 @@ def prepare_pupitre(data: MagnetDataBase, spec: PupitreEtlSpec) -> list[dict]:
     Returns
     -------
     list[dict]
-        Check results, each with a ``kind`` (``housing_version``,
-        ``current``, ``channel``) and an ``ok`` (``True``, ``False`` or
-        ``None`` when it could not be evaluated).
+        Check results, each with a ``kind`` (``housing_version``, ``rule``,
+        ``channel``) and an ``ok`` (``True``, ``False`` or ``None`` when it
+        could not be evaluated).
     """
     assert data.Type == DataType.PUPITRE
 
@@ -622,7 +707,7 @@ def prepare_pupitre(data: MagnetDataBase, spec: PupitreEtlSpec) -> list[dict]:
         if not any(re.fullmatch(pattern, k) for k in keys):
             logger.debug(f"prepare_pupitre: {data.FileName}: {pattern!r} matches no column")
 
-    results += _current_checks(data, spec)
+    results += _rule_checks(data, spec)
     results += _channel_checks(data, spec, removed)
     for result in results:
         if result["ok"] is False:
