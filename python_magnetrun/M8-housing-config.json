@@ -85,7 +85,19 @@
     {
       "name": "M8-211225",
       "valid_from": "2021-12-25T08:00:00+01:00",
-      "comment": "Base wiring, from the first assembly commissioned in this housing (assemblies.commissioned_at).",
+      "comment": "From the first assembly commissioned in this housing (assemblies.commissioned_at; M8_A211225_00, Hybrid + M8Bitters, no insert). 12-slot pupitre (stale header HL-28_1_BI04_1_BE02_1_13/05/2014): M8Bitters read on Ucoil11/Ucoil12 (Icoil11/12 = IB), no Ucoil13-16 columns.",
+      "overrides": {
+        "voltage_channels_gr1": ["Ucoil11", "Ucoil12"],
+        "voltage_channels_gr2": [
+          "Ucoil1", "Ucoil2", "Ucoil3", "Ucoil4", "Ucoil5",
+          "Ucoil6", "Ucoil7", "Ucoil8", "Ucoil9", "Ucoil10"
+        ]
+      }
+    },
+    {
+      "name": "M8-230913",
+      "valid_from": "2023-09-13T13:48:50+02:00",
+      "comment": "Back to the base wiring from the first 16-slot pupitre file (header M23012001), 2023.09.13 - 13:48:50: insert on Ucoil1-7, M8Bitters on Ucoil15/Ucoil16.",
       "overrides": {}
     },
     {

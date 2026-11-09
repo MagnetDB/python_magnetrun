@@ -417,7 +417,7 @@ class TestProcessOverviewHousingVersion:
         assert self._run(datetime(2026, 3, 6, 8, 0)).version == "M8-260305"
 
     def test_base_before_change(self):
-        assert self._run(datetime(2025, 11, 5, 13, 0)).version == "M8-211225"
+        assert self._run(datetime(2025, 11, 5, 13, 0)).version == "M8-230913"
 
 
 class TestIntegration:

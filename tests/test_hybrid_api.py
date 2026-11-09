@@ -1072,7 +1072,7 @@ class TestHybridRunHousingVersion:
         from datetime import datetime
 
         hrun = self._hrun(datetime(2025, 11, 5, 13, 0))
-        assert hrun._get_housing_config().version == "M8-211225"
+        assert hrun._get_housing_config().version == "M8-230913"
 
     def test_resolved_once(self):
         from datetime import datetime

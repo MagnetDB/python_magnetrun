@@ -420,7 +420,7 @@ class TestFromHousing:
 
     def test_m8_before_wiring_change(self):
         spec = _spec("M8", when=datetime(2025, 11, 5, tzinfo=PARIS))
-        assert spec.housing["version"] == "M8-211225"
+        assert spec.housing["version"] == "M8-230913"
         assert spec.add["UB"]["formula"] == "UB = Ucoil15 + Ucoil16"
 
 
@@ -505,12 +505,12 @@ class TestPreparePupitre:
         assert "Tcal5" not in data.getKeys()  # removed anyway
 
     def test_housing_version_mismatch_flagged(self, caplog):
-        spec = _spec("M8", when=datetime(2025, 11, 5, tzinfo=PARIS))  # M8-211225
+        spec = _spec("M8", when=datetime(2025, 11, 5, tzinfo=PARIS))  # M8-230913
         data = _pupitre(_frame(date="2026.03.06"))
         with caplog.at_level(logging.WARNING):
             checks = runetl.prepare_pupitre(data, spec)
         hv = [c for c in checks if c["kind"] == "housing_version"][0]
-        assert hv == {"kind": "housing_version", "spec": "M8-211225", "data": "M8-260305", "ok": False}
+        assert hv == {"kind": "housing_version", "spec": "M8-230913", "data": "M8-260305", "ok": False}
         assert "M8-260305" in caplog.text
         assert "t" in data.getKeys()  # still processed
 

@@ -239,7 +239,7 @@ class TestHousingConfigVersions:
 
     def test_m8_before_change_is_base_version(self):
         cfg = HOUSING_CONFIGS["M8"].at(datetime(2026, 3, 5, 15, 56, 42, tzinfo=PARIS))
-        assert cfg.version == "M8-211225"
+        assert cfg.version == "M8-230913"
         assert cfg.voltage_channels_gr1 == ("Ucoil15", "Ucoil16")
 
     def test_m8_before_first_version_is_unnamed_base(self):
@@ -248,19 +248,37 @@ class TestHousingConfigVersions:
         assert cfg == HOUSING_CONFIGS["M8"]
 
     @pytest.mark.parametrize(
-        "housing, name, valid_from",
+        "housing, name, valid_from, overrides",
         [
-            ("M5", "M5-140101", "2014-01-01T08:00:00+01:00"),
-            ("M7", "M7-140101", "2014-01-01T08:00:00+01:00"),
-            ("M8", "M8-211225", "2021-12-25T08:00:00+01:00"),
-            ("M9", "M9-181109", "2018-11-09T08:00:00+01:00"),
-            ("M10", "M10-180220", "2018-02-20T08:00:00+01:00"),
+            ("M5", "M5-140101", "2014-01-01T08:00:00+01:00", {}),
+            ("M7", "M7-140101", "2014-01-01T08:00:00+01:00", {}),
+            # M8's first assembly ran on a 12-slot pupitre (M8Bitters on Ucoil11/12)
+            ("M8", "M8-211225", "2021-12-25T08:00:00+01:00", {
+                "voltage_channels_gr1": ["Ucoil11", "Ucoil12"],
+                "voltage_channels_gr2": [f"Ucoil{i}" for i in range(1, 11)],
+            }),
+            ("M9", "M9-181109", "2018-11-09T08:00:00+01:00", {}),
+            ("M10", "M10-180220", "2018-02-20T08:00:00+01:00", {}),
         ],
     )
-    def test_dated_base_version(self, housing, name, valid_from):
-        """Every bundled housing starts with a dated version of its base wiring."""
+    def test_dated_base_version(self, housing, name, valid_from, overrides):
+        """Every bundled housing starts with a dated version from its first assembly."""
         first = HOUSING_CONFIGS[housing].versions[0]
-        assert (first["name"], first["valid_from"], first["overrides"]) == (name, valid_from, {})
+        assert (first["name"], first["valid_from"], first["overrides"]) == (name, valid_from, overrides)
+
+    def test_m8_12_slot_pupitre_until_2023_09_13(self):
+        """M8_A211225_00 (Hybrid + M8Bitters): 12-slot pupitre, Bitter on Ucoil11/12."""
+        cfg = HOUSING_CONFIGS["M8"].at(datetime(2022, 11, 28, 13, 40, 49, tzinfo=PARIS))
+        assert cfg.version == "M8-211225"
+        assert cfg.voltage_channels_gr1 == ("Ucoil11", "Ucoil12")
+        assert cfg.voltage_channels_gr2 == tuple(f"Ucoil{i}" for i in range(1, 11))
+
+    def test_m8_16_slot_pupitre_from_2023_09_13(self):
+        """From the first 16-slot file (M23012001 header): back to the base wiring."""
+        cfg = HOUSING_CONFIGS["M8"].at(datetime(2023, 9, 14, 10, 27, 45, tzinfo=PARIS))
+        assert cfg.version == "M8-230913"
+        assert cfg.voltage_channels_gr1 == ("Ucoil15", "Ucoil16")
+        assert cfg.voltage_channels_gr2 == HOUSING_CONFIGS["M8"].voltage_channels_gr2
 
     def test_m8_from_change_uses_version(self):
         cfg = HOUSING_CONFIGS["M8"].at(datetime(2026, 3, 5, 17, 21, 9, tzinfo=PARIS))
@@ -374,4 +392,4 @@ class TestHousingConfigVersions:
         save_housing_config(dest, HOUSING_CONFIGS["M8"])
         loaded = load_housing_config(dest)
         assert loaded == HOUSING_CONFIGS["M8"]
-        assert [v["name"] for v in loaded.versions] == ["M8-211225", "M8-260305"]
+        assert [v["name"] for v in loaded.versions] == ["M8-211225", "M8-230913", "M8-260305"]
