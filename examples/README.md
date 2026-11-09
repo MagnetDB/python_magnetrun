@@ -902,6 +902,73 @@ python plot_hybrid_with_pupitre_tdms.py \
 
 See [README_hybrid_plotting.md](README_hybrid_plotting.md) for detailed documentation.
 
+### 3. Pupitre ↔ hybrid clock lag: `hybrid_pupitre_lag.py`
+
+Estimates the clock lag between the Hybrid (CEA FEPC) data and the pupitre
+data of one M8 run (digital twin open question #27). Hybrid kHz signals are
+averaged over 1 s and compared with the pupitre signals while scanning the lag:
+
+| Pupitre | Hybrid |
+|---|---|
+| `IB` | `FEPC-AUX-LNCMI` `ALIM1_J1 + ALIM1_J2` (GR1) |
+| `IH` | `FEPC-AUX-LNCMI` `ALIM2_J1 + ALIM2_J2` (GR2) |
+| `SupraField` | `FEPC-LNCMI` `I_BOB` (the fitted ratio gives ffS in use) |
+
+Convention: **pupitre time + lag = Hybrid time**. The lag minimises the rms
+of `hybrid - ratio * pupitre`. A 10 s coarse scan over `±--max-lag` is
+refined at 1 s over ±15 s. A 2×2 figure shows IB / IH against ALIM1 / ALIM2,
+without the lag (left) and with the pupitre shifted by the lag (right).
+
+**Usage:**
+```bash
+# List the kHz variables of both FEPC systems for that day
+python hybrid_pupitre_lag.py "$HOME/LNCMIG-Data/records/srv-data-install/M8/2026.10.30 - 09:10:03.txt" 2026-10-30 --list
+
+# Estimate the lags and save the figure (hybrid_pupitre_lag_2026-10-30.png)
+python hybrid_pupitre_lag.py "$HOME/LNCMIG-Data/records/srv-data-install/M8/2026.10.30 - 09:10:03.txt" 2026-10-30 --save
+
+# Same, keeping the Hybrid resistive currents only inside the M8 sessions of EXPERIENCES_LOG
+python hybrid_pupitre_lag.py "$HOME/LNCMIG-Data/records/srv-data-install/M8/2026.10.30 - 09:10:03.txt" 2026-10-30 \
+    --sessions-log Data/EXPERIENCES_LOG.csv --save
+```
+
+**Masking of the Hybrid resistive currents.** The Hybrid system records the
+supply currents (`ALIM1`, `ALIM2`) whatever housing they feed, while the M8
+voltages are recorded only when M8 is fed. By default `HybridRun.getData`
+zeroes the currents where the companion voltage is "off" according to an
+Otsu threshold, which also removes the M8 standby steps (about 450 A, low
+voltage). With `--sessions-log`, the currents are kept only inside an M8
+session of the log on their supply group (`ElecGroup`), padded by 5 min;
+Otsu remains the fallback after the last log entry. On this run the rms
+residuals drop from 273 / 356 A to 7.5 / 4.8 A, with the same lags.
+
+Example output (M8, 2026-10-30, default hours 8–13 UTC):
+```
+pupitre IB vs Hybrid ALIM1 (GR1): lag -190 s, rms 272.9 A, ratio 1.0015, n 18332
+pupitre IH vs Hybrid ALIM2 (GR2): lag -190 s, rms 355.6 A, ratio 1.0009, n 18332
+pupitre SupraField vs Hybrid I_BOB: lag -191 s, rms 4.53 A, ffS in use = 1/ratio = 11.837 G/A, n 19431
+```
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `pupitre_file` | — | M8 pupitre `.txt` file |
+| `date` | — | Day of the run, `YYYY-MM-DD` (Hybrid data directory) |
+| `--hours` | pupitre time span | UTC hours to load, comma separated (e.g. `7,8,9,10`) |
+| `--list` | off | List the Hybrid kHz variables of both systems and exit |
+| `--max-lag` | `7200` | Half width of the coarse lag scan [s] |
+| `--hybrid_datadir` | `HYBRID_DATA_DIR` | Base directory for Hybrid data |
+| `--sessions-log` | — | EXPERIENCES_LOG CSV: keep the Hybrid resistive currents only inside M8 sessions (default: Otsu voltage mask) |
+| `--save [FILE]` | — | Save the figure (default name `hybrid_pupitre_lag_<date>.png`) |
+| `--show` | — | Display the figure (default when `--save` is not given) |
+| `--title` | auto | Override the figure title |
+| `--log-level` | `ERROR` | Logging verbosity (the Hybrid reader logs per-file details at `WARNING`) |
+
+**Note:** `plot_hybrid_with_pupitre_tdms.py` aligns sources with
+`align_to_common_time`, which only puts each source's start on a common
+reference. It does not correct this clock lag (about −3 min here).
+
 ## Interactive Visualization
 
 ### `pywry_demo.py`

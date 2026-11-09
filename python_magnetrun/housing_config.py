@@ -118,6 +118,7 @@ ROLE_TO_FIELD: dict[str, str] = {
     "pigbrother_formula_map": "pigbrother_formula_map",
     "hybrid_formula_map": "hybrid_formula_map",
     "hybrid_voltage_mask_map": "hybrid_voltage_mask_map",
+    "hybrid_session_group_map": "hybrid_session_group_map",
     "reference_gr1_voltage": "reference_gr1_voltage",
     "reference_gr2_voltage": "reference_gr2_voltage",
 }
@@ -231,6 +232,10 @@ class HousingConfig:
     # Keys are bare channel paths (no "kHz/" prefix).
     # Mapping is housing- and run-dependent — may change between experiments.
     hybrid_voltage_mask_map: dict = field(default_factory=dict)
+
+    # Hybrid current-channel → supply group (EXPERIENCES_LOG ElecGroup) for the
+    # session-log mask (see HybridRun LoadOptions.sessions_log).
+    hybrid_session_group_map: dict = field(default_factory=dict)
 
     # Target aggregate voltage field names for GR1/GR2
     reference_gr1_voltage: str = "UH"

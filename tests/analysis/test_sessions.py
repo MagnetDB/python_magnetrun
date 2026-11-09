@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,6 +15,7 @@ from python_magnetrun.analysis.sessions import (
     find_unlogged,
     load_sessions,
     parse_hlog_timestamp,
+    session_windows_utc,
     sessions_to_records,
 )
 
@@ -309,3 +310,51 @@ class TestSessionsToRecords:
         assert r["pupitre"] == ["/p/2025.06.01 - 17:49:00.txt"]
         assert r["overview"] == []
         assert r["coils"][0]["stop"] == "2025-06-01 22:04:24"
+
+
+# ---------------------------------------------------------------------------
+# session_windows_utc
+# ---------------------------------------------------------------------------
+
+
+class TestSessionWindowsUtc:
+    @staticmethod
+    def _log(tmp_path: Path) -> Path:
+        return _write_log(tmp_path, [
+            # summer time (CEST, UTC+2)
+            _row("BARBIER", "M8e", 1, D(2026, 10, 14, 8, 59, 20), D(2026, 10, 14, 15, 33, 34)),
+            _row("BARBIER", "M8i", 2, D(2026, 10, 14, 9, 0, 14), D(2026, 10, 14, 15, 33, 35)),
+            _row("PANKOW", "M10e", 1, D(2026, 10, 14, 16, 28, 30), D(2026, 10, 14, 17, 11, 13)),
+            # winter time (CET, UTC+1)
+            _row("JAYMOND", "M8e", 1, D(2026, 11, 5, 9, 3, 46), D(2026, 11, 5, 17, 47, 32)),
+        ])
+
+    def test_windows_of_one_housing_and_group_in_utc(self, tmp_path: Path) -> None:
+        windows, _ = session_windows_utc(self._log(tmp_path), "M8", 1, tolerance=timedelta(0))
+        assert windows == [
+            (D(2026, 10, 14, 6, 59, 20), D(2026, 10, 14, 13, 33, 34)),
+            (D(2026, 11, 5, 8, 3, 46), D(2026, 11, 5, 16, 47, 32)),
+        ]
+
+    def test_other_group(self, tmp_path: Path) -> None:
+        windows, _ = session_windows_utc(self._log(tmp_path), "M8", 2, tolerance=timedelta(0))
+        assert windows == [(D(2026, 10, 14, 7, 0, 14), D(2026, 10, 14, 13, 33, 35))]
+
+    def test_default_tolerance_pads_windows(self, tmp_path: Path) -> None:
+        windows, _ = session_windows_utc(self._log(tmp_path), "M8", 2)
+        assert windows == [(D(2026, 10, 14, 6, 55, 14), D(2026, 10, 14, 13, 38, 35))]
+
+    def test_period_filter_in_utc(self, tmp_path: Path) -> None:
+        windows, _ = session_windows_utc(
+            self._log(tmp_path), "M8", 1, start=D(2026, 11, 5, 0), end=D(2026, 11, 6, 0),
+            tolerance=timedelta(0),
+        )
+        assert windows == [(D(2026, 11, 5, 8, 3, 46), D(2026, 11, 5, 16, 47, 32))]
+
+    def test_log_end_is_latest_entry_of_any_housing(self, tmp_path: Path) -> None:
+        log = _write_log(tmp_path, [
+            _row("BARBIER", "M8e", 1, D(2026, 10, 14, 8, 59, 20), D(2026, 10, 14, 15, 33, 34)),
+            _row("PANKOW", "M10e", 1, D(2026, 10, 14, 16, 28, 30), D(2026, 10, 14, 17, 11, 13)),
+        ])
+        _, log_end = session_windows_utc(log, "M8", 1)
+        assert log_end == D(2026, 10, 14, 15, 11, 13)

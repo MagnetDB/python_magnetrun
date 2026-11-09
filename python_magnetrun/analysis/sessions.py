@@ -53,6 +53,11 @@ OPEN_SESSION_CAP = timedelta(hours=12)
 UNLOGGED_GAP = timedelta(minutes=30)
 """Unclaimed files closer than this are grouped into one unlogged session."""
 
+SESSION_TOLERANCE = timedelta(minutes=5)
+"""Padding on each side of a session window (clock differences between SUPERVISION and the data)."""
+
+_PARIS = "Europe/Paris"
+
 _HLOG_FORMAT = "%m/%d/%y  %H:%M:%S.%f"
 
 
@@ -231,6 +236,72 @@ def load_sessions(
             group.append(row)
     logger.info(f"{housing}: {len(sessions)} sessions from {len(kept)} log rows")
     return sessions
+
+
+def _paris_to_utc(dt: datetime) -> datetime:
+    """Convert a naive Europe/Paris wall-clock time to naive UTC (ambiguous hour read as summer time)."""
+    ts = pd.Timestamp(dt).tz_localize(_PARIS, ambiguous=True, nonexistent="shift_forward")
+    return ts.tz_convert("UTC").tz_localize(None).to_pydatetime()
+
+
+def _utc_to_paris(dt: datetime) -> datetime:
+    """Convert a naive UTC time to naive Europe/Paris wall-clock time."""
+    return pd.Timestamp(dt).tz_localize("UTC").tz_convert(_PARIS).tz_localize(None).to_pydatetime(warn=False)
+
+
+def session_windows_utc(
+    log_file: str | Path,
+    housing: str,
+    elec_group: int,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    tolerance: timedelta = SESSION_TOLERANCE,
+) -> tuple[list[tuple[datetime, datetime]], datetime | None]:
+    """Return the windows when *housing* was fed by supply group *elec_group*.
+
+    One window per EXPERIENCES_LOG row of the housing on that group (after
+    the cleaning of :func:`load_sessions`), converted to naive UTC and
+    padded by *tolerance* on each side.
+
+    Parameters
+    ----------
+    log_file : str or Path
+        EXPERIENCES_LOG CSV file.
+    housing : str
+        Housing identifier (e.g. ``"M8"``).
+    elec_group : int
+        Supply group (``ElecGroup``: 1 = GR1, 2 = GR2).
+    start, end : datetime, optional
+        Naive UTC period; only windows overlapping it are returned.
+    tolerance : timedelta
+        Padding added before the start and after the stop of each window.
+
+    Returns
+    -------
+    windows : list of tuple of datetime
+        ``(start, stop)`` pairs in naive UTC, sorted.
+    log_end : datetime or None
+        Latest ``HStart``/``HStop`` of the whole log (any housing), naive
+        UTC: later times are not covered by the log. ``None`` for an empty
+        log.
+    """
+    local_start = _utc_to_paris(start) - OPEN_SESSION_CAP if start is not None else datetime.min
+    local_end = _utc_to_paris(end) if end is not None else None
+    windows = []
+    for session in load_sessions(log_file, housing, local_start, local_end):
+        for coil in session.coils:
+            if coil["elec_group"] != elec_group:
+                continue
+            w_start = _paris_to_utc(coil["start"]) - tolerance
+            w_stop = _paris_to_utc(coil["stop"]) + tolerance
+            if (start is None or w_stop >= start) and (end is None or w_start <= end):
+                windows.append((w_start, w_stop))
+
+    df = pd.read_csv(log_file, dtype=str, keep_default_na=False, usecols=["HStart", "HStop"])
+    stamps = [parse_hlog_timestamp(v) for v in pd.concat([df["HStart"], df["HStop"]])]
+    stamps = [s for s in stamps if s is not None]
+    log_end = _paris_to_utc(max(stamps)) if stamps else None
+    return sorted(windows), log_end
 
 
 @functools.cache

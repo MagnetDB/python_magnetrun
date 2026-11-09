@@ -647,6 +647,42 @@ class HybridData(MagnetDataBase):
 
         return {"analog": natsorted(analog_vars), "digital": natsorted(digital_vars)}
 
+    def khz_time_origin(
+        self, system: str, hours: range | list[int] | None = None
+    ) -> datetime:
+        """Return the origin of the time arrays of :meth:`read_khz_variable`.
+
+        Times are seconds from ``HH:00:00`` UTC of the first kHz file loaded;
+        the hour is read from the file names of *system* (all slots).
+
+        Parameters
+        ----------
+        system : str
+            FEPC system name.
+        hours : range or list of int, optional
+            UTC hours loaded, as passed to :meth:`read_khz_variable`.
+
+        Returns
+        -------
+        datetime
+            Naive UTC origin.
+
+        Raises
+        ------
+        ValueError
+            If no kHz file matches.
+        """
+        khz_dir = self.base_dir / "kHz" / self.date_str / system
+        file_hours = sorted(
+            {int(f.name[:2]) for f in khz_dir.glob("*HOST_*_LIST_*.bin") if f.name[:2].isdigit()}
+        )
+        if hours is not None:
+            file_hours = [h for h in file_hours if h in hours]
+        if not file_hours:
+            raise ValueError(f"No kHz files found for {system} on {self.date_str}")
+        day = datetime.strptime(self.date_str, "%Y-%m-%d")
+        return day.replace(hour=file_hours[0])
+
     def read_khz_variable(
         self,
         system: str,

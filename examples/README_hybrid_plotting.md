@@ -214,6 +214,12 @@ The script uses dictionaries to translate field names:
 - Pupitre data: Uses 't' field (already in seconds)
 - TDMS data: Uses 't' field (already in seconds)
 
+This alignment only places each source on its own elapsed time. It does not
+correct the clock lag between the pupitre and Hybrid acquisition systems
+(about −3 min on M8, 2026-10-30). Use
+[`hybrid_pupitre_lag.py`](README.md#3-pupitre--hybrid-clock-lag-hybrid_pupitre_lagpy)
+to estimate that lag (convention: pupitre time + lag = Hybrid time).
+
 ## Customization
 
 ### Adding New Field Mappings

@@ -73,6 +73,13 @@
       "FEPC-AUX-LNCMI/ALIM2_J1": "FEPC-AUX-LNCMI/PH_V14",
       "FEPC-AUX-LNCMI/ALIM2_J2": "FEPC-AUX-LNCMI/PH_V14"
   },
+  "_comment_session_group": "Hybrid current channel → supply group (EXPERIENCES_LOG ElecGroup). With a sessions log, the current is kept only inside a session of this housing on that group; the voltage mask is the fallback.",
+  "hybrid_session_group_map": {
+      "FEPC-AUX-LNCMI/ALIM1_J1": 1,
+      "FEPC-AUX-LNCMI/ALIM1_J2": 1,
+      "FEPC-AUX-LNCMI/ALIM2_J1": 2,
+      "FEPC-AUX-LNCMI/ALIM2_J2": 2
+  },
   "_comment_versions": "Wiring changes over time, applied to the fields above by HousingConfig.at(). valid_from = start of the first pupitre file with the new wiring.",
   "versions": [
     {

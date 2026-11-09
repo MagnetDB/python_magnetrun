@@ -97,6 +97,11 @@ class LoadOptions:
     # Voltage-mask binarization
     binarize_config: BinarizeConfig | None = None
 
+    # EXPERIENCES_LOG CSV: when set, kHz currents listed in the housing's
+    # hybrid_session_group_map are kept only inside a session of the housing
+    # on their supply group; the voltage mask is the fallback after the log end.
+    sessions_log: str | Path | None = None
+
 
 @dataclass
 class CacheEntry:
@@ -641,6 +646,7 @@ class HybridRun:
                 apply_calib=opts.apply_calib,
                 cnv_dir=opts.cnv_dir,
                 binarize_config=opts.binarize_config,
+                sessions_log=opts.sessions_log,
             )
             logger.debug(f"LoadOptions opts: {opts}")
         logger.debug(f"opts: {opts}")
@@ -655,6 +661,8 @@ class HybridRun:
             if ds is not None
             else f"{key}:None:{opts.hours}"
         )
+        if opts.sessions_log:
+            cache_key += f":{opts.sessions_log}"
         if opts.cache and cache_key in self._cache:
             entry = self._cache[cache_key]
             logger.debug(f"Cache hit for {cache_key}")
@@ -761,10 +769,16 @@ class HybridRun:
         opts,
         binarize_config: BinarizeConfig | None = None,
     ) -> np.ndarray:
-        """Zero out samples in *data* that fall outside the voltage-on intervals.
+        """Zero out samples in *data* when the current does not feed the housing.
 
-        The voltage channel is always kHz; its binary mask is projected onto
-        *data*'s (possibly lower-rate) time grid via nearest-neighbour lookup.
+        With ``opts.sessions_log`` set, a kHz channel listed in the housing's
+        ``hybrid_session_group_map`` is kept only inside an EXPERIENCES_LOG
+        session of the housing on its supply group (see
+        :func:`~python_magnetrun.analysis.sessions.session_windows_utc`).
+        Samples after the end of the log, and every other case, use the
+        voltage mask: the companion voltage channel (always kHz) binarized
+        with Otsu, projected onto *data*'s (possibly lower-rate) time grid
+        via nearest-neighbour lookup.
         Returns *data* unchanged when no mask is configured or on any error.
 
         Parameters
@@ -793,18 +807,34 @@ class HybridRun:
 
             hcfg = self._get_housing_config()
             cfg_key = f"{system}/{variable}"
+
+            session_on = covered = None
+            if opts.sessions_log and key.startswith("kHz/"):
+                group = hcfg.hybrid_session_group_map.get(cfg_key)
+                if group is not None:
+                    session_on, covered = self._session_mask(time, system, group, opts)
+                    logger.debug(
+                        f"session mask for {key!r} (group {group}): "
+                        f"{int(session_on.sum())}/{session_on.size} on, "
+                        f"{int(covered.sum())} covered by the log"
+                    )
+                    if covered.all():
+                        return data * session_on
+
             voltage_chan = hcfg.hybrid_voltage_mask_map.get(cfg_key)
-            logger.warning(
+            logger.debug(
                 f"voltage mask lookup: {cfg_key!r} → {voltage_chan!r}"
             )
             if not voltage_chan:
+                if session_on is not None:
+                    return np.where(covered, data * session_on, data)
                 return data
 
             v_sys, v_var = voltage_chan.split("/", 1)
             voltage_data, v_time = self.HybridData.read_khz_variable(
                 v_sys, v_var, hours=opts.hours, apply_calib=opts.apply_calib
             )
-            logger.warning(
+            logger.debug(
                 f"voltage_data stats for {voltage_chan!r}: "
                 f"n={voltage_data.size}, "
                 f"min={voltage_data.min():.4g}, max={voltage_data.max():.4g}, "
@@ -823,7 +853,7 @@ class HybridRun:
                 )
             else:
                 v_mask = binarize_signal(voltage_data)
-            logger.warning(
+            logger.debug(
                 f"voltage mask stats: n_on={int(v_mask.sum())}/{v_mask.size} "
                 f"({100.0 * v_mask.mean():.1f}% on)"
             )
@@ -832,11 +862,31 @@ class HybridRun:
             idx = np.clip(
                 np.searchsorted(v_time, time, side="left"), 0, len(v_mask) - 1
             )
-            data = data * v_mask[idx]
-            logger.warning(f"Applied voltage mask {voltage_chan!r} to {key!r}")
+            mask = v_mask[idx]
+            if session_on is not None:
+                mask = np.where(covered, session_on, mask)
+            data = data * mask
+            logger.debug(f"Applied voltage mask {voltage_chan!r} to {key!r}")
         except (ValueError, KeyError) as exc:
             logger.warning(f"voltage mask skipped for {key!r}: {exc}")
         return data
+
+    def _session_mask(
+        self, time: np.ndarray, system: str, group: int, opts: LoadOptions
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return (inside a session of the housing on *group*, covered by the log) per kHz sample."""
+        from ..analysis.sessions import session_windows_utc
+
+        origin = self.HybridData.khz_time_origin(system, opts.hours)
+        ts = pd.Timestamp(origin) + pd.to_timedelta(np.asarray(time, dtype=float), unit="s")
+        windows, log_end = session_windows_utc(
+            opts.sessions_log, self.Housing, group, start=ts.min(), end=ts.max()
+        )
+        on = np.zeros(len(ts), dtype=bool)
+        for w_start, w_stop in windows:
+            on |= np.asarray((ts >= w_start) & (ts <= w_stop))
+        covered = np.zeros(len(ts), dtype=bool) if log_end is None else np.asarray(ts <= log_end)
+        return on, covered
 
     def getKeys(self) -> list[str]:
         """Return list of data keys (MagnetRun compatible)"""
