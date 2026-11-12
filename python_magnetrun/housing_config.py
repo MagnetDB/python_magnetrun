@@ -189,6 +189,12 @@ class HousingConfig:
         Pupitre voltage-probe fields associated with GR1.
     voltage_channels_gr2 : tuple[str, ...]
         Pupitre voltage-probe fields associated with GR2.
+    pigbrother_current_map : dict
+        Pupitre current fed by each pigbrother supply group (``"GR1"`` =
+        supplies A1 + A2, ``"GR2"`` = A3 + A4), e.g. ``{"GR1": "IH", "GR2":
+        "IB"}``. Empty (the default): ``reference_gr*_current``. Set in a
+        version when the supplies feed the other magnet while the role
+        fields (taps, hydraulics) are unchanged, as in ``M10-210325``.
     version : str
         Name of the wiring version applied by :meth:`at` (``""`` = base).
     versions : tuple[dict, ...]
@@ -220,6 +226,9 @@ class HousingConfig:
     # ETL formula maps — keys_to_add passed to cleanupData per format
     pupitre_formula_map: dict = field(default_factory=dict)
     pigbrother_formula_map: dict = field(default_factory=dict)
+
+    # Pigbrother supply group ("GR1" / "GR2") -> pupitre current; empty = reference_gr*_current
+    pigbrother_current_map: dict = field(default_factory=dict)
 
     # Hybrid reference current channel names in df_hybrid (M8-only; empty = not applicable)
     reference_gr1_hybrid: str = ""
@@ -342,12 +351,32 @@ class HousingConfig:
     # Role-based lookups (keyed by TDMS reference channel name)
     # ------------------------------------------------------------------
 
+    def _group_current(self, group: str) -> str:
+        """Pupitre current fed by supply group *group* (``"GR1"`` / ``"GR2"``); ``""`` if unknown."""
+        default = {
+            "GR1": self.reference_gr1_current,
+            "GR2": self.reference_gr2_current,
+        }.get(group, "")
+        return self.pigbrother_current_map.get(group, default)
+
     def get_pupitre_channel(self, reference_key: str) -> str:
-        """Return the pupitre current field for a TDMS reference channel."""
-        return {
-            "Référence_GR1": self.reference_gr1_current,
-            "Référence_GR2": self.reference_gr2_current,
-        }.get(reference_key, "")
+        """Return the pupitre current field for a TDMS reference channel.
+
+        Parameters
+        ----------
+        reference_key : str
+            TDMS reference channel, ``"Référence_GR1"`` (supplies A1 + A2) or
+            ``"Référence_GR2"`` (A3 + A4).
+
+        Returns
+        -------
+        str
+            Pupitre current fed by that group (``pigbrother_current_map``,
+            else ``reference_gr*_current``), e.g. ``"IH"``; ``""`` for any
+            other key.
+        """
+        group = {"Référence_GR1": "GR1", "Référence_GR2": "GR2"}.get(reference_key, "")
+        return self._group_current(group)
 
     def get_hybrid_channel(self, reference_key: str) -> str:
         """Return the hybrid current field (in df_hybrid) for a TDMS reference channel."""
@@ -393,11 +422,23 @@ class HousingConfig:
     # ------------------------------------------------------------------
 
     def get_pupitre_current_channel(self, current_key: str) -> str | None:
-        """Return the pupitre current field for a "Courant_GR*" overview key."""
-        return {
-            "Courant_GR1": self.reference_gr1_current,
-            "Courant_GR2": self.reference_gr2_current,
-        }.get(current_key) or None
+        """Return the pupitre current field for a "Courant_GR*" overview key.
+
+        Parameters
+        ----------
+        current_key : str
+            Overview current, ``"Courant_GR1"`` (supplies A1 + A2) or
+            ``"Courant_GR2"`` (A3 + A4).
+
+        Returns
+        -------
+        str or None
+            Pupitre current fed by that group (``pigbrother_current_map``,
+            else ``reference_gr*_current``), e.g. ``"IH"``; ``None`` for any
+            other key or an unset field.
+        """
+        group = {"Courant_GR1": "GR1", "Courant_GR2": "GR2"}.get(current_key, "")
+        return self._group_current(group) or None
 
     def get_pupitre_group_keys(self, group: str) -> list[str]:
         """Return the pupitre column names relevant to a TDMS group."""

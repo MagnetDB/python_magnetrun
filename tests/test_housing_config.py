@@ -393,3 +393,53 @@ class TestHousingConfigVersions:
         loaded = load_housing_config(dest)
         assert loaded == HOUSING_CONFIGS["M8"]
         assert [v["name"] for v in loaded.versions] == ["M8-211225", "M8-230913", "M8-260305"]
+
+
+class TestPigbrotherCurrentMap:
+    """Pigbrother group current (GR1 = supplies A1 + A2, GR2 = A3 + A4) -> pupitre current."""
+
+    @pytest.mark.parametrize(
+        "housing, when, gr1, gr2",
+        [
+            ("M9", datetime(2026, 10, 29, 18, 3, 45, tzinfo=PARIS), "IH", "IB"),
+            ("M8", datetime(2026, 3, 6, 9, 11, 2, tzinfo=PARIS), "IB", "IH"),
+            ("M7", datetime(2014, 3, 20, tzinfo=PARIS), "IH", ""),
+            ("M10", datetime(2021, 3, 9, 9, 17, tzinfo=PARIS), "IB", "IH"),
+            # M10-210325: A1 + A2 feed the insert, A3 + A4 the Bitters
+            ("M10", datetime(2021, 4, 29, 15, 9, tzinfo=PARIS), "IH", "IB"),
+            ("M10", datetime(2021, 10, 1, tzinfo=PARIS), "IB", "IH"),
+            ("M10", datetime(2022, 1, 15, tzinfo=PARIS), "IB", "IH"),
+        ],
+    )
+    def test_group_current(self, housing, when, gr1, gr2):
+        """Both lookups follow the version in force."""
+        cfg = HOUSING_CONFIGS[housing].at(when)
+        assert cfg.get_pupitre_current_channel("Courant_GR1") == (gr1 or None)
+        assert cfg.get_pupitre_current_channel("Courant_GR2") == (gr2 or None)
+        assert cfg.get_pupitre_channel("Référence_GR1") == gr1
+        assert cfg.get_pupitre_channel("Référence_GR2") == gr2
+
+    def test_m10_swap_map_keeps_roles(self):
+        """The map changes the supply pairing only: the role fields are kept."""
+        cfg = HOUSING_CONFIGS["M10"].at(datetime(2021, 4, 29, 15, 9, tzinfo=PARIS))
+        assert cfg.version == "M10-210325"
+        assert cfg.pigbrother_current_map == {"GR1": "IH", "GR2": "IB"}
+        assert (cfg.reference_gr1_current, cfg.reference_gr2_current) == ("IB", "IH")
+
+    def test_default_map_is_empty(self):
+        for name, cfg in HOUSING_CONFIGS.items():
+            assert cfg.pigbrother_current_map == {}, name
+
+    def test_unknown_key(self):
+        cfg = HOUSING_CONFIGS["M10"].at(datetime(2021, 4, 29, 15, 9, tzinfo=PARIS))
+        assert cfg.get_pupitre_current_channel("Courant_A1") is None
+        assert cfg.get_pupitre_channel("Référence_A1") == ""
+
+    def test_round_trip_keeps_map(self, tmp_path: Path):
+        dest = tmp_path / "M10-housing-config.json"
+        save_housing_config(dest, HOUSING_CONFIGS["M10"])
+        loaded = load_housing_config(dest)
+        assert loaded == HOUSING_CONFIGS["M10"]
+        assert loaded.to_dict()["pigbrother_current_map"] == {}
+        when = datetime(2021, 4, 29, 15, 9, tzinfo=PARIS)
+        assert loaded.at(when).pigbrother_current_map == {"GR1": "IH", "GR2": "IB"}

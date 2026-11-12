@@ -77,6 +77,10 @@
             "label": "Bitter Coil Current",
             "description": "Lower coil current sum from DCCT sensors (supplies A3 + A4)"
           }
+        },
+        "pigbrother_current_map": {
+          "GR1": "IH",
+          "GR2": "IB"
         }
       }
     },
