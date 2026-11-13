@@ -1479,10 +1479,11 @@ prepareData(data, housing="M9")
 
 **Opt-in: spec-driven `prepare_pupitre`** (explicit spec, no content-based dropping).
 A spec, `<assembly>.<housing version>.pupitre-etl.json`, lists what to rename, add
-and remove for one assembly and one housing version, plus per-magnet parts (the
-`Ucoil` channels of each magnet and an `Icoil` current check). It is exported from
-DuckDB (`python magnetdb.py etl export <assembly>` in `to_duckdb`), or built
-standalone from the housing config alone (no magnet parts):
+and remove for one assembly and one housing version, plus the wiring of each magnet
+(its `Ucoil` channels, the channels it removes and the fields it adds) and the check
+rules. It is exported from DuckDB (`python magnetdb.py etl export <assembly>` in
+`to_duckdb`), or built standalone from the housing config alone (no magnet wiring,
+no rules):
 
 ```python
 from datetime import datetime
@@ -1505,9 +1506,13 @@ print([c for c in checks if c["ok"] is False])  # failed checks (also logged)
 ```
 
 `prepare_pupitre` returns its checks: `housing_version` (the spec's version vs the
-one in force at the data start), `current` (`max |IH − Icoil n|` ≤ 5 A per magnet
-part) and `channel` (each removed `Ucoil n` and its `Icoil`/`DRcoil`/`Tcal` are
-exactly 0). A failed check is logged; it never keeps or drops a column.
+one in force at the data start), one `rule` result per rule and `channel` (each
+removed `Ucoil n` and its `Icoil`/`DRcoil`/`Tcal` are exactly 0). A rule is a free
+expression over the prepared columns (e.g. `IH - Icoil7`, `Idcct1 - Idcct2`),
+reduced by `stat` (`max_abs`, `p99_abs` or `mean_abs`) and compared with `tol`
+(`value ≤ tol` passes); it gives `ok: None` when one of its columns is missing, and
+may name a `tag` that `to_duckdb` attaches to a failed file. A failed check is
+logged; it never keeps or drops a column.
 
 The same spec is available from the command line:
 
