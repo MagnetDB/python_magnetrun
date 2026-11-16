@@ -1,26 +1,21 @@
-from python_magnetrun.analysis.processing import (
-        process_overview_file,
-        ProcessingConfig,
-    )
 import logging
-from python_magnetrun.log_utils import get_logger, setup_logging
 from pathlib import Path
+
+from python_magnetrun.analysis.processing import (
+    ProcessingConfig,
+    process_overview_file,
+)
+from python_magnetrun.log_utils import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
 def main() -> None:
     import argparse
-    from python_magnetrun.cli_args import validate_file_extension
-
-    from tabulate import tabulate
 
     from python_magnetrun.analysis.field_comparison import (
-        AliasedField,
-        compare_field,
-        compute_reference_lag,
-        discover_pupitre_pigbrother_fields,
         print_comparison_summary,
     )
+    from python_magnetrun.cli_args import validate_file_extension
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -72,7 +67,6 @@ def main() -> None:
         
     from python_magnetrun.analysis.field_comparison import (
         compare_all_fields,
-        print_comparison_summary,
     )
 
     record = process_overview_file(args.input_file, ProcessingConfig())

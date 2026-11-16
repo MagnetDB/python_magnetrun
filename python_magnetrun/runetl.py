@@ -6,7 +6,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -137,7 +137,7 @@ def _data_start(data: MagnetDataBase) -> datetime | None:
             "using the base housing wiring"
         )
         return None
-    tz = ZoneInfo("Europe/Paris") if data.Type == DataType.PUPITRE else timezone.utc
+    tz = ZoneInfo("Europe/Paris") if data.Type == DataType.PUPITRE else UTC
     return naive.replace(tzinfo=tz)
 
 

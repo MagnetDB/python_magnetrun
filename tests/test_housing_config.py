@@ -11,7 +11,7 @@ Covers:
 
 import dataclasses
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -291,7 +291,7 @@ class TestHousingConfigVersions:
 
     def test_m8_version_from_utc_time(self):
         """The same instant given in UTC resolves to the same version."""
-        cfg = HOUSING_CONFIGS["M8"].at(datetime(2026, 3, 5, 16, 21, 9, tzinfo=timezone.utc))
+        cfg = HOUSING_CONFIGS["M8"].at(datetime(2026, 3, 5, 16, 21, 9, tzinfo=UTC))
         assert cfg.version == "M8-260305"
 
     def test_m8_version_formulas(self):
@@ -352,8 +352,8 @@ class TestHousingConfigVersions:
         v2 = {"name": "X-2", "valid_from": "2026-06-01T00:00:00+00:00",
               "overrides": {"voltage_channels_gr1": ["Ucoil15", "Ucoil16"]}}
         cfg = HousingConfig(name="X", versions=(v2, v1))
-        assert cfg.at(datetime(2026, 3, 1, tzinfo=timezone.utc)).version == "X-1"
-        assert cfg.at(datetime(2026, 7, 1, tzinfo=timezone.utc)).version == "X-2"
+        assert cfg.at(datetime(2026, 3, 1, tzinfo=UTC)).version == "X-1"
+        assert cfg.at(datetime(2026, 7, 1, tzinfo=UTC)).version == "X-2"
 
     def test_naive_at_raises(self):
         with pytest.raises(ValueError, match="timezone"):
@@ -361,9 +361,9 @@ class TestHousingConfigVersions:
 
     def test_at_on_version_raises(self):
         """Versions apply to the base config only."""
-        cfg = _versioned().at(datetime(2026, 4, 1, tzinfo=timezone.utc))
+        cfg = _versioned().at(datetime(2026, 4, 1, tzinfo=UTC))
         with pytest.raises(ValueError, match="base"):
-            cfg.at(datetime(2026, 4, 1, tzinfo=timezone.utc))
+            cfg.at(datetime(2026, 4, 1, tzinfo=UTC))
 
     def test_naive_valid_from_raises(self):
         with pytest.raises(ValueError, match="offset"):

@@ -5,7 +5,7 @@ These tests verify the main orchestration functionality
 including data structures, configuration, and processing utilities.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import numpy as np
@@ -253,11 +253,10 @@ class TestGetHousingConfig:
 
     def test_analysis_config_for_housing_at(self):
         """AnalysisConfig.for_housing passes `at` to the housing lookup."""
-        from datetime import timezone
 
         from python_magnetrun.analysis.config import AnalysisConfig
 
-        when = datetime(2026, 3, 6, 8, 0, tzinfo=timezone.utc)
+        when = datetime(2026, 3, 6, 8, 0, tzinfo=UTC)
         assert AnalysisConfig.for_housing("M8", at=when).housing.version == "M8-260305"
         assert AnalysisConfig.for_housing("M8").housing.version == ""
 

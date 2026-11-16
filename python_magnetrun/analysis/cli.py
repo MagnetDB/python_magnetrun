@@ -58,7 +58,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import sys
-from datetime import timezone
+from datetime import UTC
 from pathlib import Path
 from typing import cast
 
@@ -174,7 +174,7 @@ def _load_records(input_files, config, parsed_args, housing, logger):
                 )
 
                 # wiring in force at the run start (t0 is naive UTC)
-                at = record.t0.replace(tzinfo=timezone.utc) if record.t0 else None
+                at = record.t0.replace(tzinfo=UTC) if record.t0 else None
                 housing_config = get_housing_config(housing, at=at)
                 analysis_cfg = AnalysisConfig.for_housing(housing, at=at)
                 channel_map = analysis_cfg.channels

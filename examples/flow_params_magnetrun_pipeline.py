@@ -20,11 +20,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pwlf
+from python_magnetcooling.waterflow import WaterFlow
+from python_magnetcooling.waterflow_factory import from_flow_params
 from sympy import Symbol
 from tabulate import tabulate
 
-from python_magnetcooling.waterflow import WaterFlow
-from python_magnetcooling.waterflow_factory import from_flow_params
 from python_magnetrun.log_utils import get_logger, setup_logging
 from python_magnetrun.processing.fit import find_eqn, fit
 

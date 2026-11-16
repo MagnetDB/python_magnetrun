@@ -17,10 +17,9 @@ from collections.abc import Callable
 
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy import optimize
-
 from python_magnetcooling.waterflow import WaterFlow
 from python_magnetcooling.waterflow_factory import from_flow_params
+from scipy import optimize
 
 
 def generate_synthetic_data(

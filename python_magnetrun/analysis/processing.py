@@ -38,7 +38,7 @@ import contextlib
 import logging
 import os
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -1027,7 +1027,7 @@ def process_overview_file(
     if housing_config is None:
         # wiring in force at the run start (t0 is naive UTC)
         housing_config = HOUSING_CONFIGS[housing].at(
-            record.t0.replace(tzinfo=timezone.utc)
+            record.t0.replace(tzinfo=UTC)
         )
 
     _load_all_sources(record, housing_config, config, keys)

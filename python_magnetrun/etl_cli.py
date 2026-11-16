@@ -13,7 +13,7 @@ Magnet parts are added from DuckDB (``to_duckdb``), not here.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -28,7 +28,7 @@ from .runetl import (
 def _parse_at(text: str | None) -> datetime:
     """Parse ``--at`` (ISO 8601; no offset = Europe/Paris time); ``None`` = now."""
     if text is None:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
     when = datetime.fromisoformat(text)
     if when.utcoffset() is None:
         when = when.replace(tzinfo=ZoneInfo("Europe/Paris"))

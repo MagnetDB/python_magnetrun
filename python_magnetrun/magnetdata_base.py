@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import threading
 from abc import ABC, abstractmethod
 from datetime import datetime

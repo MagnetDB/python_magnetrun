@@ -30,7 +30,7 @@ import logging
 import os
 import warnings
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -1066,7 +1066,7 @@ class HybridRun:
             from ..housing_config import get_housing_config
 
             try:
-                start = self.get_time_range()[0].replace(tzinfo=timezone.utc)
+                start = self.get_time_range()[0].replace(tzinfo=UTC)
             except (RuntimeError, NotImplementedError):
                 start = None
             cfg = get_housing_config(self.Housing, at=start)

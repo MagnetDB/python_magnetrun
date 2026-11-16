@@ -2,8 +2,6 @@ import argparse
 import logging
 import os
 
-import pandas as pd
-
 from python_magnetrun.cli_args import create_base_parser
 from python_magnetrun.log_utils import setup_logging
 from python_magnetrun.MagnetRun import MagnetRun, load_mrun
