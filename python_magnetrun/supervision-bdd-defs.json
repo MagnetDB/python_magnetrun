@@ -13,13 +13,13 @@
     "group": "Refroidissement"
   },
   "ted": {
-    "description": "Site-level input temperature, secondary cooling loop D (SUPERVISION) — circuit identity unconfirmed",
+    "description": "Primary cooling loop temperature at the heat exchanger hot-side inlet, same measurement point as the pupitre Tout (SUPERVISION sensor)",
     "symbol": "T",
     "unit": "degC",
     "group": "Refroidissement"
   },
   "tsd": {
-    "description": "Site-level output temperature, secondary cooling loop D (SUPERVISION) — circuit identity unconfirmed",
+    "description": "Primary cooling loop temperature at the heat exchanger hot-side outlet, same measurement point as the pupitre Tin = (Tin1 + Tin2)/2 (SUPERVISION sensor)",
     "symbol": "T",
     "unit": "degC",
     "group": "Refroidissement"
@@ -43,19 +43,19 @@
     "group": "Water_Resistivity"
   },
   "azote1": {
-    "description": "Nitrogen supply pressure 1 (SUPERVISION)",
+    "description": "Pressure of nitrogen bottle 1 (200 bar when full) feeding the pressure reducer (~4 bar, adjustable) that pressurises the low-pressure side (BP) of the cooling loop through reservoir R1, shared by all housings; the reducer switches to bottle 2 automatically (SUPERVISION)",
     "symbol": "P",
     "unit": "bar",
     "group": "Nitrogen_Level"
   },
   "azote2": {
-    "description": "Nitrogen supply pressure 2 (SUPERVISION)",
+    "description": "Pressure of nitrogen bottle 2 (200 bar when full), taken over automatically by the pressure reducer when bottle 1 runs low; see azote1 (SUPERVISION)",
     "symbol": "P",
     "unit": "bar",
     "group": "Nitrogen_Level"
   },
   "niv1": {
-    "description": "Nitrogen level, tank/dewar 1 (SUPERVISION)",
+    "description": "Level of reservoir R1, which pressurises the low-pressure side (BP) of the cooling loop of all housings; watched as a leak indicator together with the drop of the nitrogen bottle pressures (SUPERVISION)",
     "symbol": "%",
     "unit": "percent",
     "group": "Nitrogen_Level"
