@@ -189,8 +189,11 @@ def compute(
     def vpump_func(x, a: float, b: float):
         return a * (x / Imax) ** 2 + b
 
-    x = _df[Ikey].to_numpy()
-    y = _df[RpmKey].to_numpy()
+    # Sorted by current: the 1-vs-2-segment check below compares the fit with
+    # the sample at the highest current, not the last one in time.
+    order = np.argsort(_df[Ikey].to_numpy(), kind="stable")
+    x = _df[Ikey].to_numpy()[order]
+    y = _df[RpmKey].to_numpy()[order]
     for segment in [1, 2]:
         my_pwlf, eqns = pwlf_fit(
             Ikey, x, RpmKey, y, degree=2, segment=segment, show=True
@@ -209,13 +212,12 @@ def compute(
     print(
         f"new Vp0={flow_params['Vp0']['value']} -> {eqns[0].evalf(subs={Symbol('x'): 0})}"
     )
-    print(
-        f"new Vpmax={flow_params['Vpmax']['value']} -> {eqns[0].evalf(subs={Symbol('x'): Imax})}"
-    )
-    params = [
-        float(eqns[0].evalf(subs={Symbol("x"): Imax})),
-        float(eqns[0].evalf(subs={Symbol("x"): 0})),
-    ]
+    # Vpmax is the speed rise from Vp0 to Imax (WaterFlow and vpump_func:
+    # Vp = Vpmax (I/Imax)^2 + Vp0), not the speed at Imax.
+    vp_imax = float(eqns[0].evalf(subs={Symbol("x"): Imax}))
+    vp_zero = float(eqns[0].evalf(subs={Symbol("x"): 0}))
+    print(f"new Vpmax={flow_params['Vpmax']['value']} -> {vp_imax - vp_zero}")
+    params = [vp_imax - vp_zero, vp_zero]
 
     flow_params["Imax"]["value"] = Imax
     flow_params["Vp0"]["value"] = params[1]
