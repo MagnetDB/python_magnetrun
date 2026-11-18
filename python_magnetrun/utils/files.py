@@ -38,6 +38,7 @@ _TDMS_MODE_DIRS: dict[str, str] = {
     "Default": DIR_DEFAULT,
     "Spikes": DIR_SPIKE,
     "ManuelTrig": DIR_TRIGGER,
+    "Stats": DIR_SIGNAL_STATS,
 }
 
 # Mapping from the same TDMS mode name to a normalized (lower-case, singular)
