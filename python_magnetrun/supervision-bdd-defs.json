@@ -46,18 +46,18 @@
     "description": "Pressure of nitrogen bottle 1 (200 bar when full) feeding the pressure reducer (~4 bar, adjustable) that pressurises the low-pressure side (BP) of the cooling loop through reservoir R1, shared by all housings; the reducer switches to bottle 2 automatically (SUPERVISION)",
     "symbol": "P",
     "unit": "bar",
-    "group": "Nitrogen_Level"
+    "group": "Loop_Pressurisation"
   },
   "azote2": {
     "description": "Pressure of nitrogen bottle 2 (200 bar when full), taken over automatically by the pressure reducer when bottle 1 runs low; see azote1 (SUPERVISION)",
     "symbol": "P",
     "unit": "bar",
-    "group": "Nitrogen_Level"
+    "group": "Loop_Pressurisation"
   },
   "niv1": {
     "description": "Level of reservoir R1, which pressurises the low-pressure side (BP) of the cooling loop of all housings; watched as a leak indicator together with the drop of the nitrogen bottle pressures (SUPERVISION)",
     "symbol": "%",
     "unit": "percent",
-    "group": "Nitrogen_Level"
+    "group": "Loop_Pressurisation"
   }
 }
